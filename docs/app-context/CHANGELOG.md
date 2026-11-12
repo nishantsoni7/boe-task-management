@@ -4,6 +4,19 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-12 — Console guard tightened so the "preloaded but not used" warnings cannot come back (PR open, branch `test/no-prefetch-guard-hardening`) · no SQL
+- **Why.** The owner asked: "Is there anything which can generate similar kind of errors in future then do work on it and solve it". A read-only sweep of about 38 pages in the owner's Chrome found:
+  - pages covered: every module home, plus the Orders, Finance, Tasks and Sales sub-pages;
+  - 0 console errors or warnings from BOE, 0 failed requests and 0 unused stylesheets;
+  - what remained came from outside BOE: a Chrome extension; the Vercel Toolbar, which the owner sees because of the `__vercel_toolbar` cookie; and the owner's network stalling some page loads 6-19 s before any request left Chrome.
+- **Changed (test only).** `noBackgroundPrefetch.test.ts` now also fails on:
+  - `next/link` outside AppLink when written with double quotes or loaded by `import()`/`require()`;
+  - any `next/form`;
+  - `router.prefetch?.(`;
+  - any hand-written preload: `rel="preload|prefetch|modulepreload"`, React `preload()`/`preinit()`.
+- **Checks.** A sixth case proves the patterns catch each spelling and leave `prefetchQuery`, `preconnect()` and `rel="stylesheet"` alone. A deliberately bad file made 4 of the 6 cases fail; the old guard would have passed it.
+- **Not changed.** Polled refreshes (For you and handovers, every 60 s) already retry once (`retry: 1` in Providers). A dropped connection therefore adds at most two failed-request lines per refresh, so they are left as they are.
+
 ## 2026-11-12 — SEO brief: rankings of the business searches by category first, then where the traffic came from (PR #691, squash-merged 2026-11-12 14:32 IST as `e9901386`) · no migration
 - **Owner ask.** The ranking table is what matters: the top 5 searches in each business category (24 categories plus banquet), quarter by quarter; then how much of the traffic growth went to blog posts against business searches; then the rest in order, with nothing repeated. Plan v4 approved the same day.
 - **Changed.** Quarter rows can carry a category and Google's impressions per quarter: grouped tables show a category heading with summed clicks, a summary above, a "Since" column, and grey positions from fewer than 20 showings (left out of the change). New optional "where the visitors came from" part: three figures and a month-by-month table. Rankings now come first, the traffic split second. The worksheet chart is optional, and credit and fairness hide when empty, so the conversation part can carry them.
