@@ -1,6 +1,6 @@
 # 31 - BOE Scoreboard (one monthly score, seen twice a day)
 
-Built 2026-11-12 on branch `claude/boe1-employee-monitoring-t5ypei`. Migration `20270625000000_scoreboard.sql` **must be applied before the merge**.
+Built 2026-11-12 on branch `claude/boe1-employee-monitoring-t5ypei`. Migration `20270625000000_scoreboard.sql` was **APPLIED 2026-11-12 by the owner, before the merge** (PR #724; owner's word, not re-checked from the cloud session).
 
 The plan (with the owner's decisions) is the artifact "BOE Scoreboard: one score, seen daily, rewarded monthly". The code is the truth.
 

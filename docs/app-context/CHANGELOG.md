@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270625000000` → NOT applied (apply before the merge)
+## 2026-11-12 — BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (PR #724) · `20270625000000` → APPLIED 2026-11-12 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 - **Owner ask.** Replace the Performance numbers with one monthly score that people see twice a day, with rewards and reviews. Plan and decisions are in dossier 31.
 - **Built.**
   - The score, six parts and two tracks, month-to-date as points earned out of points possible (`src/lib/scoreboard/score.ts`).
