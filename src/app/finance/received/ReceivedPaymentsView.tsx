@@ -57,9 +57,8 @@ import { CorrectAllocationModal } from './CorrectAllocationModal'
 import { deriveOrdersCapabilities, NO_ORDERS_CAPABILITIES } from '@/lib/permissions/orders'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { CONFIRMED_ALLOCATION_FILTER_LABEL, DEFAULT_CONFIRMED_ALLOCATION_FILTER, PAYMENTS_TABLE_BREAKPOINT, PAYMENT_SURFACE_STATUSES, type ConfirmedAllocationFilter, type PaymentSurface } from '@/lib/finance/paymentSurfaces'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import {
   deriveFinanceCapabilities,
   NO_FINANCE_CAPABILITIES,
@@ -273,6 +272,8 @@ function ReceivedPaymentsViewInner(
   const router       = useRouter()
   const pathname     = usePathname()
   const supabase     = useMemo(() => createClient(), [])
+  // Resolved by the Finance ModuleGuard before this screen renders: a cache hit, not a request (2026-11-12).
+  const { profile: sessionProfile, permissionsByModule } = usePermissionContext()
   const searchParams = useSearchParams()
   const queryClient  = useQueryClient()
 
@@ -871,13 +872,11 @@ function ReceivedPaymentsViewInner(
       // correction control can flash before it is authorized: pageLoading is not
       // cleared until every one of these has landed. A failed resolve still
       // falls back to NO capabilities rather than to the role.
-      const profilePromise = supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
-      const financePromise = getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => [])
-      const ordersPromise = getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => [])
+      // The profile and both permission sets come from the Finance ModuleGuard's permission
+      // context, resolved before this screen rendered: not asked again (2026-11-12).
+      const profilePromise = Promise.resolve({ data: sessionProfile })
+      const financePromise = Promise.resolve(permissionsByModule.get('finance') ?? [])
+      const ordersPromise = Promise.resolve(permissionsByModule.get('orders') ?? [])
 
       // ── IS THE ALLOCATION COLUMN THERE? ──
       //

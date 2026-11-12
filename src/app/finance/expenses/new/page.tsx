@@ -44,8 +44,7 @@ import { colors } from '@/lib/tokens'
 import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { deriveFinanceCapabilities, NO_FINANCE_CAPABILITIES } from '@/lib/permissions/finance'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import type { UserProfile } from '@/lib/types'
@@ -71,6 +70,8 @@ type EntryMode = 'capture' | 'full'
 export default function QuickAddExpensePage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  // Resolved by the Finance ModuleGuard before this screen renders: a cache hit, not a request (2026-11-12).
+  const { profile: sessionProfile, permissionsByModule } = usePermissionContext()
 
   const [loading, setLoading] = useState(true)
   const [profile, setProfile] = useState<UserProfile | null>(null)
@@ -116,8 +117,8 @@ export default function QuickAddExpensePage() {
       setUserId(session.user.id)
 
       const [{ data: me }, perms, { data: cats }] = await Promise.all([
-        supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
-        getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
+        Promise.resolve({ data: sessionProfile }),
+        Promise.resolve(permissionsByModule.get('finance') ?? []),
         supabase.from('expense_categories').select('id, name, is_active').order('name'),
       ])
       if (!active) return

@@ -24,8 +24,7 @@ import { isSalespersonPaymentView } from '@/lib/finance/paymentRequestsSalesView
 import { loadPaymentTotals, loadPaymentsHoldingPi } from '@/lib/finance/paymentCommercialTotals'
 import { loadCancelledLinks, needsHistoricalLink, withCancelledLinks } from '@/lib/finance/paymentCancelledLinks'
 import { DeletePaymentModal } from '@/components/finance/DeletePaymentModal'
-import { getEffectivePermissionsForUser } from '@/lib/permissions/resolver'
-import type { EffectivePermission } from '@/lib/permissions/types'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import {
   deriveFinanceCapabilities,
   NO_FINANCE_CAPABILITIES,
@@ -77,7 +76,6 @@ import { paymentDestinationLabel } from './paymentDestinations'
 import { loadPaymentDestinations, type PaymentDestination } from '@/lib/finance/paymentDestination'
 import { useQueryClient } from '@tanstack/react-query'
 import { RECEIVED_PAYMENTS_COUNTS_KEY } from '@/hooks/queries/useReceivedPaymentsCounts'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 import { FILTER_TABS, EMPTY_MESSAGES, fmtDate, fmtAmount, SEARCH_DEBOUNCE_MS, type PaymentRequest } from './paymentRequestsModel'
 // Re-exported: other modules import the type from the page.
@@ -191,6 +189,8 @@ function FinancePageInner() {
 
   const router       = useRouter()
   const supabase     = useMemo(() => createClient(), [])
+  // Resolved by the Finance ModuleGuard before this page renders; a cache hit here.
+  const { profile: sessionProfile, permissionsByModule } = usePermissionContext()
   const searchParams = useSearchParams()
   const queryClient  = useQueryClient()
 
@@ -535,18 +535,14 @@ function FinancePageInner() {
       //     number (never 0).
       const cutoffIso = archiveCutoffIso(Date.now())
       setCutoffMs(Date.parse(cutoffIso))
-      const [{ data: me }, permsByModule] = await Promise.all([
-        supabase
-          .from('users')
-          .select(USER_PROFILE_COLUMNS)
-          .eq('id', uid)
-          .single(),
-        getEffectivePermissionsForUser(supabase, uid).catch(() => new Map<string, EffectivePermission[]>()),
-        loadRequests(cutoffIso),
-      ])
-      const financePerms = permsByModule.get('finance') ?? []
+      // The profile and every module's permissions were resolved by the Finance ModuleGuard
+      // (usePermissionContext) before this page mounted: read from that cache, not asked again
+      // (2026-11-12). Only the list is read here.
+      await loadRequests(cutoffIso)
+      const me = sessionProfile
+      const financePerms = permissionsByModule.get('finance') ?? []
       // Orders module entry, for the Against cell's link only; a failed read offers no link.
-      const ordersPerms = permsByModule.get('orders') ?? []
+      const ordersPerms = permissionsByModule.get('orders') ?? []
 
       setProfile(me as UserProfile)
       setIsAdmin(me?.role === 'admin')

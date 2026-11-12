@@ -42,7 +42,8 @@ describe('Finance controls ask the capability helper', () => {
     for (const path of [FINANCE_PAGE, RECEIVED_VIEW]) {
       const source = read(path)
       assert.ok(source.includes('deriveFinanceCapabilities'), `${path} must derive capabilities`)
-      assert.ok(source.includes('getEffectivePermissions'), `${path} must resolve permissions`)
+      // From the Finance ModuleGuard's resolved permission context since 2026-11-12.
+      assert.ok(source.includes("permissionsByModule.get('finance')") && source.includes('usePermissionContext()'), `${path} must resolve permissions`)
       assert.ok(
         source.includes('NO_FINANCE_CAPABILITIES'),
         `${path} must start from no capabilities so controls cannot flash`,

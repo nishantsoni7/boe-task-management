@@ -255,8 +255,8 @@ describe('related-record links follow the reader\'s own access', () => {
   test('Payment Requests names its target as a link only through the shared rule', () => {
     const src = code(REQUESTS)
     assert.ok(src.includes('const href = destinationRecordHref(destination, canOpenOrders)'))
-    assert.ok(src.includes("permsByModule.get('orders') ?? []") && src.includes('getEffectivePermissionsForUser(supabase, uid).catch(() => new Map<string, EffectivePermission[]>())'),
-      'Orders entry comes from the same single permissions read as Finance (2026-10-22) — no extra request, and a failed read offers no link')
+    assert.ok(src.includes("permissionsByModule.get('orders') ?? []") && src.includes('const { profile: sessionProfile, permissionsByModule } = usePermissionContext()'),
+      'Orders entry comes from the same single permissions read as Finance (the ModuleGuard\'s context since 2026-11-12) — no extra request, and a failed read offers no link')
     assert.ok(src.includes('useState(false)') && src.includes('setCanOpenOrders(deriveOrdersCapabilities(me?.role, ordersPerms).canAccessOrdersModule)'),
       'starts closed, and a failed read offers no link')
   })

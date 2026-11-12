@@ -38,8 +38,7 @@ import { createClient } from '@/lib/supabase/client'
 import { FinanceLayout } from '@/components/layout/FinanceLayout'
 import { FinanceRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { Toast, useToast } from '@/components/ui/toast'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { deriveFinanceCapabilities, NO_FINANCE_CAPABILITIES } from '@/lib/permissions/finance'
 import { formatMoney } from '@/lib/finance/piPaymentView'
 import { BANK_ACCOUNT_LABEL, DEBIT_KIND_LABEL, bankLineId, type BankAccountKey, type DebitKind } from '@/lib/finance/bankStatement'
@@ -109,6 +108,8 @@ type Tab = 'in' | 'payments' | 'out'
 
 export function BankStatementsView() {
   const supabase = useMemo(() => createClient(), [])
+  // Resolved by the Finance ModuleGuard before this screen renders: a cache hit, not a request (2026-11-12).
+  const { profile: sessionProfile, permissionsByModule } = usePermissionContext()
   const router = useRouter()
   // ?credit= opens one credit, from a payment that may be a second record of it.
   const params = useSearchParams()
@@ -160,8 +161,8 @@ export function BankStatementsView() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
       const [{ data: me }, perms] = await Promise.all([
-        supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
-        getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
+        Promise.resolve({ data: sessionProfile }),
+        Promise.resolve(permissionsByModule.get('finance') ?? []),
       ])
       if (!alive) return
       setProfile(me as UserProfile)
@@ -169,7 +170,7 @@ export function BankStatementsView() {
       setBooting(false)
     })()
     return () => { alive = false }
-  }, [supabase, router])
+  }, [supabase, router, sessionProfile, permissionsByModule])
 
   // ── which months are stored ──
   const loadRange = useCallback(async (preferMonth?: string) => {
