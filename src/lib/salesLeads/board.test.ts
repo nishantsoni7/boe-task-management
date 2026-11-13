@@ -10,8 +10,65 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  bigQuantity, checklistFor, countryOf, DEAD_REASONS, dueOf, flagOf, lastLabel, marketLabel, parseValue, quickMessages, rankMyDay, STAGES, valueLabel, whatsAppLink, whyFirst,
+  activityTag, bigQuantity, checklistFor, countryOf, DEAD_REASONS, dueOf, flagOf, followUpChoices, isSunday, lastLabel, marketLabel, nextWorkingDay, parseValue,
+  QUICK_NOTES, quickMessages, rankMyDay, STAGES, valueLabel, whatsAppLink, whyFirst,
 } from './board'
+import { dayHeading, dayShort, istDayOf, timeLabel } from './format'
+
+// The update box and the follow-up date (owner, 2026-11-13; migration 20270703000100).
+describe('the next working day', () => {
+  test('Monday to Saturday are working days: only a Sunday is skipped, as in the database', () => {
+    const COMMENTS = readFileSync(join(process.cwd(), 'supabase/migrations/20270703000100_sales_comments_and_due_dates.sql'), 'utf8')
+    assert.equal(nextWorkingDay('2026-11-12'), '2026-11-13', 'Thursday to Friday')
+    assert.equal(nextWorkingDay('2026-11-13'), '2026-11-14', 'Friday to Saturday')
+    assert.equal(nextWorkingDay('2026-11-14'), '2026-11-16', 'Saturday to Monday')
+    assert.equal(nextWorkingDay('2026-11-15'), '2026-11-16', 'Sunday to Monday')
+    assert.equal(nextWorkingDay('2026-12-31'), '2027-01-01', 'across a year')
+    assert.ok(COMMENTS.includes("when 7 then p_from + 2 else p_from + 1 end"))
+  })
+  test('the choices are the next working day, 3 days and a week; a Sunday is named', () => {
+    assert.deepEqual(followUpChoices('2026-11-14'), [
+      { date: '2026-11-16', why: 'Next working day' }, { date: '2026-11-17', why: 'In 3 days' }, { date: '2026-11-21', why: 'In a week' },
+    ])
+    assert.equal(isSunday('2026-11-15'), true)
+    assert.equal(isSunday('2026-11-16'), false)
+  })
+})
+
+describe('the quick notes', () => {
+  test('at most four, and only the two the database knows carry a tag', () => {
+    assert.ok(QUICK_NOTES.length <= 4)
+    assert.deepEqual(QUICK_NOTES.filter(n => n.tag).map(n => n.tag), ['not_responding', 'quotation'])
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20270703000100_sales_comments_and_due_dates.sql'), 'utf8')
+    assert.ok(sql.includes("p_tag not in ('not_responding', 'quotation')"))
+  })
+  test('a comment with no quick note is a contact: an unknown tag never reads as "not responding"', () => {
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20270703000100_sales_comments_and_due_dates.sql'), 'utf8')
+    assert.ok(sql.includes("v_not_responding boolean := coalesce(p_tag = 'not_responding', false);"))
+  })
+})
+
+describe('the activity feed', () => {
+  test('an entry is tagged by what it means, and a plain update has no tag', () => {
+    assert.equal(activityTag({ kind: 'note', outcome: 'note' }), null)
+    assert.deepEqual(activityTag({ kind: 'note', outcome: 'no_answer' }), { label: 'Not responding', tone: 'no' })
+    assert.deepEqual(activityTag({ kind: 'call', outcome: 'no_answer' }), { label: 'Not responding', tone: 'no' })
+    assert.deepEqual(activityTag({ kind: 'quotation', outcome: 'sent' }), { label: 'Shared quotation', tone: 'quote' })
+    assert.deepEqual(activityTag({ kind: 'meeting', outcome: 'interested' }), { label: 'Meeting · Interested', tone: 'plain' })
+  })
+  test('days are India days, headed Today, Yesterday, then the weekday and date', () => {
+    assert.equal(istDayOf('2026-11-13T19:00:00Z'), '2026-11-14', '00:30 in India is the next day')
+    assert.equal(timeLabel('2026-11-14T05:15:00Z'), '10:45 am')
+    assert.equal(dayHeading('2026-11-14', '2026-11-14'), 'Today')
+    assert.equal(dayHeading('2026-11-13', '2026-11-14'), 'Yesterday')
+    assert.equal(dayHeading('2026-11-12', '2026-11-14'), 'Thursday, 12 November')
+    assert.equal(dayHeading('2025-12-30', '2026-11-14'), 'Tuesday, 30 December 2025')
+    assert.equal(dayShort('2026-11-16'), 'Mon 16 Nov')
+  })
+  test('the last touch of an update reads "Last update"', () => {
+    assert.equal(lastLabel({ last_activity_at: '2026-11-03T05:00:00Z', last_kind: 'note' }, TODAY), 'Last update today')
+  })
+})
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const MIGRATION = read('supabase/migrations/20270525000000_sales_lead_board.sql') + read('supabase/migrations/20270526000100_sales_go_live.sql')

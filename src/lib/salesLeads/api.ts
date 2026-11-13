@@ -1,5 +1,5 @@
 import type { createClient } from '@/lib/supabase/client'
-import type { ClientType, NeededFact, Segment, Stage, Temperature } from './board'
+import type { ClientType, CommentTag, NeededFact, Segment, Stage, Temperature } from './board'
 import type { HistoryRow, ImportRow } from './clickup'
 import type { SheetRow } from './sheets'
 import type { LeadSource, Period, WaTag } from './constants'
@@ -51,7 +51,7 @@ export type LeadPage = {
 }
 
 export type LeadEvent = {
-  kind: 'added' | 'allotted' | 'reassigned' | 'edited' | 'moved' | 'enquired_again' | 'imported' | 'clickup_status'
+  kind: 'added' | 'allotted' | 'reassigned' | 'edited' | 'moved' | 'enquired_again' | 'imported' | 'clickup_status' | 'due_changed'
   from_name: string | null
   to_name: string | null
   /** For an edit: which fields changed, never their values. */
@@ -308,10 +308,13 @@ export const fetchBoardPage = (s: Supabase, stage: Stage, offset: number, limit:
 export const fetchWorkLead = (s: Supabase, id: string) =>
   call<WorkDetail>(() => s.rpc('get_sales_lead', { p_id: id }))
 
-export const logActivity = (s: Supabase, id: string, a: { kind: string; outcome: string; note: string; nextStep: string; nextDue: string }) =>
-  call<WorkResult>(() => s.rpc('log_sales_lead_activity', {
-    p_id: id, p_kind: a.kind, p_outcome: a.outcome, p_note: blankToNull(a.note), p_next_step: a.nextStep, p_next_due: a.nextDue,
-  }))
+/** A comment on a lead (add_sales_lead_comment, 20270703000100). The follow-up date is the next working day unless given. */
+export const addComment = (s: Supabase, id: string, a: { note: string; tag: CommentTag | null; nextDue?: string }) =>
+  call<WorkResult>(() => s.rpc('add_sales_lead_comment', { p_id: id, p_note: a.note, p_tag: a.tag, p_next_due: a.nextDue ?? null }))
+
+/** Moves the follow-up date of an open lead, in any stage (change_sales_lead_due, 20270703000100). */
+export const changeDue = (s: Supabase, id: string, due: string) =>
+  call<{ status: 'saved' | 'unchanged'; lead: WorkLead }>(() => s.rpc('change_sales_lead_due', { p_id: id, p_due: due }))
 
 export const logNoAnswer = (s: Supabase, id: string) =>
   call<WorkResult>(() => s.rpc('sales_lead_no_answer', { p_id: id }))
