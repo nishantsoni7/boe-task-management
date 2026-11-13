@@ -3,10 +3,12 @@ import { istAddDays } from '@/lib/istDate'
 // Sales, Lead Board: the words and the small rules My day, the board and the lead panel share. The database is the
 // authority on what may happen (20270525000000_sales_lead_board.sql); nothing here decides that.
 
+// The owner's names and order (2026-11-13). Visit / Meeting is new (20270710000000); the keys of the others never change.
 export const STAGES = [
   { key: 'new', label: 'New' },
-  { key: 'under_process', label: 'Under process' },
-  { key: 'potential', label: 'Potential client' },
+  { key: 'under_process', label: 'Under Process' },
+  { key: 'visit_meeting', label: 'Visit / Meeting' },
+  { key: 'potential', label: 'Potential Clients' },
   { key: 'negotiation', label: 'Negotiation' },
   { key: 'follow_up_later', label: 'Follow up later' },
   { key: 'converted', label: 'Converted' },
@@ -18,19 +20,22 @@ export const STAGE_KEYS: readonly Stage[] = STAGES.map(s => s.key)
 export const stageLabel = (stage: string) => STAGES.find(s => s.key === stage)?.label ?? stage
 
 /** The columns of the board. Converted and Dead are the two ways out, drawn apart. */
-export const BOARD_STAGES: readonly Stage[] = ['new', 'under_process', 'potential', 'negotiation', 'follow_up_later']
-/** The bar across the top of a lead. Follow up later and Dead are not steps of a sale. */
-export const PATH_STAGES: readonly Stage[] = ['new', 'under_process', 'potential', 'negotiation', 'converted']
+export const BOARD_STAGES: readonly Stage[] = ['new', 'under_process', 'visit_meeting', 'potential', 'negotiation', 'follow_up_later']
+/** The steps of a sale, in order: the stage bar of the lead popup. Follow up later, Converted and Dead sit beside it. */
+export const PATH_STAGES: readonly Stage[] = ['new', 'under_process', 'visit_meeting', 'potential', 'negotiation']
 
 /** One line telling the salesperson what this stage is for. */
 export const STAGE_GUIDE: Partial<Record<Stage, string>> = {
   new: 'Call within the hour. Find out what they need.',
   under_process: 'Find out what they need, how much, and for which project.',
+  visit_meeting: 'Meet them, or have them visit. Take the requirement and the quantity.',
   potential: 'Send the quotation. Confirm the budget and when they need it.',
   negotiation: 'Agree the price and delivery. Find out who signs off.',
 }
 
-export const NEXT_STAGE: Partial<Record<Stage, Stage>> = { new: 'under_process', under_process: 'potential', potential: 'negotiation' }
+export const NEXT_STAGE: Partial<Record<Stage, Stage>> = {
+  new: 'under_process', under_process: 'visit_meeting', visit_meeting: 'potential', potential: 'negotiation',
+}
 
 export const TEMPERATURES = [
   { value: 'hot', label: 'Hot' },
@@ -104,7 +109,23 @@ export function nextWorkingDay(date: string): string {
   return isSunday(next) ? istAddDays(date, 2) : next
 }
 
-export const isSunday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() === 0
+/**
+ * A name with the lead's own number taken out of it, for showing only (the stored name is not changed). ClickUp task
+ * names were often "Name 9202473996" or "Name - +91 92024 73996". Null when nothing but the number was there.
+ */
+export function nameWithoutPhone(name: string | null | undefined, phone: string): string | null {
+  if (!name) return null
+  const own = phone.replace(/\D/g, '').slice(-10)
+  if (own.length < 10) return name.trim() || null
+  const cleaned = name
+    .replace(/\+?\d[\d\s-]{8,}\d/g, run => (run.replace(/\D/g, '').endsWith(own) ? ' ' : run))
+    .replace(/\s{2,}/g, ' ')
+    .replace(/^[\s,;:|/-]+|[\s,;:|/-]+$/g, '')
+    .trim()
+  return cleaned || null
+}
+
+export const isSunday =(date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() === 0
 
 /** The dates offered when a follow-up is set or changed; "Pick a date" is the fourth. */
 export function followUpChoices(today: string): { date: string; why: string }[] {
@@ -166,7 +187,8 @@ export type CheckItem = { fact: NeededFact; label: string; value: string | null;
 /** What this lead needs before its next stage. Null when the next step of the sale has no checklist. */
 export function checklistFor(lead: Facts, quotationSent: boolean): { to: Stage; items: CheckItem[]; left: number } | null {
   const to = NEXT_STAGE[lead.stage as Stage]
-  if (!to) return null
+  // Visit / Meeting asks for nothing first (20270710000000).
+  if (!to || to === 'visit_meeting') return null
   const item = (fact: NeededFact, value: string | null, done = value !== null): CheckItem => ({ fact, label: FACT_LABELS[fact], value, done })
   const items = to === 'under_process'
     ? [item('contact', lead.first_contact_at ? 'Logged' : null)]

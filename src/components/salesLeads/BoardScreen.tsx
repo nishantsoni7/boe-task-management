@@ -3,7 +3,8 @@
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { ArrowRight, Ban, Bell, Check, ChevronDown, ChevronsLeft, MessageCircle, PhoneMissed, SlidersHorizontal, UserPlus } from 'lucide-react'
+import { ArrowRight, Ban, Bell, Check, ChevronDown, ChevronsLeft, MessageCircle, Phone, PhoneMissed, SlidersHorizontal, UserPlus } from 'lucide-react'
+import { telHref } from '@/lib/exhibitionLeads/phone'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
@@ -438,6 +439,7 @@ function Card({ lead, today, now, work, canWork, showHolder, open, dragged, onOp
       )}
       {canWork && (
         <div className={s.acts}>
+          <a className={`${s.act} ${s.actCall}`} href={telHref(lead.phone)} aria-label={`Call ${leadTitle(lead)}`} title="Call" onClick={e => e.stopPropagation()}><Phone aria-hidden="true" /><span className={s.actLabel}>Call</span></a>
           <button type="button" className={s.act} aria-label={`WhatsApp ${leadTitle(lead)}`} title="WhatsApp" onClick={stop(() => work.openWhatsApp(lead))}><MessageCircle aria-hidden="true" /><span className={s.actLabel}>WhatsApp</span></button>
           <button type="button" className={s.act} aria-label={`No answer from ${leadTitle(lead)}`} title="No answer" disabled={work.busy} onClick={stop(() => work.noAnswer(lead))}><PhoneMissed aria-hidden="true" /><span className={s.actLabel}>No answer</span></button>
         </div>

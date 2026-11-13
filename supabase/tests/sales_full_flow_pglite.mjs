@@ -1358,6 +1358,70 @@ await step('Browser users cannot fire the alert job', () =>
   })
 }
 
+{
+  // ── Visit / Meeting, and the ClickUp leads moved to Potential Clients (20270710000000) ──
+  const fresh = async phone => {
+    const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, [phone])
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [L.lead.id, U.ashok])
+    return L.lead.id
+  }
+  const comment = (uid, id, note) => one(uid, `select public.add_sales_lead_comment($1, $2)`, [id, note])
+  // Four leads made to look imported BEFORE the migration: one it must move, three it must leave alone.
+  const seed =async (phone, status, stage, personMoved) => {
+    const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, [phone])
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [L.lead.id, U.ashok])
+    await db.query(`update public.sales_leads set imported_at = now() - interval '30 days', stage = $2,
+      dead_reason = case when $2 = 'dead' then 'not_responding' end, closed_at = case when $2 = 'dead' then now() end,
+      next_step = case when $2 = 'dead' then null else next_step end, next_due_on = case when $2 = 'dead' then null else next_due_on end
+      where id = $1`, [L.lead.id, stage])
+    await db.query(`insert into public.sales_lead_events (lead_id, kind, detail) values ($1, 'imported', $2)`, [L.lead.id, status])
+    if (personMoved) await db.query(`insert into public.sales_lead_events (lead_id, kind, detail, actor) values ($1, 'moved', 'potential>under_process', $2)`, [L.lead.id, U.ashok])
+    return L.lead.id
+  }
+  const bulkUntouched = await seed('+91 97111 00960', 'IMPORTANT BULK (AK)', 'under_process', false)
+  const bulkMovedByPerson = await seed('+91 97111 00961', 'bulk (pr)', 'under_process', true)
+  const otherStatus = await seed('+91 97111 00962', 'new leads (ak)', 'under_process', false)
+  const bulkDead = await seed('+91 97111 00963', 'important bulk (moh)', 'dead', false)
+  await db.exec(mig('20270710000000_sales_visit_meeting_stage.sql'))
+  const stageOf = id => scalar(`select stage from public.sales_leads where id = $1`, [id])
+
+  await step('ClickUp leads from Important Bulk / Bulk still where the import put them move to Potential Clients, by nobody', async () => {
+    must(await stageOf(bulkUntouched) === 'potential', 'not moved')
+    must(await scalar(`select count(*) = 1 from public.sales_lead_events where lead_id = $1 and kind = 'moved' and detail = 'under_process>potential' and actor is null`, [bulkUntouched]), 'no history line')
+    must(Number(await scalar(`select furthest_rank from public.sales_leads where id = $1`, [bulkUntouched])) === 3, 'furthest rank')
+  })
+  await step('A lead a person moved, another ClickUp status, and a Dead lead all stay where they are', async () => {
+    must(await stageOf(bulkMovedByPerson) === 'under_process', 'moved by a person, yet moved')
+    must(await stageOf(otherStatus) === 'under_process', 'another status, yet moved')
+    must(await stageOf(bulkDead) === 'dead', 'a dead lead moved')
+  })
+  await step('Visit / Meeting: in from Under Process with nothing asked; in from New without a contact; back out freely', async () => {
+    const a = await fresh('+91 97111 00964')
+    await comment(U.ashok, a, 'Spoke to him')
+    const r = await move(U.ashok, a, 'visit_meeting', 'under_process', null, null, 'Meeting', day(2))
+    must(r.status === 'moved' && r.lead.stage === 'visit_meeting', JSON.stringify(r.status))
+    must(Number(await scalar(`select furthest_rank from public.sales_leads where id = $1`, [a])) === 2, 'ranked like Under Process')
+    const b = await fresh('+91 97111 00965')
+    const r2 = await move(U.ashok, b, 'visit_meeting', 'new')
+    must(r2.status === 'moved', `from New: ${JSON.stringify(r2)}`)
+    const r3 = await move(U.ashok, b, 'under_process', 'visit_meeting')
+    must(r3.status === 'moved', 'back out')
+  })
+  await step('Out of Visit / Meeting to Potential Clients still asks for the requirement and the quantity', async () => {
+    const a = await fresh('+91 97111 00966')
+    await comment(U.ashok, a, 'Spoke to him')
+    await move(U.ashok, a, 'visit_meeting', 'under_process')
+    const r = await move(U.ashok, a, 'potential', 'visit_meeting')
+    must(r.status === 'needs' && r.missing.includes('requirement') && r.missing.includes('quantity'), JSON.stringify(r))
+  })
+  await step('The board reads a Visit / Meeting column; an unknown stage is still refused', async () => {
+    const p = await one(U.ashok, `select public.sales_board_page('visit_meeting', 0, 40)`)
+    must(Array.isArray(p.rows) && p.rows.some(x => x.stage === 'visit_meeting'), JSON.stringify(p.n))
+    await expectErr(U.ashok, `select public.sales_board_page('meeting', 0, 40)`, /SALES_INVALID/)
+    await expectErr(U.ashok, `select public.move_sales_lead($1, 'meeting', 'new', null, null, null, null)`, /Choose a stage/, [await fresh('+91 97111 00967')])
+  })
+}
+
 console.log(results.join('\n'))
 if (fail) { console.log(`\n${fail} of ${pass + fail} checks FAILED`); process.exit(1) }
 console.log(`\nall ${pass} checks passed`)

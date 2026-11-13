@@ -10,8 +10,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  activityTag, bigQuantity, checklistFor, countryOf, DEAD_REASONS, dueOf, flagOf, followUpChoices, isSunday, lastLabel, marketLabel, nextWorkingDay, parseValue,
-  QUICK_NOTES, quickMessages, rankMyDay, STAGES, valueLabel, whatsAppLink, whyFirst,
+  activityTag, bigQuantity, checklistFor, nameWithoutPhone, countryOf, DEAD_REASONS, dueOf, flagOf, followUpChoices, isSunday, lastLabel, marketLabel, nextWorkingDay, parseValue,
+  PATH_STAGES, QUICK_NOTES, quickMessages, rankMyDay, stageLabel, STAGES, valueLabel, whatsAppLink, whyFirst,
 } from './board'
 import { dayHeading, dayShort, istDayOf, timeLabel } from './format'
 
@@ -32,6 +32,17 @@ describe('the next working day', () => {
     ])
     assert.equal(isSunday('2026-11-15'), true)
     assert.equal(isSunday('2026-11-16'), false)
+  })
+})
+
+describe('a name with the number typed into it', () => {
+  test('the lead\'s own number is left out of the name shown; anything else stays', () => {
+    assert.equal(nameWithoutPhone('Sanjay Narikar 9202473996', '+919202473996'), 'Sanjay Narikar')
+    assert.equal(nameWithoutPhone('Sanjay Narikar - +91 92024 73996', '+919202473996'), 'Sanjay Narikar')
+    assert.equal(nameWithoutPhone('9202473996', '+919202473996'), null, 'only the number: the number is the title')
+    assert.equal(nameWithoutPhone('Hotel 2000 Rooms', '+919202473996'), 'Hotel 2000 Rooms')
+    assert.equal(nameWithoutPhone('Ravi 9811122233', '+919202473996'), 'Ravi 9811122233', 'another number is not touched')
+    assert.equal(nameWithoutPhone(null, '+919202473996'), null)
   })
 })
 
@@ -72,6 +83,7 @@ describe('the activity feed', () => {
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const MIGRATION = read('supabase/migrations/20270525000000_sales_lead_board.sql') + read('supabase/migrations/20270526000100_sales_go_live.sql')
+  + read('supabase/migrations/20270710000000_sales_visit_meeting_stage.sql')
 
 const TODAY = '2026-11-03'
 const NOW = Date.parse('2026-11-03T06:00:00Z')
@@ -162,11 +174,18 @@ describe('the order of My day', () => {
 })
 
 describe('the stage checklist', () => {
-  const lead = { stage: 'under_process', first_contact_at: null as string | null, requirement: null as string | null, quantity: null as string | null, timeline: null as string | null, expected_value_paise: null as number | null }
+  const lead = { stage: 'visit_meeting', first_contact_at: null as string | null, requirement: null as string | null, quantity: null as string | null, timeline: null as string | null, expected_value_paise: null as number | null }
   test('asks for what the database asks for', () => {
     assert.deepEqual(checklistFor({ ...lead, stage: 'new' }, false)?.items.map(i => i.fact), ['contact'])
+    assert.equal(checklistFor({ ...lead, stage: 'under_process' }, false), null, 'Visit / Meeting asks for nothing first')
     assert.deepEqual(checklistFor(lead, false)?.items.map(i => i.fact), ['requirement', 'quantity'])
     assert.deepEqual(checklistFor({ ...lead, stage: 'potential' }, false)?.items.map(i => i.fact), ['quotation', 'value', 'timeline'])
+  })
+  test('the owner\'s stages, in the owner\'s order (2026-11-13)', () => {
+    assert.deepEqual(PATH_STAGES.map(stageLabel), ['New', 'Under Process', 'Visit / Meeting', 'Potential Clients', 'Negotiation'])
+    assert.deepEqual(STAGES.map(x => x.key), ['new', 'under_process', 'visit_meeting', 'potential', 'negotiation', 'follow_up_later', 'converted', 'dead'])
+    const sql = read('supabase/migrations/20270710000000_sales_visit_meeting_stage.sql')
+    assert.ok(sql.includes("'new', 'under_process', 'visit_meeting', 'potential', 'negotiation', 'follow_up_later', 'converted', 'dead'"))
   })
   test('counts what is left', () => {
     assert.equal(checklistFor({ ...lead, requirement: 'Chairs' }, false)?.left, 1)
