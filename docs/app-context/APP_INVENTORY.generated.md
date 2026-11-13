@@ -8,7 +8,7 @@
 - Commit: `a4750ab7` — Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom (migration 20270702000000) (#739)
 - Commits on this branch: 1300
 - Pages (`page.tsx`): 192   API routes (`route.ts`): 204
-- Migrations: 447 (first `20260530_create_positions.sql`, latest `20270702000000_review_rankings_switch.sql`)
+- Migrations: 448 (first `20260530_create_positions.sql`, latest `20270703000000_sales_admin_can_be_given_leads.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1019   Enums: 0
 - Test files: 826   Next.js 16.2.6, React 19.2.4
 
@@ -491,7 +491,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270602000000_sales_auto_allot.sql`
 - `20270603000000_finance_payment_admin_notes.sql`
 - `20270604000000_payroll_results_half_paid_leave.sql`
 - `20270605000000_boe_credits_open_months_follow_target.sql`
@@ -521,6 +520,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270629000000_quotation_links.sql`
 - `20270701000000_finance_confirmed_payments_order_search.sql`
 - `20270702000000_review_rankings_switch.sql`
+- `20270703000000_sales_admin_can_be_given_leads.sql`
 
 ## All SQL function names
 

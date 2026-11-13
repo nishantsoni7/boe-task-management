@@ -13,7 +13,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { CcSection } from '@/components/controlCenter/CcPrimitives'
 import {
-  ALLOT_LEVELS, fetchAutoAllot, fetchSalesTeam, holdChoice, holdsByDefault, rightsFor, roleOf, saveAllotPerson, saveAutoAllot, saveHolding,
+  adminHoldChoice, ALLOT_LEVELS, fetchAutoAllot, fetchSalesTeam, holdChoice, holdsByDefault, rightsFor, roleOf, saveAllotPerson, saveAutoAllot, saveHolding,
   saveJuniors, SALES_ROLES, WEEKDAYS, type AllotLevel, type AutoAllot, type SalesRole, type SalesTeamMember,
 } from '@/lib/salesLeads/team'
 
@@ -130,18 +130,21 @@ export function SalesTeamTab() {
     setBusy(m.id)
     setMessages(x => ({ ...x, [m.id]: { ok: true, text: '' } }))
     try {
-      const changes = rightsFor(m, draft.role, draft.adds)
-      if (changes.length > 0) {
-        const { data: { session } } = await supabase.auth.getSession()
-        const res = await fetch(`/api/control-center/permissions/employees/${m.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
-          body: JSON.stringify({ changes }),
-        })
-        if (!res.ok) throw new Error('The rights could not be saved. Try again.')
+      // An Admin already holds every right: only whether leads can be given to them is theirs to set.
+      if (!m.is_admin) {
+        const changes = rightsFor(m, draft.role, draft.adds)
+        if (changes.length > 0) {
+          const { data: { session } } = await supabase.auth.getSession()
+          const res = await fetch(`/api/control-center/permissions/employees/${m.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
+            body: JSON.stringify({ changes }),
+          })
+          if (!res.ok) throw new Error('The rights could not be saved. Try again.')
+        }
+        await saveJuniors(supabase, m.id, draft.role === 'sales' ? draft.juniors : [])
       }
-      await saveJuniors(supabase, m.id, draft.role === 'sales' ? draft.juniors : [])
-      const hold = draft.role === 'none' ? null : draft.hold
+      const hold = m.is_admin ? draft.hold : draft.role === 'none' ? null : draft.hold
       if (hold !== m.hold_set) await saveHolding(supabase, m.id, hold)
       if (draft.level !== m.level || draft.takesExport !== m.takes_export || draft.limit !== m.daily_limit) {
         await saveAllotPerson(supabase, m.id, draft.level, draft.takesExport, draft.limit)
@@ -169,6 +172,9 @@ export function SalesTeamTab() {
             const d = drafts[m.id]
             if (!d) return null
             const msg = messages[m.id]
+            // An Admin has no job to pick, so the tick below is the only choice; it starts off (an Admin is never given a lead by accident).
+            const active = m.is_admin || d.role !== 'none'
+            const ticked = m.is_admin ? d.hold === true : (d.hold ?? holdsByDefault(d.role))
             return (
               <div key={m.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(150px, 1fr) minmax(190px, 1.2fr) minmax(0, 2fr) auto', alignItems: 'start', gap: 12, padding: '10px 12px', border: '1px solid #ECE7E0', borderRadius: 10 }}>
                 <div style={{ fontSize: 13.5, fontWeight: 600, color: '#303536', paddingTop: 7 }}>{m.name}</div>
@@ -183,15 +189,15 @@ export function SalesTeamTab() {
                     <span style={{ fontSize: 12, color: '#686D6C' }}>{SALES_ROLES.find(r => r.value === d.role)?.hint}</span>
                   </div>
                 )}
-                {m.is_admin ? <div /> : (
+                {(
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
-                    {d.role !== 'none' && (
+                    {active && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#303536', minHeight: 28 }}>
-                        <input type="checkbox" checked={d.hold ?? holdsByDefault(d.role)} onChange={e => set(m.id, { hold: holdChoice(d.role, e.target.checked) })} />
+                        <input type="checkbox" checked={ticked} onChange={e => set(m.id, { hold: m.is_admin ? adminHoldChoice(e.target.checked) : holdChoice(d.role, e.target.checked) })} />
                         Can be given leads
                       </label>
                     )}
-                    {d.role !== 'none' && (d.hold ?? holdsByDefault(d.role)) && (
+                    {active && ticked && (
                       <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 10, paddingLeft: 22 }}>
                         <select aria-label={`How ${m.name} is given leads automatically`} style={{ ...SELECT, width: 'auto' }} value={d.level}
                           onChange={e => set(m.id, { level: e.target.value as AllotLevel })}>
@@ -212,12 +218,12 @@ export function SalesTeamTab() {
                         <span style={{ flexBasis: '100%', fontSize: 12, color: '#686D6C' }}>{ALLOT_LEVELS.find(l => l.value === d.level)?.hint}</span>
                       </div>
                     )}
-                    {d.role !== 'none' && d.role !== 'lead_manager' && (
+                    {!m.is_admin && d.role !== 'none' && d.role !== 'lead_manager' && (
                       <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#303536', minHeight: 28 }}>
                         <input type="checkbox" checked={d.adds} onChange={e => set(m.id, { adds: e.target.checked })} />Can add leads
                       </label>
                     )}
-                    {d.role === 'sales' && (
+                    {!m.is_admin && d.role === 'sales' && (
                       <details>
                         <summary style={{ cursor: 'pointer', fontSize: 13, color: '#303536', minHeight: 28 }}>
                           {d.juniors.length ? `Can read the leads of ${d.juniors.length} ${d.juniors.length === 1 ? 'person' : 'people'}` : 'Senior: can read the leads of...'}
@@ -234,7 +240,7 @@ export function SalesTeamTab() {
                     )}
                   </div>
                 )}
-                {m.is_admin ? <div /> : (
+                {(
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', minHeight: 36 }}>
                     {msg?.text && <span role={msg.ok ? 'status' : 'alert'} style={{ fontSize: 12.5, color: msg.ok ? '#2F7D4F' : '#A12438' }}>{msg.text}</span>}
                     <button type="button" className="boe-btn boe-btn-secondary" style={{ height: 36 }} disabled={busy === m.id || !changed(m)} onClick={() => void save(m)}>
