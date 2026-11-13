@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-13 — Quotations: links back to quotation requests and PI drafts, and revisions to win (PR #730, branch `feat/quotation-links-back`) · `20270629000000` → APPLIED 2026-11-13 before the merge
+## 2026-11-13 — Quotations: links back to quotation requests and PI drafts, and revisions to win (PR #730 merged as `dafb5eb0` 2026-11-13 09:16 IST, deployed) · `20270629000000` → APPLIED 2026-11-13 before the merge
 - **Owner approval.** The quotation team builds a request's quotation in Quotations; it belongs to the salesperson who asked; "Send to sales" completes the request like today's Send.
 - **Built.** "Make it in Quotations" on a quotation request; a Quotation request card with "Send to sales" on the quotation; "From quotation QT-… · vN" on the PI draft (loaded after the page draws); "Revisions to win" on Reports.
 - **Database.** Column `quotations.request_task_id`; `quotation_create_from_request`, `quotation_for_pi`, `quotation_report_revisions`; `quotation_get` re-created with the request. No Tasks or Orders table changed.
