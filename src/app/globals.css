@@ -12521,6 +12521,11 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-sum-groups .order-ff-end { margin-left: 0; padding-top: 10px; border-top: 1px solid #F3F0EB; }
 .order-sum-groups .order-ff-end .order-status-note { max-width: none; text-align: left; }
 .order-sum-groups .order-ff-end .order-status-action { width: 100%; justify-content: center; }
+/* A stacked card never wraps into side-by-side columns. The phone strip rule (max-width 560px) gives the
+   items and the action row flex-basis 100%, which in a column resolves against the stretched grid height,
+   so each filled a whole column and Pending from client slid off the right edge, hidden by overflow: clip. */
+.order-sum-groups > .order-ff, .order-docs-row > .order-ff { flex-wrap: nowrap; }
+.order-sum-groups .order-ff-items, .order-sum-groups .order-ff-end, .order-docs-row .order-ff-items, .order-docs-row .order-ff-end { flex-basis: auto; }
 .order-docs-row > .order-docs-pay { grid-area: ff; display: flex; min-width: 0; }
 .order-docs-row > .order-docs-pay > div { flex: 1 1 auto; }
 /* The commercial breakdown is about 20% wider (360px -> 432px); the left side gives it up. */
