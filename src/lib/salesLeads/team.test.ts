@@ -9,7 +9,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { ALLOT_LEVELS, holdChoice, holdsByDefault, rightsFor, roleOf, type SalesTeamMember } from './team'
+import { adminHoldChoice, ALLOT_LEVELS, holdChoice, holdsByDefault, rightsFor, roleOf, type SalesTeamMember } from './team'
 
 const person = (over: Partial<SalesTeamMember> = {}): SalesTeamMember => ({
   id: 'u1', name: 'Asha', is_admin: false, candidate: true, view: false, view_all: false, create: false, edit: false, assign: false, juniors: [], can_hold: false, hold_set: null,
@@ -69,5 +69,20 @@ describe('Can be given leads', () => {
     assert.equal(holdChoice('sales', true), null, 'what the job means anyway')
     assert.equal(holdChoice('manager', false), null)
     assert.equal(holdChoice('none', true), null, 'no job, no choice')
+  })
+  test('an Admin is kept only when ticked; unticked is no choice, so an Admin is never given a lead by accident', () => {
+    assert.equal(adminHoldChoice(true), true)
+    assert.equal(adminHoldChoice(false), null)
+  })
+  test('the database decides an Admin by the tick alone, and everybody else exactly as before', () => {
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20270703000000_sales_admin_can_be_given_leads.sql'), 'utf8')
+    // The Admin branch: no tick, or false, is "no".
+    assert.ok(/u\.role = 'admin'\) then\s+coalesce\(\(select h\.can_hold from public\.sales_lead_holding h where h\.user_id = p_uid\), false\)/.test(sql))
+    // The other branch keeps the 20270529000000 rule word for word.
+    assert.ok(sql.includes("public.resolve_permission(p_uid, 'sales', 'view')"))
+    assert.ok(sql.includes("not (public.resolve_permission(p_uid, 'sales', 'view_all') or public.resolve_permission(p_uid, 'sales', 'assign'))"))
+    // Read-only: no table, column or constraint is touched.
+    assert.ok(!/\b(create|alter|drop)\s+table\b/i.test(sql))
+    assert.ok(sql.includes('revoke all on function public.sales_lead_can_hold(uuid) from public, anon, authenticated;'))
   })
 })
