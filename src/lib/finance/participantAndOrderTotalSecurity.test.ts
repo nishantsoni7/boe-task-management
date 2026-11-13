@@ -1280,6 +1280,8 @@ describe('the applied migrations are frozen', () => {
       '20270711000000_sales_value_timeline_gates.sql',
       // Draft Orders (ClickUp): one closed table and one private bucket for the orders copied out of ClickUp; nothing existing touched.
       '20270713000000_clickup_draft_orders.sql',
+      // Quotations, the builder redesign: client email, company name, GSTIN and one dimensions unit per quotation (four columns), the product note for the client copied into Remarks, quotation_save and quotation_client_doc re-issued.
+      '20270714000000_quotation_builder_fields.sql',
     ])
   })
 
@@ -1795,6 +1797,8 @@ describe('the applied migrations are frozen', () => {
       '20270710000000_sales_visit_meeting_stage.sql',
       '20270711000000_sales_value_timeline_gates.sql',
       '20270713000000_clickup_draft_orders.sql',
+      // Quotations, the builder redesign: client email, company name, GSTIN and one dimensions unit per quotation (four columns), the product note for the client copied into Remarks, quotation_save and quotation_client_doc re-issued.
+      '20270714000000_quotation_builder_fields.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

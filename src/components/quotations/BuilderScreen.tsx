@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowDown, ArrowUp, Check, FileUp, Copy, FileCheck2, FileSpreadsheet, ImagePlus, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
+import { Check, ChevronDown, ChevronRight, FileUp, Copy, FileCheck2, FileSpreadsheet, Info, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
 import { draftDetailHref } from '@/lib/orders/draftsView'
 import { conversionProblems, type ConversionProblem } from '@/lib/quotations/piWorkbook'
 import { PI_STAGE_LABEL, makePiDraft, piWorkbookFor, type PiStage } from '@/lib/quotations/toPiDraft'
@@ -18,28 +18,31 @@ import {
   setStatus as setStatusRpc, shareQuotation, fetchHints, requestPriceApproval, decidePrice, type PriceHint, uploadPicture, type Header, type Quotation, type QuotationStatus,
 } from '@/lib/quotations/api'
 import {
-  GST_RATES, SUPPLY_STATES, computeTotals, formatDateIN, gstModeForState, sizeInInches, validUntil, whatsappLink,
+  DIMENSION_UNITS, GST_RATES, SUPPLY_STATES, computeTotals, formatDateIN, gstModeForState, validUntil, whatsappLink,
   type QuoteArea, type QuoteLine,
 } from '@/lib/quotations/math'
-import { DEFAULT_CLIENT_NOTE } from '@/lib/quotations/terms'
+import { CLOSING, DEFAULT_CLIENT_NOTE, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS } from '@/lib/quotations/terms'
+import { needsYou, PRICE_CARD_ID, REQUEST_CARD_ID } from '@/lib/quotations/needsYou'
 import { ImportDialog } from './ImportDialog'
 import { StatusPill } from './ListScreen'
 import { StudioDialog } from './StudioDialog'
 import { VersionsCard } from './VersionsCard'
 import { RequestCard } from './RequestCard'
-import { PriceCard, PriceHintLine } from './PricingDesk'
+import { PriceCard } from './PricingDesk'
+import { LineRow } from './ProductLine'
+import { PictureViewer, viewerItemsOf } from './PictureViewer'
 import { productType } from '@/lib/pricing/features'
 import { priceLine, type ModelSuggestion } from '@/lib/pricing/model'
 import { fetchPool, poolWords } from '@/lib/pricing/pool'
-import { Pic } from './Pic'
 import s from './quotations.module.css'
 
 const newKey = () => `n${Math.random().toString(36).slice(2, 10)}`
-const blankLine = (area_key: string | null): QuoteLine => ({
+const blankLine = (area_key: string | null, tax_rate: number): QuoteLine => ({
   key: newKey(), area_key, name: '', size_text: '', spec: '', material: '', finish: '', category: '',
-  qty_mode: 'per_unit', qty: 1, unit_price: null, tax_rate: 18, image_path: null, is_optional: false, client_note: '', internal_note: '',
+  qty_mode: 'per_unit', qty: 1, unit_price: null, tax_rate, image_path: null, is_optional: false, client_note: '', internal_note: '',
 })
 const LOCKED: QuotationStatus[] = ['confirmed', 'lost', 'archived']
+const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 type Msg = { tone: 'ok' | 'bad' | 'warn'; text: string; undo?: () => void } | null
 
 export default function BuilderScreen() {
@@ -60,6 +63,10 @@ export default function BuilderScreen() {
   const [copied, setCopied] = useState(false)
   const [piStage, setPiStage] = useState<PiStage | null>(null)
   const [studioFor, setStudioFor] = useState<string | null>(null)
+  const [viewing, setViewing] = useState<string | null>(null)
+  const [advOpen, setAdvOpen] = useState(false)
+  // The GST rate new products start with while no product sets it (the quotation has one rate; each product still stores it).
+  const [newRate, setNewRate] = useState(18)
   // Price hints for the names on screen, asked for once typing pauses.
   const [hintNames, setHintNames] = useState('')
   useEffect(() => {
@@ -96,9 +103,17 @@ export default function BuilderScreen() {
   const updArea = (key: string, patch: Partial<QuoteArea>) => { setAreas(p => p.map(a => (a.key === key ? { ...a, ...patch } : a))); touch() }
   const updLine = (key: string, patch: Partial<QuoteLine>) => { setLines(p => p.map(l => (l.key === key ? { ...l, ...patch } : l))); touch() }
 
+  // One GST rate for the whole quotation (owner, 13 Nov 2026). Each product still stores its rate, so a quotation that already has
+  // mixed rates shows "Mixed rates" until somebody picks one.
+  const rates = useMemo(() => [...new Set(lines.map(l => l.tax_rate))], [lines])
+  const uniformRate = rates.length === 1 ? rates[0] : null
+  const startRate = uniformRate ?? newRate
+  const setAllRates = (rate: number) => { setNewRate(rate); setLines(p => p.map(l => ({ ...l, tax_rate: rate }))); touch() }
+
   const save = useCallback(async () => {
     if (!base || !h || saving) return
     const problem = !h.client_name.trim() ? 'Enter the client’s name.'
+      : h.client_email.trim() && !EMAIL_OK.test(h.client_email.trim()) ? 'Check the email address.'
       : areas.some(a => !a.name.trim() || !(a.multiplier >= 1)) ? 'Every room type needs a name and at least 1 room.'
       : lines.some(l => !l.name.trim()) ? 'Every product needs a name.'
       : lines.some(l => !(Number(l.qty) > 0)) ? 'Every product needs a quantity above 0.'
@@ -204,11 +219,18 @@ export default function BuilderScreen() {
     ...areas.map(a => ({ area: a, lines: lines.filter(l => l.area_key === a.key) })),
     { area: null, lines: lines.filter(l => !l.area_key || !areas.some(a => a.key === l.area_key)) },
   ]
+  // The pictures in the order they are on the page: the pop-up's ← and → follow it.
+  const unit = h.dimension_unit
+  const viewerItems = viewerItemsOf(groups.flatMap(g => g.lines), unit)
+  const viewerAt = viewing ? viewerItems.findIndex(x => x.key === viewing) : -1
+  const goTo = (target: string) => document.getElementById(target)?.scrollIntoView({ block: 'center' })
+  const waiting = needsYou(base)
 
   const actions = (
     <>
       <StatusPill status={base.status} />
       {dirty ? <span className={s.dirty}>Unsaved changes</span> : <span className={`${s.small} ${s.muted}`}><Check size={13} aria-hidden /> Saved</span>}
+      <span className={`${s.hdrTotal} ${s.hideOnPhone}`}><span className={s.muted}>Total</span> <b className={s.num}>{formatINR(totals.grand)}</b> <span className={s.muted}>incl. GST</span></span>
       <Link className={s.btn} href={`/quotations/${id}/print`} target="_blank"><Printer size={15} aria-hidden /> Print / PDF</Link>
       {editable && <button className={`${s.btn} ${s.btnPrimary}`} onClick={save} disabled={!dirty || saving}><Save size={15} aria-hidden /> {saving ? 'Saving…' : 'Save'}</button>}
     </>
@@ -222,102 +244,174 @@ export default function BuilderScreen() {
         </div>
       )}
       {!base.may_edit && <div className={s.notice}>You can read this quotation. Only its owner, or someone with Edit and See all, can change it.</div>}
-      {base.may_edit && LOCKED.includes(base.status) && <div className={`${s.notice} ${s.noticeWarn}`}>This quotation is {STATUS_LABEL[base.status].toLowerCase()} and cannot be changed. {base.status !== 'confirmed' || access.admin ? 'Reopen it from the right-hand side to edit.' : 'Only an administrator can reopen it.'}</div>}
+      {base.may_edit && LOCKED.includes(base.status) && <div className={`${s.notice} ${s.noticeWarn}`}>This quotation is {STATUS_LABEL[base.status].toLowerCase()} and cannot be changed. {base.status !== 'confirmed' || access.admin ? 'Reopen it from the Status bar to edit.' : 'Only an administrator can reopen it.'}</div>}
 
-      <div className={s.split}>
-        <div style={{ display: 'grid', gap: 16, minWidth: 0 }}>
-          <section className={s.card} aria-labelledby="q-client">
-            <div className={s.cardHead}><h2 id="q-client">Client and project</h2></div>
-            <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>
-              <div className={s.grid3}>
-                <label className={s.field}><span>Client *</span><input id="q-client-name" className={s.input} value={h.client_name} onChange={e => updH('client_name', e.target.value)} disabled={!editable} /></label>
-                <label className={s.field}><span>Project</span><input id="q-project" className={s.input} value={h.project_name} onChange={e => updH('project_name', e.target.value)} disabled={!editable} /></label>
-                <label className={s.field}><span>Client type</span><select id="q-type" className={s.input} value={h.client_type} onChange={e => updH('client_type', e.target.value)} disabled={!editable}><option value="">Choose…</option>{CLIENT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
-                <label className={s.field}><span>Contact person</span><input id="q-contact" className={s.input} value={h.contact_name} onChange={e => updH('contact_name', e.target.value)} disabled={!editable} /></label>
-                <label className={s.field}><span>Contact phone</span><input id="q-phone" className={s.input} value={h.contact_phone} inputMode="tel" onChange={e => updH('contact_phone', e.target.value)} disabled={!editable} /></label>
-                <label className={s.field}><span>Their role</span><input id="q-role" className={s.input} value={h.contact_role} onChange={e => updH('contact_role', e.target.value)} disabled={!editable} /></label>
-              </div>
-              <div className={s.grid3}>
-                <label className={s.field}><span>Delivery state</span><input id="q-state" className={s.input} list="q-states" value={h.supply_state} disabled={!editable}
-                  onChange={e => { const v = e.target.value; setH(p => (p ? { ...p, supply_state: v, gst_mode: SUPPLY_STATES.some(x => x.toLowerCase() === v.trim().toLowerCase()) ? gstModeForState(v) : p.gst_mode } : p)); touch() }} />
-                  <datalist id="q-states">{SUPPLY_STATES.map(x => <option key={x} value={x} />)}</datalist></label>
-                <label className={s.field}><span>GST</span><select id="q-gst" className={s.input} value={h.gst_mode} onChange={e => updH('gst_mode', e.target.value as Header['gst_mode'])} disabled={!editable}><option value="igst">IGST (outside Rajasthan)</option><option value="cgst_sgst">CGST + SGST (within Rajasthan)</option></select></label>
-                <label className={s.field}><span>Valid for (days)</span><input id="q-valid" className={s.input} type="number" min={1} max={90} value={h.valid_days} onChange={e => updH('valid_days', Math.max(1, Math.min(90, Number(e.target.value) || 7)))} disabled={!editable} /></label>
-              </div>
-              {h.supply_state && gstModeForState(h.supply_state) !== h.gst_mode && <div className={`${s.notice} ${s.noticeWarn}`}>Delivery to {h.supply_state} is normally {gstModeForState(h.supply_state) === 'igst' ? 'IGST' : 'CGST + SGST'}: BOE is registered in Rajasthan. Check before sending.</div>}
-            </div>
-          </section>
-
-          <section className={s.card} aria-labelledby="q-products">
-            <div className={s.cardHead}>
-              <h2 id="q-products">Products</h2><span className={s.chip}>{lines.length} lines · {totals.pieces.toLocaleString('en-IN')} pieces</span><span className={s.spacer} />
-              {editable && <button className={`${s.btn} ${s.btnSm}`} onClick={() => { const k = newKey(); setAreas(p => [...p, { key: k, name: `Room type ${p.length + 1}`, style: '', multiplier: 1, unit_label: 'rooms' }]); setLines(p => [...p, blankLine(k)]); touch() }}><Plus size={14} aria-hidden /> Room type</button>}
-              {editable && profile && <button className={`${s.btn} ${s.btnSm}`} onClick={() => setImporting(true)}><FileUp size={14} aria-hidden /> Import client file</button>}
-            </div>
-            {groups.map((g, gi) => (g.area || g.lines.length > 0 || areas.length === 0) && (
-              <div key={g.area?.key ?? `none${gi}`}>
-                <div className={s.areaHead}>
-                  {g.area ? (
-                    <>
-                      <input aria-label="Room type name" className={s.input} style={{ maxWidth: 220, fontWeight: 700 }} value={g.area.name} onChange={e => updArea(g.area!.key, { name: e.target.value })} disabled={!editable} />
-                      <input aria-label="Style" className={s.input} style={{ maxWidth: 150 }} placeholder="Style (e.g. Boho)" value={g.area.style} onChange={e => updArea(g.area!.key, { style: e.target.value })} disabled={!editable} />
-                      <span className={s.small}>×</span>
-                      <input aria-label={`Number of ${g.area.unit_label}`} className={`${s.input} ${s.mult}`} type="number" min={1} value={g.area.multiplier} onChange={e => updArea(g.area!.key, { multiplier: Math.max(1, Math.floor(Number(e.target.value) || 1)) })} disabled={!editable} />
-                      <input aria-label="Unit" className={s.input} style={{ maxWidth: 90 }} value={g.area.unit_label} onChange={e => updArea(g.area!.key, { unit_label: e.target.value || 'rooms' })} disabled={!editable} />
-                    </>
-                  ) : <b>{areas.length ? 'Not in a room type' : 'Products'}</b>}
-                  <span className={s.spacer} />
-                  <b className={s.num}>{formatINR(totals.areaTotal[g.area?.key ?? ''] ?? 0)}</b>
-                  {editable && <button className={`${s.btn} ${s.btnSm}`} onClick={() => { setLines(p => [...p, blankLine(g.area?.key ?? null)]); touch() }}><Plus size={14} aria-hidden /> Product</button>}
-                  {editable && g.area && <button className={s.iconBtn} onClick={() => removeArea(g.area!.key)} aria-label={`Remove room type ${g.area.name}`} title="Remove the room type (its products stay, outside any room type)"><Trash2 size={15} /></button>}
-                </div>
-                {g.lines.map((l, li) => (
-                  <LineRow key={l.key} l={l} area={g.area} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
-                    first={li === 0} last={li === g.lines.length - 1} url={p => pictureUrl(supabase, p)}
-                    onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onImprove={() => setStudioFor(l.key)} hint={hintFor.get(l.name.trim())} model={modelFor.get(l.key)} onRemove={() => removeLine(l.key)}
-                    onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
-                ))}
-              </div>
+      {waiting.length > 0 && (
+        <div className={`${s.notice} ${s.noticeWarn} ${s.needs}`} role="status">
+          <Info size={16} aria-hidden />
+          <ul>
+            {waiting.map(w => (
+              <li key={w.key}><span><b>Needs you:</b> {w.text}</span><button type="button" className={`${s.btn} ${s.btnSm}`} onClick={() => goTo(w.target)}>Go there ↓</button></li>
             ))}
-          </section>
+          </ul>
+        </div>
+      )}
 
-          <section className={s.card} aria-labelledby="q-extra">
-            <div className={s.cardHead}><h2 id="q-extra">Adjustments and notes</h2></div>
-            <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>
+      <section className={s.card} aria-labelledby="q-client">
+        <div className={s.statusBar}>
+          <span className={s.lab}>Status</span>
+          <StatusPill status={base.status} />
+          <span className={s.spacer} />
+          {base.may_edit && (
+            <>
+              {base.status === 'draft' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('sent')}>Mark sent</button>}
+              {(base.status === 'sent' || base.status === 'draft') && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('negotiating')}>Negotiating</button>}
+              {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} onClick={() => moveTo('confirmed')} title="Confirmed without making a PI from it">Confirmed, no PI</button>}
+              {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => setLostNote('')}>Lost…</button>}
+              {base.status !== 'archived' && base.status !== 'confirmed' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('archived')}>Archive</button>}
+              {LOCKED.includes(base.status) && (base.status !== 'confirmed' || access.admin) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('negotiating')}>Reopen</button>}
+            </>
+          )}
+          {lostNote !== null && (
+            <div className={s.lostBox}>
+              <label className={s.field}><span>Why was it lost?</span><input id="q-lost" className={s.input} value={lostNote} onChange={e => setLostNote(e.target.value)} placeholder="Price, went elsewhere, project paused…" autoFocus /></label>
+              <div className={s.row}><button className={`${s.btn} ${s.btnSm} ${s.btnDanger}`} disabled={busy || lostNote.trim().length < 3} onClick={() => { moveTo('lost', lostNote); setLostNote(null) }}>Mark lost</button><button className={`${s.btn} ${s.btnSm}`} onClick={() => setLostNote(null)}>Cancel</button></div>
+            </div>
+          )}
+          {base.may_edit && dirty && !LOCKED.includes(base.status) && <span className={`${s.small} ${s.muted}`} style={{ flexBasis: '100%' }}>Save your changes before confirming.</span>}
+        </div>
+        <div className={s.cardHead}><h2 id="q-client">Client</h2><span className={`${s.small} ${s.muted}`}>Basic details. The rest is under Advanced client details.</span></div>
+        <div className={s.cardBody}>
+          <div className={s.clientGrid}>
+            <label className={s.field}><span>Client name *</span><input id="q-client-name" className={s.input} value={h.client_name} onChange={e => updH('client_name', e.target.value)} disabled={!editable} /></label>
+            <label className={s.field}><span>Contact person</span><input id="q-contact" className={s.input} value={h.contact_name} onChange={e => updH('contact_name', e.target.value)} disabled={!editable} /></label>
+            <label className={s.field}><span>Contact phone</span><input id="q-phone" className={s.input} value={h.contact_phone} inputMode="tel" onChange={e => updH('contact_phone', e.target.value)} disabled={!editable} /></label>
+            <label className={s.field}><span>Email ID</span><input id="q-email" className={s.input} type="email" inputMode="email" autoComplete="off" maxLength={160} placeholder="name@company.com" value={h.client_email} onChange={e => updH('client_email', e.target.value)} disabled={!editable} /></label>
+            <label className={s.field}><span>Delivery state</span><input id="q-state" className={s.input} list="q-states" value={h.supply_state} disabled={!editable}
+              onChange={e => { const v = e.target.value; setH(p => (p ? { ...p, supply_state: v, gst_mode: SUPPLY_STATES.some(x => x.toLowerCase() === v.trim().toLowerCase()) ? gstModeForState(v) : p.gst_mode } : p)); touch() }} />
+              <datalist id="q-states">{SUPPLY_STATES.map(x => <option key={x} value={x} />)}</datalist>
+              <span className={s.taxChip}>Tax: {h.gst_mode === 'igst' ? 'IGST (outside Rajasthan)' : 'CGST + SGST (within Rajasthan)'}</span></label>
+          </div>
+          {h.supply_state && gstModeForState(h.supply_state) !== h.gst_mode && <div className={`${s.notice} ${s.noticeWarn}`} style={{ marginTop: 12 }}>Delivery to {h.supply_state} is normally {gstModeForState(h.supply_state) === 'igst' ? 'IGST' : 'CGST + SGST'}: BOE is registered in Rajasthan. Check before sending (GST type is under Advanced client details).</div>}
+          <button type="button" className={s.advBtn} aria-expanded={advOpen} aria-controls="q-advanced" onClick={() => setAdvOpen(o => !o)}>
+            {advOpen ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />} Advanced client details <span className={s.hintTxt}>Company, client type, project, their role, GST, GSTIN</span>
+          </button>
+          {advOpen && (
+            <div id="q-advanced" className={s.advBody}>
+              <label className={s.field}><span>Company name</span><input id="q-company" className={s.input} maxLength={160} value={h.company_name} onChange={e => updH('company_name', e.target.value)} disabled={!editable} /></label>
+              <label className={s.field}><span>Client type</span><select id="q-type" className={s.input} value={h.client_type} onChange={e => updH('client_type', e.target.value)} disabled={!editable}><option value="">Choose…</option>{CLIENT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
+              <label className={s.field}><span>Project</span><input id="q-project" className={s.input} value={h.project_name} onChange={e => updH('project_name', e.target.value)} disabled={!editable} /></label>
+              <label className={s.field}><span>Their role</span><input id="q-role" className={s.input} value={h.contact_role} onChange={e => updH('contact_role', e.target.value)} disabled={!editable} /></label>
+              <label className={s.field}><span>GST type</span><select id="q-gst" className={s.input} value={h.gst_mode} onChange={e => updH('gst_mode', e.target.value as Header['gst_mode'])} disabled={!editable}><option value="igst">IGST (outside Rajasthan)</option><option value="cgst_sgst">CGST + SGST (within Rajasthan)</option></select></label>
+              <label className={s.field}><span>GSTIN</span><input id="q-gstin" className={s.input} maxLength={20} autoComplete="off" value={h.client_gstin} onChange={e => updH('client_gstin', e.target.value.toUpperCase())} disabled={!editable} /></label>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className={s.card} aria-labelledby="q-products">
+        <div className={s.cardHead}>
+          <h2 id="q-products">Products</h2><span className={s.chip}>{lines.length} lines · {totals.pieces.toLocaleString('en-IN')} pieces</span>
+          <span className={`${s.chip} ${s.phoneOnly}`}>Total {formatINR(totals.grand)}</span><span className={s.spacer} />
+          <span className={s.segLab} id="q-unit-label">Dimensions in</span>
+          <span className={s.seg} role="group" aria-labelledby="q-unit-label">
+            {DIMENSION_UNITS.map(u => (
+              <button key={u.value} type="button" aria-pressed={unit === u.value} disabled={!editable} onClick={() => unit !== u.value && updH('dimension_unit', u.value)}>{u.label}</button>
+            ))}
+          </span>
+          {editable && <button className={`${s.btn} ${s.btnSm}`} onClick={() => { const k = newKey(); setAreas(p => [...p, { key: k, name: `Room type ${p.length + 1}`, style: '', multiplier: 1, unit_label: 'rooms' }]); setLines(p => [...p, blankLine(k, startRate)]); touch() }}><Plus size={14} aria-hidden /> Room type</button>}
+          {editable && profile && <button className={`${s.btn} ${s.btnSm}`} onClick={() => setImporting(true)}><FileUp size={14} aria-hidden /> Import client file</button>}
+        </div>
+        {groups.map((g, gi) => (g.area || g.lines.length > 0 || areas.length === 0) && (
+          <div key={g.area?.key ?? `none${gi}`}>
+            <div className={s.areaHead}>
+              {g.area ? (
+                <>
+                  <input aria-label="Room type name" className={s.input} style={{ maxWidth: 220, fontWeight: 700 }} value={g.area.name} onChange={e => updArea(g.area!.key, { name: e.target.value })} disabled={!editable} />
+                  <input aria-label="Style" className={s.input} style={{ maxWidth: 150 }} placeholder="Style (e.g. Boho)" value={g.area.style} onChange={e => updArea(g.area!.key, { style: e.target.value })} disabled={!editable} />
+                  <span className={s.small}>×</span>
+                  <input aria-label={`Number of ${g.area.unit_label}`} className={`${s.input} ${s.mult}`} type="number" min={1} value={g.area.multiplier} onChange={e => updArea(g.area!.key, { multiplier: Math.max(1, Math.floor(Number(e.target.value) || 1)) })} disabled={!editable} />
+                  <input aria-label="Unit" className={s.input} style={{ maxWidth: 90 }} value={g.area.unit_label} onChange={e => updArea(g.area!.key, { unit_label: e.target.value || 'rooms' })} disabled={!editable} />
+                </>
+              ) : <b>{areas.length ? 'Not in a room type' : 'Products'}</b>}
+              <span className={s.spacer} />
+              <b className={s.num}>{formatINR(totals.areaTotal[g.area?.key ?? ''] ?? 0)}</b>
+              {editable && <button className={`${s.btn} ${s.btnSm}`} onClick={() => { setLines(p => [...p, blankLine(g.area?.key ?? null, startRate)]); touch() }}><Plus size={14} aria-hidden /> Product</button>}
+              {editable && g.area && <button className={s.iconBtn} onClick={() => removeArea(g.area!.key)} aria-label={`Remove room type ${g.area.name}`} title="Remove the room type (its products stay, outside any room type)"><Trash2 size={15} /></button>}
+            </div>
+            {g.lines.map((l, li) => (
+              <LineRow key={l.key} l={l} area={g.area} unit={unit} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
+                first={li === 0} last={li === g.lines.length - 1} url={p => pictureUrl(supabase, p)}
+                onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onImprove={() => setStudioFor(l.key)} onView={() => setViewing(l.key)}
+                hint={hintFor.get(l.name.trim())} model={modelFor.get(l.key)} onRemove={() => removeLine(l.key)}
+                onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
+            ))}
+          </div>
+        ))}
+      </section>
+
+      <section className={s.card} aria-labelledby="q-extra">
+        <div className={s.cardHead}><h2 id="q-extra">Adjustments and totals</h2></div>
+        <div className={s.cardBody}>
+          <div className={s.totGrid}>
+            <div style={{ display: 'grid', gap: 12, alignContent: 'start' }}>
               <div className={s.grid4}>
                 <label className={s.field}><span>Discount %</span><input id="q-disc" className={`${s.input} ${s.money}`} type="number" min={0} max={100} step={0.5} value={h.discount_pct} onChange={e => updH('discount_pct', Math.max(0, Math.min(100, Number(e.target.value) || 0)))} disabled={!editable} /></label>
                 <label className={s.field}><span>Fabric (₹)</span><input id="q-fabric" className={`${s.input} ${s.money}`} type="number" min={0} value={h.fabric_amount || ''} placeholder="0" onChange={e => updH('fabric_amount', Math.max(0, Math.round(Number(e.target.value) || 0)))} disabled={!editable} /></label>
                 <label className={s.field}><span>Packing (₹)</span><input id="q-packing" className={`${s.input} ${s.money}`} type="number" min={0} value={h.packing_amount || ''} placeholder="0" onChange={e => updH('packing_amount', Math.max(0, Math.round(Number(e.target.value) || 0)))} disabled={!editable} /></label>
                 <label className={s.field}><span>Transport</span><input id="q-transport" className={s.input} value={h.transport_note} placeholder="As per actual" onChange={e => updH('transport_note', e.target.value)} disabled={!editable} /></label>
               </div>
-              <div className={s.grid2}>
-                <label className={s.field}><span>Notes the client sees</span><textarea id="q-notes" className={s.input} value={h.notes} placeholder={DEFAULT_CLIENT_NOTE} onChange={e => updH('notes', e.target.value)} disabled={!editable} /></label>
-                <label className={s.field}><span>Internal notes (never shown to the client)</span><textarea id="q-internal" className={s.input} value={h.internal_notes} onChange={e => updH('internal_notes', e.target.value)} disabled={!editable} /></label>
-              </div>
-              {editable && !h.notes && <div><button className={`${s.btn} ${s.btnSm}`} onClick={() => updH('notes', DEFAULT_CLIENT_NOTE)}>Use the standard note</button></div>}
+              <div className={`${s.small} ${s.muted}`}>Valid until {formatDateIN(validUntil(issued, h.valid_days))}{base.sent_at ? '' : ' (counted from the day it is sent)'}</div>
             </div>
-          </section>
-        </div>
-
-        <aside className={s.sticky} aria-label="Summary and actions">
-          <section className={s.card}>
-            <div className={s.cardHead}><h2>Summary</h2><span className={s.spacer} /><span className={`${s.small} ${s.muted}`}>{base.quote_no}</span></div>
-            <div className={s.cardBody}>
+            <div className={s.sumBox}>
               <table className={s.sum}><tbody>
                 <tr><td>Products</td><td>{formatINR(totals.subtotal)}</td></tr>
                 {totals.discount > 0 && <tr><td>Discount {h.discount_pct}%</td><td>− {formatINR(totals.discount)}</td></tr>}
                 {h.fabric_amount > 0 && <tr><td>Fabric</td><td>{formatINR(h.fabric_amount)}</td></tr>}
                 {h.packing_amount > 0 && <tr><td>Packing</td><td>{formatINR(h.packing_amount)}</td></tr>}
                 <tr className={s.hr}><td>Before GST</td><td>{formatINR(totals.taxable)}</td></tr>
+                <tr className={s.gstRow}>
+                  <td><label htmlFor="q-gst-rate">GST rate <span className={`${s.small} ${s.muted}`}>(all products)</span></label></td>
+                  <td>
+                    <select id="q-gst-rate" className={`${s.input} ${s.gstSel}`} value={uniformRate ?? (lines.length === 0 ? newRate : 'mixed')} onChange={e => setAllRates(Number(e.target.value))} disabled={!editable}>
+                      {uniformRate === null && lines.length > 0 && <option value="mixed" disabled>Mixed rates</option>}
+                      {GST_RATES.map(r => <option key={r} value={r}>{r}%</option>)}
+                    </select>
+                  </td>
+                </tr>
                 {totals.gst.flatMap(r => h.gst_mode === 'cgst_sgst'
                   ? [<tr key={`c${r.rate}`} className={s.sub}><td>CGST {r.rate / 2}%</td><td>{formatINR(r.cgst)}</td></tr>, <tr key={`s${r.rate}`} className={s.sub}><td>SGST {r.rate / 2}%</td><td>{formatINR(r.sgst)}</td></tr>]
                   : [<tr key={`i${r.rate}`} className={s.sub}><td>IGST {r.rate}%</td><td>{formatINR(r.igst)}</td></tr>])}
                 <tr className={s.tot}><td>Grand total</td><td>{formatINR(totals.grand)}</td></tr>
               </tbody></table>
-              <div className={`${s.small} ${s.muted}`} style={{ marginTop: 8 }}>Valid until {formatDateIN(validUntil(issued, h.valid_days))}{base.sent_at ? '' : ' (counted from the day it is sent)'}</div>
             </div>
-          </section>
+          </div>
+        </div>
+      </section>
 
+      <section className={s.card} aria-labelledby="q-terms">
+        <div className={s.cardHead}><h2 id="q-terms">Terms and notes</h2></div>
+        <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>
+          <div className={s.grid2}>
+            <label className={s.field}><span>Notes the client sees</span><textarea id="q-notes" className={s.input} rows={3} value={h.notes} placeholder={DEFAULT_CLIENT_NOTE} onChange={e => updH('notes', e.target.value)} disabled={!editable} /></label>
+            <label className={s.field}><span>Internal notes (never shown to the client)</span><textarea id="q-internal" className={s.input} rows={3} value={h.internal_notes} onChange={e => updH('internal_notes', e.target.value)} disabled={!editable} /></label>
+          </div>
+          {editable && !h.notes && <div><button className={`${s.btn} ${s.btnSm}`} onClick={() => updH('notes', DEFAULT_CLIENT_NOTE)}>Use the standard note</button></div>}
+          <details className={s.stdTerms}>
+            <summary><ChevronRight size={16} className={s.chev} aria-hidden /> Standard terms printed with every quotation <span className={s.hintTxt}>{EXPECTATIONS.length} expectations and {TERMS.length} terms, word for word. Read only.</span></summary>
+            <div className={s.termsBody}>
+              <h3>{EXPECTATIONS_TITLE}</h3>
+              <dl>{EXPECTATIONS.map(x => <div key={x.title}><dt>{x.title}</dt><dd>{x.text}</dd></div>)}</dl>
+              <h3>Terms and Conditions</h3>
+              <dl>{TERMS.map(x => <div key={x.title}><dt>{x.title}</dt><dd>{x.text}</dd></div>)}</dl>
+              <p className={s.muted}>{CLOSING}</p>
+            </div>
+          </details>
+        </div>
+      </section>
+
+      <div className={s.bottom}>
+        <div className={s.bcol}>
           <section className={s.card}>
             <div className={s.cardHead}><h2>Share with the client</h2></div>
             <div className={s.cardBody} style={{ display: 'grid', gap: 10 }}>
@@ -335,48 +429,14 @@ export default function BuilderScreen() {
                   : <button className={`${s.btn} ${s.btnPrimary}`} disabled={busy || lines.length === 0 || base.status === 'archived' || !!base.price?.blocked} title={base.price?.blocked ? 'Waiting for price approval' : undefined} onClick={() => act(() => shareQuotation(supabase, id, true), 'The client link is on.')}><Link2 size={15} aria-hidden /> Create client link</button>)}
             </div>
           </section>
-
-          {importing && profile && (
-            <ImportDialog supabase={supabase} userId={profile.id} areas={areas} onClose={() => setImporting(false)}
-              onAdd={(nextAreas, added) => { setAreas(nextAreas); setLines(p => [...p.filter(l => l.name.trim() || l.unit_price !== null), ...added]); touch(); setImporting(false); setMsg({ tone: 'ok', text: `Added ${added.length} products. Check them, add prices, then Save.` }) }} />
-          )}
-          {studioFor && profile && (() => {
-            const line = lines.find(x => x.key === studioFor)
-            return line?.image_path ? (
-              <StudioDialog supabase={supabase} userId={profile.id} path={line.image_path} url={p => pictureUrl(supabase, p)} onClose={() => setStudioFor(null)}
-                onUse={p => { updLine(line.key, { image_path: p }); setStudioFor(null); setMsg({ tone: 'ok', text: 'Picture changed. Save to keep it.' }) }} />
-            ) : null
-          })()}
-          {profile && <RequestCard supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
+          {profile && <RequestCard id={REQUEST_CARD_ID} supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
           <VersionsCard supabase={supabase} base={base} dirty={dirty} busy={busy} onSent={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />
-          <PriceCard price={base.price} mayEdit={base.may_edit} dirty={dirty} busy={busy}
+        </div>
+        <div className={s.bcol}>
+          <PriceCard id={PRICE_CARD_ID} price={base.price} mayEdit={base.may_edit} dirty={dirty} busy={busy}
             onAsk={() => act(() => requestPriceApproval(supabase, id), 'Sent to the pricing desk.')}
             onDecide={(approve, note) => act(() => decidePrice(supabase, id, approve, note), approve ? 'Prices approved.' : 'Sent back to the salesperson.')} />
           <PiCard base={base} dirty={dirty} busy={busy} stage={piStage} onConfirm={confirmToPi} onDownload={downloadPi} />
-
-          {base.may_edit && (
-            <section className={s.card}>
-              <div className={s.cardHead}><h2>Status</h2><span className={s.spacer} /><StatusPill status={base.status} /></div>
-              <div className={s.cardBody} style={{ display: 'grid', gap: 8 }}>
-                <div className={s.row}>
-                  {base.status === 'draft' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('sent')}>Mark sent</button>}
-                  {(base.status === 'sent' || base.status === 'draft') && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('negotiating')}>Negotiating</button>}
-                  {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} onClick={() => moveTo('confirmed')} title="Confirmed without making a PI from it">Confirmed, no PI</button>}
-                  {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => setLostNote('')}>Lost…</button>}
-                  {base.status !== 'archived' && base.status !== 'confirmed' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('archived')}>Archive</button>}
-                  {LOCKED.includes(base.status) && (base.status !== 'confirmed' || access.admin) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('negotiating')}>Reopen</button>}
-                </div>
-                {lostNote !== null && (
-                  <div style={{ display: 'grid', gap: 6 }}>
-                    <label className={s.field}><span>Why was it lost?</span><input id="q-lost" className={s.input} value={lostNote} onChange={e => setLostNote(e.target.value)} placeholder="Price, went elsewhere, project paused…" autoFocus /></label>
-                    <div className={s.row}><button className={`${s.btn} ${s.btnSm} ${s.btnDanger}`} disabled={busy || lostNote.trim().length < 3} onClick={() => { moveTo('lost', lostNote); setLostNote(null) }}>Mark lost</button><button className={`${s.btn} ${s.btnSm}`} onClick={() => setLostNote(null)}>Cancel</button></div>
-                  </div>
-                )}
-                {dirty && <div className={`${s.small} ${s.muted}`}>Save your changes before confirming.</div>}
-              </div>
-            </section>
-          )}
-
           <section className={s.card}>
             <div className={s.cardHead}><h2>History</h2></div>
             <div className={s.cardBody} style={{ paddingTop: 4, paddingBottom: 4 }}>
@@ -386,8 +446,23 @@ export default function BuilderScreen() {
               ))}
             </div>
           </section>
-        </aside>
+        </div>
       </div>
+
+      {importing && profile && (
+        <ImportDialog supabase={supabase} userId={profile.id} areas={areas} onClose={() => setImporting(false)}
+          onAdd={(nextAreas, added) => { setAreas(nextAreas); setLines(p => [...p.filter(l => l.name.trim() || l.unit_price !== null), ...added.map(l => ({ ...l, tax_rate: startRate }))]); touch(); setImporting(false); setMsg({ tone: 'ok', text: `Added ${added.length} products. Check them, add prices, then Save.` }) }} />
+      )}
+      {studioFor && profile && (() => {
+        const line = lines.find(x => x.key === studioFor)
+        return line?.image_path ? (
+          <StudioDialog supabase={supabase} userId={profile.id} path={line.image_path} url={p => pictureUrl(supabase, p)} onClose={() => setStudioFor(null)}
+            onUse={p => { updLine(line.key, { image_path: p }); setStudioFor(null); setMsg({ tone: 'ok', text: 'Picture changed. Save to keep it.' }) }} />
+        ) : null
+      })()}
+      {viewing && viewerAt >= 0 && (
+        <PictureViewer items={viewerItems} index={viewerAt} url={p => pictureUrl(supabase, p)} onIndex={i => setViewing(viewerItems[i]?.key ?? null)} onClose={() => setViewing(null)} />
+      )}
     </div>
   )
   return layout(base.quote_no, body, `${h.project_name || h.client_name}${base.owner_name ? ` · ${base.owner_name}` : ''}`, actions)
@@ -452,67 +527,5 @@ function PiCard({ base, dirty, busy, stage, onConfirm, onDownload }: {
         )}
       </div>
     </section>
-  )
-}
-
-function LineRow({ l, area, editable, qty, total, first, last, url, onChange, onUpload, onImprove, hint, model, onRemove, onMove, onDuplicate }: {
-  l: QuoteLine; area: QuoteArea | null; editable: boolean; qty: number; total: number; first: boolean; last: boolean
-  url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onImprove: () => void; hint?: PriceHint; model?: ModelSuggestion | null
-  onRemove: () => void; onMove: (d: -1 | 1) => void; onDuplicate: () => void
-}) {
-  const fileRef = useRef<HTMLInputElement>(null)
-  const inches = sizeInInches(l.size_text)
-  const perUnit = l.qty_mode === 'per_unit' && !!area
-  return (
-    <div className={s.line}>
-      <div>
-        {l.image_path
-          ? <button type="button" onClick={() => editable && fileRef.current?.click()} style={{ padding: 0, border: 0, background: 'none', cursor: editable ? 'pointer' : 'default' }} aria-label="Change picture"><Pic className={s.pic} src={url(l.image_path)} alt={l.name || 'Product picture'} /></button>
-          : <button type="button" className={s.picEmpty} onClick={() => fileRef.current?.click()} disabled={!editable}><span><ImagePlus size={16} aria-hidden /><br />Picture</span></button>}
-        {editable && l.image_path && <button type="button" className={s.improve} onClick={onImprove}>Improve picture</button>}
-        <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { onUpload(e.target.files?.[0]); e.target.value = '' }} />
-        {editable && l.image_path && <button type="button" className={`${s.btn} ${s.btnSm}`} style={{ marginTop: 4, width: 76 }} onClick={() => onChange({ image_path: null })}>Remove</button>}
-      </div>
-      <div className={s.lineFields}>
-        <input aria-label="Product name" className={s.input} style={{ fontWeight: 600 }} placeholder="Product name, e.g. Bed" value={l.name} onChange={e => onChange({ name: e.target.value })} disabled={!editable} />
-        <div className={s.grid3}>
-          <input aria-label="Size" className={s.input} placeholder={`Size, e.g. 6'0" x 6'6" x 1'6"`} value={l.size_text} onChange={e => onChange({ size_text: e.target.value })} disabled={!editable} />
-          <input aria-label="Material" className={s.input} placeholder="Material, e.g. Ash wood" value={l.material} onChange={e => onChange({ material: e.target.value })} disabled={!editable} />
-          <input aria-label="Finish" className={s.input} placeholder="Finish, e.g. PU" value={l.finish} onChange={e => onChange({ finish: e.target.value })} disabled={!editable} />
-        </div>
-        {inches && <div className={`${s.small} ${s.muted} ${s.num}`}>= {inches.join(' × ')} in</div>}
-        <textarea aria-label="Specification" className={s.input} style={{ minHeight: 44 }} placeholder="Specification and customization the client sees" value={l.spec} onChange={e => onChange({ spec: e.target.value })} disabled={!editable} />
-        <div className={s.grid2}>
-          <input aria-label="Note for the client" className={s.input} placeholder="Note for the client (optional)" value={l.client_note} onChange={e => onChange({ client_note: e.target.value })} disabled={!editable} />
-          <input aria-label="Internal note" className={s.input} placeholder="Internal note (never shown)" value={l.internal_note} onChange={e => onChange({ internal_note: e.target.value })} disabled={!editable} />
-        </div>
-      </div>
-      <div className={s.lineNums}>
-        <div className={s.qtyRow}>
-          <input aria-label={perUnit ? `Quantity per ${area!.unit_label.replace(/s$/, '')}` : 'Quantity'} className={`${s.input} ${s.money}`} type="number" min={0} step="any" value={l.qty ?? ''} onChange={e => onChange({ qty: e.target.value === '' ? null : Number(e.target.value) })} disabled={!editable} />
-          {area ? (
-            <select aria-label="Quantity is" className={s.input} value={l.qty_mode} onChange={e => onChange({ qty_mode: e.target.value as QuoteLine['qty_mode'] })} disabled={!editable}>
-              <option value="per_unit">per {area.unit_label.replace(/s$/, '')} → {perUnit ? qty.toLocaleString('en-IN') : '…'}</option>
-              <option value="fixed">in total</option>
-            </select>
-          ) : <span className={`${s.small} ${s.muted}`} style={{ alignSelf: 'center' }}>pieces</span>}
-        </div>
-        <input aria-label="Unit price (₹, before GST)" className={`${s.input} ${s.money}`} type="number" min={0} placeholder="Price ₹" value={l.unit_price ?? ''} onChange={e => onChange({ unit_price: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value))) })} disabled={!editable} />
-        <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p) })} />
-        <div className={s.row} style={{ justifyContent: 'space-between' }}>
-          <select aria-label="GST rate" className={s.input} style={{ width: 86 }} value={l.tax_rate} onChange={e => onChange({ tax_rate: Number(e.target.value) })} disabled={!editable}>{GST_RATES.map(r => <option key={r} value={r}>{r}%</option>)}</select>
-          <label className={s.small}><input type="checkbox" checked={l.is_optional} onChange={e => onChange({ is_optional: e.target.checked })} disabled={!editable} /> Optional</label>
-        </div>
-        <div className={s.lineTotal}>{l.unit_price === null ? <span className={s.muted}>No price</span> : formatINR(total)}{l.is_optional && <div className={`${s.small} ${s.muted}`}>not in the total</div>}</div>
-        {editable && (
-          <div className={s.lineActions}>
-            <button className={s.iconBtn} onClick={() => onMove(-1)} disabled={first} aria-label="Move up"><ArrowUp size={15} /></button>
-            <button className={s.iconBtn} onClick={() => onMove(1)} disabled={last} aria-label="Move down"><ArrowDown size={15} /></button>
-            <button className={s.iconBtn} onClick={onDuplicate} aria-label="Duplicate"><Copy size={15} /></button>
-            <button className={s.iconBtn} onClick={onRemove} aria-label="Remove product"><Trash2 size={15} /></button>
-          </div>
-        )}
-      </div>
-    </div>
   )
 }

@@ -50,15 +50,15 @@ const STATE_TEXT: Record<PriceState['state'], string> = {
 }
 
 /** The approval card on a quotation. Hidden when nothing needs approval and nothing was ever asked. */
-export function PriceCard({ price, mayEdit, dirty, busy, onAsk, onDecide }: {
-  price: PriceState | null; mayEdit: boolean; dirty: boolean; busy: boolean
+export function PriceCard({ id, price, mayEdit, dirty, busy, onAsk, onDecide }: {
+  id?: string; price: PriceState | null; mayEdit: boolean; dirty: boolean; busy: boolean
   onAsk: () => void; onDecide: (approve: boolean, note: string | null) => void
 }) {
   const [note, setNote] = useState<string | null>(null)
   if (!price || (price.state === 'not_needed')) return null
   const tone = price.state === 'approved' ? s.noticeOk : price.state === 'returned' ? s.noticeBad : s.noticeWarn
   return (
-    <section className={s.card}>
+    <section id={id} className={s.card}>
       <div className={s.cardHead}><h2>Price approval</h2></div>
       <div className={s.cardBody} style={{ display: 'grid', gap: 8 }}>
         <div className={`${s.notice} ${tone}`}>

@@ -5,16 +5,18 @@
 
 ## Snapshot
 
-- Commit: `90e2d98c` — Draft Orders (ClickUp): the folder pick accepts the folder around the backup; search box height, loading title and step numbers fixed
-- Commits on this branch: 1318
+- Commit: `02af0fd5` — Merge origin/main into fix/clickup-draft-orders-polish (docs only conflict: both changelog entries kept, inventory regenerated)
+- Commits on this branch: 1320
 - Pages (`page.tsx`): 196   API routes (`route.ts`): 209
-- Migrations: 454 (first `20260530_create_positions.sql`, latest `20270713000000_clickup_draft_orders.sql`)
+- Migrations: 455 (first `20260530_create_positions.sql`, latest `20270714000000_quotation_builder_fields.sql`)
 - Tables ever created: 251 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
-- Test files: 831   Next.js 16.2.6, React 19.2.4
+- Test files: 833   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `02af0fd5` 2026-11-13 Merge origin/main into fix/clickup-draft-orders-polish (docs only conflict: both changelog entries kept, inventory regenerated)
 - `90e2d98c` 2026-11-13 Draft Orders (ClickUp): the folder pick accepts the folder around the backup; search box height, loading title and step numbers fixed
+- `216256c8` 2026-11-13 Docs: stamp #756 (Import says to reload) as merged c9670dd0, deployed 19:58 IST (no SQL) (#757)
 - `c9670dd0` 2026-11-13 Quotations: Import says to reload when its code could not be downloaded (#756)
 - `df8ef1f7` 2026-11-13 Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (migration 20270713000000) (#754)
 - `a203fcef` 2026-11-13 Docs: stamp #753 (Pendencies card on a phone) as merged e9a5f6bd, deployed 19:05 IST (no SQL) (#755)
@@ -37,8 +39,6 @@
 - `2e4ade2e` 2026-11-13 Docs: stamp #735 (Confirmed Payments Order / PI column, names only) as merged bab48de7 (#737)
 - `a8a6ec45` 2026-11-13 Scoreboard: fix the "Star" band pill; record the Day Close/Scoreboard migrations' real apply date (no SQL) (#736)
 - `bab48de7` 2026-11-13 Confirmed Payments: the Order / PI column shows names only, no amounts (#735)
-- `2c214103` 2026-11-13 Docs: stamp #730 (Quotations links back) as merged dafb5eb0 (#734)
-- `dafb5eb0` 2026-11-13 Quotations: links back to quotation requests and PI drafts, and revisions to win (#730)
 
 ## Pages by top-level area
 
@@ -166,7 +166,7 @@
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/pricing` — 4 source, 2 test
 - `src/lib/push` — 3 source, 1 test
-- `src/lib/quotations` — 12 source, 7 test
+- `src/lib/quotations` — 13 source, 7 test
 - `src/lib/salesLeads` — 15 source, 14 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
@@ -492,7 +492,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270609000000_sales_whatsapp_capture.sql`
 - `20270610000000_task_health_check_stops_escalating.sql`
 - `20270611000000_my_flagged_pis.sql`
 - `20270612000000_finance_non_hdfc_confirmed_on_company_receipt.sql`
@@ -522,6 +521,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270710000000_sales_visit_meeting_stage.sql`
 - `20270711000000_sales_value_timeline_gates.sql`
 - `20270713000000_clickup_draft_orders.sql`
+- `20270714000000_quotation_builder_fields.sql`
 
 ## All SQL function names
 
