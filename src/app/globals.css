@@ -11142,6 +11142,14 @@ button.fin-stat[aria-pressed="true"] { border-color: #303536; }
 .fin-pill--over    { background: #FBE9EC; color: #A12438; }
 .fin-pill--neutral { background: #EEECE8; color: #595D5B; }
 
+/* Allocation status as ONE SMALL ICON (Confirmed Payments table, 2026-11-12). The
+   same colour key as the pill, plus a different shape per state (StatusIcon). */
+.fin-status-icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; }
+.fin-status-icon--zero    { background: #FAF0DA; color: #805B0D; }
+.fin-status-icon--partial { background: #EAF0F8; color: #335A86; }
+.fin-status-icon--full    { background: #E8F2EC; color: #276247; }
+.fin-status-icon--over    { background: #FBE9EC; color: #A12438; }
+
 /* "Left to allocate" meter in Allocated against. */
 .fin-meter { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .fin-meter-bar { flex: 0 0 56px; height: 6px; border-radius: 3px; background: #F1EEE9; overflow: hidden; }

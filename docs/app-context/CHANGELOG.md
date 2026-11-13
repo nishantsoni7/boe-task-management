@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-13 — BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270628000000` → NOT applied (apply before the merge)
+## 2026-11-13 — BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (PR #728) · `20270628000000` → APPLIED 2026-11-13 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 - **Owner ask.** "Start building the Star Seller Factory Focus slot." Decided earlier: 1 order a month, their own order, in Factory Focus until dispatched.
 - **Built.**
   - Last month's announced Star Seller puts one of their own open Orders into Factory Focus, once per award.
@@ -45,6 +45,16 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - `scoreboard_vote_rating_pglite.mjs`: 5 checks.
   - Full `npm test`: 20,711 tests; the 1 failure is `piDetail.render`, which passes alone.
 
+## 2026-11-12 — Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (branch `feat/confirmed-payments-orders`, PR 1 of 2) · no SQL
+- **Owner ask.** The Confirmed Payments list should show the Order number / PI number each payment was recorded against, several for a split payment; the Allocation status should shrink to small icons; the client of an old order was not shown ("Not identified"). PR 2 (migration) adds search by order number with a confirmed total and editing an old order's client.
+- **Built.**
+  - New **Order / PI** column after Client (190px): one line per Order, PI Draft (reference and reserved number) or old order with its own amount; links where the reader may open the record. No new query: it reads the complete allocation targets the page already loads once per page.
+  - **Allocation status** is one small icon (column 156px to 48px): ring, half, tick, "!" in the pill colours, words in the tooltip and accessible name. Phone cards keep the word pill.
+  - **Old-order client:** a payment whose money is only on old orders of one client shows that client (display only; no write).
+  - The table is about 80px wider: `CONFIRMED_TABLE_MIN_CONTAINER_PX` 1045 to 1125. A 1366px laptop with the sidebar pinned open now gets cards (the hover rail still gets the table).
+- **Proof.** `tsc`; eslint on the changed files; 3,203 finance, navigation and UI tests, 0 failures (offline env). `paymentSurfaces.test.ts`, `allocatedAgainst.render.test.tsx` and `allocatedAgainst.test.ts` updated and extended.
+- **Not seen signed in.** No browser test (owner's rule).
+- **Rollback.** Revert the PR; nothing in the database changed.
 ## 2026-11-12 — BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (PR #724, squash-merged 2026-11-13 as `bc56ccc`) · `20270625000000` → APPLIED 2026-11-12 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 - **Owner ask.** Replace the Performance numbers with one monthly score that people see twice a day, with rewards and reviews. Plan and decisions are in dossier 31.
 - **Built.**

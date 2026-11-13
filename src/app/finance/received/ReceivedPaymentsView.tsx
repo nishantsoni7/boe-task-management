@@ -42,7 +42,7 @@ import {
   paymentLinks,
 } from '@/lib/finance/paymentLinks'
 import { PENDING_ALLOCATION_SUMMARY, summarizePaymentAllocations, type PaymentAllocationRow, type PaymentAllocationSummary } from '@/lib/finance/paymentAllocations'
-import { ALLOCATION_TARGETS_MAX_IDS, allocationTargetNames, nameSummaryTargets, piDraftSafeName, PI_DRAFT_NAME_COLUMNS, buildAllocatedAgainst, completeAllocatedTotal, completeAllocationSummary, type AllocatedAgainstView, type AllocationTargetRow } from '@/lib/finance/allocatedAgainst'
+import { ALLOCATION_TARGETS_MAX_IDS, allocationTargetNames, nameSummaryTargets, piDraftSafeName, PI_DRAFT_NAME_COLUMNS, buildAllocatedAgainst, oldOrderClientOf, completeAllocatedTotal, completeAllocationSummary, type AllocatedAgainstView, type AllocationTargetRow } from '@/lib/finance/allocatedAgainst'
 import {
   canOpenOrderRecord,
   orderDetailHref,
@@ -1079,6 +1079,14 @@ function ReceivedPaymentsViewInner(
   // a page after the fact would narrow fifty rows and silently hide every match
   // on page two.
   const visible = requests
+  // A payment allocated ONLY to old orders of one client is that client's: the
+  // client typed with the old order replaces an empty (or stale) stored name, so
+  // the list, the allocation popup, the details and the edit window agree. Every
+  // row stays (a map, never a filter): the rows ARE the answer, see `visible`.
+  const confirmedRows = visible.map(r => {
+    const client = oldOrderClientOf(allocatedAgainstFor(r))
+    return client && client !== r.client_name ? { ...r, client_name: client } : r
+  })
   // Search and dates — what the toolbar's "Clear filters" undoes. The status
   // tab is navigation, so it is not in here (see isNarrowed)…
   const narrowed = isNarrowed({ search, dateFrom: filters.dateFrom, dateTo: filters.dateTo })
@@ -1293,7 +1301,7 @@ function ReceivedPaymentsViewInner(
             // Table or cards by the width of the card itself — see
             // ConfirmedPaymentsList. isMobile (viewport) is Payments to Verify's.
             <ConfirmedPaymentsList
-              rows={visible}
+              rows={confirmedRows}
               canManage={caps.canManageFinance}
               canAllocate={caps.canAllocatePayment}
               highlightId={highlightId}
