@@ -1,0 +1,59 @@
+/* The Scoreboard morning card. Phone first; the app's own status pairs for the bands (gold for Star, completed
+   green, working blue, neutral, blocked red). LIGHT ONLY, like the launcher. */
+
+.card {
+  background: #fff;
+  border: 1px solid #E4DED7;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.title { margin: 0; font-family: var(--boe-font-heading); font-size: 16px; font-weight: 700; color: #303536; letter-spacing: -0.01em; }
+.muted { margin: 0; font-size: 12.5px; color: #686D6C; line-height: 1.5; }
+.label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #686D6C; }
+
+.band { flex: none; display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 700; white-space: nowrap; }
+.star { background: #FAF0DA; color: #805B0D; }
+.strong { background: rgba(39, 98, 71, 0.12); color: #276247; }
+.steady { background: rgba(51, 90, 134, 0.12); color: #335A86; }
+.watch { background: rgba(104, 109, 108, 0.14); color: #4C5352; }
+.red { background: rgba(180, 35, 50, 0.10); color: #B42332; }
+
+.mine { display: flex; flex-direction: column; gap: 8px; }
+.big { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.num { font-family: var(--boe-font-heading); font-size: 40px; font-weight: 800; line-height: 1; color: #303536; font-variant-numeric: tabular-nums; }
+.of { font-size: 13px; color: #686D6C; }
+.up { font-size: 13px; font-weight: 700; color: #276247; }
+.down { font-size: 13px; font-weight: 700; color: #B42332; }
+
+.spark { width: 100%; height: 40px; display: block; }
+.sparkFill { fill: rgba(39, 98, 71, 0.10); }
+.sparkLine { fill: none; stroke: #276247; stroke-width: 2; }
+.sparkDot { fill: #276247; }
+
+.tip { margin: 0; font-size: 12.5px; background: #E9EFF6; color: #335A86; border-radius: 8px; padding: 8px 10px; line-height: 1.45; }
+
+.toggle { align-self: flex-start; background: none; border: none; padding: 0; min-height: 32px; color: #335A86; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+
+.parts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pillar { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; font-size: 13px; color: #303536; }
+.pillarName { font-weight: 600; }
+.pillarPts { font-variant-numeric: tabular-nums; font-weight: 700; }
+.track { grid-column: 1 / -1; height: 6px; border-radius: 3px; background: #F1EEE9; overflow: hidden; }
+.track i { display: block; height: 100%; background: #335A86; border-radius: 3px; }
+.partRow { display: flex; flex-direction: column; font-size: 12.5px; color: #303536; padding-top: 4px; border-top: 1px solid #F1EEE9; }
+
+.top { display: flex; flex-direction: column; gap: 6px; }
+.list { list-style: none; margin: 0; padding: 0; }
+.row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid #F1EEE9; font-size: 13px; }
+.row:last-child { border-bottom: none; }
+.rank { font-family: var(--boe-font-heading); font-weight: 800; color: #686D6C; }
+.name { min-width: 0; overflow-wrap: anywhere; color: #303536; }
+.pts { font-family: var(--boe-font-heading); font-weight: 800; font-variant-numeric: tabular-nums; color: #303536; }
+
+.evening { margin: 4px 0 0; font-size: 13px; color: #4C5352; }

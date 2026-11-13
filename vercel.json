@@ -39,6 +39,10 @@
     {
       "path": "/api/day-close/evaluate",
       "schedule": "45 17 * * *"
+    },
+    {
+      "path": "/api/scoreboard/snapshot",
+      "schedule": "0 18 * * *"
     }
   ]
 }

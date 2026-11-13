@@ -14,12 +14,13 @@
 // which takes the person from the bearer token.
 
 import { useCallback, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { CircleCheck, Clock, TriangleAlert } from 'lucide-react'
 import { istAddDays } from '@/lib/istDate'
 import { clock } from '@/lib/dayClose/rules'
 import { dayCloseFetch, dayLabel, istClock } from './api'
+import { EveningScoreLine } from '@/components/scoreboard/ScoreCard'
 import styles from './dayClose.module.css'
 
 type DayTaskRow = {
@@ -64,7 +65,12 @@ export function DayCard({ enabled }: { enabled: boolean }) {
     retry: false,
   })
   const { refetch } = query
-  const reload = useCallback(async () => { await refetch() }, [refetch])
+  const queryClient = useQueryClient()
+  // After filing or closing, the score may move too: read both again.
+  const reload = useCallback(async () => {
+    await refetch()
+    await queryClient.invalidateQueries({ queryKey: ['scoreboard', 'me'] })
+  }, [refetch, queryClient])
   const day = query.data
 
   // Nothing for anybody not switched on, on a day off, while loading, or when the read fails.
@@ -122,6 +128,8 @@ export function DayCard({ enabled }: { enabled: boolean }) {
           <div>
             <p className={styles.bannerTitle}>Day closed at {istClock(plan?.closed_at)}</p>
             {plan?.close_note && <p className={styles.bannerText}>{plan.close_note}</p>}
+            {/* The Scoreboard, the evening half: what the day did to the month's score. */}
+            <EveningScoreLine enabled={enabled} />
           </div>
         </div>
       )}

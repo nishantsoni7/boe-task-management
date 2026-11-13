@@ -52,6 +52,7 @@ import { participatesInPayroll } from '@/lib/payroll/participation'
 import { AttentionPanel, AttentionStrip, type AttentionSources } from './AttentionPanel'
 import { PunchStrip } from './PunchStrip'
 import { DayStrip } from './DayStrip'
+import { ScoreCard } from '@/components/scoreboard/ScoreCard'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -946,6 +947,9 @@ export default function BoeOsHomePage() {
           {!editingOrder && <PunchStrip userId={userId} enabled={!viewMode} />}
           {/* Day Close (owner, 2026-11-12): file the plan, close the day. Silent for anybody not switched on. */}
           {!editingOrder && <DayStrip userId={userId} enabled={!viewMode} />}
+          {/* The Scoreboard, the morning half (owner, 2026-11-12): the score, the change, the top 5. Never while
+              previewing somebody else. Draws nothing for anybody not scored. */}
+          {!editingOrder && <ScoreCard enabled={!viewMode} />}
 
           {/* ── Quick actions, small screens only ──
               Above the Modules heading because its whole reason for existing is
