@@ -28,7 +28,7 @@ export function resolveControlCenterTab(tabParam: string | null): ControlCenterT
   return TABS.find(t => t === tabParam) ?? 'overview'
 }
 
-export type HubId = 'home' | 'people' | 'access' | 'orders' | 'announcements' | 'for-you' | 'records'
+export type HubId = 'home' | 'people' | 'access' | 'orders' | 'announcements' | 'for-you' | 'reviews' | 'records'
 
 export type NavSection = {
   id: string
@@ -158,6 +158,16 @@ export const NAV_HUBS: readonly NavHub[] = [
       description: 'What can appear in the right-hand column on Modules, for everyone.',
       keywords: ['right column', 'right side', 'side panel', 'modules panel', 'cards', 'urgent', 'immediate',
         'payment request', 'always on', 'customize'],
+    }],
+  },
+  {
+    id: 'reviews',
+    label: 'Reviews',
+    sections: [{
+      id: 'review-rankings', label: 'Rankings', href: `${MAIN_PATH}/review-rankings`,
+      description: 'Show or hide the review leaderboard for everyone.',
+      keywords: ['leaderboard', 'ranking', 'rankings', 'hide ranking', 'show ranking', 'review ranking', 'top reviewer',
+        'points', 'customer reviews', 'who leads'],
     }],
   },
   {
