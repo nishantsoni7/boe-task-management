@@ -1261,6 +1261,7 @@ describe('the applied migrations are frozen', () => {
       '20270626000000_scoreboard_vote_rating.sql',
       '20270627000000_scoreboard_monthly_review.sql',
       '20270628000000_star_seller_focus.sql',
+      '20270629000000_quotation_links.sql',
       // Finance, Confirmed Payments: search by any order number, an order's confirmed total, an old order's client corrected: three functions, one guard restated, one history event.
       '20270701000000_finance_confirmed_payments_order_search.sql',
     ])
@@ -1768,6 +1769,7 @@ describe('the applied migrations are frozen', () => {
       '20270626000000_scoreboard_vote_rating.sql',
       '20270627000000_scoreboard_monthly_review.sql',
       '20270628000000_star_seller_focus.sql',
+      '20270629000000_quotation_links.sql',
       '20270701000000_finance_confirmed_payments_order_search.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been

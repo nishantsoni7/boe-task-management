@@ -46,6 +46,8 @@ export type Quotation = {
   pi: { id: string; draft_reference: string | null; status: string } | null
   /** Price approval (20270617000000); absent before that migration. */
   price: PriceState | null
+  /** The quotation request this answers (20270629000000), or null. */
+  request: { id: string; title: string; status: string; created_by: string | null; assigned_to: string | null; created_at: string; last_update_at: string | null; asked_by: string | null; may_send: boolean } | null
 }
 
 export type PriceReason =
@@ -150,7 +152,7 @@ export function toLines(rows: DbLine[]): QuoteLine[] {
 }
 
 export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation> {
-  const r = await call<{ quotation: Record<string, unknown>; owner_name: string | null; may_edit: boolean; areas: DbArea[]; lines: DbLine[]; events: QuotationEvent[]; pi?: Quotation['pi']; price?: PriceState }>(
+  const r = await call<{ quotation: Record<string, unknown>; owner_name: string | null; may_edit: boolean; areas: DbArea[]; lines: DbLine[]; events: QuotationEvent[]; pi?: Quotation['pi']; price?: PriceState; request?: Quotation['request'] }>(
     () => s.rpc('quotation_get', { p_id: id }))
   const q = r.quotation as Record<string, string | number | null>
   const str = (k: string) => (q[k] as string | null) ?? ''
@@ -165,7 +167,7 @@ export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation
       fabric_amount: Number(q.fabric_amount) || 0, packing_amount: Number(q.packing_amount) || 0, transport_note: str('transport_note'),
       valid_days: Number(q.valid_days) || 7, notes: str('notes'), internal_notes: str('internal_notes'),
     },
-    areas: toAreas(r.areas), lines: toLines(r.lines), events: r.events, pi: r.pi ?? null, price: r.price ?? null,
+    areas: toAreas(r.areas), lines: toLines(r.lines), events: r.events, pi: r.pi ?? null, price: r.price ?? null, request: r.request ?? null,
   }
 }
 

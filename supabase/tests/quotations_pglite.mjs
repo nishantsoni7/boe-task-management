@@ -84,6 +84,10 @@ await db.exec(mig('20270618000000_quotation_reports.sql'))
 await db.exec(mig('20270620000000_pricing_price_book.sql'))
 await db.exec(mig('20270621000000_pricing_model_v2.sql'))
 await db.exec(mig('20270623000000_quotation_versions.sql'))
+await db.exec(`create table public.tasks (id uuid primary key default gen_random_uuid(), title text, note text, created_by uuid, assigned_to uuid,
+  status text not null default 'pending', task_type text not null default 'general', customer_name text, contact_number text, company_name text,
+  city_project text, created_at timestamptz not null default now(), last_update_at timestamptz);`)
+await db.exec(mig('20270629000000_quotation_links.sql'))
 
 let checks = 0
 const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
@@ -525,5 +529,45 @@ await assert.rejects(() => db.query(`update public.quotation_versions set note =
 await assert.rejects(() => db.query(`delete from public.quotation_versions where quotation_id = $1`, [qv]), /APPEND_ONLY/)
 await fails(U.sales, `select count(*) from public.quotation_versions`, [], /permission denied/)
 ok('only the people who may edit send versions; prices waiting for the desk cannot be sent; versions cannot be changed or deleted')
+
+// ── Links back (20270629000000) ─────────────────────────────────────────────
+const task = async (over = {}) => (await db.query(
+  `insert into public.tasks (title, note, created_by, assigned_to, status, task_type, customer_name, contact_number, company_name, city_project)
+   values ($1, $2, $3, $4, $5, 'quotation_request', 'Ravi Kumar', '+91 90000 00009', $6, 'Goa resort, phase 2') returning id`,
+  [over.title ?? 'Quote for 40 rooms', over.note ?? 'Beds, side tables, wardrobes. Teak.', U.sales, over.assigned ?? U.editor, over.status ?? 'in_progress', over.company ?? 'Sea Breeze Hotels'])).rows[0].id
+const r1 = await task()
+await fails(U.sales, `select public.quotation_create_from_request($1::uuid)`, [r1], /only the person the request is assigned to/)
+await fails(U.manager, `select public.quotation_create_from_request($1::uuid)`, [r1], /QUOTATIONS_FORBIDDEN/)
+const fromReq = await rpc(U.editor, 'quotation_create_from_request', r1)
+assert.equal(await rpc(U.editor, 'quotation_create_from_request', r1), fromReq, 'asking again opens the same quotation')
+const gr = await rpc(U.sales, 'quotation_get', fromReq)
+assert.match(gr.quotation.quote_no, /^QT-MS-\d{5}$/)
+assert.deepEqual([gr.quotation.client_name, gr.quotation.contact_name, gr.quotation.contact_phone, gr.quotation.project_name, gr.quotation.owner_id, gr.quotation.created_by],
+  ['Sea Breeze Hotels', 'Ravi Kumar', '+91 90000 00009', 'Goa resort, phase 2', U.sales, U.editor])
+assert.match(gr.quotation.internal_notes, /From the quotation request: Quote for 40 rooms\nBeds, side tables, wardrobes\. Teak\./)
+assert.equal(gr.request.id, r1)
+assert.equal(gr.request.asked_by, 'Mohit Sharma')
+assert.equal(gr.request.may_send, false, 'the salesperson does not send it to themselves')
+assert.equal((await rpc(U.editor, 'quotation_get', fromReq)).request.may_send, true)
+assert.ok((await rpc(U.sales, 'quotation_list', 'mine')).some(x => x.id === fromReq), 'it is in the salesperson\'s own list')
+const done = await task({ status: 'completed' })
+await fails(U.editor, `select public.quotation_create_from_request($1::uuid)`, [done], /already completed/)
+await fails(U.editor, `select public.quotation_create_from_request($1::uuid)`, [crypto.randomUUID()], /does not exist/)
+ok('a quotation request becomes a quotation owned by the salesperson who asked, made by the person it is assigned to, linked both ways')
+
+const piDraft = await draft(U.sales)
+await db.query(`update public.quotations set pi_submission_id = $1 where id = $2`, [piDraft.id, fromReq])
+const mark = await rpc(U.sales, 'quotation_for_pi', piDraft.id)
+assert.deepEqual([mark.id, mark.quote_no, mark.version_no], [fromReq, gr.quotation.quote_no, null])
+assert.equal(await rpc(U.sales2, 'quotation_for_pi', piDraft.id), null, 'not to someone who may not see the quotation')
+assert.equal((await as(U.nobody, `select public.quotation_for_pi($1::uuid) as r`, [piDraft.id])).rows[0].r, null)
+assert.equal(await rpc(U.sales, 'quotation_for_pi', crypto.randomUUID()), null)
+ok('a PI draft tells only the people who may see its quotation where it came from')
+
+const rev = await rpc(U.manager, 'quotation_report_revisions', today, today, 'all')
+assert.equal(Number(rev.confirmed), await countWhere(`q.status = 'confirmed'`))
+assert.equal(rev.buckets.reduce((t, b) => t + Number(b.n), 0), Number(rev.confirmed))
+await fails(U.nobody, `select public.quotation_report_revisions($1::date, $1::date, 'all')`, [today], /QUOTATIONS_FORBIDDEN/)
+ok('revisions to win counts the versions of every confirmed quotation in the period')
 
 console.log(`all ${checks} checks passed`)

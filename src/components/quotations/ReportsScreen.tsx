@@ -61,6 +61,7 @@ export default function ReportsScreen() {
         {q.isLoading && <div className={s.empty}>Working out the numbers…</div>}
         {q.isError && <div className={`${s.notice} ${s.noticeBad}`}>{errorText(q.error)}</div>}
         {q.data && <ReportBody r={q.data} />}
+        {q.data && <Revisions supabase={supabase} from={range.from} to={range.to} scope={effectiveScope} />}
       </div>
     </QuotationsLayout>
   )
@@ -159,4 +160,27 @@ function ReportBody({ r }: { r: Report }) {
 
 function Kpi({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return <div className={s.kpi}><div className={`${s.small} ${s.muted}`}>{label}</div><div className={s.kpiValue}>{value}</div>{sub && <div className={`${s.small} ${s.muted}`}>{sub}</div>}</div>
+}
+
+type RevisionStats = { confirmed: number; average: number | null; buckets: { label: string; n: number }[] }
+
+/** Revisions to win (20270629000000): how many versions the confirmed quotations of the period were sent in. */
+function Revisions({ supabase, from, to, scope }: { supabase: ReturnType<typeof useQuotations>['supabase']; from: string; to: string; scope: 'mine' | 'all' }) {
+  const q = useQuery({
+    queryKey: ['quotations', 'report-revisions', from, to, scope],
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('quotation_report_revisions', { p_from: from, p_to: to, p_scope: scope })
+      if (error) throw error
+      return data as RevisionStats
+    },
+    retry: false,
+  })
+  if (!q.data) return null
+  const r = q.data
+  return (
+    <Section title="Revisions to win" note={r.confirmed ? `${r.confirmed} confirmed in the period; on average ${r.average} version${Number(r.average) === 1 ? '' : 's'} each.` : 'No quotation started in the period has been confirmed yet.'}
+      csv={r.confirmed ? () => downloadCsv(`revisions-to-win_${from}_to_${to}.csv`, toCsv(['Versions sent', 'Confirmed quotations'], r.buckets.map(b => [b.label, Number(b.n)]))) : undefined}>
+      {r.confirmed > 0 && <div className={`${s.cardBody} ${s.kpis}`}>{r.buckets.map(b => <Kpi key={b.label} label={b.label} value={String(b.n)} />)}</div>}
+    </Section>
+  )
 }

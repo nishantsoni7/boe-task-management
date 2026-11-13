@@ -12,6 +12,12 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Bug.** `scoreCard.module.css` defined `.star` twice: for the band pill and for the Star Seller card (#728). The two rules merged, so every "Star" pill (your band, the Top 5) took the card's border, padding and bottom margin.
 - **Fix.** The card's class is now `.starCard` (`StarSellerCard.tsx`). The pill is unchanged.
 
+## 2026-11-13 — Quotations: links back to quotation requests and PI drafts, and revisions to win (PR #730 merged as `dafb5eb0` 2026-11-13 09:16 IST, deployed) · `20270629000000` → APPLIED 2026-11-13 before the merge
+- **Owner approval.** The quotation team builds a request's quotation in Quotations; it belongs to the salesperson who asked; "Send to sales" completes the request like today's Send.
+- **Built.** "Make it in Quotations" on a quotation request; a Quotation request card with "Send to sales" on the quotation; "From quotation QT-… · vN" on the PI draft (loaded after the page draws); "Revisions to win" on Reports.
+- **Database.** Column `quotations.request_task_id`; `quotation_create_from_request`, `quotation_for_pi`, `quotation_report_revisions`; `quotation_get` re-created with the request. No Tasks or Orders table changed.
+- **Proof.** PGlite 46 checks (3 new), `sendToSales.test.ts` (3), the PI page, request and no-prefetch tests, `tsc`, eslint, full `npm test`, `next build`.
+
 ## 2026-11-13 — Performance retired: the Scoreboard replaces it (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
 - **Owner ask.** "Retire the old Performance pages." Earlier: "there should be no separate module for Performance management."
 - **Changed.**
@@ -38,8 +44,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - `star_seller_focus_pglite.mjs`: 6 checks, on the table and guard cut from `20270221000000` itself.
   - Full `npm test`: 20,720 tests; the 1 failure is `piDetail.render`, which passes alone.
 
-## 2026-11-13 — BOE Scoreboard, slice 3: the monthly review and awards (PR #727, squash-merged 2026-11-13 as `001472f`) · `20270627000000` → APPLIED 2026-11-13 by the owner, before the merge (owner's word; not re-checked from the cloud session)
-## 2026-11-13 — Orders: "With Sales" on the Operations queue (branch `feat/ops-dashboard-with-sales`, PR pending) · no migration
+## 2026-11-13 — Orders: "With Sales" on the Operations queue (PR #729, squash-merged 2026-11-13 06:39 IST as `561c4588`, deployed 06:41 IST) · no migration
 - **Owner ask.** "Label it With Sales on the Operations dashboard too."
 - **Changed.** The Orders dashboard's Operations Review card no longer counts a PI that is "Returned to Sales" as awaiting or flagged; it says "N with Sales: waiting for the revised PI" instead (the card shows while only such PIs remain). The queue it opens (`/orders/all?ops=awaiting`) shows "With Sales · Waiting for the revised PI" in Factory Status for those Orders, on the table and on a phone. One shared rule, `loadOrdersWithSales` (the Order page's `salesReturnStage`, with the answer read from `clarification_responded_at`), one extra history read only when live handoffs exist; a failed read labels nothing.
 - **Not changed.** The database, who sees the queue, the Order page.
@@ -48,7 +53,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
 ## 2026-11-13 — BOE Scoreboard, slice 2: the team vote and the owner's rating (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270626000000` → NOT applied (apply before the merge)
 
-## 2026-11-13 — BOE Scoreboard, slice 3: the monthly review and awards (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270627000000` → NOT applied (apply before the merge)
+## 2026-11-13 — BOE Scoreboard, slice 3: the monthly review and awards (PR #727, squash-merged 2026-11-13 as `001472f`) · `20270627000000` → APPLIED 2026-11-13 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 - **Owner ask.** "Start building the monthly review and awards screen."
 - **Built:** `/tasks/monthly-review`, in the admin sidebar, for the owner alone.
   - The month's final standings from the frozen nightly record, with the change on last month.
@@ -75,7 +80,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - `scoreboard_vote_rating_pglite.mjs`: 5 checks.
   - Full `npm test`: 20,711 tests; the 1 failure is `piDetail.render`, which passes alone.
 
-## 2026-11-12 — Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (PR 2 of 2, built on PR 1) · `20270701000000` → APPLIED 2026-11-13 alone (db query --file + migration repair), after a verified backup and a rolled-back rehearsal
+## 2026-11-12 — Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (PR #719, squash-merged 2026-11-13 as `ebfc7df8`, deployed 08:39 IST; PR 2 of 2, built on PR 1) · `20270701000000` → APPLIED 2026-11-13 alone (db query --file + migration repair), after a verified backup and a rolled-back rehearsal
 - **Owner ask.** Search should find a payment by the order number or PI number it is recorded against and, once it shows the result, show the total confirmed amount of that order; and the client of an old order must be addable and editable.
 - **Built.**
   - **Search** also matches `order_search_text` (a computed field on `finance_received_payments`): every Order number, PI Draft reference or reserved number, the PI an Order came from, and old order number and client of the payment's active allocations. Before, only the one Order the projection names was searchable.
