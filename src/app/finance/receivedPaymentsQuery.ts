@@ -84,6 +84,13 @@ export const RECEIVED_PAYMENTS_SEARCH_COLUMNS = [
   // record that exists.
   'order_request_number',
   'allocated_order_number',
+  // EVERY order the payment is allocated to, not only the one the projection
+  // names: each Order number, PI Draft reference or reserved number, the PI an
+  // Order came from, and an old order's number and client (owner 2026-11-12). A
+  // computed field of 20270701000000; it is NULL for a payment the reader may
+  // not read, so it can only find what the reader could already see. Search
+  // needs that migration applied first.
+  'order_search_text',
 ] as const
 
 /** The `or=` filter for a term across every column this list searches. */

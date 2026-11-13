@@ -179,6 +179,16 @@ describe('search finds a payment by what the row displays', () => {
     assert.ok(searchFilter('ORD-2026-0007')!.includes('allocated_order_number.ilike.*ORD-2026-0007*'))
   })
 
+  test('EVERY order a payment is allocated to is searchable, not only the first (owner 2026-11-12)', () => {
+    // allocated_order_number names one Order; a split payment, a PI Draft and an
+    // old order were unfindable by the number the Order / PI column prints.
+    assert.ok(RECEIVED_PAYMENTS_SEARCH_COLUMNS.includes('order_search_text'))
+    assert.ok(searchFilter('0431')!.includes('order_search_text.ilike.*0431*'))
+    const migration = readFileSync('supabase/migrations/20270701000000_finance_confirmed_payments_order_search.sql', 'utf8')
+    assert.ok(migration.includes('create or replace function public.order_search_text('),
+      'the column is a computed field the migration creates')
+  })
+
   test('every displayed identifier is covered', () => {
     const filter = searchFilter('x')!
     for (const column of RECEIVED_PAYMENTS_SEARCH_COLUMNS) {

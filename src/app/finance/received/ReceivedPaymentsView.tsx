@@ -42,7 +42,7 @@ import {
   paymentLinks,
 } from '@/lib/finance/paymentLinks'
 import { PENDING_ALLOCATION_SUMMARY, summarizePaymentAllocations, type PaymentAllocationRow, type PaymentAllocationSummary } from '@/lib/finance/paymentAllocations'
-import { ALLOCATION_TARGETS_MAX_IDS, allocationTargetNames, nameSummaryTargets, piDraftSafeName, PI_DRAFT_NAME_COLUMNS, buildAllocatedAgainst, oldOrderClientOf, completeAllocatedTotal, completeAllocationSummary, type AllocatedAgainstView, type AllocationTargetRow } from '@/lib/finance/allocatedAgainst'
+import { ALLOCATION_TARGETS_MAX_IDS, allocationTargetNames, nameSummaryTargets, piDraftSafeName, PI_DRAFT_NAME_COLUMNS, buildAllocatedAgainst, oldOrderClientOf, legacyOrdersOf, completeAllocatedTotal, completeAllocationSummary, type AllocatedAgainstView, type AllocationTargetRow } from '@/lib/finance/allocatedAgainst'
 import {
   canOpenOrderRecord,
   orderDetailHref,
@@ -91,6 +91,8 @@ import { ConfirmedSummaryCards } from './receivedPaymentsSummary'
 import { FilterChip, dateChipLabel } from '../components/FinanceListParts'
 import { QuickRangeSelect } from '@/components/ui/QuickRangeSelect'
 import { AllocationDetailsPopup } from './receivedPaymentsAllocationPopup'
+import { OrderTotalsBanner } from './receivedPaymentsOrderTotals'
+import { orderTotalsTerm, type OrderTotalRow } from '@/lib/finance/orderTotals'
 import { summarizeConfirmed, type ConfirmedSummary, type ConfirmedSummaryRow } from '@/lib/finance/confirmedSummary'
 import { fetchAllRows } from '@/lib/supabasePaging'
 import { PaymentsToVerifyTable, PaymentsToVerifyCards, ConfirmedPaymentsList } from './receivedPaymentsLists'
@@ -248,6 +250,10 @@ function ReceivedPaymentsViewInner(
     failed: boolean
     ids: ReadonlySet<string>
   }>({ rows: null, failed: false, ids: new Set() })
+  // The confirmed total of the order a search names (finance_order_confirmed_totals,
+  // 20270701000000). null = nothing to say: no order-like term, no match, or a read
+  // that failed. See OrderTotalsBanner.
+  const [orderTotals, setOrderTotals] = useState<OrderTotalRow[] | null>(null)
   // The new multi-target allocation flow (Requirement 3) — replaces the old
   // single-target "Allocate" row action on Confirmed Payments with one that
   // can divide a payment across several targets in one atomic RPC call.
@@ -377,6 +383,18 @@ function ReceivedPaymentsViewInner(
     setSummary(result.ok && !result.truncated ? summarizeConfirmed(result.rows) : null)
   }
 
+  // When the search names an order, how much confirmed money that order has: the
+  // sum of what was ALLOCATED to it on every page, whatever the date and status
+  // filters. Asked of the database, never added up from the fifty rows in hand.
+  // A failed read draws nothing — a missing figure, never a wrong one.
+  const loadOrderTotals = async (token: number) => {
+    const term = surface === 'confirmed' ? orderTotalsTerm(search) : null
+    if (!term) { setOrderTotals(null); return }
+    const { data, error } = await supabase.rpc('finance_order_confirmed_totals', { p_term: term })
+    if (token !== loadToken.current) return
+    setOrderTotals(error ? null : ((data ?? []) as OrderTotalRow[]))
+  }
+
   const loadRequests = async () => {
     const token = ++loadToken.current
     setListLoading(true)
@@ -386,6 +404,7 @@ function ReceivedPaymentsViewInner(
     const listKey = JSON.stringify(filters)
     if (lastListKey.current === null || lastListKey.current === listKey) void loadSummary()
     lastListKey.current = listKey
+    void loadOrderTotals(token)
     // Same approved-only scope as before the split; the linkage predicate is
     // what makes the two pages disjoint. Filtered in the database rather than
     // in the browser so neither page ever holds the other's rows.
@@ -1259,6 +1278,8 @@ function ReceivedPaymentsViewInner(
 
           </div>
         </div>
+        {/* The order the search names, and what it has confirmed in total. */}
+        {surface === 'confirmed' && <OrderTotalsBanner rows={orderTotals} />}
         {/* Table. A RE-READ KEEPS THE ROWS: the list used to be swapped for
             "Loading…" on every refresh and after every edit, which threw the
             reader back to the top of a page they were working down. The count
@@ -1417,6 +1438,9 @@ function ReceivedPaymentsViewInner(
       {editRequest && (
         <EditPaymentModal
           request={editRequest}
+          // The old orders this payment is allocated to, so the client typed with
+          // each can be corrected (finance.manage is what reaches this window).
+          legacyOrders={surface === 'confirmed' ? legacyOrdersOf(editRequest.id, allocationTargets.rows) : []}
           supabase={supabase}
           onClose={() => setEditRequest(null)}
           onSaved={() => { setEditRequest(null); refreshAfterMutation() }}
