@@ -57,3 +57,11 @@
 .pts { font-family: var(--boe-font-heading); font-weight: 800; font-variant-numeric: tabular-nums; color: #303536; }
 
 .evening { margin: 4px 0 0; font-size: 13px; color: #4C5352; }
+
+/* The monthly vote */
+.voteRow { display: flex; flex-direction: column; gap: 6px; padding: 8px 0; border-bottom: 1px solid #F1EEE9; }
+.voteRow:last-child { border-bottom: none; }
+.voteLabel { display: flex; align-items: center; gap: 10px; min-height: 32px; font-size: 14px; color: #303536; cursor: pointer; }
+.voteLabel input { width: 18px; height: 18px; accent-color: #B9472E; }
+.voteNote { width: 100%; box-sizing: border-box; min-height: 40px; padding: 8px 10px; border: 1px solid #CFC7BD; border-radius: 8px; font: inherit; font-size: 14px; }
+.voteError { margin: 0; font-size: 13px; font-weight: 600; color: #B42332; }

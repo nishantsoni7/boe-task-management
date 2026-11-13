@@ -12,6 +12,9 @@ import { buildMachineDay, machineDateOf, MACHINE_ATTENDANCE_FROM } from '@/lib/m
 import { isPlausiblePunchTime } from '@/lib/minop/punches'
 import { fetchActiveSettings } from '@/lib/payroll/settingsStore'
 import {
+  closesAt, lastDayOf, ratingWindow, validateRating, validateVotes, voteWindow,
+} from './vote'
+import {
   BAND_LABEL, computeScore, fastestTip, pillarTotals,
   type Band, type ScoreFacts, type ScoreResult, type ScoreTask, type Track,
 } from './score'
@@ -67,7 +70,9 @@ export async function scoreEveryone(svc: ServiceClient, date: string, dayComplet
   const toUtc = istDayEndUtc(date)
   const minopIds = people.map(p => p.minop_user_id).filter((v): v is string => !!v)
 
-  const [targetsR, holidaysR, settings, requestsR, membersR, strikesR, salesR, leadsR, visitsR] = await Promise.all([
+  // The vote counts only in the month's final record (its last day, once over); ratings count once given.
+  const voteClosed = date === lastDayOf(month) && dayComplete
+  const [targetsR, holidaysR, settings, requestsR, membersR, strikesR, salesR, leadsR, visitsR, votesR, ratingsR] = await Promise.all([
     svc.from('scoreboard_targets').select('employee_id, track, sales_target, role_target, role_kind, role_label').eq('month', month).in('employee_id', ids),
     svc.from('payroll_holidays').select('holiday_date').gte('holiday_date', month).lte('holiday_date', monthEnd),
     fetchActiveSettings(svc),
@@ -79,8 +84,12 @@ export async function scoreEveryone(svc: ServiceClient, date: string, dayComplet
       .in('salesperson_id', ids).eq('status', 'approved').gte('approved_at', fromUtc).lte('approved_at', toUtc),
     svc.from('sales_leads').select('assigned_to, assigned_at, first_attempt_at').in('assigned_to', ids).gte('assigned_at', fromUtc).lte('assigned_at', toUtc),
     svc.from('vendor_visits').select('visited_by, visited_at, kind').in('visited_by', ids).gte('visited_at', fromUtc).lte('visited_at', toUtc),
+    voteClosed ? svc.from('scoreboard_votes').select('voter_id, nominee_id').eq('month', month) : Promise.resolve({ data: null, error: null }),
+    svc.from('scoreboard_ratings').select('employee_id, rating, reason, rated_at').eq('month', month).lte('rated_at', toUtc),
   ])
-  for (const r of [targetsR, holidaysR, requestsR, membersR, strikesR]) if (r.error) throw new Error(r.error.message)
+  for (const r of [targetsR, holidaysR, requestsR, membersR, strikesR, votesR, ratingsR]) if (r.error) throw new Error(r.error.message)
+  const votes = voteClosed ? (votesR.data ?? []) as { voter_id: string; nominee_id: string }[] : null
+  const ratings = new Map(((ratingsR.data ?? []) as { employee_id: string; rating: number; reason: string }[]).map(r => [r.employee_id, r]))
   // Sales, leads and vendor visits belong to other modules: if one cannot be read, that part is left out
   // rather than scored as zero.
   const salesRows = salesR.error ? null : (salesR.data ?? []) as { salesperson_id: string; total_before_gst: number | null }[]
@@ -190,6 +199,8 @@ export async function scoreEveryone(svc: ServiceClient, date: string, dayComplet
       },
       requestsInformed: requests.filter(r => r.employee_id === p.id && r.start_date >= month && r.start_date <= date).map(r => !!r.informed_before_shift),
       years: p.joining_date ? Math.floor((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${p.joining_date}T00:00:00Z`)) / (365.25 * 86_400_000)) : null,
+      vote: votes ? { received: votes.filter(v => v.nominee_id === p.id).length, voted: votes.some(v => v.voter_id === p.id) } : null,
+      rating: ratings.has(p.id) ? { value: ratings.get(p.id)!.rating, reason: ratings.get(p.id)!.reason } : null,
     }
     return { id: p.id, name: p.full_name ?? 'Unknown', track, result: computeScore(facts) }
   })
@@ -301,6 +312,98 @@ export async function saveTarget(caller: Caller, body: Record<string, unknown>, 
     role_kind: track === 'general' ? roleKind : null,
     role_label: track === 'general' ? roleLabel : null,
     updated_by: caller.id, updated_at: now.toISOString(),
+  }, { onConflict: 'month,employee_id' })
+  if (error) throw new Error(error.message)
+  return ok({ saved: true })
+}
+
+// ─── The monthly vote ────────────────────────────────────────────────────────
+//
+// SECRET: nothing here returns who voted for whom. A voter sees only their own three; the owner sees totals
+// and the lines, never the voters.
+
+export async function loadVote(caller: Caller, now: Date = new Date()): Promise<Result> {
+  const w = voteWindow(now)
+  const people = await scoredPeople(caller.svc)
+  const canVote = people.some(p => p.id === caller.id)
+  const base = { month: w.month, open: w.open, opensOn: w.opensOn, closesAt: w.closesAt, canVote }
+  if (!canVote) return ok(base)
+  const mine = await caller.svc.from('scoreboard_votes').select('nominee_id').eq('month', w.month).eq('voter_id', caller.id)
+  if (mine.error) throw new Error(mine.error.message)
+  return ok({
+    ...base,
+    voted: (mine.data ?? []).length > 0,
+    myVotes: (mine.data ?? []).map(v => String(v.nominee_id)),
+    candidates: w.open
+      ? people.filter(p => p.id !== caller.id).map(p => ({ id: p.id, name: p.full_name ?? 'Unknown' })).sort((a, b) => a.name.localeCompare(b.name))
+      : [],
+  })
+}
+
+export async function castVote(caller: Caller, body: Record<string, unknown>, now: Date = new Date()): Promise<Result> {
+  const w = voteWindow(now)
+  if (!w.open) return fail(409, w.closed ? 'This month’s vote has closed.' : `The vote opens on ${w.opensOn}.`)
+  const people = await scoredPeople(caller.svc)
+  if (!people.some(p => p.id === caller.id)) return fail(403, 'Only people on the Scoreboard vote.')
+  const v = validateVotes(body, caller.id, new Set(people.map(p => p.id)))
+  if (!v.ok) return fail(400, v.error)
+  const existing = await caller.svc.from('scoreboard_votes').select('nominee_id').eq('month', w.month).eq('voter_id', caller.id)
+  if (existing.error) throw new Error(existing.error.message)
+  if ((existing.data ?? []).length > 0) return fail(409, 'You have already voted this month.')
+  const { error } = await caller.svc.from('scoreboard_votes')
+    .insert(v.value.map(x => ({ month: w.month, voter_id: caller.id, nominee_id: x.nominee_id, note: x.note })))
+  if (error) {
+    if (error.code === '23505' || /SCOREBOARD_VOTE_LIMIT/.test(error.message)) return fail(409, 'You have already voted this month.')
+    throw new Error(error.message)
+  }
+  return ok({ voted: true }, 201)
+}
+
+// ─── The owner's rating (the Day Close reviewer seat: the owner alone) ───────
+
+async function isReviewer(caller: Caller): Promise<boolean> {
+  const { data, error } = await caller.svc.from('day_close_settings').select('reviewer_id').eq('singleton', true).maybeSingle()
+  if (error) throw new Error(error.message)
+  return !!data?.reviewer_id && data.reviewer_id === caller.id
+}
+
+export async function loadRatings(caller: Caller, now: Date = new Date()): Promise<Result> {
+  if (!(await isReviewer(caller))) return fail(403, 'Only the owner rates.')
+  const w = ratingWindow(now)
+  const people = await scoredPeople(caller.svc)
+  const [ratings, votes] = await Promise.all([
+    caller.svc.from('scoreboard_ratings').select('employee_id, rating, reason').eq('month', w.month),
+    caller.svc.from('scoreboard_votes').select('nominee_id, note').eq('month', w.month),
+  ])
+  if (ratings.error) throw new Error(ratings.error.message)
+  if (votes.error) throw new Error(votes.error.message)
+  const byId = new Map(((ratings.data ?? []) as { employee_id: string; rating: number; reason: string }[]).map(r => [r.employee_id, r]))
+  const voteRows = (votes.data ?? []) as { nominee_id: string; note: string | null }[]
+  // Totals and lines only once the vote has closed, so the count cannot steer anybody while it is open.
+  const show = w.closed || now.toISOString() >= closesAt(w.month)
+  return ok({
+    month: w.month, open: w.open, opensOn: w.opensOn, closesAt: w.closesAt, votesShown: show,
+    people: people.map(p => ({
+      id: p.id,
+      name: p.full_name ?? 'Unknown',
+      rating: byId.get(p.id) ?? null,
+      votes: show ? voteRows.filter(v => v.nominee_id === p.id).length : null,
+      lines: show ? voteRows.filter(v => v.nominee_id === p.id && v.note).map(v => v.note as string) : [],
+    })).sort((a, b) => a.name.localeCompare(b.name)),
+  })
+}
+
+export async function saveRating(caller: Caller, body: Record<string, unknown>, now: Date = new Date()): Promise<Result> {
+  if (!(await isReviewer(caller))) return fail(403, 'Only the owner rates.')
+  const w = ratingWindow(now)
+  if (!w.open) return fail(409, w.closed ? 'This month is closed.' : `Ratings open on ${w.opensOn}.`)
+  const v = validateRating(body)
+  if (!v.ok) return fail(400, v.error)
+  const id = typeof body.employee_id === 'string' ? body.employee_id : ''
+  const people = await scoredPeople(caller.svc)
+  if (!people.some(p => p.id === id)) return fail(404, 'Person not found.')
+  const { error } = await caller.svc.from('scoreboard_ratings').upsert({
+    month: w.month, employee_id: id, rating: v.value.rating, reason: v.value.reason, rated_by: caller.id, rated_at: now.toISOString(),
   }, { onConflict: 'month,employee_id' })
   if (error) throw new Error(error.message)
   return ok({ saved: true })

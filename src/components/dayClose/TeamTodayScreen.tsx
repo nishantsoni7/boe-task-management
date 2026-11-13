@@ -16,6 +16,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { TargetsEditor } from '@/components/scoreboard/TargetsEditor'
+import { RatingsEditor } from '@/components/scoreboard/RatingsEditor'
 import { istAddDays } from '@/lib/istDate'
 import { clock } from '@/lib/dayClose/rules'
 import { dayCloseFetch, dayLabel, istClock } from './api'
@@ -154,6 +155,8 @@ export function TeamTodayScreen() {
       {team.viewer.manages && <Members onChanged={load} />}
       {/* The Scoreboard's monthly tracks and targets (administrators; the route checks again). */}
       {team.viewer.manages && <TargetsEditor />}
+      {/* The owner's monthly 1-5 rating, and the vote totals once closed: the reviewer seat (the owner) alone. */}
+      {team.viewer.isReviewer && <RatingsEditor />}
 
       <p className={styles.muted}>
         Strikes are written each night at 11:15 pm for the day just ending. Days off, holidays, approved full-day leave

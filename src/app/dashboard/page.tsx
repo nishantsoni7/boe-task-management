@@ -16,6 +16,7 @@ import { Toast, useToast } from '@/components/ui/toast'
 import { useViewAs } from '@/hooks/useViewAs'
 import { DayCard } from '@/components/dayClose/DayCard'
 import { ScoreCard } from '@/components/scoreboard/ScoreCard'
+import { VoteCard } from '@/components/scoreboard/VoteCard'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useActiveUsers, warmMyTasksCaches } from '@/hooks/queries/useMyTasks'
 import { useTopTasks, type TopTasksData } from '@/hooks/queries/useTopTasks'
@@ -557,6 +558,7 @@ export default function DashboardPage() {
         {/* ── Today: the day's plan and closing it (Day Close, owner 2026-11-12). Only for somebody switched
             on, and never while previewing somebody else: the card is the signed-in person's own day. ── */}
         <ScoreCard enabled={!viewAsUserId} />
+        <VoteCard enabled={!viewAsUserId} />
         <DayCard enabled={!viewAsUserId} />
 
         {/* ── Today's Focus — full-width hero panel ── */}
