@@ -8,6 +8,7 @@
 
 import type { Caller } from '@/lib/security/attendancePayrollApiAuth'
 import { istToday } from '@/lib/istDate'
+import { readSettings as readDayCloseSettings } from '@/lib/dayClose/server'
 import { monthLabel, previousMonth } from './reviewServer'
 import type { Result } from './server'
 
@@ -26,6 +27,8 @@ async function starSellerOf(caller: Caller, month: string): Promise<string | nul
 
 export async function loadStarSeller(caller: Caller, now: Date = new Date()): Promise<Result> {
   const month = previousMonth(`${istToday(now).slice(0, 7)}-01`)
+  // Paused (20270704000000): nothing is drawn until the Scoreboard is switched on for the team.
+  if (!(await readDayCloseSettings(caller.svc)).team_live) return ok({ month, monthLabel: monthLabel(month), seller: null })
   const seller = await starSellerOf(caller, month)
   if (!seller) return ok({ month, monthLabel: monthLabel(month), seller: null })
 

@@ -41,6 +41,8 @@ type Prompt =
 
 type MyDay = {
   member: boolean
+  /** The team switch (Control Center). Only `true` shows the due / strike / proof messages. */
+  live?: boolean
   today: string
   workingDay?: boolean
   planDue: number
@@ -138,6 +140,8 @@ export function DayCard({ enabled }: { enabled: boolean }) {
 }
 
 function Banner({ day }: { day: MyDay }) {
+  // While the team switch is off every message here is about a rule that is paused (due, strike, proof): none is shown.
+  if (day.live !== true) return null
   const p = day.prompt
   if (p?.kind === 'file_plan') {
     return (
