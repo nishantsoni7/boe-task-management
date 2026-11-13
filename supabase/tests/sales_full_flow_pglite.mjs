@@ -1359,7 +1359,7 @@ await step('Browser users cannot fire the alert job', () =>
 }
 
 {
-  // ── Visit / Meeting, and the ClickUp leads moved to Potential Clients (20270705000000) ──
+  // ── Visit / Meeting, and the ClickUp leads moved to Potential Clients (20270710000000) ──
   const fresh = async phone => {
     const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, [phone])
     await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [L.lead.id, U.ashok])
@@ -1382,7 +1382,7 @@ await step('Browser users cannot fire the alert job', () =>
   const bulkMovedByPerson = await seed('+91 97111 00961', 'bulk (pr)', 'under_process', true)
   const otherStatus = await seed('+91 97111 00962', 'new leads (ak)', 'under_process', false)
   const bulkDead = await seed('+91 97111 00963', 'important bulk (moh)', 'dead', false)
-  await db.exec(mig('20270705000000_sales_visit_meeting_stage.sql'))
+  await db.exec(mig('20270710000000_sales_visit_meeting_stage.sql'))
   const stageOf = id => scalar(`select stage from public.sales_leads where id = $1`, [id])
 
   await step('ClickUp leads from Important Bulk / Bulk still where the import put them move to Potential Clients, by nobody', async () => {

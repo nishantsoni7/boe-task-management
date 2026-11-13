@@ -74,7 +74,7 @@ export function eventLine(e: LeadEvent): React.ReactNode {
 }
 
 // The website capture, the WhatsApp capture ("WhatsApp chat", "WhatsApp ad: <headline>"), and the allotment rule (whose
-// allot lines alone carry a reason), act with nobody behind them. So does 20270705000000's one-off move of the ClickUp
+// allot lines alone carry a reason), act with nobody behind them. So does 20270710000000's one-off move of the ClickUp
 // Important Bulk / Bulk leads to Potential Clients.
 const byItself = (e: LeadEvent) =>
   e.detail === 'website form' || FROM_WHATSAPP.test(e.detail ?? '') || (!!e.detail && (e.kind === 'allotted' || e.kind === 'reassigned'))

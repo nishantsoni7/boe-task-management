@@ -83,7 +83,7 @@ describe('the activity feed', () => {
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const MIGRATION = read('supabase/migrations/20270525000000_sales_lead_board.sql') + read('supabase/migrations/20270526000100_sales_go_live.sql')
-  + read('supabase/migrations/20270705000000_sales_visit_meeting_stage.sql')
+  + read('supabase/migrations/20270710000000_sales_visit_meeting_stage.sql')
 
 const TODAY = '2026-11-03'
 const NOW = Date.parse('2026-11-03T06:00:00Z')
@@ -184,7 +184,7 @@ describe('the stage checklist', () => {
   test('the owner\'s stages, in the owner\'s order (2026-11-13)', () => {
     assert.deepEqual(PATH_STAGES.map(stageLabel), ['New', 'Under Process', 'Visit / Meeting', 'Potential Clients', 'Negotiation'])
     assert.deepEqual(STAGES.map(x => x.key), ['new', 'under_process', 'visit_meeting', 'potential', 'negotiation', 'follow_up_later', 'converted', 'dead'])
-    const sql = read('supabase/migrations/20270705000000_sales_visit_meeting_stage.sql')
+    const sql = read('supabase/migrations/20270710000000_sales_visit_meeting_stage.sql')
     assert.ok(sql.includes("'new', 'under_process', 'visit_meeting', 'potential', 'negotiation', 'follow_up_later', 'converted', 'dead'"))
   })
   test('counts what is left', () => {

@@ -1,4 +1,4 @@
--- 20270705000000_sales_visit_meeting_stage.sql
+-- 20270710000000_sales_visit_meeting_stage.sql
 --
 -- Sales, Lead Board: a Visit / Meeting stage, and the ClickUp leads that were Important Bulk, Bulk or Potential
 -- Customers move to Potential Clients (owner, 2026-11-13, with the round-3 preview approved).

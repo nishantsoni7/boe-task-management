@@ -3,7 +3,7 @@ import { istAddDays } from '@/lib/istDate'
 // Sales, Lead Board: the words and the small rules My day, the board and the lead panel share. The database is the
 // authority on what may happen (20270525000000_sales_lead_board.sql); nothing here decides that.
 
-// The owner's names and order (2026-11-13). Visit / Meeting is new (20270705000000); the keys of the others never change.
+// The owner's names and order (2026-11-13). Visit / Meeting is new (20270710000000); the keys of the others never change.
 export const STAGES = [
   { key: 'new', label: 'New' },
   { key: 'under_process', label: 'Under Process' },
@@ -187,7 +187,7 @@ export type CheckItem = { fact: NeededFact; label: string; value: string | null;
 /** What this lead needs before its next stage. Null when the next step of the sale has no checklist. */
 export function checklistFor(lead: Facts, quotationSent: boolean): { to: Stage; items: CheckItem[]; left: number } | null {
   const to = NEXT_STAGE[lead.stage as Stage]
-  // Visit / Meeting asks for nothing first (20270705000000).
+  // Visit / Meeting asks for nothing first (20270710000000).
   if (!to || to === 'visit_meeting') return null
   const item = (fact: NeededFact, value: string | null, done = value !== null): CheckItem => ({ fact, label: FACT_LABELS[fact], value, done })
   const items = to === 'under_process'
