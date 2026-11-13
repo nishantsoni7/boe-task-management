@@ -161,14 +161,14 @@ describe('desktop: the owner\'s columns (2026-10)', () => {
     assert.ok(!r.includes('More actions'), 'no menu: every action is its own icon')
   })
 
-  test('Order / PI: every destination of the payment, one line each with its own amount', () => {
+  test('Order / PI: every destination of the payment, one line each, by name', () => {
     // Owner 2026-11-12: the table says which Order / PI Draft / old order each
     // payment was recorded against, several lines when it is split.
     const r = rowOf(desktop, '0003')
     assert.equal([...r.matchAll(/role="listitem"/g)].length, 3, 'one line per destination (duplicates combined)')
-    assert.ok(/Order 0425<\/a>.*?₹2,00,000\.00/.test(r), 'the two 0425 rows summed, and a link: this reader may open it')
-    assert.ok(/Order 0431<\/span>.*?₹1,50,000\.00/.test(r), 'plain text where the reader may not open it')
-    assert.ok(/PI Draft · Hotel ABC\.xlsx<\/span>.*?₹50,000\.00/.test(r))
+    assert.ok(/Order 0425<\/a>/.test(r), 'the two 0425 rows combined, and a link: this reader may open it')
+    assert.ok(/Order 0431<\/span>/.test(r), 'plain text where the reader may not open it')
+    assert.ok(/PI Draft · Hotel ABC\.xlsx<\/span>/.test(r))
     assert.ok(r.includes('3 allocations'))
     assert.ok(!r.includes('0999'), 'the obsolete single-Order field is not read')
   })
@@ -177,7 +177,26 @@ describe('desktop: the owner\'s columns (2026-10)', () => {
     assert.ok(rowOf(desktop, '0001').includes('Not allocated'))
     const one = rowOf(desktop, '0002')
     assert.equal([...one.matchAll(/role="listitem"/g)].length, 1)
-    assert.ok(/Order 0425<\/a>.*?₹5,00,000\.00/.test(one))
+    assert.ok(/Order 0425<\/a>/.test(one))
+  })
+
+  test('Order / PI shows NO amounts: the Amount column and the allocation popup carry them (owner, 2026-11-13)', () => {
+    // The live screen repeated the Amount for every one-Order payment, in a
+    // column too narrow for it. What the reader sees is names only; the list's
+    // accessible name still carries the figures, and the popup lists each one.
+    const seen = (id: string, fill = false) => {
+      const html = cell(viewFor(ROWS.find(p => p.id === id)!), fill)
+      return { html, text: html.replace(/<[^>]*>/g, ' ') }
+    }
+    for (const id of ['0002', '0003', '0004', '0005']) {
+      for (const fill of [false, true]) {
+        assert.ok(!seen(id, fill).text.includes('₹'), `${id}${fill ? ' (card)' : ''}: no amount on screen in the cell`)
+      }
+    }
+    assert.ok(seen('0004').text.includes('Unallocated'), 'a part-allocated payment keeps the amber word, without its figure')
+    assert.ok(seen('0003').html.includes('₹2,00,000.00'), 'the accessible name keeps the figures')
+    const p = popup('0003')
+    for (const amount of ['₹2,00,000.00', '₹1,50,000.00', '₹50,000.00']) assert.ok(p.includes(amount), `the popup lists ${amount}`)
   })
 
   test('Allocation status is one small icon in the table: the words are in its name, not on screen', () => {
@@ -281,12 +300,14 @@ describe('mobile cards', () => {
     }
   })
 
-  test('Allocated Against is shown, stacked, with each amount', () => {
+  test('Allocated Against is shown, stacked, by name (no amounts: they are in the allocation popup)', () => {
     const c = rowOf(mobile, '0003')
     assert.ok(c.includes('Allocated Against'))
     assert.ok(c.includes('3 allocations'))
     assert.equal([...c.matchAll(/role="listitem"/g)].length, 3)
-    for (const amount of ['₹2,00,000.00', '₹1,50,000.00', '₹50,000.00']) assert.ok(c.includes(amount), amount)
+    for (const name of ['Order 0425', 'Order 0431', 'PI Draft · Hotel ABC.xlsx']) assert.ok(c.includes(name), name)
+    const visible = c.slice(c.lastIndexOf('<', c.indexOf('role="list"'))).replace(/<[^>]*>/g, ' ')
+    for (const amount of ['₹2,00,000.00', '₹1,50,000.00', '₹50,000.00']) assert.ok(!visible.includes(amount), `${amount} is not on the card`)
   })
 
   test('Payment ID, amount, date, mode, status and permitted actions remain', () => {
