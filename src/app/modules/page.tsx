@@ -54,6 +54,7 @@ import { PunchStrip } from './PunchStrip'
 import { DayStrip } from './DayStrip'
 import { ScoreCard } from '@/components/scoreboard/ScoreCard'
 import { VoteCard } from '@/components/scoreboard/VoteCard'
+import { StarSellerCard } from '@/components/scoreboard/StarSellerCard'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -953,6 +954,8 @@ export default function BoeOsHomePage() {
           {!editingOrder && <ScoreCard enabled={!viewMode} />}
           {/* The monthly team vote: only while it is open (the month's last 3 days), only for the scored. */}
           {!editingOrder && <VoteCard enabled={!viewMode} />}
+          {/* The Star Seller's Super Priority: last month's winner and their Factory Focus pick. */}
+          {!editingOrder && <StarSellerCard enabled={!viewMode} />}
 
           {/* ── Quick actions, small screens only ──
               Above the Modules heading because its whole reason for existing is

@@ -183,6 +183,33 @@ Both tables are closed to the browser.
 - `review.test.ts`: 9 tests.
 - `scoreboard_monthly_review_pglite.mjs`: 5 checks.
 
-**Not built:**
-- The Star Seller's Super Priority slot in Factory Focus. It is an Orders module change: Factory Focus is owner-only in `select_order_for_factory_focus`.
-- Retiring the old Performance pages and launcher card.
+**Not built:** retiring the old Performance pages and launcher card.
+
+## 10. The Star Seller's Super Priority (`20270628000000`, slice 4)
+
+**What it is.** Last month's **announced** Star Seller puts **one of their own open Orders** into Factory Focus, once per award. It stays there until dispatched, or until the owner removes it with a reason.
+
+**Screen.** `StarSellerCard` on `/modules` and the Task dashboard:
+- For everybody: the winner and their pick (Order number, their line). Never the client or the value: that is the Factory Focus rule for people who cannot open the Order.
+- For the Star Seller, before they pick: a list of their own open Orders and the pick.
+
+**Database.**
+- `order_factory_focus_selections` gains `kind` ('owner' | 'star_seller') and `award_month`. A unique index allows one Star Seller pick per award month.
+- `scoreboard_star_seller(month)` names the Star Seller of a **frozen** month.
+- `order_factory_focus_guard` is restated (its last definition was `20270221000000`) with one added branch. The Star Seller branch requires the announced Star Seller, their own open Order, and the person making the pick to be that seller.
+- The owner's 2-a-month limit now counts only `kind = 'owner'`. The owner's own rules are otherwise word for word.
+- `kind` and `award_month` can never be rewritten.
+
+**Who writes it.** `/api/scoreboard/star-seller`, on the service role with the actor from the token. The guard checks again whatever the writer.
+
+**Orders module impact.** The pick appears in the existing Factory Focus list on the Orders dashboard, through `orders_dashboard_summary`, which was not changed. It is not labelled "Star Seller" there; the Scoreboard cards carry the name.
+
+**Tests.** `star_seller_focus_pglite.mjs`, 6 checks:
+- who may pick;
+- one pick per award;
+- the owner's limit is unchanged and does not count the Star Seller's pick;
+- an ordinary pick is still the owner's alone;
+- no rewriting, and removal is owner-only;
+- the migration is safe to run again.
+
+The Factory Focus table and its original guard are built from `20270221000000` itself.

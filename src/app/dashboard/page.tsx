@@ -17,6 +17,7 @@ import { useViewAs } from '@/hooks/useViewAs'
 import { DayCard } from '@/components/dayClose/DayCard'
 import { ScoreCard } from '@/components/scoreboard/ScoreCard'
 import { VoteCard } from '@/components/scoreboard/VoteCard'
+import { StarSellerCard } from '@/components/scoreboard/StarSellerCard'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useActiveUsers, warmMyTasksCaches } from '@/hooks/queries/useMyTasks'
 import { useTopTasks, type TopTasksData } from '@/hooks/queries/useTopTasks'
@@ -559,6 +560,7 @@ export default function DashboardPage() {
             on, and never while previewing somebody else: the card is the signed-in person's own day. ── */}
         <ScoreCard enabled={!viewAsUserId} />
         <VoteCard enabled={!viewAsUserId} />
+        <StarSellerCard enabled={!viewAsUserId} />
         <DayCard enabled={!viewAsUserId} />
 
         {/* ── Today's Focus — full-width hero panel ── */}
