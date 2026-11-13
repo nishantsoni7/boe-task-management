@@ -2,8 +2,8 @@
 
 import { formatINR } from '@/lib/currency'
 import { istDateOf } from '@/lib/istDate'
-import type { GstMode, QuoteArea, QuoteLine } from '@/lib/quotations/math'
-import { computeTotals, formatDateIN, sizeInInches, validUntil } from '@/lib/quotations/math'
+import type { DimensionUnit, GstMode, QuoteArea, QuoteLine } from '@/lib/quotations/math'
+import { computeTotals, formatDateIN, sizeInInches, sizeWithUnit, toDimensionUnit, validUntil } from '@/lib/quotations/math'
 import { CLOSING, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS } from '@/lib/quotations/terms'
 import d from './document.module.css'
 import { Pic } from './Pic'
@@ -19,6 +19,10 @@ export type DocData = {
   client_name: string
   project_name: string | null
   contact_name: string | null
+  /** Printed under "Prepared for" when set. A copy sent before 20270714000000 has neither, and no unit: inches. */
+  company_name?: string | null
+  client_gstin?: string | null
+  dimension_unit?: DimensionUnit | null
   salesperson: string | null
   gst_mode: GstMode
   discount_pct: number
@@ -30,10 +34,12 @@ export type DocData = {
   lines: QuoteLine[]
 }
 
-const inches = (t: string) => { const v = sizeInInches(t); return v ? `${v.join(' × ')} in` : '' }
+// The inches line is only for sizes written with their own unit in an inches quotation (6'0" × 6'6" → 72 × 78 in).
+const inches = (t: string, unit: DimensionUnit) => { const v = unit === 'in' ? sizeInInches(t) : null; return v ? `${v.join(' × ')} in` : '' }
 
 export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUrl: (path: string) => string }) {
   const t = computeTotals(doc, doc.areas, doc.lines)
+  const unit = toDimensionUnit(doc.dimension_unit)
   const issued = istDateOf(doc.issued_at)
   const groups: { area: QuoteArea | null; lines: QuoteLine[] }[] = [
     ...doc.areas.map(a => ({ area: a, lines: doc.lines.filter(l => l.area_key === a.key) })),
@@ -48,7 +54,7 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
       </header>
 
       <section className={d.facts}>
-        <div><div className={d.label}>Prepared for</div><div className={d.big}>{doc.client_name}</div>{doc.project_name && <div>{doc.project_name}</div>}{doc.contact_name && <div className={d.muted}>Attn. {doc.contact_name}</div>}</div>
+        <div><div className={d.label}>Prepared for</div><div className={d.big}>{doc.client_name}</div>{doc.company_name && <div>{doc.company_name}</div>}{doc.client_gstin && <div className={d.muted}>GSTIN {doc.client_gstin}</div>}{doc.project_name && <div>{doc.project_name}</div>}{doc.contact_name && <div className={d.muted}>Attn. {doc.contact_name}</div>}</div>
         <div><div className={d.label}>Date</div><div>{formatDateIN(issued)}</div><div className={d.label} style={{ marginTop: 6 }}>Valid until</div><div>{formatDateIN(validUntil(issued, doc.valid_days))}</div></div>
         <div><div className={d.label}>Sales person</div><div>{doc.salesperson ?? 'Best of Exports'}</div><div className={d.label} style={{ marginTop: 6 }}>Products</div><div className={d.num}>{doc.lines.filter(l => !l.is_optional).length} lines · {t.pieces.toLocaleString('en-IN')} pieces</div></div>
       </section>
@@ -68,7 +74,7 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
                     <td>{l.image_path ? <Pic className={d.pic} src={pictureUrl(l.image_path)} alt={l.name} /> : null}</td>
                     <td>
                       <div className={d.pname}>{l.name}{l.is_optional && <span className={d.opt}> · optional, not in the total</span>}</div>
-                      {l.size_text && <div className={d.num}>{l.size_text}{inches(l.size_text) && <span className={d.muted}> ({inches(l.size_text)})</span>}</div>}
+                      {l.size_text && <div className={d.num}>{sizeWithUnit(l.size_text, unit)}{inches(l.size_text, unit) && <span className={d.muted}> ({inches(l.size_text, unit)})</span>}</div>}
                       {[l.material, l.finish].filter(Boolean).length > 0 && <div>{[l.material, l.finish].filter(Boolean).join(' · ')}</div>}
                       {l.spec && <div className={d.spec}>{l.spec}</div>}
                       {l.client_note && <div className={d.note}>Note: {l.client_note}</div>}

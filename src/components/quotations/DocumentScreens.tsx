@@ -38,6 +38,7 @@ export function PrintScreen() {
       <QuotationDocument pictureUrl={path => pictureUrl(supabase, path)} doc={{
         quote_no: x.quote_no, issued_at: x.sent_at ?? x.created_at, valid_days: x.header.valid_days, client_name: x.header.client_name,
         project_name: x.header.project_name || null, contact_name: x.header.contact_name || null, salesperson: x.owner_name,
+        company_name: x.header.company_name || null, client_gstin: x.header.client_gstin || null, dimension_unit: x.header.dimension_unit,
         gst_mode: x.header.gst_mode, discount_pct: x.header.discount_pct, fabric_amount: x.header.fabric_amount,
         packing_amount: x.header.packing_amount, transport_note: x.header.transport_note || null, notes: x.header.notes || null,
         areas: x.areas, lines: x.lines,

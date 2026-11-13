@@ -89,6 +89,17 @@ await db.exec(`create table public.tasks (id uuid primary key default gen_random
   city_project text, created_at timestamptz not null default now(), last_update_at timestamptz);`)
 await db.exec(mig('20270629000000_quotation_links.sql'))
 
+// Rows written the way phase 1 wrote them (a note for the client on the line), BEFORE 20270714000000 runs: the migration
+// must copy each note to the end of its Remarks text. The fixture is checked and deleted right after the helpers below.
+const FOLD = '00000000-0000-0000-0000-00000000f001'
+await db.exec(`insert into public.quotations (id, quote_no, client_name, owner_id, created_by) values ('${FOLD}', 'QT-ZZ-99001', 'Note Copy Test', '${U.sales}', '${U.sales}');
+  insert into public.quotation_lines (quotation_id, position, name, spec, qty_fixed, tax_rate, client_note) values
+    ('${FOLD}', 0, 'Both', 'Teak, walnut finish', 1, 18, 'Deliver in two lots'),
+    ('${FOLD}', 1, 'Note only', null, 1, 18, 'Matching the sample'),
+    ('${FOLD}', 2, 'Spec only', 'Plain', 1, 18, null),
+    ('${FOLD}', 3, 'Longest', '${'x'.repeat(1000)}', 1, 18, '${'y'.repeat(500)}');`)
+await db.exec(mig('20270714000000_quotation_builder_fields.sql'))
+
 let checks = 0
 const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
 async function as(uid, sql, params = [], role = 'authenticated') {
@@ -100,6 +111,16 @@ const rpc = async (uid, fn, ...args) => {
   const ph = args.map((_, i) => `$${i + 1}`).join(', ')
   const r = await as(uid, `select public.${fn}(${ph}) as r`, args)
   return r.rows[0].r
+}
+
+// ── 20270714000000: the note for the client was copied into Remarks, nothing lost ──
+{
+  const r = await db.query(`select name, spec, client_note from public.quotation_lines where quotation_id = '${FOLD}' order by position`)
+  assert.deepEqual(r.rows.map(x => [x.name, x.spec, x.client_note]), [
+    ['Both', 'Teak, walnut finish\nDeliver in two lots', null], ['Note only', 'Matching the sample', null], ['Spec only', 'Plain', null],
+    ['Longest', 'x'.repeat(1000) + '\n' + 'y'.repeat(500), null]])
+  await db.query(`delete from public.quotations where id = '${FOLD}'`)
+  ok('every note for the client was copied to the end of its Remarks text (the longest too) and cleared')
 }
 
 // The real Resort Shamshabad quote (Base44 QT-MVTPTT9W): two room types and four of its sixteen lines.
@@ -569,5 +590,52 @@ assert.equal(Number(rev.confirmed), await countWhere(`q.status = 'confirmed'`))
 assert.equal(rev.buckets.reduce((t, b) => t + Number(b.n), 0), Number(rev.confirmed))
 await fails(U.nobody, `select public.quotation_report_revisions($1::date, $1::date, 'all')`, [today], /QUOTATIONS_FORBIDDEN/)
 ok('revisions to win counts the versions of every confirmed quotation in the period')
+
+// ── 20270714000000: client email, company name, GSTIN and the dimensions unit ──
+{
+  const id = await rpc(U.sales, 'quotation_create', { client_name: 'Fields Hotel' })
+  const g0 = await rpc(U.sales, 'quotation_get', id)
+  assert.deepEqual([g0.quotation.dimension_unit, g0.quotation.client_email, g0.quotation.company_name, g0.quotation.client_gstin], ['in', null, null, null])
+  const line = { name: 'Zebra stool', size_text: '83 x 68', qty_fixed: 1, unit_price: 40000, tax_rate: 18 }
+  const header = { client_name: 'Fields Hotel', valid_days: 7, gst_mode: 'igst', supply_state: 'Telangana' }
+  await rpc(U.sales, 'quotation_save', id, { expected_updated_at: g0.quotation.updated_at, header: { ...header, client_email: '  buyer@fields.example ', company_name: 'Fields Hospitality Pvt Ltd', client_gstin: '36aaaaa0000a1z5', dimension_unit: 'cm' }, areas: [], lines: [line] })
+  const g1 = await rpc(U.sales, 'quotation_get', id)
+  assert.deepEqual([g1.quotation.client_email, g1.quotation.company_name, g1.quotation.client_gstin, g1.quotation.dimension_unit],
+    ['buyer@fields.example', 'Fields Hospitality Pvt Ltd', '36AAAAA0000A1Z5', 'cm'])
+  ok('save stores the email, company name, GSTIN (upper case) and the unit, and quotation_get returns them')
+
+  // A browser tab opened before the migration sends none of the four: what is stored must stay.
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [line] })
+  const g2 = await rpc(U.sales, 'quotation_get', id)
+  assert.deepEqual([g2.quotation.client_email, g2.quotation.company_name, g2.quotation.client_gstin, g2.quotation.dimension_unit],
+    ['buyer@fields.example', 'Fields Hospitality Pvt Ltd', '36AAAAA0000A1Z5', 'cm'])
+  await rpc(U.sales, 'quotation_save', id, { header: { ...header, client_email: '', company_name: '' }, areas: [], lines: [line] })
+  assert.equal((await rpc(U.sales, 'quotation_get', id)).quotation.client_email, null, 'an empty box clears the field')
+  ok('a save that does not send the new fields keeps them; an empty box clears one')
+
+  await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [id, { header: { ...header, dimension_unit: 'm' }, areas: [], lines: [line] }], /QUOTATION_INVALID/)
+  await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [id, { header: { ...header, client_gstin: 'G'.repeat(21) }, areas: [], lines: [line] }], /QUOTATION_INVALID/)
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [{ ...line, spec: 's'.repeat(1600) }] })
+  await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [id, { header, areas: [], lines: [{ ...line, spec: 's'.repeat(1601) }] }], /QUOTATION_INVALID/)
+  ok('the unit is inches or centimetres only; Remarks may be 1,600 characters, not 1,601')
+
+  await rpc(U.sales, 'quotation_save', id, { header: { ...header, company_name: 'Fields Hospitality Pvt Ltd' }, areas: [], lines: [line] })
+  const tok = await rpc(U.sales, 'quotation_share', id, true)
+  const p = (await as(null, `select public.quotation_public($1) as r`, [tok], 'anon')).rows[0].r
+  assert.deepEqual([p.company_name, p.client_gstin, p.dimension_unit], ['Fields Hospitality Pvt Ltd', '36AAAAA0000A1Z5', 'cm'])
+  for (const k of ['client_email', 'contact_phone', 'internal_notes']) assert.ok(!(k in p), `client view must not carry ${k}`)
+  ok('the client link shows company name, GSTIN and the unit, never the email or the phone')
+
+  // An inches quotation without a company freezes the same copy as before the migration: no new keys, so a missing unit reads as inches.
+  const id2 = await rpc(U.sales, 'quotation_create', { client_name: 'Plain Hotel' })
+  await rpc(U.sales, 'quotation_save', id2, { header: { client_name: 'Plain Hotel', valid_days: 7, gst_mode: 'igst' }, areas: [], lines: [line] })
+  const tok2 = await rpc(U.sales, 'quotation_share', id2, true)
+  const p2 = (await as(null, `select public.quotation_public($1) as r`, [tok2], 'anon')).rows[0].r
+  for (const k of ['company_name', 'client_gstin', 'dimension_unit']) assert.ok(!(k in p2), `${k} is left out when it is not set`)
+  await fails(U.sales, `select public.quotation_version_create($1::uuid, null)`, [id2], /nothing has changed/)
+  await rpc(U.sales, 'quotation_save', id2, { header: { client_name: 'Plain Hotel', valid_days: 7, gst_mode: 'igst', dimension_unit: 'cm' }, areas: [], lines: [line] })
+  assert.equal(await rpc(U.sales, 'quotation_version_create', id2, null), 2, 'switching the unit is a change that can be sent')
+  ok('an inches quotation without a company sends the same copy as before; switching the unit counts as a change')
+}
 
 console.log(`all ${checks} checks passed`)

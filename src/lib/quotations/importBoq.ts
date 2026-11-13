@@ -214,10 +214,10 @@ export function addToQuote(rows: readonly ImportRow[], areas: readonly QuoteArea
     const area_key = keyFor(r.room.trim(), r.rooms)
     return {
       // Cut to the database's limits (20270614000000), so an imported line can always be saved.
-      key: newKey(), area_key, name: r.name.trim().slice(0, 160), size_text: r.size.slice(0, 80), spec: r.spec.slice(0, 1000),
+      key: newKey(), area_key, name: r.name.trim().slice(0, 160), size_text: r.size.slice(0, 80), spec: [r.spec.trim(), r.note.trim()].filter(Boolean).join('\n').slice(0, 1600),
       material: r.material.slice(0, 120), finish: r.finish.slice(0, 120), category: '',
       qty_mode: area_key ? r.qtyMode : 'fixed', qty: Math.min(100000, Math.round((r.qty ?? 1) * 100) / 100) || 1, unit_price: null, tax_rate: 18,
-      image_path: picturePaths.get(r.id) ?? null, is_optional: false, client_note: r.note.slice(0, 500), internal_note: '',
+      image_path: picturePaths.get(r.id) ?? null, is_optional: false, client_note: '', internal_note: '', // the file's own note joins the Remarks text: the builder has no separate note for the client (20270714000000)
     }
   })
   return { areas: outAreas, lines }

@@ -13,6 +13,8 @@ type DocLine = Parameters<typeof toLines>[0][number]
 export type VersionDoc = {
   client_name: string; project_name: string | null; gst_mode: GstMode; discount_pct: number; fabric_amount: number
   packing_amount: number; transport_note: string | null; valid_days: number; notes: string | null
+  /** Missing in a copy frozen before 20270714000000 (and for an inches quotation without them): none / inches. */
+  company_name?: string | null; client_gstin?: string | null; dimension_unit?: string | null
   areas: DocArea[]; lines: DocLine[]
 }
 
@@ -58,6 +60,9 @@ export function compareDocs(a: VersionDoc, b: VersionDoc): Comparison {
   h('Transport', a.transport_note, b.transport_note)
   h('GST', a.gst_mode, b.gst_mode, v => (v === 'igst' ? 'IGST' : 'CGST + SGST'))
   h('Valid for (days)', a.valid_days, b.valid_days)
+  h('Dimensions in', a.dimension_unit === 'cm' ? 'cm' : 'in', b.dimension_unit === 'cm' ? 'cm' : 'in', v => (v === 'cm' ? 'Centimetres' : 'Inches'))
+  h('Company name', a.company_name, b.company_name)
+  h('GSTIN', a.client_gstin, b.client_gstin)
   h('Notes for the client', a.notes, b.notes)
 
   const unmatched = [...B.refs]
@@ -74,7 +79,7 @@ export function compareDocs(a: VersionDoc, b: VersionDoc): Comparison {
     c('Size', x.l.size_text, y.l.size_text)
     c('Material', x.l.material, y.l.material)
     c('Finish', x.l.finish, y.l.finish)
-    c('Specification', x.l.spec, y.l.spec)
+    c('Remarks / customization', x.l.spec, y.l.spec)
     c('GST rate', x.l.tax_rate, y.l.tax_rate, v => `${v}%`)
     c('Optional', x.l.is_optional, y.l.is_optional, v => (v ? 'yes' : 'no'))
     c('Picture', x.l.image_path ? 'yes' : '', y.l.image_path === x.l.image_path ? (x.l.image_path ? 'yes' : '') : y.l.image_path ? 'changed' : 'removed')

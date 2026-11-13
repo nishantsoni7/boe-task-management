@@ -1,6 +1,6 @@
 import type { createClient } from '@/lib/supabase/client'
 import { toJpeg } from '@/lib/inventory/images'
-import type { GstMode, QtyMode, QuoteArea, QuoteLine } from './math'
+import { toDimensionUnit, type DimensionUnit, type GstMode, type QtyMode, type QuoteArea, type QuoteLine } from './math'
 
 // Thin typed wrappers over the database functions of 20270614000000. No API route in between: every function
 // reads auth.uid() itself, so the browser's own session is the identity. The client link uses the same client
@@ -34,6 +34,8 @@ export type Header = {
   client_name: string; project_name: string; contact_name: string; contact_phone: string; contact_role: string
   client_type: string; supply_state: string; gst_mode: GstMode; discount_pct: number; fabric_amount: number
   packing_amount: number; transport_note: string; valid_days: number; notes: string; internal_notes: string
+  /** 20270714000000. The email stays internal (never printed or shown on the client link); company name and GSTIN print under "Prepared for". */
+  client_email: string; company_name: string; client_gstin: string; dimension_unit: DimensionUnit
 }
 
 export type QuotationEvent = { kind: string; detail: Record<string, unknown>; at: string; actor_name: string | null }
@@ -74,6 +76,8 @@ export type PublicQuotation = {
   quote_no: string; status: QuotationStatus; client_name: string; project_name: string | null; contact_name: string | null
   gst_mode: GstMode; discount_pct: number; fabric_amount: number; packing_amount: number; transport_note: string | null
   valid_days: number; notes: string | null; issued_at: string; salesperson: string | null
+  /** Set only when filled in / not inches (a copy sent before 20270714000000 has none: inches). */
+  company_name?: string | null; client_gstin?: string | null; dimension_unit?: DimensionUnit | null
   /** The version the client is seeing (20270623000000); null for a link shared before versions existed. */
   version_no?: number | null
   areas: QuoteArea[]; lines: QuoteLine[]
@@ -166,6 +170,7 @@ export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation
       supply_state: str('supply_state'), gst_mode: (q.gst_mode as GstMode) || 'igst', discount_pct: Number(q.discount_pct) || 0,
       fabric_amount: Number(q.fabric_amount) || 0, packing_amount: Number(q.packing_amount) || 0, transport_note: str('transport_note'),
       valid_days: Number(q.valid_days) || 7, notes: str('notes'), internal_notes: str('internal_notes'),
+      client_email: str('client_email'), company_name: str('company_name'), client_gstin: str('client_gstin'), dimension_unit: toDimensionUnit(q.dimension_unit),
     },
     areas: toAreas(r.areas), lines: toLines(r.lines), events: r.events, pi: r.pi ?? null, price: r.price ?? null, request: r.request ?? null,
   }
