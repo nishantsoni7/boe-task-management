@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-13 — Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (branch `feat/sales-board-status-dropdown`, not merged) · `20270711000000` → NOT yet applied
+## 2026-11-13 — Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (PR #751, merged 16:50 IST as `6417fe89`) · `20270711000000` → APPLIED by the owner before the merge (run by hand, recorded with `migration repair`)
 - **Owner ask** (screenshots of the live popup): the stage is a "Board status", not a timeline (any status to any other); choose option B, a dropdown. Do not ask for the quantity: ask for an approximate project value before Potential Clients, and the project value (if empty) and the expected timeline before Negotiation. The update box should have a round focus border.
 - **Built.** Dossier rule 35. The popup's stage bar, Move to next and Converted / Dead buttons are replaced by one Board status dropdown; the facts are called Project value (approx.) and Expected timeline.
 - **Database.** `move_sales_lead` re-issued from 20270710000000 with the fact lines only: no table or data change, so a same-day verified backup is enough. Apply by hand (`db push` would also push 20270624-0628).
