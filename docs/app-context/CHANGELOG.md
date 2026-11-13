@@ -19,7 +19,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Proof.** `sales_full_flow_pglite.mjs`: 122 checks (5 new: Admin never held by default, ticked Admin listed / allotted / works the lead, tick off removes them and keeps the lead, others unchanged, function still internal); a negative control without the migration fails the two Admin-ticked checks (`can_hold:false`); `team.test.ts`; the two migration ledgers.
 - **Rollback.** Re-run the 20270529000000 definition of `sales_lead_can_hold` (header of the migration). Leads already given to an Admin stay with them.
 
-## 2026-11-13 — Bank Statements: a reversed card debit no longer stops the upload (branch `fix/bank-statement-reversal-lines`, PR not yet opened) · no SQL
+## 2026-11-13 — Bank Statements: a reversed card debit no longer stops the upload (PR #743, merged 2026-11-13 as `48b0cd83` at 12:40 IST, production deployment succeeded 12:43 IST) · no SQL
 - **Owner report.** Uploading the HDFC PRI statement to 13 Nov failed with "Line 2 (2026-11-03) must have exactly one of withdrawal or deposit."
 - **Cause.** HDFC wrote a Vercel reversal as a NEGATIVE withdrawal (`-47.64`, balance up). The parser refused any negative amount.
 - **Fix.** `parseHdfcStatement` stores a negative withdrawal as a deposit; the summary totals check subtracts reversals from both sides (the bank counts them inside Debits). Balance chain and database rules unchanged. A negative deposit is still refused.

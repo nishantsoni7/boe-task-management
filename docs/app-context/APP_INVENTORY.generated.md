@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `15257dfe` — Docs: one blank line between changelog entries after the merge
-- Commits on this branch: 1306
+- Commit: `b7435483` — Docs: merge main into the stamp branch; regenerate the app inventory
+- Commits on this branch: 1305
 - Pages (`page.tsx`): 192   API routes (`route.ts`): 204
 - Migrations: 449 (first `20260530_create_positions.sql`, latest `20270703000100_sales_comments_and_due_dates.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,11 +14,10 @@
 
 ## Latest 25 commits
 
-- `15257dfe` 2026-11-13 Docs: one blank line between changelog entries after the merge
-- `97ff8cd5` 2026-11-13 Merge main (#743) into this branch: keep both changelog entries, regenerate the inventory
+- `b7435483` 2026-11-13 Docs: merge main into the stamp branch; regenerate the app inventory
+- `0e188497` 2026-11-13 Sales: an Admin can be given leads when ticked; auto-allot switch on the Lead Master (migration 20270703000000) (#741)
+- `32bc53cb` 2026-11-13 Docs: stamp #743 (bank statement reversal lines) as merged 48b0cd83, deployed 12:43 IST (no SQL)
 - `48b0cd83` 2026-11-13 Bank Statements: a reversed card debit no longer stops the upload (no SQL) (#743)
-- `76bfa461` 2026-11-13 Docs: regenerate the app inventory after rebasing on main
-- `724ad7f1` 2026-11-13 Sales: the lead opens as a centered popup with one update box; follow-ups on the next working day; No answer moves a New lead on (migration 20270703000100)
 - `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
 - `a4750ab7` 2026-11-13 Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom (migration 20270702000000) (#739)
 - `7ba4b29b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps) (no SQL) (#738)
@@ -39,6 +38,7 @@
 - `bc56cccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
 - `ce42144b` 2026-11-13 Docs: record the merge of #723 (Operations locked while with Sales) (#725)
 - `dde7f4c3` 2026-11-13 Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
+- `1d6b9184` 2026-11-13 Payroll and the My pages read your own row once (#720)
 
 ## Pages by top-level area
 
