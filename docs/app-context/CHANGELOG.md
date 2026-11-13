@@ -66,7 +66,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - `scoreboard_vote_rating_pglite.mjs`: 5 checks.
   - Full `npm test`: 20,711 tests; the 1 failure is `piDetail.render`, which passes alone.
 
-## 2026-11-12 — Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (PR 2 of 2, built on PR 1) · `20270701000000` → APPLIED 2026-11-13 alone (db query --file + migration repair), after a verified backup and a rolled-back rehearsal
+## 2026-11-12 — Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (PR #719, squash-merged 2026-11-13 as `ebfc7df8`, deployed 08:39 IST; PR 2 of 2, built on PR 1) · `20270701000000` → APPLIED 2026-11-13 alone (db query --file + migration repair), after a verified backup and a rolled-back rehearsal
 - **Owner ask.** Search should find a payment by the order number or PI number it is recorded against and, once it shows the result, show the total confirmed amount of that order; and the client of an old order must be addable and editable.
 - **Built.**
   - **Search** also matches `order_search_text` (a computed field on `finance_received_payments`): every Order number, PI Draft reference or reserved number, the PI an Order came from, and old order number and client of the payment's active allocations. Before, only the one Order the projection names was searchable.
