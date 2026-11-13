@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `0f5b7f63` — Docs: stamp #749 (Visit / Meeting, ClickUp move, Call back) as merged b9b552f7, migration 20270710000000 applied (no SQL) (#750)
-- Commits on this branch: 1311
+- Commit: `6417fe89` — Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (migration 20270711000000) (#751)
+- Commits on this branch: 1312
 - Pages (`page.tsx`): 193   API routes (`route.ts`): 205
 - Migrations: 453 (first `20260530_create_positions.sql`, latest `20270711000000_sales_value_timeline_gates.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `6417fe89` 2026-11-13 Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (migration 20270711000000) (#751)
 - `0f5b7f63` 2026-11-13 Docs: stamp #749 (Visit / Meeting, ClickUp move, Call back) as merged b9b552f7, migration 20270710000000 applied (no SQL) (#750)
 - `b9b552f7` 2026-11-13 Sales: Visit / Meeting stage and the owner's stage names; ClickUp Important Bulk / Bulk leads to Potential Clients; Call back; popup left side redesigned (migration 20270710000000) (#749)
 - `54e54084` 2026-11-13 Docs: record 20270705000000 (Top 5 switch) as applied (no SQL) (#748)
@@ -38,7 +39,6 @@
 - `ebfc7df8` 2026-11-13 Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (migration 20270701000000, applied 13 Nov) (#719)
 - `d31d54fd` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
 - `561c4588` 2026-11-13 Orders: "With Sales" on the Operations queue (#729)
-- `d937dae8` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
 
 ## Pages by top-level area
 
