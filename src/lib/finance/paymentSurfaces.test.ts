@@ -141,16 +141,25 @@ describe('the status list is the database’s, not this module’s', () => {
 // truncated column, and the two money figures because they are halves of one
 // answer that cannot be acted on from a row. Nothing left the QUERY.
 
-describe('Confirmed Payments has exactly eight primary columns, in this order', () => {
+describe('Confirmed Payments has exactly nine primary columns, in this order', () => {
   // REVISED (owner, 2026-10-19): Payment ID, Amount, Client, Received on,
   // Payment mode, Added by, Allocation status, Actions. Where the money went
   // left the row for the popup the Allocation status pill opens.
+  // REVISED AGAIN (owner, 2026-11-12): an Order / PI column after Client says
+  // which Order, PI Draft or old order each payment was recorded against, and
+  // Allocation status shrinks to a small icon.
   test('the order is the specified one, and nothing else is in the primary row', () => {
     assert.deepEqual(CONFIRMED_PAYMENT_COLUMNS.map(c => c.label), [
-      'Payment ID', 'Amount', 'Client', 'Received on', 'Payment mode',
+      'Payment ID', 'Amount', 'Client', 'Order / PI', 'Received on', 'Payment mode',
       'Added by', 'Allocation status', 'Actions',
     ])
-    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 8)
+    assert.equal(CONFIRMED_PAYMENT_COLUMNS.length, 9)
+  })
+
+  test('the Allocation status column is an icon wide, not a word pill wide', () => {
+    const status = CONFIRMED_PAYMENT_COLUMNS.find(c => c.key === 'status')
+    assert.equal(status?.width, '48px')
+    assert.ok(Number.parseInt(String(status?.width), 10) < 60)
   })
 
   test('Approved By is not a table column; the recorder is "Added by"', () => {
@@ -209,7 +218,7 @@ describe('Confirmed Payments has exactly eight primary columns, in this order', 
     // spare pixel. Now it is sized like the rest and its cell truncates.
     const widths = CONFIRMED_PAYMENT_COLUMNS
       .filter(c => 'width' in c).map(c => c.key as string)
-    for (const sized of ['payment_id', 'amount', 'client', 'date', 'mode', 'added_by', 'status', 'actions']) {
+    for (const sized of ['payment_id', 'amount', 'client', 'order', 'date', 'mode', 'added_by', 'status', 'actions']) {
       assert.ok(widths.includes(sized), `${sized} should carry a width hint`)
     }
   })
@@ -286,15 +295,21 @@ describe('Confirmed Payments chooses table or cards from the container it has', 
     assert.ok(CONFIRMED_TABLE_MIN_CONTAINER_PX >= MEASURED_TABLE_MIN + 25)
   })
 
-  test('cards at 320, 375, 768, 1024 and 1280; the table at 1366 and 1440', () => {
+  test('cards at 320 to 1366; the table at 1440 and 1536 (with the sidebar pinned open)', () => {
     // REVISED (2026-10-19): eight columns need ~980px, so a 1280px laptop
     // (~976px content) now gets the cards. Agreed with the owner up front.
-    for (const vw of [320, 375, 768, 1024, 1280]) {
+    // REVISED (2026-11-12): the Order / PI column makes the table ~80px wider,
+    // so a 1366px laptop with the 260px sidebar PINNED open now gets the cards
+    // too (on the 64px hover rail it still gets the table). Said to the owner
+    // in the plan before it was built.
+    for (const vw of [320, 375, 768, 1024, 1280, 1366]) {
       assert.equal(confirmedListMode(cardAt(vw)), 'cards', `${vw}px viewport (card ${cardAt(vw)}px)`)
     }
-    for (const vw of [1366, 1440]) {
+    for (const vw of [1440, 1536]) {
       assert.equal(confirmedListMode(cardAt(vw)), 'table', `${vw}px viewport (card ${cardAt(vw)}px)`)
     }
+    // The hover rail (64px) instead of the pinned sidebar: a 1366px laptop fits the table.
+    assert.equal(confirmedListMode(1366 - 64 - 44), 'table')
   })
 
   test('the boundary is exact', () => {
@@ -307,11 +322,11 @@ describe('Confirmed Payments chooses table or cards from the container it has', 
   })
 
   test('a table seen to overflow is replaced by cards at that width and below', () => {
-    // Widths above the threshold (1045 since 2026-10-29), so only the
+    // Widths above the threshold (1125 since 2026-11-12), so only the
     // remembered overflow can be what draws the cards.
-    assert.equal(confirmedListMode(1100, 1100), 'cards')
-    assert.equal(confirmedListMode(1090, 1100), 'cards')
-    assert.equal(confirmedListMode(1101, 1100), 'table')
+    assert.equal(confirmedListMode(1200, 1200), 'cards')
+    assert.equal(confirmedListMode(1190, 1200), 'cards')
+    assert.equal(confirmedListMode(1201, 1200), 'table')
   })
 
   test('the list measures its own container and checks the rendered table for overflow', () => {

@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `70acf17` — BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
-- Commits on this branch: 64
+- Commit: `3fa33e0b` — Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL)
+- Commits on this branch: 1286
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 203
 - Migrations: 443 (first `20260530_create_positions.sql`, latest `20270627000000_scoreboard_monthly_review.sql`)
 - Tables ever created: 249 (dropped at some point: 8)   SQL functions: 1011   Enums: 0
@@ -14,31 +14,31 @@
 
 ## Latest 25 commits
 
-- `70acf17` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
-- `bc56ccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
-- `ce42144` 2026-11-13 Docs: record the merge of #723 (Operations locked while with Sales) (#725)
-- `dde7f4c` 2026-11-13 Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
-- `1d6b918` 2026-11-13 Payroll and the My pages read your own row once (#720)
-- `db54a23` 2026-11-13 Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
-- `124292b` 2026-11-12 Docs: quotation versions merged as 3c4c8605, 20270623000000 applied (#722)
-- `3c4c860` 2026-11-12 Quotations: versions and compare (migration 20270623000000, renumbered; apply before merge) (#714)
-- `210e60f` 2026-11-12 Docs: record the merge of #716 (Returned to Sales status) (#717)
-- `8eb156e` 2026-11-12 Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (#716)
-- `b3f0ac2` 2026-11-12 Docs: other-modules dedupe merged (#711, #712) and recounted live (#715)
-- `2466d96` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
-- `3e26083` 2026-11-12 Meetings, Review Workflow, Samples and Assets look up permissions once (#712)
-- `72c5797` 2026-11-12 Other modules read your own row once (#711)
-- `8ea2511` 2026-11-12 Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
-- `cccdf39` 2026-11-12 Pricing model v2: prices from parameters, with reasons (migration 20270621000000, apply before merge) (#709)
-- `f92dd80` 2026-11-12 Docs: record the merge of #707 (Finance) and the live recount (#708)
-- `3ff36f7` 2026-11-12 Fewer repeated requests: Finance (#707)
-- `9665229` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
-- `5635226` 2026-11-12 Docs: SEO brief biggest falls merged as a266a005 (#701) (#705)
-- `b46b60f` 2026-11-12 Docs: record the merge of #704 (sent-back status and the salesperson's card) (#706)
-- `b30d3b7` 2026-11-12 Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
-- `a266a00` 2026-11-12 SEO brief: the biggest falls first in the ranking part (#701)
-- `7f60c71` 2026-11-12 Docs: record the merges of #693 and #699 (with #697), and the live recount (#702)
-- `f88f2ad` 2026-11-12 Docs: Pricing price book merged as f88d7033 (#703)
+- `3fa33e0b` 2026-11-12 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL)
+- `70acf170` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
+- `bc56cccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
+- `ce42144b` 2026-11-13 Docs: record the merge of #723 (Operations locked while with Sales) (#725)
+- `dde7f4c3` 2026-11-13 Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
+- `1d6b9184` 2026-11-13 Payroll and the My pages read your own row once (#720)
+- `db54a236` 2026-11-13 Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
+- `124292b3` 2026-11-12 Docs: quotation versions merged as 3c4c8605, 20270623000000 applied (#722)
+- `3c4c8605` 2026-11-12 Quotations: versions and compare (migration 20270623000000, renumbered; apply before merge) (#714)
+- `210e60f8` 2026-11-12 Docs: record the merge of #716 (Returned to Sales status) (#717)
+- `8eb156e4` 2026-11-12 Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (#716)
+- `b3f0ac27` 2026-11-12 Docs: other-modules dedupe merged (#711, #712) and recounted live (#715)
+- `2466d960` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
+- `3e26083e` 2026-11-12 Meetings, Review Workflow, Samples and Assets look up permissions once (#712)
+- `72c57977` 2026-11-12 Other modules read your own row once (#711)
+- `8ea2511c` 2026-11-12 Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
+- `cccdf395` 2026-11-12 Pricing model v2: prices from parameters, with reasons (migration 20270621000000, apply before merge) (#709)
+- `f92dd809` 2026-11-12 Docs: record the merge of #707 (Finance) and the live recount (#708)
+- `3ff36f7a` 2026-11-12 Fewer repeated requests: Finance (#707)
+- `96652298` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
+- `5635226c` 2026-11-12 Docs: SEO brief biggest falls merged as a266a005 (#701) (#705)
+- `b46b60f3` 2026-11-12 Docs: record the merge of #704 (sent-back status and the salesperson's card) (#706)
+- `b30d3b7b` 2026-11-12 Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
+- `a266a005` 2026-11-12 SEO brief: the biggest falls first in the ranking part (#701)
+- `7f60c716` 2026-11-12 Docs: record the merges of #693 and #699 (with #697), and the live recount (#702)
 
 ## Pages by top-level area
 
