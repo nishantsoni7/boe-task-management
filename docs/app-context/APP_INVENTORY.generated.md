@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `2e4ade2e` — Docs: stamp #735 (Confirmed Payments Order / PI column, names only) as merged bab48de7 (#737)
-- Commits on this branch: 1298
+- Commit: `ce228ace` — Docs: record PR #739 in the changelog entry
+- Commits on this branch: 1300
 - Pages (`page.tsx`): 192   API routes (`route.ts`): 204
 - Migrations: 447 (first `20260530_create_positions.sql`, latest `20270702000000_review_rankings_switch.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1019   Enums: 0
-- Test files: 824   Next.js 16.2.6, React 19.2.4
+- Test files: 826   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `ce228ace` 2026-11-13 Docs: record PR #739 in the changelog entry
+- `39aea00f` 2026-11-13 Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom of the page
 - `2e4ade2e` 2026-11-13 Docs: stamp #735 (Confirmed Payments Order / PI column, names only) as merged bab48de7 (#737)
 - `a8a6ec45` 2026-11-13 Scoreboard: fix the "Star" band pill; record the Day Close/Scoreboard migrations' real apply date (no SQL) (#736)
 - `bab48de7` 2026-11-13 Confirmed Payments: the Order / PI column shows names only, no amounts (#735)
@@ -37,8 +39,6 @@
 - `3c4c8605` 2026-11-12 Quotations: versions and compare (migration 20270623000000, renumbered; apply before merge) (#714)
 - `210e60f8` 2026-11-12 Docs: record the merge of #716 (Returned to Sales status) (#717)
 - `8eb156e4` 2026-11-12 Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (#716)
-- `b3f0ac27` 2026-11-12 Docs: other-modules dedupe merged (#711, #712) and recounted live (#715)
-- `2466d960` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
 
 ## Pages by top-level area
 
@@ -148,7 +148,7 @@
 - `src/lib/boeCredits` — 6 source, 9 test
 - `src/lib/controlCenter` — 2 source, 1 test
 - `src/lib/customerReviews` — 30 source, 41 test
-- `src/lib/dayClose` — 4 source, 2 test
+- `src/lib/dayClose` — 5 source, 3 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
 - `src/lib/finance` — 60 source, 75 test

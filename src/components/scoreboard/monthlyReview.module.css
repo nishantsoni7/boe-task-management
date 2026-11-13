@@ -1,0 +1,98 @@
+/* ── Monthly Review (redesign 2026-11-13, owner chose guided steps) ────────────────────────────────────
+   Four steps in the order the work must happen: Standings, Awards, Freeze & announce, Private reviews.
+   One step on screen at a time; the step bar says what is done. Phone: the step bar wraps, cards stack.
+   Gold only for Star; terracotta only on the step's one action. LIGHT ONLY. */
+
+.page { display: flex; flex-direction: column; gap: 18px; max-width: 1100px; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.monthName { font-family: var(--boe-font-heading); font-size: 18px; font-weight: 800; color: #303536; margin: 0 4px; }
+.state { font-size: 14px; color: #4C5352; }
+
+.steps { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; list-style: none; margin: 0; }
+.steps li { flex: 1 1 190px; min-width: 0; display: flex; }
+.step {
+  flex: 1; display: flex; align-items: center; gap: 10px; padding: 10px 12px; min-height: 52px; border-radius: 10px;
+  background: none; border: none; font: inherit; color: #303536; text-align: left; cursor: pointer;
+}
+.step:hover { background: #FAF8F5; }
+.step:focus-visible { outline: 2px solid #B9472E; outline-offset: 1px; }
+.step[aria-current='step'] { background: #F7EDEA; }
+.dot { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-family: var(--boe-font-heading); font-size: 13px; font-weight: 800; background: #EFEDE9; color: #4C5352; }
+.dotDone { background: #E5F0EA; color: #22573F; }
+.dotNow { background: #B9472E; color: #fff; }
+.stepName { display: block; font-size: 14px; font-weight: 700; }
+.stepSub { display: block; font-size: 12.5px; color: #5F6463; }
+
+.section { display: flex; flex-direction: column; gap: 14px; }
+.sectionHead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.h2 { margin: 0; font-family: var(--boe-font-heading); font-size: 20px; font-weight: 800; color: #303536; letter-spacing: -0.01em; }
+.muted { margin: 0; font-size: 13px; color: #5F6463; line-height: 1.5; }
+.card { background: #fff; border: 1px solid #E4DED7; border-radius: 12px; padding: 16px 18px; min-width: 0; }
+
+.nav { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.nav :global(.boe-btn) { min-height: 44px; }
+
+/* Step 1: standings as bars */
+.standRow {
+  display: grid; grid-template-columns: 26px minmax(110px, 180px) minmax(80px, 1fr) 40px 64px; gap: 12px; align-items: center;
+  padding: 10px 0; border-bottom: 1px solid #F1EEE9; font-size: 14px; color: #303536;
+}
+.standRow:last-of-type { border-bottom: none; }
+.rank { font-family: var(--boe-font-heading); font-weight: 800; color: #5F6463; font-variant-numeric: tabular-nums; }
+.who { min-width: 0; overflow-wrap: anywhere; font-weight: 700; }
+.whoSub { display: block; font-size: 12px; font-weight: 500; color: #5F6463; }
+.track { height: 10px; border-radius: 5px; background: #EFEDE9; overflow: hidden; }
+.fill { display: block; height: 100%; border-radius: 5px; }
+.fStar { background: #B98A22; }
+.fStrong { background: #276247; }
+.fSteady { background: #335A86; }
+.fWatch { background: #7C8180; }
+.fRed { background: #B42332; }
+.score { font-family: var(--boe-font-heading); font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+.up { color: #22573F; font-weight: 700; font-variant-numeric: tabular-nums; }
+.down { color: #A61F2D; font-weight: 700; font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12.5px; color: #5F6463; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+@media (max-width: 560px) {
+  .standRow { grid-template-columns: 22px minmax(0, 1fr) 40px 52px; }
+  .standRow .track { grid-column: 2 / -1; grid-row: 2; }
+}
+
+/* Step 2: award cards */
+.awards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; }
+.award { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; min-width: 0; }
+.awardDone { border-color: #BCD8C8; }
+.awardHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.awardName { margin: 0; font-family: var(--boe-font-heading); font-size: 15px; font-weight: 800; color: #303536; }
+.winner { font-size: 17px; font-weight: 700; color: #303536; overflow-wrap: anywhere; }
+.field { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; font-weight: 600; color: #4C5352; }
+.input {
+  width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid #CFC7BD; border-radius: 8px; box-sizing: border-box;
+  font: inherit; font-size: 14px; color: #303536; background: #fff;
+}
+.input:focus-visible { outline: 2px solid #B9472E; outline-offset: 1px; }
+.checks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.check { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; font-size: 14px; color: #303536; }
+.check input { width: 18px; height: 18px; accent-color: #B9472E; }
+.awardActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.awardActions :global(.boe-btn) { min-height: 40px; }
+
+.chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.chipGreen { background: #E5F0EA; color: #22573F; }
+.chipAmber { background: #FBF1DC; color: #7A4F00; }
+.chipRed { background: #FBE9EB; color: #A61F2D; }
+.chipGrey { background: #EFEDE9; color: #4C5352; }
+.chipGold { background: #FAF0DA; color: #6E4E0B; }
+
+/* Step 3: the message and the freeze */
+.freeze { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .freeze { grid-template-columns: minmax(0, 1fr); } }
+.message { margin: 0; background: #E5F0EA; border-radius: 10px; padding: 14px; font: inherit; font-size: 14px; line-height: 1.55; color: #22392E; white-space: pre-wrap; overflow-wrap: anywhere; }
+.list { margin: 0; padding-left: 18px; font-size: 14px; color: #303536; display: flex; flex-direction: column; gap: 4px; }
+.warn { margin: 0; font-size: 13px; font-weight: 600; color: #A61F2D; }
+.ok { margin: 0; font-size: 13px; font-weight: 600; color: #22573F; }
+.wide { width: 100%; min-height: 48px; }
+
+/* Step 4 */
+.reviews { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 14px; }
+.review { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; min-width: 0; }

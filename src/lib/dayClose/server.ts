@@ -396,6 +396,8 @@ export async function loadTeam(caller: Caller, dateParam: string | null, now: Da
     for (const u of r.data ?? []) nameById.set(String(u.id), String(u.full_name ?? 'Unknown'))
   }
 
+  const lockedLeave = await pendingLockedLeave(svc, nameById)
+
   const rows = people.map(p => {
     const plan = planByPerson.get(p.id) ?? null
     const punch = (p.minop_user_id && times.get(p.minop_user_id)) || { checkInAt: null, checkOutAt: null }
@@ -425,7 +427,38 @@ export async function loadTeam(caller: Caller, dateParam: string | null, now: Da
     closeOpens: settings.close_opens_minutes,
     rows,
     openStrikes: openStrikes.map(s => ({ ...s, name: nameById.get(s.employee_id) ?? 'Unknown', label: STRIKE_LABEL[s.kind] })),
+    lockedLeave,
   })
+}
+
+/**
+ * Leave requests still waiting that Day Close locked (work was pending), so only the reviewer can approve
+ * them. Team Today lists them under "Needs your decision"; the approval itself stays on Attendance requests.
+ * A failed read leaves the list empty rather than failing the whole screen.
+ */
+async function pendingLockedLeave(svc: ServiceClient, nameById: Map<string, string>): Promise<{
+  requestId: string; employeeId: string; name: string; requestType: string; startDate: string; endDate: string; words: string
+}[]> {
+  const locks = await svc.from('day_close_leave_locks').select('request_id, employee_id, detail').is('released_at', null).limit(100)
+  if (locks.error || !locks.data?.length) return []
+  const reqs = await svc.from('attendance_requests').select('id, employee_id, request_type, start_date, end_date')
+    .in('id', locks.data.map(l => String(l.request_id))).eq('status', 'pending')
+  if (reqs.error) return []
+  const missing = [...new Set((reqs.data ?? []).map(r => String(r.employee_id)).filter(id => !nameById.has(id)))]
+  if (missing.length) {
+    const u = await svc.from('users').select('id, full_name').in('id', missing)
+    for (const x of u.data ?? []) nameById.set(String(x.id), String(x.full_name ?? 'Unknown'))
+  }
+  const words = new Map(locks.data.map(l => [String(l.request_id), (l.detail as { words?: string } | null)?.words ?? 'work pending']))
+  return (reqs.data ?? []).map(r => ({
+    requestId: String(r.id),
+    employeeId: String(r.employee_id),
+    name: nameById.get(String(r.employee_id)) ?? 'Unknown',
+    requestType: String(r.request_type),
+    startDate: String(r.start_date),
+    endDate: String(r.end_date),
+    words: words.get(String(r.id)) ?? 'work pending',
+  })).sort((a, b) => a.startDate.localeCompare(b.startDate))
 }
 
 // ─── Strike decisions (the reviewer only) ────────────────────────────────────

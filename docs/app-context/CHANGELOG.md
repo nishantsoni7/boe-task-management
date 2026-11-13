@@ -12,6 +12,19 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Proof.** PGlite rehearsal of the migration (19 checks: applies twice, one row, starts hidden, member/deleted/inactive admin/signed-out refused, no direct client write, re-apply keeps the choice); `rankingsSwitch.test.ts`; `navModel.test.ts`.
 - **Rollback.** Revert the PR, then `drop function public.set_review_rankings_visible(boolean); drop table public.review_display_settings;` (header of the migration).
 
+## 2026-11-13 — Team Today and Monthly Review redesigned (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
+- **Owner ask.** "Redesign the new pages of Team Today and Monthly review with better UI… analyze the priority of options… give two previews." The owner chose Option A for both, with Option B's score bars and WhatsApp preview in the review.
+- **Team Today** has three tabs:
+  - **Today:** "Needs your decision" (strikes, and leave locked by pending work, from a new `lockedLeave` list on `/api/day-close/team`) and "The day so far" on top, then one table, worst first. The grouping lives in `src/lib/dayClose/teamView.ts`. A plan not yet due is grey, never red.
+  - **People & targets** and **Ratings.**
+- **Monthly Review** is four guided steps: Standings (score bars), Awards (confirm each), Freeze & announce (live message preview; Freeze needs every award confirmed), Private reviews.
+- **Proof.**
+  - `teamView.test.ts`: 13 tests.
+  - `tsc`, eslint, `next build`.
+  - Full `npm test`: the only failure is the known flaky `piDetail` "payment status opens OPEN".
+- **Not seen signed in.** No browser test.
+- **Rollback.** Revert the PR; nothing in the database changed.
+
 ## 2026-11-13 — Day Close and Scoreboard migrations actually applied to production · no new SQL
 - `20270622000000`, `20270624000000`, `20270625000000`, `20270626000000`, `20270627000000` and `20270628000000` were missing from production despite being recorded as applied. Team Today returned 500.
 - The owner applied all six on 2026-11-13, after a backup, and verified them by query. Dossiers 30 and 31 now carry the correction.
