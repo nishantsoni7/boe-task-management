@@ -1266,6 +1266,8 @@ describe('the applied migrations are frozen', () => {
       '20270701000000_finance_confirmed_payments_order_search.sql',
       // Reviews, one on/off switch for the leaderboard, set by an administrator: one table (one row, starts hidden), one admin-only function.
       '20270702000000_review_rankings_switch.sql',
+      // Sales, the lead popup: comments, follow-up dates, No answer moves New on: three CHECK lists widened, two writes, four functions.
+      '20270703000100_sales_comments_and_due_dates.sql',
     ])
   })
 
@@ -1774,6 +1776,7 @@ describe('the applied migrations are frozen', () => {
       '20270629000000_quotation_links.sql',
       '20270701000000_finance_confirmed_payments_order_search.sql',
       '20270702000000_review_rankings_switch.sql',
+      '20270703000100_sales_comments_and_due_dates.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

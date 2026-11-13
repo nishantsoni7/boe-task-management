@@ -12,6 +12,7 @@ import {
   BOARD_STAGES, DEAD_REASONS, FACT_HINTS, FACT_LABELS, NEXT_STAGE, parseValue, quickMessages, stageLabel, TYPED_FACTS, whatsAppLink, whenFrom,
   type DeadReason, type NeededFact, type Stage,
 } from '@/lib/salesLeads/board'
+import { dayShort } from '@/lib/salesLeads/format'
 import { istToday } from '@/lib/istDate'
 import { createClient } from '@/lib/supabase/client'
 import { leadTitle } from './LeadBits'
@@ -60,16 +61,20 @@ export function useLeadWork() {
   const said = (text: string, activityId?: string) =>
     toast.show(text, false, activityId ? { label: 'Undo', run: () => undoEntry(activityId) } : null)
 
+  // The follow-up the database set (the next working day), in words.
+  const comesBack = (lead: WorkLead) => (lead.next_due_on ? dayShort(lead.next_due_on) : 'soon')
+
   const noAnswer = (lead: WorkLead) => guarded(async () => {
     const r = await logNoAnswer(supabase, lead.id)
     if ((r.streak ?? 0) >= 3) setDialog({ type: 'three', lead: r.lead })
-    else said('No answer logged. Next try tomorrow.', r.activity_id)
+    // A New lead that nobody answered has had its first try, so it is now Under process.
+    else said(`No answer logged${lead.stage === 'new' ? '. Moved to Under process' : ''}. Next try ${comesBack(r.lead)}.`, r.activity_id)
   })
 
   const messageSent = (lead: WorkLead, label: string) => guarded(async () => {
     setDialog(null)
     const r = await logMessageSent(supabase, lead.id, label)
-    said('Message logged. This lead comes back tomorrow.', r.activity_id)
+    said(`Message logged. This lead comes back ${comesBack(r.lead)}.`, r.activity_id)
   })
 
   async function doMove(lead: WorkLead, to: Stage, extra: Parameters<typeof moveLead>[4] = {}) {
@@ -154,6 +159,8 @@ export function useLeadWork() {
 
   return {
     supabase, today, busy, node, refresh, fail, said, guarded, moveTo, saveAndMove, noAnswer: (l: WorkLead) => void noAnswer(l),
+    /** Three tries with no answer: asks what next (a "Client not responding" comment can be the third). */
+    threeTries: (lead: WorkLead) => setDialog({ type: 'three', lead }),
     openMove: (lead: WorkLead) => setDialog({ type: 'move', lead }),
     openWhatsApp: (lead: WorkLead) => setDialog({ type: 'whatsapp', lead }),
   }
@@ -209,7 +216,7 @@ function WhatsAppSheet({ lead, sender, onClose, onSent }: { lead: WorkLead; send
 function ThreeTriesSheet({ lead, onClose, onLater, onDead }: { lead: WorkLead; onClose: () => void; onLater: () => void; onDead: () => void }) {
   return (
     <Sheet title={`${lead.no_answer_streak} tries, no answer`} sub={`${leadTitle(lead)} has not picked up. What next?`} onClose={onClose}>
-      <button type="button" className={s.sheetOption} onClick={onClose}>Try again tomorrow</button>
+      <button type="button" className={s.sheetOption} onClick={onClose}>{lead.next_due_on ? `Try again ${dayShort(lead.next_due_on)}` : 'Try again later'}</button>
       <button type="button" className={s.sheetOption} onClick={onLater}>Follow up later<small>pick a date</small></button>
       <div className={s.sheetLine} />
       <button type="button" className={`${s.sheetOption} ${s.sheetDead}`} onClick={onDead}>Dead<small>reason: Not responding</small></button>

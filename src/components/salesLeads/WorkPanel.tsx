@@ -1,41 +1,55 @@
 'use client'
 
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronDown, MessageCircle, Pencil, Phone, X } from 'lucide-react'
+import { CalendarDays, ChevronLeft, ChevronRight, MessageCircle, Search, X } from 'lucide-react'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
-import { formatPhone, telHref } from '@/lib/exhibitionLeads/phone'
+import { formatPhone } from '@/lib/exhibitionLeads/phone'
 import {
-  fetchWorkLead, logActivity, SALES_KEY, updateFacts,
-  type Activity, type LeadFacts, type WorkDetail, type WorkLead,
+  addComment, changeDue, fetchWorkLead, SALES_KEY, updateFacts,
+  type LeadFacts, type WorkDetail, type WorkLead,
 } from '@/lib/salesLeads/api'
 import {
-  BOARD_STAGES, CLIENT_TYPES, dueOf, kindLabel, KINDS, marketLabel, NEXT_STEPS, OUTCOMES, outcomeLabel, parseValue,
-  SEGMENTS, STAGE_GUIDE, stageLabel, TEMPERATURES, valueLabel, WHEN_CHOICES, whenFrom,
-  type OutcomeChoice, type Stage, type Temperature,
+  activityTag, BOARD_STAGES, CLIENT_TYPES, dueOf, followUpChoices, isSunday, lastLabel, marketLabel, nextWorkingDay, parseValue,
+  QUICK_NOTES, SEGMENTS, stageLabel, STAGE_GUIDE, TEMPERATURES, valueLabel,
+  type CommentTag, type Stage, type Temperature,
 } from '@/lib/salesLeads/board'
 import { sourceLabel } from '@/lib/salesLeads/constants'
-import { dayLabel, dayLabelLong, whenLabel } from '@/lib/salesLeads/format'
-import { eventBy, eventLine, leadTitle, StepIcon } from './LeadBits'
+import { dayHeading, dayShort, initialsOf, istDayOf, timeLabel } from '@/lib/salesLeads/format'
+import { eventBy, eventLine, leadTitle } from './LeadBits'
 import { useDialogFocus } from './useDialogFocus'
 import type { LeadWork } from './useLeadWork'
 import s from './leadBoard.module.css'
 
-// One lead, kept short: who it is and where it stands, what happens next, and how did it go. A stage move that needs a
-// fact asks for it in the small box the board and My day already use. The rest of the record is one tap away.
+// One lead in a popup in the middle of the page (owner, 2026-11-13, after a clickable preview, on the lines of ClickUp):
+// on the left who the client is, where the lead stands and what they want; on the right one box to write an update and
+// everything that happened, newest first, a day at a time. No calling from here and no "how did it go" form. Previous
+// and next walk the list the lead was opened from; Esc, the cross or a click outside closes it. On a phone it fills the
+// screen and the two sides are two tabs.
 
-type Menu = 'stage' | 'heat' | null
+/** Only one menu is open at a time; Escape closes it before it closes the popup. */
+type Menu = 'due' | 'next' | null
+type Tab = 'details' | 'activity'
 
-export function WorkPanel({ leadId, work, focusLog = false, closeAfterPost = false, onClose }: {
+/** The four steps of a sale. Follow up later, Converted and Dead are the other ways a lead can go. */
+const STEPS: readonly Stage[] = BOARD_STAGES.filter(stage => stage !== 'follow_up_later')
+
+/** The list the lead was opened from, so Previous and Next can walk it. */
+export type LeadNav = { ids: readonly string[]; label: string }
+
+export function WorkPanel({ leadId, work, nav, onNavigate, focusLog = false, closeAfterPost = false, onClose }: {
   leadId: string
   work: LeadWork
+  nav?: LeadNav
+  onNavigate?: (id: string) => void
   focusLog?: boolean
-  /** On My day, posting closes the panel so the next lead is already there. */
+  /** On My day, posting closes the popup so the next lead is already there. */
   closeAfterPost?: boolean
   onClose: () => void
 }) {
   const [menu, setMenu] = useState<Menu>(null)
-  // Escape closes an open menu first, and the panel only when none is open.
+  const [tab, setTab] = useState<Tab>(focusLog ? 'activity' : 'details')
+  // Escape closes an open menu first, and the popup only when none is open.
   const ref = useDialogFocus<HTMLDivElement>(() => { if (menu) setMenu(null); else onClose() })
   const detail = useQuery({
     queryKey: [SALES_KEY, 'work', leadId],
@@ -43,33 +57,72 @@ export function WorkPanel({ leadId, work, focusLog = false, closeAfterPost = fal
     staleTime: 0,
   })
 
+  const at = nav ? nav.ids.indexOf(leadId) : -1
+  const prev = at > 0 ? nav?.ids[at - 1] : undefined
+  const next = at >= 0 && nav && at < nav.ids.length - 1 ? nav.ids[at + 1] : undefined
+  const go = (id: string | undefined) => { if (id && onNavigate) { setMenu(null); onNavigate(id) } }
+
+  // ← and → walk the list, unless the person is typing or a menu is open.
+  const onKey = useEffectEvent((e: KeyboardEvent) => {
+    if (menu || e.altKey || e.ctrlKey || e.metaKey) return
+    const el = e.target as HTMLElement | null
+    if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return
+    if (e.key === 'ArrowLeft') go(prev)
+    if (e.key === 'ArrowRight') go(next)
+  })
+  useEffect(() => {
+    const listen = (e: KeyboardEvent) => onKey(e)
+    document.addEventListener('keydown', listen)
+    return () => document.removeEventListener('keydown', listen)
+  }, [])
+
+  const count = detail.data ? detail.data.activities.length + detail.data.events.length : null
   return (
     <>
       <div className={s.scrim} onClick={onClose} />
-      <aside ref={ref} className={s.drawer} role="dialog" aria-modal="true" aria-label="Lead details" tabIndex={-1}>
-        {detail.data
-          ? <PanelBody detail={detail.data} work={work} focusLog={focusLog} closeAfterPost={closeAfterPost} menu={menu} setMenu={setMenu} onClose={onClose} />
-          : (
-            <>
-              <div className={s.pHead}>
-                <div className={s.pTop}>
-                  <h2 className={s.pTitle}>Lead</h2>
-                  <button type="button" className={s.close} aria-label="Close" onClick={onClose}><X size={16} aria-hidden="true" /></button>
-                </div>
+      <div ref={ref} className={s.modal} data-tab={tab} role="dialog" aria-modal="true" aria-label={detail.data ? `Lead ${leadTitle(detail.data.lead)}` : 'Lead'} tabIndex={-1}>
+        <header className={s.mBar}>
+          <div className={s.mNav}>
+            {nav && onNavigate && at >= 0 && (
+              <>
+                <button type="button" className={s.mIcon} aria-label="Previous lead" title="Previous lead (←)" disabled={!prev} onClick={() => go(prev)}><ChevronLeft aria-hidden="true" /></button>
+                <button type="button" className={s.mIcon} aria-label="Next lead" title="Next lead (→)" disabled={!next} onClick={() => go(next)}><ChevronRight aria-hidden="true" /></button>
+                <span className={s.mPos}><b>{at + 1} of {nav.ids.length}</b> {nav.label}</span>
+              </>
+            )}
+          </div>
+          <div className={s.mCrumb}>
+            {detail.data && `Lead #${detail.data.lead.lead_no} · ${sourceLabel(detail.data.lead.source)} · received ${dayShort(detail.data.lead.received_on)}`}
+          </div>
+          <div className={s.mBarEnd}>
+            <span className={s.mEsc}>Esc to close</span>
+            <button type="button" className={s.mIcon} aria-label="Close" title="Close (Esc)" onClick={onClose}><X aria-hidden="true" /></button>
+          </div>
+        </header>
+
+        {/* A phone shows one side at a time. */}
+        <div className={s.mTabs} role="tablist" aria-label="Lead">
+          <button type="button" role="tab" aria-selected={tab === 'details'} onClick={() => setTab('details')}>Details</button>
+          <button type="button" role="tab" aria-selected={tab === 'activity'} onClick={() => setTab('activity')}>
+            Activity{count !== null && <span className={s.mCount}>{count}</span>}
+          </button>
+        </div>
+
+        {detail.data ? (
+          <PanelBody key={leadId} detail={detail.data} work={work} focusLog={focusLog} closeAfterPost={closeAfterPost} menu={menu} setMenu={setMenu} onClose={onClose} />
+        ) : (
+          <div className={s.mLoading}>
+            {detail.isPending && 'Loading…'}
+            {detail.isError && (
+              <div className="boe-empty">
+                <p className="boe-empty-title">This lead could not be opened</p>
+                <p>It may not be yours to see, or the connection dropped.</p>
+                <button type="button" className="boe-btn boe-btn-secondary" onClick={() => detail.refetch()}>Try again</button>
               </div>
-              <div className={s.pBody}>
-                {detail.isPending && 'Loading…'}
-                {detail.isError && (
-                  <div className="boe-empty">
-                    <p className="boe-empty-title">This lead could not be opened</p>
-                    <p>It may not be yours to see, or the connection dropped.</p>
-                    <button type="button" className="boe-btn boe-btn-secondary" onClick={() => detail.refetch()}>Try again</button>
-                  </div>
-                )}
-              </div>
-            </>
-          )}
-      </aside>
+            )}
+          </div>
+        )}
+      </div>
     </>
   )
 }
@@ -81,68 +134,23 @@ function PanelBody({ detail, work, focusLog, closeAfterPost, menu, setMenu, onCl
   const { readOnly } = useSalesAccess()
   const canWork = detail.can_work && !readOnly
   const closed = lead.stage === 'converted' || lead.stage === 'dead'
-  const due = dueOf(lead, work.today)
-  const composer = useRef<HTMLElement>(null)
-  useEffect(() => { if (focusLog) composer.current?.scrollIntoView({ block: 'start' }) }, [focusLog])
-
-  const titleIsPhone = !lead.name
-  const sub = [titleIsPhone ? null : formatPhone(lead.phone), lead.location, `#${lead.lead_no}`].filter(Boolean).join(' · ')
-  const about = [
-    SEGMENTS.find(o => o.value === lead.segment)?.label, CLIENT_TYPES.find(o => o.value === lead.client_type)?.label,
-    lead.market === 'export' ? marketLabel(lead) : null, sourceLabel(lead.source),
-  ].filter(Boolean).join(' · ')
-
   return (
-    <>
-      <div className={s.pHead}>
-        <div className={s.pTop}>
-          <h2 className={s.pTitle}>{leadTitle(lead)}<small>{sub}</small></h2>
-          <button type="button" className={s.close} aria-label="Close" onClick={onClose}><X size={16} aria-hidden="true" /></button>
-        </div>
-        <div className={s.pills}>
-          <StagePill lead={lead} work={work} canWork={canWork} open={menu === 'stage'} setOpen={open => setMenu(open ? 'stage' : null)} />
-          <HeatPill lead={lead} work={work} canWork={canWork} open={menu === 'heat'} setOpen={open => setMenu(open ? 'heat' : null)} />
-          <span className={s.meta}>{about}</span>
-          {lead.stuck && <span className={`${s.meta} ${s.metaRed}`}>Stuck</span>}
-        </div>
-        {canWork && !closed && (
-          <div className={s.go}>
-            <a className="boe-btn boe-btn-primary" href={telHref(lead.phone)}><Phone aria-hidden="true" />Call</a>
-            <button type="button" className="boe-btn boe-btn-secondary" onClick={() => work.openWhatsApp(lead)}><MessageCircle aria-hidden="true" />WhatsApp</button>
-          </div>
-        )}
+    <div className={s.mBody}>
+      <div className={s.mLeft} aria-label="Lead details">
+        <Who lead={lead} work={work} canWork={canWork} closed={closed} />
+        <StateBox lead={lead} work={work} canWork={canWork} closed={closed} menu={menu} setMenu={setMenu} />
+        <Details lead={lead} work={work} canWork={canWork} />
+        {!canWork && <div className={s.readOnly}>You can read this lead. {lead.holder_name ? `${lead.holder_name} holds it, and only` : 'Only'} the person holding it can write on it or move it.</div>}
       </div>
-
-      <div className={s.pBody}>
-        {!closed && lead.next_step && (
-          <div className={`${s.next}${due.tone === 'over' ? ` ${s.nextOver}` : ''}`}>
-            <StepIcon step={lead.next_step} />
-            <div>
-              <div className={s.nextMain}>{lead.next_step}</div>
-              <div className={s.nextSub}>{due.tone === 'over' ? `${due.label}, was due ${dayLabelLong(lead.next_due_on ?? '')}` : `Due ${dayLabelLong(lead.next_due_on ?? '')}`}</div>
-            </div>
-          </div>
-        )}
-        {lead.stage === 'dead' && (
-          <div className={s.next}>
-            <div>
-              <div className={s.nextMain}>Dead · {due.label}</div>
-              {lead.dead_note && <div className={s.nextSub}>{lead.dead_note}</div>}
-            </div>
-          </div>
-        )}
-        {canWork && !closed && (
-          <Composer ref={composer} lead={lead} work={work} onPosted={() => { if (closeAfterPost) onClose() }} />
-        )}
-        <About lead={lead} work={work} canWork={canWork} />
-        <History detail={detail} />
-        {!canWork && <div className={s.readOnly}>You can read this lead. {lead.holder_name ? `${lead.holder_name} holds it, and only` : 'Only'} the person holding it can log on it or move it.</div>}
-      </div>
-    </>
+      <ActivitySide
+        detail={detail} work={work} canWrite={canWork && !closed} focusLog={focusLog} menu={menu} setMenu={setMenu}
+        onPosted={() => { if (closeAfterPost) onClose() }}
+      />
+    </div>
   )
 }
 
-/** A menu in the panel closes when the person clicks anywhere else. */
+/** A menu in the popup closes when the person clicks anywhere else. */
 function useCloseOnOutside(open: boolean, close: () => void) {
   const ref = useRef<HTMLDivElement>(null)
   const closeNow = useEffectEvent(close)
@@ -155,33 +163,19 @@ function useCloseOnOutside(open: boolean, close: () => void) {
   return ref
 }
 
-function StagePill({ lead, work, canWork, open, setOpen }: { lead: WorkLead; work: LeadWork; canWork: boolean; open: boolean; setOpen: (open: boolean) => void }) {
-  const wrap = useCloseOnOutside(open, () => setOpen(false))
-  const button = useRef<HTMLButtonElement>(null)
-  const closed = lead.stage === 'converted' || lead.stage === 'dead'
-  const others = BOARD_STAGES.filter(stage => stage !== lead.stage)
-  // Focus goes back to the pill, so a keyboard user is not left on a menu item that has just disappeared.
-  const pick = (to: Stage) => { setOpen(false); button.current?.focus(); work.moveTo(lead, to) }
+// ── Left: who, where it stands, what they want ──────────────────────────────────────────────────────────────────────
+
+function Who({ lead, work, canWork, closed }: { lead: WorkLead; work: LeadWork; canWork: boolean; closed: boolean }) {
   return (
-    <div ref={wrap} className={s.pMenuWrap}>
-      <button
-        ref={button} type="button" className={`${s.pPill} ${s.pPillStage}`} disabled={!canWork} aria-haspopup="menu" aria-expanded={open}
-        title={STAGE_GUIDE[lead.stage]} onClick={() => setOpen(!open)}
-      >
-        {stageLabel(lead.stage)}{canWork && <ChevronDown aria-hidden="true" />}
-      </button>
-      {open && (
-        <div className={s.pMenu} role="menu">
-          <div className={s.menuHead}>{closed ? 'Reopen to' : 'Move to'}</div>
-          {others.map(stage => <button key={stage} type="button" role="menuitem" className={s.menuItem} onClick={() => pick(stage)}>{stageLabel(stage)}</button>)}
-          {!closed && (
-            <>
-              <hr className={s.menuLine} />
-              <button type="button" role="menuitem" className={s.menuItem} onClick={() => pick('converted')}>Converted</button>
-              <button type="button" role="menuitem" className={s.menuItem} onClick={() => pick('dead')}>Dead</button>
-            </>
-          )}
+    <div className={s.mWho}>
+      <div className={s.mWhoText}>
+        <h2 className={s.mName}>{leadTitle(lead)}</h2>
+        <div className={s.mSub}>
+          {lastLabel(lead, work.today)} · {marketLabel(lead)}{lead.stuck && <span className={s.metaRed}> · Stuck</span>}
         </div>
+      </div>
+      {canWork && !closed && (
+        <button type="button" className={s.mWa} onClick={() => work.openWhatsApp(lead)}><MessageCircle aria-hidden="true" />WhatsApp</button>
       )}
     </div>
   )
@@ -189,146 +183,127 @@ function StagePill({ lead, work, canWork, open, setOpen }: { lead: WorkLead; wor
 
 const HEAT_CLASS: Record<Temperature, string> = { hot: s.heatHot, warm: s.heatWarm, cold: s.heatCold }
 
-function HeatPill({ lead, work, canWork, open, setOpen }: { lead: WorkLead; work: LeadWork; canWork: boolean; open: boolean; setOpen: (open: boolean) => void }) {
-  const wrap = useCloseOnOutside(open, () => setOpen(false))
-  const button = useRef<HTMLButtonElement>(null)
-  const label = TEMPERATURES.find(t => t.value === lead.temperature)?.label
-  const pick = (value: Temperature) => {
-    setOpen(false)
-    button.current?.focus()
+function StateBox({ lead, work, canWork, closed, menu, setMenu }: {
+  lead: WorkLead; work: LeadWork; canWork: boolean; closed: boolean; menu: Menu; setMenu: (m: Menu) => void
+}) {
+  const due = dueOf(lead, work.today)
+  const to = (stage: Stage) => work.moveTo(lead, stage)
+  const heat = (value: Temperature) => {
     if (value !== lead.temperature) void work.guarded(async () => { await updateFacts(work.supabase, lead.id, { temperature: value }) })
   }
   return (
-    <div ref={wrap} className={s.pMenuWrap}>
-      <button ref={button} type="button" className={s.pPill} disabled={!canWork} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className={`${s.heat} ${HEAT_CLASS[lead.temperature]}`} aria-hidden="true" />{label}{canWork && <ChevronDown aria-hidden="true" />}
-      </button>
-      {open && (
-        <div className={s.pMenu} role="menu">
-          <div className={s.menuHead}>How warm is this lead?</div>
-          {TEMPERATURES.map(t => (
-            <button key={t.value} type="button" role="menuitemradio" aria-checked={lead.temperature === t.value} className={s.menuItem} onClick={() => pick(t.value)}>
-              <span className={`${s.heat} ${HEAT_CLASS[t.value]}`} aria-hidden="true" />{t.label}
-            </button>
-          ))}
+    <div className={s.mBox}>
+      {closed && (
+        <div className={s.mClosed}>
+          <b>{stageLabel(lead.stage)}</b>{lead.stage === 'dead' && <> · {due.label}</>}
+          {lead.dead_note && <div className={s.nextSub}>{lead.dead_note}</div>}
         </div>
       )}
+      <div className={`${s.mRow} ${s.mRowTop}`}>
+        <span className={s.mKey}>{closed ? 'Reopen to' : 'Stage'}</span>
+        <div className={s.mVal}>
+          <div className={s.mStages} role="group" aria-label={closed ? 'Reopen this lead in a stage' : 'Move this lead to a stage'}>
+            {STEPS.map(stage => (
+              <button key={stage} type="button" title={STAGE_GUIDE[stage]} aria-pressed={lead.stage === stage} disabled={!canWork || lead.stage === stage} onClick={() => to(stage)}>
+                {stageLabel(stage)}
+              </button>
+            ))}
+          </div>
+          <div className={s.mOuts}>
+            <button type="button" className={s.mOut} aria-pressed={lead.stage === 'follow_up_later'} disabled={!canWork || lead.stage === 'follow_up_later'} onClick={() => to('follow_up_later')}>Follow up later</button>
+            {!closed && (
+              <>
+                <button type="button" className={`${s.mOut} ${s.mOutWin}`} disabled={!canWork} onClick={() => to('converted')}>Converted</button>
+                <button type="button" className={`${s.mOut} ${s.mOutDead}`} disabled={!canWork} onClick={() => to('dead')}>Dead</button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className={s.mRow}>
+        <span className={s.mKey}>Hot / Warm / Cold</span>
+        <div className={s.mVal}>
+          <div className={s.mHeat} role="group" aria-label="How warm is this lead?">
+            {TEMPERATURES.map(t => (
+              <button key={t.value} type="button" aria-pressed={lead.temperature === t.value} disabled={!canWork} onClick={() => heat(t.value)}>
+                <i className={`${s.heat} ${HEAT_CLASS[t.value]}`} aria-hidden="true" />{t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      {!closed && (
+        <div className={s.mRow}>
+          <span className={s.mKey}>Next follow-up</span>
+          <div className={s.mVal}><DueChip lead={lead} work={work} canWork={canWork} open={menu === 'due'} setOpen={open => setMenu(open ? 'due' : null)} /></div>
+        </div>
+      )}
+      <div className={s.mRow}>
+        <span className={s.mKey}>Held by</span>
+        <div className={s.mVal}>
+          {lead.holder_name
+            ? <span className={s.mPerson}><i className={s.mAvSm} aria-hidden="true">{initialsOf(lead.holder_name)}</i>{lead.holder_name}</span>
+            : <span className={s.mNone}>Nobody yet</span>}
+        </div>
+      </div>
     </div>
   )
 }
 
-function Composer({ ref, lead, work, onPosted }: { ref: React.Ref<HTMLElement>; lead: WorkLead; work: LeadWork; onPosted: () => void }) {
-  const [kind, setKind] = useState<string>('call')
-  // Nothing is chosen until the person chooses: an answer nobody gave is never logged for them.
-  const [outcome, setOutcome] = useState<OutcomeChoice | null>(null)
-  const [note, setNote] = useState('')
-  const [nextStep, setNextStep] = useState<string>('')
-  const [days, setDays] = useState<number | 'pick'>(1)
-  const [picked, setPicked] = useState('')
-  const [editing, setEditing] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const notInterested = outcome === 'not_interested'
-  const nextDue = days === 'pick' ? picked : whenFrom(work.today, days)
-  const ready = outcome !== null && (notInterested || (nextStep.trim() !== '' && nextDue !== ''))
-
-  function choose(choice: OutcomeChoice) {
-    if (outcome === choice) { setOutcome(null); setEditing(false); return }
-    setOutcome(choice)
-    const o = OUTCOMES.find(x => x.value === choice)
-    if (o && o.step) { setNextStep(o.step); setDays(o.inDays) }
+/** The follow-up date of an open lead, changeable in any stage. */
+function DueChip({ lead, work, canWork, open, setOpen }: { lead: WorkLead; work: LeadWork; canWork: boolean; open: boolean; setOpen: (open: boolean) => void }) {
+  const wrap = useCloseOnOutside(open, () => setOpen(false))
+  const date = lead.next_due_on
+  const due = dueOf(lead, work.today)
+  const note = due.tone !== 'plain' || due.label === 'Tomorrow' ? due.label : ''
+  function pick(day: string) {
+    setOpen(false)
+    if (day === date) return
+    void work.guarded(async () => {
+      const r = await changeDue(work.supabase, lead.id, day)
+      if (r.status === 'saved') work.said(`Follow-up moved to ${dayShort(day)}.`)
+    })
   }
-
-  async function post() {
-    if (!outcome) return
-    setSaving(true)
-    try {
-      if (notInterested) {
-        // The call happened, so it is logged and the first call counts; then the lead asks why it is dead.
-        await logActivity(work.supabase, lead.id, { kind, outcome, note, nextStep: 'Close as dead', nextDue: work.today })
-        await work.refresh()
-        setNote(''); setOutcome(null)
-        work.moveTo(lead, 'dead', note)
-        return
-      }
-      const r = await logActivity(work.supabase, lead.id, { kind, outcome, note, nextStep: nextStep.trim(), nextDue })
-      await work.refresh()
-      work.said(`Saved. Next: ${nextStep.trim()}, ${dayLabel(nextDue)}.`, r.activity_id)
-      setNote(''); setOutcome(null); setEditing(false)
-      onPosted()
-    } catch (e) {
-      work.fail(e)
-      await work.refresh()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const box = useRef<HTMLTextAreaElement>(null)
-  const grow = (el: HTMLTextAreaElement) => { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 120)}px` }
-  // After a post the box is empty again, so it goes back to one line.
-  useEffect(() => { if (note === '' && box.current) box.current.style.height = 'auto' }, [note])
   return (
-    <section ref={ref} className={s.sec} aria-label="Log what happened">
-      <div className={s.secHead}>
-        <h3 className={s.secTitle}>How did it go?</h3>
-        <select className={s.kind} aria-label="What kind of contact this was" title="What kind of contact this was" value={kind} onChange={e => setKind(e.target.value)}>
-          {KINDS.map(k => <option key={k.value} value={k.value}>{k.label}</option>)}
-        </select>
-      </div>
-      <div className={s.outs} role="group" aria-label="How did it go?">
-        {OUTCOMES.filter(o => o.value !== 'not_interested').map(o => (
-          <button key={o.value} type="button" className={s.out} aria-pressed={outcome === o.value} onClick={() => choose(o.value)}>{o.label}</button>
-        ))}
-        <button type="button" className={s.out} disabled={work.busy} title="Logs it now and tries again tomorrow" onClick={() => work.noAnswer(lead)}>No answer</button>
-        <button type="button" className={`${s.out} ${s.outDead}`} aria-pressed={outcome === 'not_interested'} onClick={() => choose('not_interested')}>Not interested</button>
-      </div>
-      <textarea
-        id="log-note" ref={box} className={s.say} rows={1} maxLength={4000} aria-label="What was said" placeholder="What was said? (optional)"
-        value={note} onChange={e => { setNote(e.target.value); grow(e.target) }}
-      />
-      {outcome && (
-        <>
-          <div className={s.saveBar}>
-            {notInterested ? (
-              <div className={s.saveText}>Saved as a call. <b>The next question asks why.</b></div>
-            ) : (
-              <div className={s.saveText}>
-                Next: <b>{nextStep || 'choose a step'}</b>, {nextDue ? dayLabelLong(nextDue) : 'pick a date'}{' '}
-                <button type="button" className={s.linkBtn} aria-expanded={editing} onClick={() => setEditing(e => !e)}><Pencil aria-hidden="true" />Change</button>
-              </div>
-            )}
-            <button type="button" className="boe-btn boe-btn-primary" disabled={!ready || saving} onClick={() => void post()}>{saving ? 'Saving…' : notInterested ? 'Continue' : 'Save'}</button>
-          </div>
-          {editing && !notInterested && (
-            <div className={s.editGrid}>
-              <div className={s.field}>
-                <label className={s.label} htmlFor="log-next">Next step<span className="boe-req" aria-hidden="true">*</span></label>
-                <select id="log-next" className={s.input} value={nextStep} onChange={e => setNextStep(e.target.value)}>
-                  {NEXT_STEPS.map(n => <option key={n}>{n}</option>)}
-                </select>
-              </div>
-              <div className={s.field}>
-                <label className={s.label} htmlFor="log-when">When<span className="boe-req" aria-hidden="true">*</span></label>
-                <select id="log-when" className={s.input} value={days} onChange={e => setDays(e.target.value === 'pick' ? 'pick' : Number(e.target.value))}>
-                  {WHEN_CHOICES.map(w => <option key={w.key} value={w.key}>{w.label}, {dayLabelLong(whenFrom(work.today, w.key)).slice(0, -5)}</option>)}
-                  <option value="pick">Pick a date</option>
-                </select>
-              </div>
-              {days === 'pick' && (
-                <div className={`${s.field} ${s.editFull}`}>
-                  <input className={s.input} type="date" aria-label="Pick a date" min={work.today} value={picked} onChange={e => setPicked(e.target.value)} />
-                </div>
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </section>
+    <div ref={wrap} className={s.mRel}>
+      <button
+        type="button" className={`${s.mDue}${due.tone === 'over' ? ` ${s.mDueOver}` : ''}`} disabled={!canWork} aria-haspopup="menu" aria-expanded={open}
+        title="Change the follow-up date" onClick={() => setOpen(!open)}
+      >
+        <CalendarDays aria-hidden="true" />
+        <b>{date ? dayShort(date) : 'No date'}</b>
+        {note && <span className={s.mDueNote}>{note}</span>}
+        {canWork && <span className={s.mChange}>Change</span>}
+      </button>
+      {open && <FollowUpMenu today={work.today} value={date ?? ''} onPick={pick} />}
+    </div>
   )
 }
 
-function About({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canWork: boolean }) {
+/** The dates offered for a follow-up: the next working day first, then 3 days, a week, or any date from today. */
+function FollowUpMenu({ today, value, onPick }: { today: string; value: string; onPick: (day: string) => void }) {
+  const choices = followUpChoices(today)
+  return (
+    <div className={s.mPop} role="menu" aria-label="Choose the follow-up date">
+      <div className={s.menuHead}>Follow up on</div>
+      {choices.map(c => (
+        <button key={c.date} type="button" role="menuitemradio" aria-checked={value === c.date} className={s.mPopItem} onClick={() => onPick(c.date)}>
+          <span><b>{dayShort(c.date)}</b><small>{c.why}{isSunday(c.date) ? ' · a Sunday' : ''}</small></span>
+          <i className={s.mTick} aria-hidden="true" />
+        </button>
+      ))}
+      <label className={s.mPick}>
+        <span>Pick a date</span>
+        <input type="date" min={today} value={choices.some(c => c.date === value) ? '' : value} onChange={e => { if (e.target.value >= today) onPick(e.target.value) }} />
+      </label>
+    </div>
+  )
+}
+
+/** Client, Requirement and Order value, read as rows; "Edit details" turns all three into one form. */
+function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canWork: boolean }) {
   const [editing, setEditing] = useState(false)
+  const [copied, setCopied] = useState(false)
   const start = useMemo(() => ({
     name: lead.name ?? '', email: lead.email ?? '', location: lead.location ?? '', requirement: lead.requirement ?? '',
     quantity: lead.quantity ?? '', timeline: lead.timeline ?? '', segment: lead.segment ?? '', client_type: lead.client_type ?? '',
@@ -337,6 +312,7 @@ function About({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canWor
   const [form, setForm] = useState(start)
   const [problem, setProblem] = useState('')
   const set = (patch: Partial<typeof form>) => { setProblem(''); setForm(f => ({ ...f, ...patch })) }
+  const edit = () => { setForm(start); setProblem(''); setEditing(true) }
 
   function save() {
     const facts: LeadFacts = {}
@@ -354,97 +330,272 @@ function About({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canWor
     })
   }
 
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(lead.phone)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      work.said('The number could not be copied. Select it instead.')
+    }
+  }
+
   if (editing) {
     const text = (key: 'name' | 'email' | 'location' | 'quantity' | 'timeline', label: string) => (
       <div className={s.field}><label className={s.label} htmlFor={`fact-${key}`}>{label}</label><input id={`fact-${key}`} className={s.input} value={form[key]} onChange={e => set({ [key]: e.target.value })} /></div>
     )
     return (
-      <section className={`${s.sec} ${s.detailsEdit}`} aria-label="About this lead">
-        <h3 className={s.secTitle}>About this lead</h3>
-        {text('name', 'Name')}
-        <div className={s.field}><label className={s.label} htmlFor="fact-req">Requirement</label><textarea id="fact-req" className={s.input} value={form.requirement} onChange={e => set({ requirement: e.target.value })} /></div>
-        {text('quantity', 'Quantity')}
-        {text('timeline', 'Timeline')}
-        <div className={s.field}><label className={s.label} htmlFor="fact-value">Expected value (₹)</label><input id="fact-value" className={s.input} inputMode="decimal" placeholder="e.g. 14 L" value={form.value} onChange={e => set({ value: e.target.value })} /></div>
-        <div className={s.field}><label className={s.label} htmlFor="fact-seg">Segment</label><select id="fact-seg" className={s.input} value={form.segment} onChange={e => set({ segment: e.target.value })}><option value="">Not set</option>{SEGMENTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-        <div className={s.field}><label className={s.label} htmlFor="fact-type">Client type</label><select id="fact-type" className={s.input} value={form.client_type} onChange={e => set({ client_type: e.target.value })}><option value="">Not set</option>{CLIENT_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-        {text('location', 'Location')}
-        {text('email', 'Email')}
+      <section className={`${s.mSec} ${s.detailsEdit}`} aria-label="Edit the details">
+        <h3 className={s.mH3}>Edit details</h3>
+        <div className={s.mForm}>
+          {text('name', 'Name')}
+          {text('email', 'Email')}
+          {text('location', 'Location')}
+          <div className={s.field}><label className={s.label} htmlFor="fact-type">Type of client</label><select id="fact-type" className={s.input} value={form.client_type} onChange={e => set({ client_type: e.target.value })}><option value="">Not set</option>{CLIENT_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+          <div className={s.field}><label className={s.label} htmlFor="fact-seg">Segment</label><select id="fact-seg" className={s.input} value={form.segment} onChange={e => set({ segment: e.target.value })}><option value="">Not set</option>{SEGMENTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+          <div className={s.field}><label className={s.label} htmlFor="fact-value">Expected order value (₹)</label><input id="fact-value" className={s.input} inputMode="decimal" placeholder="e.g. 14 L" value={form.value} onChange={e => set({ value: e.target.value })} /></div>
+          <div className={`${s.field} ${s.mFull}`}><label className={s.label} htmlFor="fact-req">Requirement</label><textarea id="fact-req" className={s.input} value={form.requirement} onChange={e => set({ requirement: e.target.value })} /></div>
+          {text('quantity', 'Quantity')}
+          {text('timeline', 'Needed by')}
+        </div>
         {problem && <div className="boe-callout boe-callout-error" role="alert">{problem}</div>}
         <div className={s.detailsFoot}>
           <button type="button" className="boe-btn boe-btn-primary" disabled={work.busy} onClick={save}>Save</button>
-          <button type="button" className="boe-btn boe-btn-secondary" onClick={() => { setForm(start); setEditing(false) }}>Cancel</button>
+          <button type="button" className="boe-btn boe-btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
         </div>
       </section>
     )
   }
 
-  // Only what is known is shown; what is not, is one line, so nobody scans a column of "Not known yet".
-  const facts: [string, string | null][] = [
-    ['Requirement', lead.requirement], ['Quantity', lead.quantity],
-    ['Expected value', lead.expected_value_paise === null ? null : valueLabel(lead.expected_value_paise)], ['Timeline', lead.timeline],
-    ['Email', lead.email],
-  ]
-  const known = facts.filter(([, value]) => value)
-  const missing = facts.slice(0, 4).filter(([, value]) => !value)
-  return (
-    <section className={s.sec} aria-label="About this lead">
-      <div className={s.secHead}>
-        <h3 className={s.secTitle}>About this lead</h3>
-        {canWork && <button type="button" className={s.linkBtn} onClick={() => { setForm(start); setEditing(true) }}>Edit</button>}
-      </div>
-      <dl className={s.dl}>
-        {known.map(([label, value]) => <div key={label} className={s.dlRow}><dt>{label}</dt><dd>{value}</dd></div>)}
-        {missing.length > 0 && <div className={s.dlRow}><dt>Not known yet</dt><dd className={s.dlNone}>{missing.map(([label]) => label.toLowerCase()).join(', ')}</dd></div>}
-      </dl>
-    </section>
-  )
-}
-
-type Entry = { key: string; at: string; body: React.ReactNode; by: string }
-
-function activityLine(a: Activity): React.ReactNode {
-  if (a.kind === 'imported') return <><span className={s.kindWord}>ClickUp</span><div className={s.note}>{a.note}</div></>
+  const kind = [CLIENT_TYPES.find(o => o.value === lead.client_type)?.label, SEGMENTS.find(o => o.value === lead.segment)?.label].filter(Boolean).join(' · ')
+  const none = <span className={s.mNone}>Not shared</span>
   return (
     <>
-      <span className={s.kindWord}>{kindLabel(a.kind)}</span> · {outcomeLabel(a.outcome)}
-      {a.note && <div className={s.note}>{a.note}</div>}
+      <section className={s.mSec} aria-label="Client">
+        <div className={s.mSecHead}>
+          <h3 className={s.mH3}>Client</h3>
+          {canWork && <button type="button" className={s.linkBtn} onClick={edit}>Edit details</button>}
+        </div>
+        <dl className={s.mDl}>
+          <div><dt>Phone</dt><dd>{formatPhone(lead.phone)} <button type="button" className={s.mCopy} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button></dd></div>
+          <div><dt>Email</dt><dd>{lead.email || none}</dd></div>
+          <div><dt>Location</dt><dd>{lead.location || none}</dd></div>
+          <div><dt>Type of client</dt><dd>{kind || none}</dd></div>
+          <div><dt>Source</dt><dd>{sourceLabel(lead.source)}</dd></div>
+        </dl>
+      </section>
+      <section className={s.mSec} aria-label="Requirement">
+        <h3 className={s.mH3}>Requirement</h3>
+        {lead.requirement ? <p className={s.mReq}>{lead.requirement}</p> : <p className={s.mNone}>The client has not said what they need yet.</p>}
+        <dl className={s.mDl}>
+          <div><dt>Quantity</dt><dd>{lead.quantity || none}</dd></div>
+          <div><dt>Needed by</dt><dd>{lead.timeline || none}</dd></div>
+        </dl>
+      </section>
+      <section className={s.mSec} aria-label="Expected order value">
+        <h3 className={s.mH3}>Expected order value</h3>
+        <div className={s.mValue}>
+          {lead.expected_value_paise !== null
+            ? <span className={s.mBig}>{valueLabel(lead.expected_value_paise)}</span>
+            : <span className={s.mNone}>Not set yet. It is needed before Negotiation.</span>}
+          {canWork && lead.expected_value_paise === null && <button type="button" className={s.linkBtn} onClick={edit}>Add</button>}
+        </div>
+      </section>
     </>
   )
 }
 
-const SHORT = 3
+// ── Right: write an update, and everything that happened ────────────────────────────────────────────────────────────
 
-function History({ detail }: { detail: WorkDetail }) {
+type Entry =
+  | { key: string; at: string; type: 'comment'; by: string; text: string | null; tag: ReturnType<typeof activityTag>; due: string | null; imported: boolean }
+  | { key: string; at: string; type: 'system'; line: React.ReactNode; by: string }
+
+const SHOWN = 30
+const TAG_CLASS = { no: s.mTagNo, quote: s.mTagQuote, plain: s.mTagPlain } as const
+
+/** The words, with every place the search matched marked. */
+function Marked({ text, q }: { text: string; q: string }) {
+  if (!q) return <>{text}</>
+  const parts = text.split(new RegExp(`(${q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'ig'))
+  return <>{parts.map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : <Fragment key={i}>{p}</Fragment>))}</>
+}
+
+function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPosted }: {
+  detail: WorkDetail; work: LeadWork; canWrite: boolean; focusLog: boolean; menu: Menu; setMenu: (m: Menu) => void; onPosted: () => void
+}) {
+  const [updatesOnly, setUpdatesOnly] = useState(false)
+  const [searching, setSearching] = useState(false)
+  const [q, setQ] = useState('')
   const [all, setAll] = useState(false)
-  const entries: Entry[] = [
-    ...detail.activities.map(a => ({ key: a.id, at: a.at, body: activityLine(a), by: a.kind === 'imported' ? 'From ClickUp' : a.actor_name ?? 'A former colleague' })),
-    ...detail.events.map((e, i) => ({ key: `e${i}`, at: e.at, body: eventLine(e), by: eventBy(e) })),
-  ].sort((a, b) => b.at.localeCompare(a.at))
-  const more = entries.length > SHORT || detail.clickup.length > 0
+  const query = q.trim().toLowerCase()
+
+  // A comment and the move it caused share a moment; the move is the later of the two, so it comes first.
+  const rank = (e: Entry) => (e.type === 'system' ? 0 : 1)
+  const entries: Entry[] = useMemo(() => [
+    ...detail.activities.map<Entry>(a => ({
+      key: a.id, at: a.at, type: 'comment', by: a.kind === 'imported' ? 'From ClickUp' : a.actor_name ?? 'A former colleague', text: a.note,
+      tag: a.kind === 'imported' ? null : activityTag(a), due: a.next_due_on, imported: a.kind === 'imported',
+    })),
+    ...detail.events.map<Entry>((e, i) => ({ key: `e${i}`, at: e.at, type: 'system', line: eventLine(e), by: eventBy(e) })),
+  ].sort((a, b) => b.at.localeCompare(a.at) || rank(a) - rank(b)), [detail])
+
+  // A search reads the updates (words, who, tag); the system lines are left out while it runs.
+  const shown = entries.filter(e => {
+    if (e.type === 'system') return !updatesOnly && !query
+    if (!query) return true
+    return [e.text ?? '', e.by, e.tag?.label ?? ''].join(' ').toLowerCase().includes(query)
+  })
+  const list = all || query ? shown : shown.slice(0, SHOWN)
+
   return (
-    <section className={s.sec} aria-label="History">
-      <h3 className={s.secTitle}>History</h3>
-      <ul className={s.timeline}>
-        {(all ? entries : entries.slice(0, SHORT)).map(e => <li key={e.key}>{e.body}<small>{e.by} · {whenLabel(e.at)}</small></li>)}
-        {all && detail.clickup.length > 0 && (
-          <li>
-            <details className={s.clickup}>
-              <summary>ClickUp record</summary>
-              {detail.clickup.map((task, i) => (
-                <dl key={i}>
-                  {Object.entries(task).map(([field, value]) => <div key={field}><dt>{field}</dt><dd>{value}</dd></div>)}
-                </dl>
-              ))}
-            </details>
-          </li>
-        )}
-      </ul>
-      {more && (
-        <button type="button" className={`${s.linkBtn} ${s.linkStart}`} aria-expanded={all} onClick={() => setAll(a => !a)}>
-          {all ? 'Show less' : `Show all ${entries.length}`}
-        </button>
+    <div className={s.mRight} aria-label="Activity">
+      <div className={s.mRHead}>
+        <h3 className={s.mH3}>Activity</h3>
+        <div className={s.mTools}>
+          <div className={s.mSeg} role="group" aria-label="Show">
+            <button type="button" aria-pressed={!updatesOnly} onClick={() => setUpdatesOnly(false)}>All</button>
+            <button type="button" aria-pressed={updatesOnly} onClick={() => setUpdatesOnly(true)}>Updates only</button>
+          </div>
+          <button
+            type="button" className={s.mIcon} aria-label="Search this lead's activity" title="Search" aria-pressed={searching}
+            onClick={() => { setSearching(v => !v); setQ('') }}
+          ><Search aria-hidden="true" /></button>
+        </div>
+      </div>
+      {searching && (
+        <div className={s.mSearch}>
+          <input type="search" autoFocus placeholder="Search this lead's updates" aria-label="Search this lead's updates" value={q} onChange={e => setQ(e.target.value)} />
+          {query && <span className={s.mNone}>{shown.length} found</span>}
+        </div>
       )}
+      {canWrite && <Composer lead={detail.lead} work={work} focus={focusLog} menu={menu} setMenu={setMenu} onPosted={onPosted} />}
+      <div className={s.mFeed}>
+        {list.length === 0 && <p className={s.mNone}>{query ? 'Nothing matches.' : 'Nothing yet. The first update appears here.'}</p>}
+        {list.map((e, i) => {
+          const day = istDayOf(e.at)
+          const heading = i === 0 || istDayOf(list[i - 1].at) !== day
+          return (
+            <Fragment key={e.key}>
+              {heading && <div className={s.mDay}><span>{dayHeading(day, work.today)}</span></div>}
+              {e.type === 'comment' ? (
+                <div className={s.mEntry}>
+                  <span className={s.mAv} aria-hidden="true">{e.imported ? 'CU' : initialsOf(e.by)}</span>
+                  <div className={s.mBubble}>
+                    <div className={s.mEHead}><b>{e.by}</b><time dateTime={e.at}>{timeLabel(e.at)}</time></div>
+                    {e.text && <p><Marked text={e.text} q={query} /></p>}
+                    {(e.tag || e.due) && (
+                      <div className={s.mTags}>
+                        {e.tag && <span className={`${s.mTag} ${TAG_CLASS[e.tag.tone]}`}>{e.tag.label}</span>}
+                        {e.due && <span className={`${s.mTag} ${s.mTagDue}`}>Follow-up {dayShort(e.due)}</span>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className={s.mSys}>
+                  <span>{e.line}{e.by !== 'Automatically' && <small> · {e.by}</small>}</span>
+                  <time dateTime={e.at}>{timeLabel(e.at)}</time>
+                </div>
+              )}
+            </Fragment>
+          )
+        })}
+        {!all && !query && shown.length > SHOWN && (
+          <button type="button" className={`${s.linkBtn} ${s.linkStart}`} onClick={() => setAll(true)}>Show all {shown.length}</button>
+        )}
+        {detail.clickup.length > 0 && (
+          <details className={s.clickup}>
+            <summary>ClickUp record</summary>
+            {detail.clickup.map((task, i) => (
+              <dl key={i}>
+                {Object.entries(task).map(([field, value]) => <div key={field}><dt>{field}</dt><dd>{value}</dd></div>)}
+              </dl>
+            ))}
+          </details>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Composer({ lead, work, focus, menu, setMenu, onPosted }: {
+  lead: WorkLead; work: LeadWork; focus: boolean; menu: Menu; setMenu: (m: Menu) => void; onPosted: () => void
+}) {
+  const [text, setText] = useState('')
+  // A quick note the person tapped; two of them carry a meaning the database keeps (a try nobody answered, a quotation).
+  const [quick, setQuick] = useState<string | null>(null)
+  const [tag, setTag] = useState<CommentTag | null>(null)
+  const [due, setDue] = useState(() => nextWorkingDay(work.today))
+  const [saving, setSaving] = useState(false)
+  const wrap = useCloseOnOutside(menu === 'next', () => setMenu(null))
+  const box = useRef<HTMLTextAreaElement>(null)
+  useEffect(() => { if (focus) box.current?.focus() }, [focus])
+  const ready = text.trim() !== '' && !saving
+  const why = followUpChoices(work.today).find(c => c.date === due)?.why.toLowerCase() ?? (isSunday(due) ? 'a Sunday, picked by you' : 'picked by you')
+  const notResponding = tag === 'not_responding'
+  // What posting does besides saving the words, when it is not obvious.
+  const hint = notResponding
+    ? `Counts as a try, not a contact.${lead.stage === 'new' ? ' The lead moves from New to Under process.' : ''}`
+    : lead.stage === 'new' && text.trim() !== '' ? 'Posting this moves the lead from New to Under process.' : null
+
+  function type(next: string) {
+    setText(next)
+    // Words wiped out: the quick note goes with them.
+    if (next.trim() === '') { setQuick(null); setTag(null) }
+  }
+
+  function tap(note: (typeof QUICK_NOTES)[number]) {
+    if (quick === note.key) { if (text.trim() === note.text) setText(''); setQuick(null); setTag(null); return }
+    // What was already typed stays, after the note.
+    const typed = QUICK_NOTES.some(n => n.text === text.trim()) ? '' : text.trim()
+    setQuick(note.key)
+    setTag(note.tag)
+    setText(typed ? `${note.text} ${typed}` : note.text)
+    box.current?.focus()
+  }
+
+  async function post() {
+    if (!ready) return
+    setSaving(true)
+    try {
+      const r = await addComment(work.supabase, lead.id, { note: text.trim(), tag, nextDue: due })
+      await work.refresh()
+      work.said(`Saved. Next follow-up ${dayShort(r.lead.next_due_on ?? due)}.`, r.activity_id)
+      if (notResponding && (r.streak ?? 0) >= 3) work.threeTries(r.lead)
+      setText(''); setQuick(null); setTag(null); setDue(nextWorkingDay(work.today))
+      onPosted()
+    } catch (e) {
+      work.fail(e)
+      await work.refresh()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className={s.mCompose} aria-label="Write an update">
+      <textarea
+        ref={box} rows={2} maxLength={4000} aria-label="Write an update" placeholder="Write an update: what happened with this client?"
+        value={text} onChange={e => type(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void post() } }}
+      />
+      <div className={s.mChips} role="group" aria-label="Quick notes">
+        {QUICK_NOTES.map(n => (
+          <button key={n.key} type="button" className={s.mChip} aria-pressed={quick === n.key} onClick={() => tap(n)}>{n.label}</button>
+        ))}
+      </div>
+      {hint && <p className={s.mHint}>{hint}</p>}
+      <div className={s.mFoot}>
+        <div ref={wrap} className={`${s.mRel} ${s.mNext}`}>
+          <CalendarDays aria-hidden="true" />
+          <span>Follow up <b>{dayShort(due)}</b> <small>{why}</small></span>
+          <button type="button" className={s.linkBtn} aria-haspopup="menu" aria-expanded={menu === 'next'} onClick={() => setMenu(menu === 'next' ? null : 'next')}>Change</button>
+          {menu === 'next' && <FollowUpMenu today={work.today} value={due} onPick={day => { setDue(day); setMenu(null) }} />}
+        </div>
+        <span className={s.mKbd}>Ctrl + Enter</span>
+        <button type="button" className={s.mPost} disabled={!ready} onClick={() => void post()}>{saving ? 'Saving…' : 'Post update'}</button>
+      </div>
     </section>
   )
 }
