@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useQuery } from '@tanstack/react-query'
-import { Trophy } from 'lucide-react'
+import { ChevronRight, Info, Trophy } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { colors } from '@/lib/tokens'
 import { Avatar } from '@/components/ui/atoms'
@@ -18,8 +18,15 @@ import {
   type LeaderboardRow,
 } from '@/lib/customerReviews/reviewReport'
 import { arrangeLanding } from '@/lib/customerReviews/leaderboardLanding'
+import { HOW_RANKED } from '@/lib/customerReviews/rankingsSwitch'
+import { useReviewRankings } from '@/hooks/queries/useReviewRankings'
 
-// The current-month leaderboard at the top of the Reviews landing page.
+// The current-month leaderboard, at the BOTTOM of the Reviews landing page: the
+// employee's own submissions come first, the standings after them.
+//
+// SWITCHED OFF BY AN ADMINISTRATOR (Control Center → Reviews → Rankings, 20270702000000).
+// Off, loading or unreadable, this draws nothing and reads nothing: the leaderboard
+// query below does not even run. The ranking appears only when the database says on.
 //
 // ONE READ: customer_review_leaderboard(null) — the aggregate #269 built, which
 // already applies the eligibility rules, the Asia/Kolkata month and credits =
@@ -37,8 +44,10 @@ const count = (n: number) => `${n} eligible ${n === 1 ? 'review' : 'reviews'}`
 
 export function ReviewsLeaderboardPanel() {
   const supabase = useMemo(() => createClient(), [])
+  const rankings = useReviewRankings()
   const board = useQuery({
     queryKey: [...REVIEW_LEADERBOARD_KEY, null],
+    enabled: rankings.visible,
     queryFn: async (): Promise<Leaderboard> => {
       const { data, error } = await supabase.rpc('customer_review_leaderboard', { p_month: null })
       if (error) throw new Error('The leaderboard could not be loaded.')
@@ -50,17 +59,23 @@ export function ReviewsLeaderboardPanel() {
     retry: false,
   })
 
+  if (!rankings.visible) return null
+
   const data = board.data
   const label = data ? reviewMonthLabel(data.month) : 'this month'
 
   return (
     <section aria-labelledby="review-leaderboard-heading" style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-      <header style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-        <h2 id="review-leaderboard-heading" style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: colors.primary }}>
-          Leaderboard · {label}
-        </h2>
-        <Link href="/my-credits/leaderboard" style={{ fontSize: 12.5, color: colors.secondary, fontWeight: 600 }}>
-          Past months
+      <header style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', paddingTop: 6, borderTop: `1px solid ${colors.border}` }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, marginTop: 10 }}>
+          <Trophy size={16} strokeWidth={1.9} aria-hidden="true" style={{ color: GOLD, flexShrink: 0 }} />
+          <h2 id="review-leaderboard-heading" style={{ margin: 0, fontSize: 13, fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase', color: colors.primary }}>
+            Leaderboard
+          </h2>
+          <span style={{ padding: '2px 10px', borderRadius: 999, background: 'rgba(196,138,26,0.12)', color: GOLD, fontSize: 12, fontWeight: 700 }}>{label}</span>
+        </div>
+        <Link href="/my-credits/leaderboard" style={{ marginTop: 10, display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 12.5, color: colors.secondary, fontWeight: 600 }}>
+          Past months <ChevronRight size={14} aria-hidden="true" />
         </Link>
       </header>
 
@@ -95,6 +110,8 @@ function Body({ data, label }: { data: Leaderboard; label: string }) {
 
   const leader = view.leaders[0]
   const meRow = data.rows.find(r => r.is_me)
+  // Every bar is drawn against the leader, so a row reads as "this far behind", never as a percentage of anything.
+  const top = Math.max(1, leader?.reviews ?? 1)
   return (
     <>
       <div className="crv-lb-compact" style={{ ...CARD }}>
@@ -152,10 +169,20 @@ function Body({ data, label }: { data: Leaderboard; label: string }) {
             {view.meOutside && i === view.list.length - 1 && (
               <div aria-hidden="true" style={{ textAlign: 'center', color: colors.muted, fontSize: 12, lineHeight: 1 }}>⋮</div>
             )}
-            <Line row={r} divider={i > 0} />
+            <Line row={r} divider={i > 0} top={top} />
           </li>
         ))}
       </ol>
+
+      <details style={{ fontSize: 12.5, color: colors.secondary }}>
+        <summary style={{ cursor: 'pointer', minHeight: 32, display: 'flex', alignItems: 'center', gap: 6, fontWeight: 600, color: colors.secondary }}>
+          <Info size={14} strokeWidth={1.9} aria-hidden="true" />
+          How is this ranked?
+        </summary>
+        <ul style={{ margin: '4px 0 0', paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 4, lineHeight: 1.55 }}>
+          {HOW_RANKED.map(line => <li key={line}>{line}</li>)}
+        </ul>
+      </details>
       </div>
     </>
   )
@@ -183,20 +210,30 @@ function Person({ row, size, big = false }: { row: LeaderboardRow; size: number;
   )
 }
 
-function Line({ row, divider }: { row: LeaderboardRow; divider: boolean }) {
+function Line({ row, divider, top }: { row: LeaderboardRow; divider: boolean; top: number }) {
+  const first = row.rank === 1
   return (
     <div
       aria-current={row.is_me ? 'true' : undefined}
       style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 14px', minHeight: 44, minWidth: 0,
+        display: 'flex', alignItems: 'center', gap: 12, padding: '9px 14px', minHeight: 48, minWidth: 0,
         borderTop: divider ? `1px solid ${colors.border}` : undefined,
         background: row.is_me ? 'rgba(51,90,134,0.08)' : undefined,
       }}
     >
-      <span style={{ width: 26, flexShrink: 0, fontSize: 12.5, fontWeight: 700, color: row.rank === 1 ? GOLD : colors.tertiary, fontVariantNumeric: 'tabular-nums' }}>{row.rank}</span>
-      <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: row.is_me ? 700 : 500, color: colors.primary, overflowWrap: 'anywhere' }}>
-        {row.name}{row.is_me ? ' (you)' : ''}
-        {row.tied && <span title="Tied: equal reviews share a rank" style={{ marginLeft: 6, fontSize: 12, fontWeight: 600, color: colors.muted }}>tied</span>}
+      <span style={{
+        width: 26, height: 26, flexShrink: 0, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 12.5, fontWeight: 700, fontVariantNumeric: 'tabular-nums',
+        background: first ? 'rgba(196,138,26,0.16)' : colors.float, color: first ? GOLD : colors.tertiary,
+      }}>{row.rank}</span>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: row.is_me ? 700 : 500, color: colors.primary, overflowWrap: 'anywhere' }}>
+          {row.name}{row.is_me ? ' (you)' : ''}
+          {row.tied && <span title="Tied: equal reviews share a rank" style={{ marginLeft: 6, fontSize: 12, fontWeight: 600, color: colors.muted }}>tied</span>}
+        </div>
+        <div aria-hidden="true" style={{ height: 4, borderRadius: 2, background: colors.border, marginTop: 6, overflow: 'hidden' }}>
+          <div style={{ height: '100%', width: `${Math.min(100, Math.round((row.reviews / top) * 100))}%`, borderRadius: 2, background: first ? '#C48A1A' : colors.secondary, opacity: first ? 1 : 0.55 }} />
+        </div>
       </div>
       <div style={{ flexShrink: 0, textAlign: 'right', fontSize: 12, color: colors.secondary, fontVariantNumeric: 'tabular-nums' }}>
         <strong style={{ color: colors.primary }}>{row.reviews}</strong> · {formatPoints(row.points)} pts · {formatCredits(row.credits)}

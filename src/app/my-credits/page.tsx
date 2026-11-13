@@ -32,6 +32,7 @@ import { istToday, istMonthStart } from '@/lib/istDate'
 import { formatCredits, reviewMonthLabel, REWARD_STATUS_LABELS, creditTransactionTone } from '@/lib/boeCredits/ledger'
 import { DEFAULT_BOE_CREDIT_SETTINGS, formatCreditValue } from '@/lib/boeCredits/settings'
 import { CREDITS_GUIDE_PATH } from '@/lib/boeCredits/paths'
+import { useReviewRankings } from '@/hooks/queries/useReviewRankings'
 import type { BoeCreditSettings, CreditReviewMonth } from '@/lib/boeCredits/types'
 import type { CreditHistoryRow } from '@/components/boeCredits/CreditHistoryModal'
 
@@ -76,6 +77,8 @@ export default function MyCreditsPage() {
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
+  // The leaderboard link is offered only while an administrator has the ranking switched on.
+  const rankings = useReviewRankings()
 
   useEffect(() => {
     const init = async () => {
@@ -132,13 +135,15 @@ export default function MyCreditsPage() {
           <PhoneHeaderMenu
             label="More"
             items={[
-              { key: 'leaderboard', label: 'Review leaderboard', icon: <Trophy size={18} strokeWidth={1.9} />, onSelect: () => router.push('/my-credits/leaderboard') },
+              ...(rankings.visible ? [{ key: 'leaderboard', label: 'Review leaderboard', icon: <Trophy size={18} strokeWidth={1.9} />, onSelect: () => router.push('/my-credits/leaderboard') }] : []),
               { key: 'guide', label: 'How credits work', icon: <BookOpen size={18} strokeWidth={1.9} />, onSelect: () => router.push(CREDITS_GUIDE_PATH) },
             ]}
           />
-          <Link href="/my-credits/leaderboard" className="boe-btn boe-btn-ghost boe-desktop-only" style={{ fontSize: 12.5, padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <Trophy size={14} strokeWidth={1.9} /> Review leaderboard
-          </Link>
+          {rankings.visible && (
+            <Link href="/my-credits/leaderboard" className="boe-btn boe-btn-ghost boe-desktop-only" style={{ fontSize: 12.5, padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <Trophy size={14} strokeWidth={1.9} /> Review leaderboard
+            </Link>
+          )}
           <Link href={CREDITS_GUIDE_PATH} className="boe-btn boe-btn-ghost boe-desktop-only" style={{ fontSize: 12.5, padding: '6px 12px', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <BookOpen size={14} strokeWidth={1.9} /> How credits work
           </Link>

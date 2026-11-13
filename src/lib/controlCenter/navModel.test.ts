@@ -24,7 +24,13 @@ describe('navigation model', () => {
   })
 
   test('the sidebar is short', () => {
-    assert.equal(NAV_HUBS.length, 7)
+    assert.equal(NAV_HUBS.length, 8)
+  })
+
+  test('Reviews > Rankings is findable, opens its own page, and belongs to the Reviews hub', () => {
+    assert.equal(searchSections('hide leaderboard')[0]?.id, 'review-rankings')
+    assert.equal(searchSections('ranking')[0]?.id, 'review-rankings')
+    assert.equal(activeHub({ pathname: `${MAIN_PATH}/review-rankings`, tab: null })?.id, 'reviews')
   })
 
   test('a tab section is active only on the main page with that tab', () => {

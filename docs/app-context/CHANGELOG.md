@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom of the page (PR #739, branch `feat/review-rankings-switch`, open, not merged) · `20270702000000` → NOT yet applied
+- **Owner ask.** The team had started seeing the ranking and was asking for its parameters. Hide it for everyone by default, with an option in Control Center; when shown, it must not lead the page and needs a better design.
+- **Built.** Control Center > Reviews > Rankings (one switch). Off: the Reviews landing panel, the "Review leaderboard" button on BOE Credits and the Past months page all hide (the page says the ranking is switched off). On: the board sits LAST on `/customer-reviews`, with rank badges, a bar per person against the leader, and a "How is this ranked?" note.
+- **Fails closed.** The screens treat loading, a failed read, a missing row or a missing table as hidden, so the code can deploy before the migration is applied and the ranking is already hidden.
+- **Database.** One table (`review_display_settings`, one row, starts `false`) and one admin-only function (`set_review_rankings_visible`). `customer_review_leaderboard()` is not touched, so hiding is a display rule only.
+- **Proof.** PGlite rehearsal of the migration (19 checks: applies twice, one row, starts hidden, member/deleted/inactive admin/signed-out refused, no direct client write, re-apply keeps the choice); `rankingsSwitch.test.ts`; `navModel.test.ts`.
+- **Rollback.** Revert the PR, then `drop function public.set_review_rankings_visible(boolean); drop table public.review_display_settings;` (header of the migration).
+
 ## 2026-11-13 — Team Today and Monthly Review redesigned (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
 - **Owner ask.** "Redesign the new pages of Team Today and Monthly review with better UI… analyze the priority of options… give two previews." The owner chose Option A for both, with Option B's score bars and WhatsApp preview in the review.
 - **Team Today** has three tabs:
