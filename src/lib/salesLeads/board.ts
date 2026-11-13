@@ -70,18 +70,11 @@ export const KINDS = [
   { value: 'email', label: 'Email' },
   { value: 'quotation', label: 'Quotation' },
   { value: 'sample', label: 'Sample' },
+  // A comment from the update box (20270703000100): "Last update today".
+  { value: 'note', label: 'Update' },
 ] as const
 export type ActivityKind = typeof KINDS[number]['value']
 export const kindLabel = (kind: string) => KINDS.find(k => k.value === kind)?.label ?? kind
-
-/** The answers on the log form. "Not interested" is logged like any call, then asks why the lead is dead. */
-export const OUTCOMES = [
-  { value: 'interested', label: 'Interested', step: 'Call: send quotation', inDays: 3 },
-  { value: 'still_deciding', label: 'Still deciding', step: 'Call back', inDays: 7 },
-  { value: 'call_back', label: 'Call back', step: 'Call back', inDays: 1 },
-  { value: 'not_interested', label: 'Not interested', step: '', inDays: 0 },
-] as const
-export type OutcomeChoice = typeof OUTCOMES[number]['value']
 
 const OUTCOME_WORDS: Record<string, string> = {
   interested: 'Interested', still_deciding: 'Still deciding', call_back: 'Call back', no_answer: 'No answer', sent: 'Sent',
@@ -89,13 +82,48 @@ const OUTCOME_WORDS: Record<string, string> = {
 }
 export const outcomeLabel = (outcome: string) => OUTCOME_WORDS[outcome] ?? outcome
 
-export const NEXT_STEPS = ['Call: send quotation', 'Call back', 'WhatsApp: send catalogue', 'Meeting', 'Send sample'] as const
+/**
+ * The quick notes under the comment box (owner, 2026-11-13: three or four, the things written again and again). A tap
+ * fills the text; the person can add to it. Two carry a meaning the database keeps: a try nobody answered, and a quotation
+ * that was shared (which satisfies the Negotiation checklist). The others are only words.
+ */
+export type CommentTag = 'not_responding' | 'quotation'
+export const QUICK_NOTES: readonly { key: string; label: string; text: string; tag: CommentTag | null }[] = [
+  { key: 'not_responding', label: 'Client not responding', text: 'Client not responding.', tag: 'not_responding' },
+  { key: 'quotation', label: 'Shared quotation', text: 'Shared the quotation.', tag: 'quotation' },
+  { key: 'catalogue', label: 'Shared catalogue', text: 'Shared the catalogue.', tag: null },
+  { key: 'will_get_back', label: 'Client will get back', text: 'Client will get back to us.', tag: null },
+]
 
-export const WHEN_CHOICES = [
-  { key: 1, label: 'Tomorrow' },
-  { key: 3, label: 'In 3 days' },
-  { key: 7, label: 'Next week' },
-] as const
+/**
+ * The next working day after `date`. Monday to Saturday are working days (rule 16 of the dossier), so only a Sunday is
+ * skipped. The database does the same (sales_next_working_day), and it is what every follow-up date starts as.
+ */
+export function nextWorkingDay(date: string): string {
+  const next = istAddDays(date, 1)
+  return isSunday(next) ? istAddDays(date, 2) : next
+}
+
+export const isSunday = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay() === 0
+
+/** The dates offered when a follow-up is set or changed; "Pick a date" is the fourth. */
+export function followUpChoices(today: string): { date: string; why: string }[] {
+  return [
+    { date: nextWorkingDay(today), why: 'Next working day' },
+    { date: istAddDays(today, 3), why: 'In 3 days' },
+    { date: istAddDays(today, 7), why: 'In a week' },
+  ]
+}
+
+/** What an entry of the activity feed is tagged with, or null when its words say it all. */
+export function activityTag(a: { kind: string; outcome: string }): { label: string; tone: 'no' | 'quote' | 'plain' } | null {
+  if (a.kind === 'imported') return { label: 'ClickUp', tone: 'plain' }
+  if (a.outcome === 'no_answer') return { label: 'Not responding', tone: 'no' }
+  if (a.kind === 'quotation') return { label: 'Shared quotation', tone: 'quote' }
+  if (a.kind === 'note') return null
+  // Entries logged before the comment box: "Meeting · Interested".
+  return { label: `${kindLabel(a.kind)} · ${outcomeLabel(a.outcome)}`, tone: 'plain' }
+}
 
 export const DEAD_REASONS = [
   { value: 'price_too_high', label: 'Price too high' },
