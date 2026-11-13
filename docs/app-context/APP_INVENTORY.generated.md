@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `df8ef1f7` — Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (migration 20270713000000) (#754)
-- Commits on this branch: 1316
+- Commit: `c9670dd0` — Quotations: Import says to reload when its code could not be downloaded (#756)
+- Commits on this branch: 1317
 - Pages (`page.tsx`): 196   API routes (`route.ts`): 209
 - Migrations: 454 (first `20260530_create_positions.sql`, latest `20270713000000_clickup_draft_orders.sql`)
 - Tables ever created: 251 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `c9670dd0` 2026-11-13 Quotations: Import says to reload when its code could not be downloaded (#756)
 - `df8ef1f7` 2026-11-13 Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (migration 20270713000000) (#754)
 - `a203fcef` 2026-11-13 Docs: stamp #753 (Pendencies card on a phone) as merged e9a5f6bd, deployed 19:05 IST (no SQL) (#755)
 - `e9a5f6bd` 2026-11-13 Orders: Pending from client no longer slides off the right edge on a phone (#753)
@@ -38,7 +39,6 @@
 - `2c214103` 2026-11-13 Docs: stamp #730 (Quotations links back) as merged dafb5eb0 (#734)
 - `dafb5eb0` 2026-11-13 Quotations: links back to quotation requests and PI drafts, and revisions to win (#730)
 - `a3e764a8` 2026-11-13 Docs: stamp #719 (Confirmed Payments search, order total, old-order client) as merged ebfc7df8 (#732)
-- `51b3fff9` 2026-11-13 Docs: record the merge of #729 ("With Sales" on the Operations queue) (#731)
 
 ## Pages by top-level area
 

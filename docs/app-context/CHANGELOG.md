@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-13 — Quotations: the Import dialog says to reload when its code could not be downloaded (branch `fix/import-dialog-stale-page`, not merged) · no SQL
+## 2026-11-13 — Quotations: the Import dialog says to reload when its code could not be downloaded (PR #756, merged 2026-11-13 at 19:56 IST as `c9670dd0`, deployed 19:58 IST) · no SQL
 - **Owner report.** Choosing a file in Import client file showed `Failed to load chunk /_next/static/chunks/….js?dpl=… from module 342078` in the red box. The chunk was healthy on the live site (HTTP 200); the tab had been loaded from an older build, and BOE had gone out five times in the hour before (13:45–14:44 IST). A page keeps a failed chunk download until it reloads, so choosing the file again could not work.
 - **Built.** `readFailure()` in `importFile.ts` turns that error (the same kinds `classifyRouteError` calls "updated") into a plain sentence and the dialog shows a **Reload page** button under it. Nothing reloads by itself. Every other error keeps its own message.
 - **Why the wording does not say "saved".** The builder saves by hand (Save button, "Unsaved changes" badge, a leave-warning while there are edits), so the text tells the person to stay, close the window and press Save if the browser asks about leaving.
