@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-13 — Bank Statements: a reversed card debit no longer stops the upload (branch `fix/bank-statement-reversal-lines`, PR not yet opened) · no SQL
+## 2026-11-13 — Bank Statements: a reversed card debit no longer stops the upload (PR #743, merged 2026-11-13 as `48b0cd83` at 12:40 IST, production deployment succeeded 12:43 IST) · no SQL
 - **Owner report.** Uploading the HDFC PRI statement to 13 Nov failed with "Line 2 (2026-11-03) must have exactly one of withdrawal or deposit."
 - **Cause.** HDFC wrote a Vercel reversal as a NEGATIVE withdrawal (`-47.64`, balance up). The parser refused any negative amount.
 - **Fix.** `parseHdfcStatement` stores a negative withdrawal as a deposit; the summary totals check subtracts reversals from both sides (the bank counts them inside Debits). Balance chain and database rules unchanged. A negative deposit is still refused.
