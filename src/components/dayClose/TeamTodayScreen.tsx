@@ -6,7 +6,8 @@
 //                      beside "The day so far" (planned, closed, tasks done, the office day's time bar);
 //                      then everybody in one table, worst first: Needs attention, On track, Away. A row opens
 //                      to that person's tasks (each proof one tap away), carry-over reasons and end-of-day note.
-//   People & targets   who takes part ("Add everyone") and the Scoreboard's monthly tracks and targets
+//   People & targets   who takes part ("Add everyone"), the Scoreboard's monthly tracks and targets, and
+//                      who sees the Scoreboard's Top 5 (staff or administrators only)
 //   Ratings            the owner's monthly 1-5 rating (the reviewer seat only)
 //
 // A plan that is not yet due is never red (src/lib/dayClose/teamView.ts).
@@ -20,6 +21,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { TargetsEditor } from '@/components/scoreboard/TargetsEditor'
 import { RatingsEditor } from '@/components/scoreboard/RatingsEditor'
+import { Top5Switch } from '@/components/scoreboard/Top5Switch'
 import { istAddDays, istMinutesOfDay } from '@/lib/istDate'
 import { clock } from '@/lib/dayClose/rules'
 import { OFFICE_END_MINUTES, OFFICE_START_MINUTES, dayProgress, rosterStatus, sortRoster, type Group, type RosterStatus, type Tone } from '@/lib/dayClose/teamView'
@@ -161,6 +163,8 @@ export function TeamTodayScreen() {
           <Members onChanged={load} />
           {/* The Scoreboard's monthly tracks and targets (administrators; the route checks again). */}
           <TargetsEditor />
+          {/* Who sees the Scoreboard's Top 5 (administrators; the route checks again). */}
+          <Top5Switch />
         </>
       )}
       {/* The owner's monthly 1-5 rating, and the vote totals once closed: the reviewer seat (the owner) alone. */}
