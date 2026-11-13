@@ -12,7 +12,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Bug.** `scoreCard.module.css` defined `.star` twice: for the band pill and for the Star Seller card (#728). The two rules merged, so every "Star" pill (your band, the Top 5) took the card's border, padding and bottom margin.
 - **Fix.** The card's class is now `.starCard` (`StarSellerCard.tsx`). The pill is unchanged.
 
-## 2026-11-13 — Confirmed Payments: the Order / PI column shows names only, no amounts (branch `fix/confirmed-order-column-no-amounts`, PR pending) · no SQL
+## 2026-11-13 — Confirmed Payments: the Order / PI column shows names only, no amounts (PR #735, squash-merged 2026-11-13 as `bab48de7`, 09:43 IST) · no SQL
 - **Owner ask.** After trying #718/#719 live: search works, but the amount repeated in the Order / PI column "is not making sense and is creating a mess"; details in a separate popup or remove it.
 - **Built.** `AllocatedAgainstCell` draws each Order, PI Draft or old order by name only (links unchanged, "N allocations" header unchanged), in the table and on the phone cards. A part-allocated payment keeps the amber word "Unallocated", without its figure. The popup the status icon opens already lists every destination with its own amount, the allocated total and what is left, so nothing was lost; the list's accessible name still carries the figures for a screen reader. Column widths and the cards threshold are unchanged.
 - **Proof.** `allocatedAgainst.render.test.tsx`: the old amount assertions turned into "no amount on screen" (table cell, card cell) plus "the accessible name and the popup keep them".
