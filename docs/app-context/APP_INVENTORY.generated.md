@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `c9670dd0` — Quotations: Import says to reload when its code could not be downloaded (#756)
-- Commits on this branch: 1317
+- Commit: `49e94228` — Docs: name PR #758 in the changelog, the Quotations dossier and the app-context row
+- Commits on this branch: 1319
 - Pages (`page.tsx`): 196   API routes (`route.ts`): 209
 - Migrations: 455 (first `20260530_create_positions.sql`, latest `20270714000000_quotation_builder_fields.sql`)
 - Tables ever created: 251 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `49e94228` 2026-11-13 Docs: name PR #758 in the changelog, the Quotations dossier and the app-context row
+- `ecc97bca` 2026-11-13 Quotations: the builder redesigned (one column, status and client on top, one dimensions unit, one GST rate, picture pop-up) (migration 20270714000000, apply before merge)
 - `c9670dd0` 2026-11-13 Quotations: Import says to reload when its code could not be downloaded (#756)
 - `df8ef1f7` 2026-11-13 Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (migration 20270713000000) (#754)
 - `a203fcef` 2026-11-13 Docs: stamp #753 (Pendencies card on a phone) as merged e9a5f6bd, deployed 19:05 IST (no SQL) (#755)
@@ -37,8 +39,6 @@
 - `a8a6ec45` 2026-11-13 Scoreboard: fix the "Star" band pill; record the Day Close/Scoreboard migrations' real apply date (no SQL) (#736)
 - `bab48de7` 2026-11-13 Confirmed Payments: the Order / PI column shows names only, no amounts (#735)
 - `2c214103` 2026-11-13 Docs: stamp #730 (Quotations links back) as merged dafb5eb0 (#734)
-- `dafb5eb0` 2026-11-13 Quotations: links back to quotation requests and PI drafts, and revisions to win (#730)
-- `a3e764a8` 2026-11-13 Docs: stamp #719 (Confirmed Payments search, order total, old-order client) as merged ebfc7df8 (#732)
 
 ## Pages by top-level area
 
