@@ -146,7 +146,7 @@ The leave integration in `requestHandlers.ts` and the 🔒 mark on the leave que
 
 ## 9. The team switch (`20270704000000_day_close_team_switch.sql`, 2026-11-13)
 
-**Applied 2026-11-13** by the owner after PR #746 merged (`22d9f77`). An `information_schema` check confirmed `team_live` is present. The team stays **paused** until the owner switches it on in Control Center.
+Shipped in PR #746 (`22d9f772`, deployed 13:45 IST). `20270704000000` APPLIED to production 2026-11-13 by the owner; the settings row reads `team_live = false`, `live_since` null, so the team stays PAUSED until an administrator turns it on.
 
 **Owner, 2026-11-13:** the team had not been introduced to Day Close or the Scoreboard but was already seeing the red "Your plan was due" strip and the Scoreboard card. Hide them, and stop the rules behind them, until he introduces them.
 

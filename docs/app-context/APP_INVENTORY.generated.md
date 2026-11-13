@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b95fe16a` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- Commits on this branch: 102
+- Commit: `da623338` — Docs: record 20270704000000 and 20270705000000 as applied (owner, 2026-11-13, verified by query)
+- Commits on this branch: 103
 - Pages (`page.tsx`): 193   API routes (`route.ts`): 205
 - Migrations: 451 (first `20260530_create_positions.sql`, latest `20270705000000_scoreboard_top5_switch.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `da623338` 2026-11-13 Docs: record 20270704000000 and 20270705000000 as applied (owner, 2026-11-13, verified by query)
 - `b95fe16a` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `dcbe0c9f` 2026-11-13 Scoreboard: hide the Top 5 from staff, with the owner's switch (migration 20270705000000) (#744)
 - `48754e2a` 2026-11-13 Merge main; renumber the Top 5 switch migration to 20270705000000
@@ -38,7 +39,6 @@
 - `bab48de7` 2026-11-13 Confirmed Payments: the Order / PI column shows names only, no amounts (#735)
 - `e184fc52` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `0f492986` 2026-11-13 Docs: record that the Day Close and Scoreboard migrations reached production on 2026-11-13
-- `2c214103` 2026-11-13 Docs: stamp #730 (Quotations links back) as merged dafb5eb0 (#734)
 
 ## Pages by top-level area
 
