@@ -1422,6 +1422,40 @@ await step('Browser users cannot fire the alert job', () =>
   })
 }
 
+{
+  // ── What a move asks for: the project value, never the quantity (20270711000000) ──
+  await db.exec(mig('20270711000000_sales_value_timeline_gates.sql'))
+  const fresh = async phone => {
+    const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, [phone])
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [L.lead.id, U.ashok])
+    await one(U.ashok, `select public.add_sales_lead_comment($1, 'Spoke to him')`, [L.lead.id])
+    return L.lead.id
+  }
+  await step('Potential Clients asks for the requirement and the project value, not the quantity', async () => {
+    const id = await fresh('+91 97111 00970')
+    const r = await move(U.ashok, id, 'potential', 'under_process')
+    must(r.status === 'needs' && r.missing.includes('requirement') && r.missing.includes('value') && !r.missing.includes('quantity'), JSON.stringify(r.missing))
+    await facts(U.ashok, id, { requirement: '40 chairs', expected_value_paise: 400000000 })
+    must((await move(U.ashok, id, 'potential', 'under_process')).status === 'moved', 'with requirement and value, no quantity')
+  })
+  await step('Negotiation asks for the quotation and the expected timeline (the value only when still empty), not the quantity', async () => {
+    const id = await fresh('+91 97111 00971')
+    await facts(U.ashok, id, { requirement: 'Tables', expected_value_paise: 250000000 })
+    await move(U.ashok, id, 'potential', 'under_process')
+    const r = await move(U.ashok, id, 'negotiation', 'potential')
+    must(r.status === 'needs' && r.missing.includes('timeline') && r.missing.includes('quotation') && !r.missing.includes('value') && !r.missing.includes('quantity'), JSON.stringify(r.missing))
+    const n = await fresh('+91 97111 00972')
+    const r2 = await move(U.ashok, n, 'negotiation', 'under_process')
+    must(r2.status === 'needs' && r2.missing.includes('value') && r2.missing.includes('timeline') && !r2.missing.includes('quantity'), JSON.stringify(r2.missing))
+  })
+  await step('Converted no longer asks for the quantity; the quantity is never asked by any move', async () => {
+    const id = await fresh('+91 97111 00973')
+    await facts(U.ashok, id, { requirement: 'Sofas', expected_value_paise: 90000000 })
+    must((await move(U.ashok, id, 'converted', 'under_process')).status === 'moved', 'converted without a quantity')
+    must(!(await scalar(`select position('''quantity''' in pg_get_functiondef('public.move_sales_lead(uuid, text, text, text, text, text, date)'::regprocedure)) > 0`)), 'quantity still asked')
+  })
+}
+
 console.log(results.join('\n'))
 if (fail) { console.log(`\n${fail} of ${pass + fail} checks FAILED`); process.exit(1) }
 console.log(`\nall ${pass} checks passed`)

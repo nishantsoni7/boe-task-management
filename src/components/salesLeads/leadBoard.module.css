@@ -208,33 +208,22 @@
 .mCall:hover { background: #A33E27; }
 .mCall svg { width: 15px; height: 15px; }
 .mStage { border: 1px solid #ECE7E0; border-radius: 14px; padding: 14px 16px 12px; background: #fff; }
-.mStageHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.mStageHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
 .mStageKey { font-size: 12px; font-weight: 600; color: #686D6C; text-transform: uppercase; letter-spacing: .05em; }
-.mStageNow { font: 700 14px var(--boe-font-heading); color: #963B27; text-align: right; }
-.mStageNow small { font: 500 12px var(--boe-font-body); color: #686D6C; }
-.mDeadNote { margin: -6px 0 10px; font-size: 12.5px; color: #686D6C; }
-.mPath { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.mPath li { position: relative; }
-.mPath li + li::before { content: ''; position: absolute; top: 9px; right: 50%; width: 100%; height: 3px; background: #E4DED7; border-radius: 2px; }
-.mPath li.mPathDone::before, .mPath li.mPathNow::before { background: #E9A592; }
-.mPath button { position: relative; z-index: 1; width: 100%; border: 0; background: none; padding: 0 2px; display: flex; flex-direction: column; align-items: center; gap: 7px; cursor: pointer; font: 500 11.5px/1.25 var(--boe-font-body); color: #686D6C; text-align: center; }
-.mPath button:disabled { cursor: default; }
-.mPath i { width: 21px; height: 21px; border-radius: 50%; border: 2px solid #CFC8BF; background: #fff; box-sizing: border-box; transition: transform .12s, border-color .12s; }
-.mPath button:hover:not(:disabled) i { transform: scale(1.12); border-color: #B9472E; }
-.mPath button:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; border-radius: 6px; }
-.mPathDone i { border-color: #E9A592; background: #F8EAE4; }
-.mPathDone button { color: #4C5352; }
-.mPathNow i { border-color: #B9472E; background: #B9472E; box-shadow: 0 0 0 4px #F8EAE4; }
-.mPathNow button { color: #963B27; font-weight: 700; }
-.mStageActs { display: flex; align-items: center; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #F1EEE9; flex-wrap: wrap; }
-.mNextStage { height: 32px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #E8C4B8; border-radius: 9px; background: #F8EAE4; color: #963B27; font: 600 12.5px var(--boe-font-body); cursor: pointer; }
-.mNextStage:hover { background: #F3DCD3; }
-.mNextStage svg { width: 14px; height: 14px; }
-.mSpacer { flex: 1; }
-.mGhost { height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font: 500 12.5px var(--boe-font-body); color: #4C5352; cursor: pointer; }
-.mGhost:hover { background: #F1EEE9; }
-.mGhostWon { color: #2F7D4F; }
-.mGhostLost { color: #A12438; }
+.mSince { font-size: 12px; color: #686D6C; }
+/* The Board status: one dropdown (owner, 2026-11-13, option B). */
+.mStatusBtn { width: 100%; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; cursor: pointer; font: 600 14px var(--boe-font-body); color: #303536; text-align: left; }
+.mStatusBtn:hover:not(:disabled) { background: #FAF8F5; border-color: #B9472E; }
+.mStatusBtn:disabled { cursor: default; }
+.mStatusBtn[aria-expanded="true"] { border-color: #B9472E; box-shadow: 0 0 0 3px #F8EAE4; }
+.mStatusBtn svg { width: 16px; height: 16px; margin-left: auto; color: #686D6C; }
+.mDot8 { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
+.mStatusMenu { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 6; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; box-shadow: var(--boe-shadow-float); padding: 6px; }
+.mStatusItem { width: 100%; min-height: 38px; display: flex; align-items: center; gap: 9px; padding: 0 10px; border: 0; background: none; border-radius: 8px; font: 500 13px var(--boe-font-body); color: #303536; cursor: pointer; text-align: left; }
+.mStatusItem:hover { background: #FAF8F5; }
+.mStatusItem[aria-checked="true"] { background: #F8EAE4; color: #963B27; font-weight: 600; }
+.mStatusNow { margin-left: auto; font-size: 11.5px; font-weight: 500; color: #686D6C; }
+.mDeadNote { margin: 8px 0 0; font-size: 12.5px; color: #686D6C; }
 .mRows { margin: 0; display: flex; flex-direction: column; }
 .mRows > div { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; align-items: center; min-height: 40px; padding: 4px 0; border-bottom: 1px solid #F4F1EC; }
 .mRows > div:last-child { border-bottom: 0; }
@@ -276,7 +265,8 @@
 .mCompose { flex: 0 0 auto; margin: 0 18px 12px; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; padding: 10px 12px; }
 .mCompose:focus-within { border-color: #303536; box-shadow: 0 0 0 3px rgba(48, 53, 54, .1); }
 .mCompose textarea { display: block; width: 100%; box-sizing: border-box; border: 0; resize: none; font: 400 13.5px/1.45 var(--boe-font-body); color: #303536; padding: 2px 0; min-height: 44px; background: transparent; }
-.mCompose textarea:focus, .mCompose textarea:focus-visible { outline: none; }
+/* One rounded border on focus (the box itself), not a square ring around the text area (owner, 2026-11-13). */
+.mCompose textarea:focus, .mCompose textarea:focus-visible { outline: none !important; }
 .mChips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
 .mChip { height: 28px; padding: 0 10px; border: 1px solid #E4DED7; border-radius: 999px; background: #FAF8F5; font: 500 12px var(--boe-font-body); color: #4C5352; cursor: pointer; }
 .mChip:hover { border-color: #B9472E; color: #963B27; background: #fff; }
@@ -493,10 +483,10 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .mLeft { padding: 16px 14px 28px; }
   .mRows > div, .mForm { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px 0; }
   .mWho { flex-direction: column; }
+  .mStatusBtn { height: 48px; }
+  .mStatusItem { min-height: 44px; }
   .mReach { width: 100%; }
   .mCall, .mWa { flex: 1; justify-content: center; height: 46px; }
-  .mPath button { font-size: 11px; }
-  .mNextStage, .mGhost { height: 40px; }
   .mChip { height: 40px; }
   .mHeat button { height: 40px; }
   .mDue { height: 44px; }

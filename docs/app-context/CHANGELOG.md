@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (branch `feat/sales-board-status-dropdown`, not merged) · `20270711000000` → NOT yet applied
+- **Owner ask** (screenshots of the live popup): the stage is a "Board status", not a timeline (any status to any other); choose option B, a dropdown. Do not ask for the quantity: ask for an approximate project value before Potential Clients, and the project value (if empty) and the expected timeline before Negotiation. The update box should have a round focus border.
+- **Built.** Dossier rule 35. The popup's stage bar, Move to next and Converted / Dead buttons are replaced by one Board status dropdown; the facts are called Project value (approx.) and Expected timeline.
+- **Database.** `move_sales_lead` re-issued from 20270710000000 with the fact lines only: no table or data change, so a same-day verified backup is enough. Apply by hand (`db push` would also push 20270624-0628).
+- **Proof.** `sales_full_flow_pglite.mjs` 139/139 (3 new: Potential asks requirement + value, Negotiation asks quotation + timeline (+ value when empty), Converted and every move never ask for the quantity).
+- **Rollback.** Re-run the 20270710000000 definition of `move_sales_lead`.
+
 ## 2026-11-13 — Sales: Visit / Meeting stage and the owner's stage names; ClickUp Important Bulk / Bulk leads to Potential Clients; Call back; the popup's left side redesigned (PR #749, merged 14:42 IST as `b9b552f7`) · `20270710000000` → APPLIED by the owner (run by hand, recorded with `migration repair`)
 - **Owner ask.** The popup's top looked clumsy. Stages and order: New, Under Process, Visit / Meeting, Potential Clients, Negotiation, Converted, Dead. ClickUp leads from Important Bulk / Bulk / Potential Customers to Potential. Call and WhatsApp buttons again. Quantity out of the requirement, into the client's details. A round-3 preview was approved.
 - **Built.** Dossier rule 34: the new stage (ranked like Under Process; nothing asked to enter it), renamed stages everywhere, the board's sixth column, Call back in the popup, on the cards and on My day, the redesigned left side (stage bar, Move to next, plain rows, the name without its typed-in number), Quantity in Client details.

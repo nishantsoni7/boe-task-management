@@ -2,7 +2,7 @@
 
 import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, MessageCircle, Phone, Search, X } from 'lucide-react'
+import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, MessageCircle, Phone, Search, X } from 'lucide-react'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
 import { formatPhone, telHref } from '@/lib/exhibitionLeads/phone'
 import {
@@ -10,8 +10,8 @@ import {
   type LeadFacts, type WorkDetail, type WorkLead,
 } from '@/lib/salesLeads/api'
 import {
-  activityTag, CLIENT_TYPES, dueOf, followUpChoices, isSunday, lastLabel, marketLabel, NEXT_STAGE, nextWorkingDay, parseValue,
-  PATH_STAGES, QUICK_NOTES, SEGMENTS, stageLabel, STAGE_GUIDE, TEMPERATURES, valueLabel,
+  activityTag, CLIENT_TYPES, dueOf, followUpChoices, isSunday, lastLabel, marketLabel, nextWorkingDay, parseValue,
+  QUICK_NOTES, SEGMENTS, stageLabel, STAGE_GUIDE, TEMPERATURES, valueLabel,
   type CommentTag, type Stage, type Temperature,
 } from '@/lib/salesLeads/board'
 import { sourceLabel } from '@/lib/salesLeads/constants'
@@ -28,7 +28,7 @@ import s from './leadBoard.module.css'
 // click outside closes it. On a phone it fills the screen and the two sides are two tabs.
 
 /** Only one menu is open at a time; Escape closes it before it closes the popup. */
-type Menu = 'due' | 'next' | null
+type Menu = 'status' | 'due' | 'next' | null
 type Tab = 'details' | 'activity'
 
 /** The list the lead was opened from, so Previous and Next can walk it. */
@@ -204,61 +204,40 @@ const inStage = (since: string, now: number) => {
   return d === 0 ? 'today' : d === 1 ? '1 day' : `${d} days`
 }
 
+/** Each status's colour dot: the status, not a step of a path (any status can follow any other). */
+const STATUS_DOT: Record<Stage, string> = {
+  new: '#8A8F8E', under_process: '#C98A1E', visit_meeting: '#5B7FB8', potential: '#B9472E', negotiation: '#7A4FB0',
+  follow_up_later: '#686D6C', converted: '#2F7D4F', dead: '#A12438',
+}
+/** The statuses a lead can be put in, in the owner's order; the three ways out after a line. */
+const STATUS_OPEN: readonly Stage[] = ['new', 'under_process', 'visit_meeting', 'potential', 'negotiation']
+const STATUS_OUT: readonly Stage[] = ['follow_up_later', 'converted', 'dead']
+
 /**
- * Where it stands: one stage bar (a click on a step moves the lead), "Move to" the next step, and the three ways out;
- * then Hot / Warm / Cold, the next follow-up and who holds it, as plain rows.
+ * Where it stands: the Board status as one dropdown (owner, 2026-11-13, option B: a lead can go from any status to any
+ * other, so it is a choice, not a path); then Hot / Warm / Cold, the next follow-up and who holds it, as plain rows.
  */
 function StateBox({ lead, since, work, canWork, closed, menu, setMenu }: {
   lead: WorkLead; since: string | null; work: LeadWork; canWork: boolean; closed: boolean; menu: Menu; setMenu: (m: Menu) => void
 }) {
-  // The moment the popup opened: "12 days" in the stage does not need to tick.
+  // The moment the popup opened: "12 days" in the status does not need to tick.
   const [now] = useState(() => Date.now())
   const due = dueOf(lead, work.today)
-  const to = (stage: Stage) => work.moveTo(lead, stage)
   const heat = (value: Temperature) => {
     if (value !== lead.temperature) void work.guarded(async () => { await updateFacts(work.supabase, lead.id, { temperature: value }) })
   }
-  const at = PATH_STAGES.indexOf(lead.stage)
-  const next = NEXT_STAGE[lead.stage]
   return (
     <>
-      <section className={s.mStage} aria-label="Stage">
+      <section className={s.mStage} aria-label="Board status">
         <div className={s.mStageHead}>
-          <span className={s.mStageKey}>{closed ? 'Reopen to' : 'Stage'}</span>
-          <span className={s.mStageNow}>
-            {stageLabel(lead.stage)}{lead.stage === 'dead' && ` · ${due.label}`}
-            {since && <small> · {inStage(since, now)}</small>}
-          </span>
+          <span className={s.mStageKey}>Board status</span>
+          {since && <span className={s.mSince}>for {inStage(since, now)}</span>}
         </div>
-        {lead.dead_note && <p className={s.mDeadNote}>{lead.dead_note}</p>}
-        <ol className={s.mPath}>
-          {PATH_STAGES.map((stage, i) => (
-            <li key={stage} className={i < at ? s.mPathDone : i === at ? s.mPathNow : undefined}>
-              <button
-                type="button" title={STAGE_GUIDE[stage]} aria-current={i === at ? 'step' : undefined}
-                aria-label={i === at ? `${stageLabel(stage)}, the stage it is in` : `Move to ${stageLabel(stage)}`}
-                disabled={!canWork || i === at} onClick={() => to(stage)}
-              >
-                <i aria-hidden="true" /><span>{stageLabel(stage)}</span>
-              </button>
-            </li>
-          ))}
-        </ol>
-        {canWork && (
-          <div className={s.mStageActs}>
-            {!closed && next && (
-              <button type="button" className={s.mNextStage} onClick={() => to(next)}>Move to {stageLabel(next)}<ArrowRight aria-hidden="true" /></button>
-            )}
-            <span className={s.mSpacer} />
-            {lead.stage !== 'follow_up_later' && <button type="button" className={s.mGhost} onClick={() => to('follow_up_later')}>Follow up later</button>}
-            {!closed && (
-              <>
-                <button type="button" className={`${s.mGhost} ${s.mGhostWon}`} onClick={() => to('converted')}>Converted</button>
-                <button type="button" className={`${s.mGhost} ${s.mGhostLost}`} onClick={() => to('dead')}>Dead</button>
-              </>
-            )}
-          </div>
+        <StatusMenu lead={lead} work={work} canWork={canWork} open={menu === 'status'} setOpen={open => setMenu(open ? 'status' : null)} />
+        {(lead.stage === 'dead' || lead.dead_note) && (
+          <p className={s.mDeadNote}>{lead.stage === 'dead' ? due.label : ''}{lead.stage === 'dead' && lead.dead_note ? ' · ' : ''}{lead.dead_note}</p>
         )}
+        {closed && canWork && <p className={s.mDeadNote}>Choose a status to reopen it.</p>}
       </section>
       <dl className={s.mRows}>
         <div>
@@ -289,6 +268,39 @@ function StateBox({ lead, since, work, canWork, closed, menu, setMenu }: {
         </div>
       </dl>
     </>
+  )
+}
+
+/** The Board status: the current one on the button, every status in the menu; picking one moves the lead at once. */
+function StatusMenu({ lead, work, canWork, open, setOpen }: { lead: WorkLead; work: LeadWork; canWork: boolean; open: boolean; setOpen: (open: boolean) => void }) {
+  const wrap = useCloseOnOutside(open, () => setOpen(false))
+  const button = useRef<HTMLButtonElement>(null)
+  // Focus goes back to the button, so a keyboard user is not left on a menu item that has just disappeared.
+  const pick = (stage: Stage) => { setOpen(false); button.current?.focus(); if (stage !== lead.stage) work.moveTo(lead, stage) }
+  const item = (stage: Stage) => (
+    <button key={stage} type="button" role="menuitemradio" aria-checked={lead.stage === stage} className={s.mStatusItem} title={STAGE_GUIDE[stage]} onClick={() => pick(stage)}>
+      <i className={s.mDot8} style={{ background: STATUS_DOT[stage] }} aria-hidden="true" />{stageLabel(stage)}
+      {lead.stage === stage && <span className={s.mStatusNow}>current</span>}
+    </button>
+  )
+  return (
+    <div ref={wrap} className={s.mRel}>
+      <button
+        ref={button} type="button" className={s.mStatusBtn} disabled={!canWork} aria-haspopup="menu" aria-expanded={open}
+        aria-label={`Board status: ${stageLabel(lead.stage)}. Change it`} onClick={() => setOpen(!open)}
+      >
+        <i className={s.mDot8} style={{ background: STATUS_DOT[lead.stage] }} aria-hidden="true" />
+        <b>{stageLabel(lead.stage)}</b>
+        {canWork && <ChevronDown aria-hidden="true" />}
+      </button>
+      {open && (
+        <div className={s.mStatusMenu} role="menu" aria-label="Move this lead to">
+          {STATUS_OPEN.map(item)}
+          <hr className={s.menuLine} />
+          {STATUS_OUT.map(item)}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -396,7 +408,7 @@ function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canW
           <div className={s.field}><label className={s.label} htmlFor="fact-type">Type of client</label><select id="fact-type" className={s.input} value={form.client_type} onChange={e => set({ client_type: e.target.value })}><option value="">Not set</option>{CLIENT_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
           <div className={s.field}><label className={s.label} htmlFor="fact-seg">Segment</label><select id="fact-seg" className={s.input} value={form.segment} onChange={e => set({ segment: e.target.value })}><option value="">Not set</option>{SEGMENTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
           {text('quantity', 'Quantity')}
-          <div className={s.field}><label className={s.label} htmlFor="fact-value">Expected order value (₹)</label><input id="fact-value" className={s.input} inputMode="decimal" placeholder="e.g. 14 L" value={form.value} onChange={e => set({ value: e.target.value })} /></div>
+          <div className={s.field}><label className={s.label} htmlFor="fact-value">Project value, approx. (₹)</label><input id="fact-value" className={s.input} inputMode="decimal" placeholder="e.g. 8 L" value={form.value} onChange={e => set({ value: e.target.value })} /></div>
           <div className={`${s.field} ${s.mFull}`}><label className={s.label} htmlFor="fact-req">Requirement</label><textarea id="fact-req" className={s.input} value={form.requirement} onChange={e => set({ requirement: e.target.value })} /></div>
           {text('timeline', 'Needed by')}
         </div>
@@ -435,12 +447,12 @@ function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canW
           <div><dt>Needed by</dt><dd>{lead.timeline || none}</dd></div>
         </dl>
       </section>
-      <section className={s.mSec} aria-label="Expected order value">
-        <div className={s.mSecHead}><h3 className={s.mH3}>Expected order value</h3></div>
+      <section className={s.mSec} aria-label="Project value">
+        <div className={s.mSecHead}><h3 className={s.mH3}>Project value (approx.)</h3></div>
         <div className={s.mValue}>
           {lead.expected_value_paise !== null
             ? <span className={s.mBig}>{valueLabel(lead.expected_value_paise)}</span>
-            : <span className={s.mNone}>Not set yet. It is needed before Negotiation.</span>}
+            : <span className={s.mNone}>Not set yet. It is asked for before Potential Clients.</span>}
           {canWork && lead.expected_value_paise === null && <button type="button" className={s.linkBtn} onClick={edit}>Add</button>}
         </div>
       </section>

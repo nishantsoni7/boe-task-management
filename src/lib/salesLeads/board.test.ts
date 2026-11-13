@@ -178,7 +178,7 @@ describe('the stage checklist', () => {
   test('asks for what the database asks for', () => {
     assert.deepEqual(checklistFor({ ...lead, stage: 'new' }, false)?.items.map(i => i.fact), ['contact'])
     assert.equal(checklistFor({ ...lead, stage: 'under_process' }, false), null, 'Visit / Meeting asks for nothing first')
-    assert.deepEqual(checklistFor(lead, false)?.items.map(i => i.fact), ['requirement', 'quantity'])
+    assert.deepEqual(checklistFor(lead, false)?.items.map(i => i.fact), ['requirement', 'value'])
     assert.deepEqual(checklistFor({ ...lead, stage: 'potential' }, false)?.items.map(i => i.fact), ['quotation', 'value', 'timeline'])
   })
   test('the owner\'s stages, in the owner\'s order (2026-11-13)', () => {
