@@ -32,6 +32,11 @@ export type MyScore = {
   tip?: string | null
   top5: { name: string; score: number; band: Band; bandLabel: string }[]
   mostImproved: { name: string; rise: number } | null
+  /** Last month's winners, once the owner has announced them. */
+  champions?: { label: string; names: string[] }[] | null
+  championsMonth?: string | null
+  /** The person's own goals from last month's private review (only they and the owner see them). */
+  myGoals?: { goals: string[]; checkin_on: string } | null
 }
 
 export function useMyScore(enabled: boolean) {
@@ -77,10 +82,25 @@ export function ScoreCard({ enabled }: { enabled: boolean }) {
   const { data } = useMyScore(enabled)
   const [open, setOpen] = useState(false)
   if (!enabled || !data) return null
-  if (!data.scored && data.top5.length === 0) return null
+  if (!data.scored && data.top5.length === 0 && !data.champions?.length) return null
 
   return (
     <section className={styles.card} aria-labelledby="score-card-heading">
+      {data.champions && data.champions.length > 0 && (
+        <div className={styles.champions}>
+          <span className={styles.label}>👑 Champions of {data.championsMonth}</span>
+          <ul className={styles.championList}>
+            {data.champions.map(c => <li key={c.label}><strong>{c.label}:</strong> {c.names.join(', ')}</li>)}
+          </ul>
+        </div>
+      )}
+      {data.myGoals && (
+        <div className={styles.goals}>
+          <span className={styles.label}>Your goals this month (private)</span>
+          <ol className={styles.goalList}>{data.myGoals.goals.map((g, i) => <li key={i}>{g}</li>)}</ol>
+          <span className={styles.muted}>Check-in with the owner on {new Date(`${data.myGoals.checkin_on}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' })}.</span>
+        </div>
+      )}
       <div className={styles.head}>
         <h2 id="score-card-heading" className={styles.title}>Scoreboard · {monthName(data.month)}</h2>
         {data.scored && data.band && <span className={`${styles.band} ${BAND_CLASS[data.band]}`}>{data.bandLabel}</span>}

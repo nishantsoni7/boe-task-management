@@ -11,6 +11,7 @@ import { istAddDays, istDayEndUtc, istDayStartUtc, istToday } from '@/lib/istDat
 import { buildMachineDay, machineDateOf, MACHINE_ATTENDANCE_FROM } from '@/lib/minop/machineDay'
 import { isPlausiblePunchTime } from '@/lib/minop/punches'
 import { fetchActiveSettings } from '@/lib/payroll/settingsStore'
+import { monthMessages } from './reviewServer'
 import {
   closesAt, lastDayOf, ratingWindow, validateRating, validateVotes, voteWindow,
 } from './vote'
@@ -47,7 +48,7 @@ type Person = {
 
 export type PersonScore = { id: string; name: string; track: Track; result: ScoreResult }
 
-async function scoredPeople(svc: ServiceClient): Promise<Person[]> {
+export async function scoredPeople(svc: ServiceClient): Promise<Person[]> {
   const { data, error } = await svc.from('users')
     .select('id, full_name, role, joining_date, minop_user_id, is_active, is_deleted, performance_tracking_enabled')
     .eq('is_active', true)
@@ -250,7 +251,10 @@ export async function loadMyScore(caller: Caller, now: Date = new Date()): Promi
         .filter(x => x.rise > 0).sort((a, b) => b.rise - a.rise)[0] ?? null
     : null
 
-  if (!me) return ok({ today, month, scored: false, top5, mostImproved: improved })
+  // Last month's champions (once announced) and the person's own private goals. Never a failure of the card.
+  const messages = await monthMessages(svc, caller.id, today).catch(() => ({ champions: null, championsMonth: null, myGoals: null }))
+
+  if (!me) return ok({ today, month, scored: false, top5, mostImproved: improved, ...messages })
 
   const mine = rows.filter(r => r.employee_id === caller.id)
   const yesterday = mine.at(-1)?.score ?? null
@@ -269,6 +273,7 @@ export async function loadMyScore(caller: Caller, now: Date = new Date()): Promi
     tip: fastestTip(me.result.parts),
     top5,
     mostImproved: improved,
+    ...messages,
   })
 }
 
@@ -361,7 +366,7 @@ export async function castVote(caller: Caller, body: Record<string, unknown>, no
 
 // ─── The owner's rating (the Day Close reviewer seat: the owner alone) ───────
 
-async function isReviewer(caller: Caller): Promise<boolean> {
+export async function isReviewer(caller: Caller): Promise<boolean> {
   const { data, error } = await caller.svc.from('day_close_settings').select('reviewer_id').eq('singleton', true).maybeSingle()
   if (error) throw new Error(error.message)
   return !!data?.reviewer_id && data.reviewer_id === caller.id
