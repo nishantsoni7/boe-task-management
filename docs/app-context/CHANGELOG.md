@@ -18,6 +18,20 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - `scoreEveryone` has no test (MemorySupabase cannot run its filters).
 
 ## 2026-11-12 — Day Close moves into Task Management; proof on every finished task (PR #721, squash-merged 2026-11-12 as `db54a23`) · `20270624000000` → APPLIED 2026-11-12 by the owner, before the merge (owner's word; not re-checked from the cloud session)
+## 2026-11-12 — Orders: Operations cannot decide a PI while it is "Returned to Sales" (PR #723, squash-merged 2026-11-13 00:41 IST as `dde7f4c3`, deployed 00:43 IST) · no migration
+- **Owner ask.** "Lock Operations buttons while it is with Sales." Plan approved ("Yes, build it"): screen lock only.
+- **Changed.** While `salesReturnStage` says the PI is with Sales, the operations reviewer's Accept for production, Cannot accept and Flag lines are not drawn on the Order banner; in their place: "With Sales for changes. Operations reviews the revised PI once it is approved." The decision comes back by itself when the return ends (the revised PI approved as a new version, or the owner answers Operations). Re-align / recover on a held, accepted Order are untouched (an accepted PI is never "with Sales").
+- **Not changed.** `decide_order_operations_handoff()` still accepts a decision from the assigned reviewer (no other screen offers one); the Operations dashboard still lists the PI as awaiting review.
+- **Proof.** `returnedToSales.test.tsx` extended; one page pin updated; `tsc`, eslint, full `npm test`, `next build`. Not seen signed in.
+- **Rollback.** Revert the PR.
+
+## 2026-11-12 — Payroll and the My pages read your own row once (PR open, branch `perf/context-reuses-profile`) · no SQL
+- **Owner ask.** "Yes, fix it", after the live recount of #711/#712 found one repeat left.
+- **The repeat.** On Payroll, My Attendance, My Credits and My Payroll the page is not behind a ModuleGuard, so it reads the 8-column row first. The shell's `usePermissionContext` started about 1.2 s later and always read the identical row again: 4 own-row reads instead of 3.
+- **Changed.** New `profileForFirstResolve(qc, userId)`: on the context's FIRST resolve, a profile row read in the last 30 s (and not marked stale) is reused instead of read again. A refetch always reads, so a role change still reaches an open page within 30 s. A null row (failed or missing) is never reused, so a failed read still denies.
+- **Tests.** Three new checks in `sharedReads.test.ts` (reused on the first resolve; a refetch reads; missing, null, older than 30 s or stale reads). Full suite: 20,687 tests, 0 failed, 9 skipped; `tsc` and eslint clean.
+
+## 2026-11-12 — Day Close moves into Task Management; proof on every finished task (PR #721) · `20270624000000` → APPLIED 2026-11-12 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 - **Version clash found before merging.** The migration was first numbered `20270623000000`; #714 (`quotation_versions`) merged with the same number minutes earlier, and the history can record only one of them. Renumbered to `20270624000000` and made safe to run again. The owner must confirm in the database which of the two actually ran.
 - **Owner ask.** "My Day is very similar to Self Tasks… it will create confusion." Decided:
   - proof on every task a member finishes;

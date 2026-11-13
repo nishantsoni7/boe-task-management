@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `db54a23` — Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
-- Commits on this branch: 59
+- Commit: `3c7fd8e` — Docs: Scoreboard migration 20270625000000 applied by the owner before the merge
+- Commits on this branch: 61
 - Pages (`page.tsx`): 190   API routes (`route.ts`): 200
 - Migrations: 441 (first `20260530_create_positions.sql`, latest `20270625000000_scoreboard.sql`)
 - Tables ever created: 244 (dropped at some point: 8)   SQL functions: 1008   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `3c7fd8e` 2026-11-12 Docs: Scoreboard migration 20270625000000 applied by the owner before the merge
+- `41b8ce3` 2026-11-12 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, apply before merge)
 - `db54a23` 2026-11-13 Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
 - `124292b` 2026-11-12 Docs: quotation versions merged as 3c4c8605, 20270623000000 applied (#722)
 - `3c4c860` 2026-11-12 Quotations: versions and compare (migration 20270623000000, renumbered; apply before merge) (#714)
@@ -37,8 +39,6 @@
 - `f88d703` 2026-11-12 Pricing: price book and suggested price (migration 20270620000000, applied) (#698)
 - `202cbaf` 2026-11-12 Fewer repeated requests: the Orders page (2 of 2) (#699)
 - `6019f0e` 2026-11-12 Docs: record the merge of #696 (send a PI back to the salesperson) (#700)
-- `49770c2` 2026-11-12 Orders: the approver can send a PI back to the salesperson with a comment (migration 20270619000000, apply before merge) (#696)
-- `126dc1f` 2026-11-12 Docs: Quotations phase 6 (Reports) merged as 8f8c9ba1, 20270618000000 applied (#695)
 
 ## Pages by top-level area
 

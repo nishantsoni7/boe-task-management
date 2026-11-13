@@ -160,4 +160,5 @@ Bounds: `MAX_REVIEW_REWARD_CREDITS = 100_000`; `credit_value > 0`; amounts have 
 5. Read-only live queries: settings rows (newest), ledger/redemption counts, `boe_credit_balances`, migration list. Probe columns, not just ledger rows.
 6. Tests of section 10 plus the ledger-pinning migration tests.
 
+- **The shell no longer reads it again (2026-11-12, branch `perf/context-reuses-profile`, no SQL).** These pages are not behind a ModuleGuard, so the page reads the profile first; the shell's permission context now reuses that row on its first resolve instead of reading it again (see dossier 08).
 - **One read of your own row (2026-11-12, #711 merged as `72c57977`, no SQL).** `/my-credits` and `/my-credits/how-it-works` read the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.

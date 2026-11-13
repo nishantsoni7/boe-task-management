@@ -9,7 +9,9 @@ import assert from 'node:assert/strict'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { FlaggedPiStripView } from '@/components/orders/dashboard/FlaggedPiStrip'
-import { SALES_RETURN_SUMMARY, salesReturnStage } from './operationsHandoff'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { OPERATIONS_LOCKED_FOR_SALES, SALES_RETURN_SUMMARY, salesReturnStage } from './operationsHandoff'
 import { orderAttentionItems } from './orderWorkspace'
 import { flaggedRow } from './adminDashboard'
 import { RETURNED_TO_SALES_LABEL, isReturnedToSales, readFlaggedPis } from './flaggedPis'
@@ -84,5 +86,22 @@ describe('the two dashboards', () => {
     const plain = renderToStaticMarkup(createElement(FlaggedPiStripView, { state: { kind: 'ready', rows: [pi] } }))
     assert.match(plain, /Flagged by Nitish Bansal/)
     assert.doesNotMatch(plain, /Returned to you/)
+  })
+})
+
+describe('Operations is locked out while the PI is with Sales', () => {
+  const page = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8').replace(/\r\n/g, '\n')
+  const body = page.slice(page.indexOf('<OrdersLayout'))
+
+  test('the reviewer\'s Accept / Cannot accept / Flag lines are not offered, and a note says why', () => {
+    assert.match(page, /const operationsLockedForSales = operationsReviewOpen && !!salesReturn && operationsView\?\.kind === 'recorded'/)
+    assert.match(page, /const operationsDecisionOffered = \(operationsReviewOpen && operationsView\?\.kind === 'recorded' && !salesReturn/)
+    assert.match(body, /\{operationsLockedForSales && \([\s\S]*?\{OPERATIONS_LOCKED_FOR_SALES\}/)
+    assert.equal(OPERATIONS_LOCKED_FOR_SALES, 'With Sales for changes. Operations reviews the revised PI once it is approved.')
+  })
+
+  test('the lock ends with the return: the decision is offered again once salesReturnStage is null', () => {
+    assert.equal(stage({ live: { ...live, superseded_at: '2026-11-13T00:00:00Z' } }), null, 'revised PI approved')
+    assert.equal(stage({ answer: { atIso: '2026-11-12T13:00:00Z' } }), null, 'answered Operations')
   })
 })
