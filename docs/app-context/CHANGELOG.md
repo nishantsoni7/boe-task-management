@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-13 — Scoreboard: the Top 5 hidden from staff, with the owner's switch (branch `claude/boe1-employee-monitoring-t5ypei`) · migration `20270705000000` (NOT YET APPLIED)
+## 2026-11-13 — Scoreboard: the Top 5 hidden from staff, with the owner's switch (branch `claude/boe1-employee-monitoring-t5ypei`) · PR #744 merged `dcbe0c9` · migration `20270705000000` APPLIED 2026-11-13 (owner ran it; verified by an `information_schema` query: true)
 - **Owner ask.** "Everyone is still able to see the rankings. How do I hide it?" Chosen: only administrators, with a switch.
 - **Built.**
   - Column `day_close_settings.scoreboard_top5_public` (default false).
