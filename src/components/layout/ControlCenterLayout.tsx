@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
 import {
-  Home, LayoutGrid, Users, ShieldCheck, Hash, DatabaseZap, Megaphone, Search, SlidersHorizontal, Trophy, X,
+  CalendarCheck, Home, LayoutGrid, Users, ShieldCheck, Hash, DatabaseZap, Megaphone, Search, SlidersHorizontal, Trophy, X,
 } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
@@ -101,6 +101,10 @@ const PATH_HEADINGS: Record<string, Heading> = {
     title: 'For you',
     subtitle: 'Decide what can appear in the right-hand column on Modules. Keep it to what needs attention now.',
   },
+  [`${MAIN_PATH}/day-close`]: {
+    title: 'Day Close & Scoreboard',
+    subtitle: 'Switch them on for the team when you have introduced them, or pause them.',
+  },
   [`${MAIN_PATH}/review-rankings`]: {
     title: 'Review rankings',
     subtitle: 'Show or hide the review leaderboard for every employee.',
@@ -122,7 +126,7 @@ function headingFor(pathname: string, tab: ControlCenterTab | null): Heading {
 
 const HUB_ICON: Record<HubId, typeof Home> = {
   home: LayoutGrid, people: Users, access: ShieldCheck, orders: Hash,
-  announcements: Megaphone, 'for-you': SlidersHorizontal, reviews: Trophy, records: DatabaseZap,
+  announcements: Megaphone, 'for-you': SlidersHorizontal, reviews: Trophy, 'day-close': CalendarCheck, records: DatabaseZap,
 }
 
 type ControlCenterLayoutProps = {

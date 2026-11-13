@@ -1268,6 +1268,8 @@ describe('the applied migrations are frozen', () => {
       '20270702000000_review_rankings_switch.sql',
       // Sales, an Admin can be given leads when ticked: one read-only function re-issued (sales_lead_can_hold), no table.
       '20270703000000_sales_admin_can_be_given_leads.sql',
+      // Day Close and the Scoreboard, one team switch that starts paused: two columns on day_close_settings, the proof rule restated.
+      '20270704000000_day_close_team_switch.sql',
     ])
   })
 
@@ -1777,6 +1779,7 @@ describe('the applied migrations are frozen', () => {
       '20270701000000_finance_confirmed_payments_order_search.sql',
       '20270702000000_review_rankings_switch.sql',
       '20270703000000_sales_admin_can_be_given_leads.sql',
+      '20270704000000_day_close_team_switch.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

@@ -4,6 +4,16 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — Day Close and the Scoreboard are paused for the team behind one Control Center switch (branch `feat/day-close-pause`, PR pending) · `20270704000000` → NOT yet applied
+- **Owner ask.** The team had not been introduced to Day Close or the Scoreboard but already saw the red "Your plan was due at 10:30 am" strip and the Scoreboard card. Hide them "till I introduce them", and (owner's choice) pause the rules behind them too.
+- **Built.** Control Center > Day Close & Scoreboard > Go live: one switch, starting PAUSED. Paused hides the Modules strip, the red / strike / proof banner on the Today card, the Scoreboard card and evening line, the vote card and the Star Seller card, and stops the nightly strikes, the nightly score record, the proof rule and the leave lock. Switching ON asks for a second click and counts from that day.
+- **Fails closed.** Anything but a stored `true` is paused, and an unreadable switch (migration not applied) is paused, so the code can deploy first and hide everything at once. The proof rule is a database trigger, so it keeps asking for proof until the migration is applied.
+- **Database.** Two columns on `day_close_settings` (`team_live` default false, `live_since`) and the proof-check function restated with one extra condition. The table stays closed to the browser. Alters a table: back up before applying.
+- **Not touched.** Strikes already written, who takes part, Team Today, the Monthly Review, ratings.
+- **Proof.** PGlite 7 checks on a stand-in database (`day_close_team_switch_pglite.mjs`); `teamSwitch.test.ts` (15), `dayCardTeamSwitch.render.test.tsx` (3), `leaveLock.test.ts`, `navModel.test.ts`, both migration ledgers.
+- **Overlap.** Open PR #744 hides only the Top 5 behind its own switch (another column of the same table, same Scoreboard files); independent, expect a mechanical merge-in for whichever lands second.
+- **Rollback.** Revert the PR, then drop the two columns and restore `day_close_task_proof_check()` from `20270624000000` (header of the migration).
+
 ## 2026-11-13 — Sales: an Admin can be given leads, and the automatic-allotment switch is on the Lead Master (branch `feat/sales-admin-holds-leads`, not merged) · `20270703000000` → NOT yet applied
 - **Owner ask.** A screenshot of Control Center > Sales team where their own row only said "Admin: everything": "Option to give leads to admin (me also should be there)". Also: "an option to disable the auto assign of leads … when I enable it, it should come in the master list only."
 - **Built.** An Admin row now has the same **Can be given leads** tick (and the level, daily limit and Export options). It starts OFF: an Admin is never given a lead by accident. Ticked, the Admin is in Allot to, Give to someone else, the import and (once a level is chosen; until then Manual only) the automatic rule. The Lead Master shows Admin an **Auto-allot on / off** switch, the same setting as Control Center > Sales team > "Give website leads automatically"; off means new website and WhatsApp leads and the morning run leave leads Not allotted in the Lead Master.

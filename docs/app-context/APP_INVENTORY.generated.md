@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `2faac909` — Docs: regenerate the app inventory after rebasing on main
+- Commit: `0e188497` — Sales: an Admin can be given leads when ticked; auto-allot switch on the Lead Master (migration 20270703000000) (#741)
 - Commits on this branch: 1303
-- Pages (`page.tsx`): 192   API routes (`route.ts`): 204
-- Migrations: 448 (first `20260530_create_positions.sql`, latest `20270703000000_sales_admin_can_be_given_leads.sql`)
+- Pages (`page.tsx`): 193   API routes (`route.ts`): 204
+- Migrations: 449 (first `20260530_create_positions.sql`, latest `20270704000000_day_close_team_switch.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1019   Enums: 0
-- Test files: 826   Next.js 16.2.6, React 19.2.4
+- Test files: 828   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `2faac909` 2026-11-13 Docs: regenerate the app inventory after rebasing on main
-- `2ae6df0a` 2026-11-13 Sales: an Admin can be given leads when ticked, and the auto-allot switch is on the Lead Master (migration 20270703000000)
+- `0e188497` 2026-11-13 Sales: an Admin can be given leads when ticked; auto-allot switch on the Lead Master (migration 20270703000000) (#741)
+- `48b0cd83` 2026-11-13 Bank Statements: a reversed card debit no longer stops the upload (no SQL) (#743)
 - `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
 - `a4750ab7` 2026-11-13 Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom (migration 20270702000000) (#739)
 - `7ba4b29b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps) (no SQL) (#738)
@@ -44,7 +44,7 @@
 
 - **(root)** (1): `/`
 - **account** (1): `/account`
-- **admin** (14): `/admin/control-center`, `/admin/control-center/action-queue`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/for-you`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/review-rankings`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
+- **admin** (15): `/admin/control-center`, `/admin/control-center/action-queue`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/day-close`, `/admin/control-center/for-you`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/review-rankings`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
 - **announcements** (2): `/announcements`, `/announcements/[id]`
 - **assets-access** (3): `/assets-access`, `/assets-access/[id]`, `/assets-access/notifications`
 - **attendance** (14): `/attendance`, `/attendance/correction-log`, `/attendance/employees`, `/attendance/employees/[id]`, `/attendance/holidays`, `/attendance/minop`, `/attendance/minop/incoming`, `/attendance/monthly-review`, `/attendance/monthly-review/[userId]`, `/attendance/notifications`, `/attendance/records`, `/attendance/requests`, `/attendance/today`, `/attendance/upload`
@@ -148,7 +148,7 @@
 - `src/lib/boeCredits` — 6 source, 9 test
 - `src/lib/controlCenter` — 2 source, 1 test
 - `src/lib/customerReviews` — 30 source, 41 test
-- `src/lib/dayClose` — 5 source, 3 test
+- `src/lib/dayClose` — 5 source, 4 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
 - `src/lib/finance` — 60 source, 75 test
@@ -213,8 +213,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_META_APP_ID` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (14 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (156 reads)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (15 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (157 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
 - `NEXT_PUBLIC_WA_SIGNUP_CONFIG_ID` (1 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
@@ -491,7 +491,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270603000000_finance_payment_admin_notes.sql`
 - `20270604000000_payroll_results_half_paid_leave.sql`
 - `20270605000000_boe_credits_open_months_follow_target.sql`
 - `20270606000000_sales_lead_master_date_range.sql`
@@ -521,6 +520,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270701000000_finance_confirmed_payments_order_search.sql`
 - `20270702000000_review_rankings_switch.sql`
 - `20270703000000_sales_admin_can_be_given_leads.sql`
+- `20270704000000_day_close_team_switch.sql`
 
 ## All SQL function names
 
