@@ -111,6 +111,12 @@ const nextConfig: NextConfig = {
   // nothing.
   async redirects() {
     return [
+      // PERFORMANCE IS RETIRED (owner, 2026-11-13): the BOE Scoreboard replaced it. Old links and bookmarks land
+      // where the same information now lives: a person's own score on Modules, the team's day on Team Today.
+      // Temporary on purpose, like the rule below; the destinations check access themselves.
+      { source: '/performance/team', destination: '/tasks/team-today', permanent: false },
+      { source: '/performance', destination: '/modules', permanent: false },
+      { source: '/performance/:rest*', destination: '/modules', permanent: false },
       {
         source: '/attendance/requests',
         has: [{ type: 'query', key: 'tab', value: 'review' }],

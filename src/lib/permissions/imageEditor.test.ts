@@ -356,7 +356,7 @@ describe('the /modules launcher card', () => {
     // fails — which is the whole point of pinning the set.
     assert.deepEqual(keys, [
       'assets', 'attendance_payroll', 'control_center', 'customer_reviews', 'exhibition_leads',
-      'finance', 'image_editor', 'inventory', 'marketing', 'meetings', 'members', 'orders', 'performance',
+      'finance', 'image_editor', 'inventory', 'marketing', 'meetings', 'members', 'orders',
       'pricing', 'quotations', 'sales', 'samples', 'seo', 'showroom', 'tasks', 'vendors',
     ])
     // Exactly one Image Editor card. It no longer carries an accent colour of

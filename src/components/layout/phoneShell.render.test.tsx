@@ -140,6 +140,7 @@ describe('Phase 2: the pages that were broken on a phone', () => {
   test('Manager and All Tasks keep the header one row', () => {
     const m = read('src/app/manager/page.tsx')
     assert.equal((m.match(/boe-desktop-only/g) ?? []).length, 2)
-    assert.ok(read('src/app/tasks/all/page.tsx').includes('<span className="boe-desktop-only">Team Performance</span>'))
+    // Performance is retired (2026-11-13): the back link goes to Team Today.
+    assert.ok(read('src/app/tasks/all/page.tsx').includes('<span className="boe-desktop-only">Team Today</span>'))
   })
 })

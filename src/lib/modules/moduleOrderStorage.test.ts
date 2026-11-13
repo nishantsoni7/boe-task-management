@@ -276,8 +276,9 @@ describe('the gate runs first, and ordering only sorts its output', () => {
     // Every gate that was there before is still the thing that admits a card.
     for (const key of [
       'task_management', 'sample_tracking', 'showroom_qr', 'assets_access',
-      'employee_records', 'performance', 'finance', 'meetings', 'orders', 'image_editor',
+      'employee_records', 'finance', 'meetings', 'orders', 'image_editor',
     ]) {
+      // 'performance' left on 2026-11-13: the owner retired the module's card (the BOE Scoreboard replaced it).
       assert.ok(LAUNCHER.includes(`canOpenModule('${key}')`),
         `the gate for ${key} is gone`)
     }

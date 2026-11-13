@@ -4,7 +4,19 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-13 — BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (PR #728) · `20270628000000` → APPLIED 2026-11-13 by the owner, before the merge (owner's word; not re-checked from the cloud session)
+## 2026-11-13 — Performance retired: the Scoreboard replaces it (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
+- **Owner ask.** "Retire the old Performance pages." Earlier: "there should be no separate module for Performance management."
+- **Changed.**
+  - The Performance launcher card is removed.
+  - `next.config.ts` redirects (307): `/performance/team` → `/tasks/team-today`, and `/performance` (and anything under it) → `/modules`.
+  - The "Back" link on View All Tasks now goes to Team Today.
+- **Kept, so it can be undone.** The page files, the API routes, `daily_work_logs`, `performance_app_opens` and the permission rows. Nothing is deleted.
+- **Tests restated to the new behaviour:**
+  - `performanceAccessEnforcement`: no card, and the redirects in the right order.
+  - `moduleCardSurface`: the card stays gone.
+  - `imageEditor`: launcher key set without `performance`.
+
+## 2026-11-13 — BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (PR #728, squash-merged 2026-11-13 as `d31d54f`) · `20270628000000` → APPLIED 2026-11-13 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 - **Owner ask.** "Start building the Star Seller Factory Focus slot." Decided earlier: 1 order a month, their own order, in Factory Focus until dispatched.
 - **Built.**
   - Last month's announced Star Seller puts one of their own open Orders into Factory Focus, once per award.

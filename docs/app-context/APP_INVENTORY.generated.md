@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `f648831` — Merge main; docs: Star Seller migration 20270628000000 applied by the owner before the merge
+- Commit: `d31d54f` — BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
 - Commits on this branch: 68
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 204
 - Migrations: 444 (first `20260530_create_positions.sql`, latest `20270628000000_star_seller_focus.sql`)
@@ -14,9 +14,9 @@
 
 ## Latest 25 commits
 
-- `f648831` 2026-11-13 Merge main; docs: Star Seller migration 20270628000000 applied by the owner before the merge
+- `d31d54f` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
+- `561c458` 2026-11-13 Orders: "With Sales" on the Operations queue (#729)
 - `d937dae` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
-- `87c23d4` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, apply before merge)
 - `001472f` 2026-11-13 BOE Scoreboard, slice 3: the monthly review and awards (migration 20270627000000, applied) (#727)
 - `70acf17` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
 - `bc56ccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)

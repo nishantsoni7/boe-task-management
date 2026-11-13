@@ -114,11 +114,11 @@ describe('Task Management navigation', () => {
     assert.equal(mobileNav.includes("go('/settings')"), false)
   })
 
-  test('Performance itself is untouched — the module, its route and its gate remain', () => {
+  test('Performance is kept but retired — the module and its guarded route remain, the launcher card is gone', () => {
     assert.ok(read('src/app/performance/layout.tsx').includes('performance'))
     assert.ok(read('src/lib/permissions/modules.ts').includes("moduleKey: 'performance'"))
-    // And the launcher still offers it under its existing access rule.
-    assert.ok(read('src/app/modules/page.tsx').includes("canOpenModule('performance')"))
+    // Retired by the owner on 2026-11-13 (the BOE Scoreboard replaced it): no card, and the pages redirect.
+    assert.equal(read('src/app/modules/page.tsx').includes("canOpenModule('performance')"), false)
   })
 
   test('the mobile bar no longer needs to know who is looking', () => {

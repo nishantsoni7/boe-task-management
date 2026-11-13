@@ -378,6 +378,11 @@ describe('the launcher agrees with the guards', () => {
 
   test('every engine-gated module is gated by canOpenModule', () => {
     for (const moduleKey of Object.keys(MODULE_ROUTES)) {
+      // Performance is retired (owner, 2026-11-13): its route keeps its guard (above) but it has no card at all.
+      if (moduleKey === 'performance') {
+        assert.equal(launcher.includes(`canOpenModule('performance')`), false, 'the retired Performance card is back')
+        continue
+      }
       assert.ok(
         launcher.includes(`canOpenModule('${moduleKey}')`),
         `${moduleKey}'s launcher card must use the parent gate`,

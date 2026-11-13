@@ -255,9 +255,11 @@ describe('a long module name arrives whole', () => {
     assert.ok(floors.length >= 2, 'the base card and the phone card each have one')
   })
 
-  test('the launcher still reserves a real title for these two', () => {
-    assert.ok(PAGE.includes("title: 'Performance Management'"))
+  test('the launcher still reserves a real title for Attendance, and the retired Performance card stays gone', () => {
     assert.ok(PAGE.includes('Attendance'))
+    // Retired by the owner on 2026-11-13: the BOE Scoreboard replaced it (dossier 31).
+    assert.equal(PAGE.includes("title: 'Performance Management'"), false)
+    assert.equal(PAGE.includes("canOpenModule('performance')"), false)
   })
 })
 
@@ -424,7 +426,7 @@ describe('nothing else about the launcher moved', () => {
   test('the module set, its order and its routes are untouched', () => {
     for (const key of [
       'task_management', 'sample_tracking', 'showroom_qr', 'assets_access',
-      'employee_records', 'performance', 'finance', 'meetings', 'orders',
+      'employee_records', 'finance', 'meetings', 'orders',
       'image_editor', 'exhibition_leads',
     ]) {
       assert.ok(PAGE.includes(`canOpenModule('${key}')`), `${key} is still gated`)
