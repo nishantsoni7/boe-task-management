@@ -5,40 +5,40 @@
 
 ## Snapshot
 
-- Commit: `e184fc5` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- Commits on this branch: 80
+- Commit: `62318971` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 87
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 204
 - Migrations: 446 (first `20260530_create_positions.sql`, latest `20270701000000_finance_confirmed_payments_order_search.sql`)
 - Tables ever created: 249 (dropped at some point: 8)   SQL functions: 1018   Enums: 0
-- Test files: 822   Next.js 16.2.6, React 19.2.4
+- Test files: 824   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `e184fc5` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- `0f49298` 2026-11-13 Docs: record that the Day Close and Scoreboard migrations reached production on 2026-11-13
-- `2c21410` 2026-11-13 Docs: stamp #730 (Quotations links back) as merged dafb5eb0 (#734)
-- `dafb5eb` 2026-11-13 Quotations: links back to quotation requests and PI drafts, and revisions to win (#730)
-- `a3e764a` 2026-11-13 Docs: stamp #719 (Confirmed Payments search, order total, old-order client) as merged ebfc7df8 (#732)
-- `51b3fff` 2026-11-13 Docs: record the merge of #729 ("With Sales" on the Operations queue) (#731)
-- `a441fa9` 2026-11-13 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
-- `c6f1117` 2026-11-13 Scoreboard: stop the Star Seller card's style leaking into the Star band pill
-- `a08aeb5` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL) (#733)
-- `6474047` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- `4a9cb0d` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL)
-- `ebfc7df` 2026-11-13 Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (migration 20270701000000, applied 13 Nov) (#719)
-- `d31d54f` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
-- `561c458` 2026-11-13 Orders: "With Sales" on the Operations queue (#729)
-- `d937dae` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
-- `001472f` 2026-11-13 BOE Scoreboard, slice 3: the monthly review and awards (migration 20270627000000, applied) (#727)
-- `70acf17` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
-- `bc56ccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
-- `ce42144` 2026-11-13 Docs: record the merge of #723 (Operations locked while with Sales) (#725)
-- `dde7f4c` 2026-11-13 Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
-- `1d6b918` 2026-11-13 Payroll and the My pages read your own row once (#720)
-- `db54a23` 2026-11-13 Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
-- `124292b` 2026-11-12 Docs: quotation versions merged as 3c4c8605, 20270623000000 applied (#722)
-- `3c4c860` 2026-11-12 Quotations: versions and compare (migration 20270623000000, renumbered; apply before merge) (#714)
-- `210e60f` 2026-11-12 Docs: record the merge of #716 (Returned to Sales status) (#717)
+- `62318971` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `be99bd7b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps)
+- `2e4ade2e` 2026-11-13 Docs: stamp #735 (Confirmed Payments Order / PI column, names only) as merged bab48de7 (#737)
+- `1e6fd600` 2026-11-13 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- `a8a6ec45` 2026-11-13 Scoreboard: fix the "Star" band pill; record the Day Close/Scoreboard migrations' real apply date (no SQL) (#736)
+- `dd35c763` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `bab48de7` 2026-11-13 Confirmed Payments: the Order / PI column shows names only, no amounts (#735)
+- `e184fc52` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `0f492986` 2026-11-13 Docs: record that the Day Close and Scoreboard migrations reached production on 2026-11-13
+- `2c214103` 2026-11-13 Docs: stamp #730 (Quotations links back) as merged dafb5eb0 (#734)
+- `dafb5eb0` 2026-11-13 Quotations: links back to quotation requests and PI drafts, and revisions to win (#730)
+- `a3e764a8` 2026-11-13 Docs: stamp #719 (Confirmed Payments search, order total, old-order client) as merged ebfc7df8 (#732)
+- `51b3fff9` 2026-11-13 Docs: record the merge of #729 ("With Sales" on the Operations queue) (#731)
+- `a441fa9d` 2026-11-13 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- `c6f1117d` 2026-11-13 Scoreboard: stop the Star Seller card's style leaking into the Star band pill
+- `a08aeb57` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL) (#733)
+- `6474047c` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `4a9cb0d3` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL)
+- `ebfc7df8` 2026-11-13 Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (migration 20270701000000, applied 13 Nov) (#719)
+- `d31d54fd` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
+- `561c4588` 2026-11-13 Orders: "With Sales" on the Operations queue (#729)
+- `d937dae8` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
+- `001472f1` 2026-11-13 BOE Scoreboard, slice 3: the monthly review and awards (migration 20270627000000, applied) (#727)
+- `70acf170` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
+- `bc56cccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
 
 ## Pages by top-level area
 
@@ -148,7 +148,7 @@
 - `src/lib/boeCredits` — 6 source, 9 test
 - `src/lib/controlCenter` — 2 source, 1 test
 - `src/lib/customerReviews` — 29 source, 40 test
-- `src/lib/dayClose` — 4 source, 2 test
+- `src/lib/dayClose` — 5 source, 3 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
 - `src/lib/finance` — 60 source, 75 test

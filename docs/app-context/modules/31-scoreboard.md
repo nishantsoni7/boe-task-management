@@ -148,6 +148,19 @@ Both tables are closed to the browser.
 
 **Screen.** `/tasks/monthly-review`, an admin sidebar entry. `MonthlyReviewScreen` is for the owner alone; `/api/scoreboard/review` checks the reviewer seat.
 
+**Redesigned 2026-11-13 as guided steps** (the owner's pick from two previews, with Option B's score bars and message preview). One step on screen at a time, and a step bar saying what is done:
+
+| Step | Shows |
+|---|---|
+| 1. Standings | Score bars coloured by band, the change on last month, votes and sales |
+| 2. Awards | One card per award: the suggestion, a winner picker, an optional line, then **Confirm** |
+| 3. Freeze & announce | The WhatsApp message previewed live from the picks (`announcement()` in the browser). **Freeze is disabled until every award is confirmed** and still needs a second press. Copy is enabled once frozen |
+| 4. Private reviews | One card per flagged person |
+
+- A month that has ended opens on step 2; a frozen one opens on step 3.
+- "Confirmed" lives only in the browser: a reload starts from the suggestions again.
+- Styles are in `monthlyReview.module.css`.
+
 **What it shows.**
 - **Final standings:** each person's last `scoreboard_daily` row of the month (the frozen record), with the change on last month, votes and sales.
 - **Suggested awards** (`suggestAwards`, `src/lib/scoreboard/review.ts`). Nobody with under 10 counted working days can win; ties go alphabetically.
