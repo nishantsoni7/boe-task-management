@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — Quotations: the Import dialog says to reload when its code could not be downloaded (branch `fix/import-dialog-stale-page`, not merged) · no SQL
+- **Owner report.** Choosing a file in Import client file showed `Failed to load chunk /_next/static/chunks/….js?dpl=… from module 342078` in the red box. The chunk was healthy on the live site (HTTP 200); the tab had been loaded from an older build, and BOE had gone out five times in the hour before (13:45–14:44 IST). A page keeps a failed chunk download until it reloads, so choosing the file again could not work.
+- **Built.** `readFailure()` in `importFile.ts` turns that error (the same kinds `classifyRouteError` calls "updated") into a plain sentence and the dialog shows a **Reload page** button under it. Nothing reloads by itself. Every other error keeps its own message.
+- **Why the wording does not say "saved".** The builder saves by hand (Save button, "Unsaved changes" badge, a leave-warning while there are edits), so the text tells the person to stay, close the window and press Save if the browser asks about leaving.
+- **Not covered.** The same raw message can still appear from other lazily loaded pieces (the PI workbook download, Excel exports). Only this dialog was changed.
+- **Proof.** `importBoq.test.ts` (3 new tests: stale errors, every other message unchanged, reload only from the button), `tsc`, eslint, full `npm test`, `next build`. Not seen signed in.
+- **Rollback.** Revert the PR.
+
 ## 2026-11-13 — Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (PR #754) · `20270713000000` → APPLIED by the owner 2026-11-13 (run by hand after a fresh verified backup, recorded with `migration repair`)
 - **Owner ask.** Take all the details of ClickUp's Running Orders (client, the files with their upload dates) into a draft section of BOE One, to test before anything moves to the real order list, and keep a complete copy because the ClickUp subscription is ending.
 - **Done outside the app (read-only, verified).** A local backup of all 521 orders and 1,064 files (4.3 GB) in `~/BOE-Development/backups/clickup-running-orders/2026-11-13/`, with the owner's one-off ClickUp token (to be deleted in ClickUp).
@@ -29,6 +37,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Rollback.** Re-run the 20270710000000 definition of `move_sales_lead`.
 
 ## 2026-11-13 — Sales: Visit / Meeting stage and the owner's stage names; ClickUp Important Bulk / Bulk leads to Potential Clients; Call back; the popup's left side redesigned (PR #749, merged 14:42 IST as `b9b552f7`) · `20270710000000` → APPLIED by the owner (run by hand, recorded with `migration repair`)
+
 - **Owner ask.** The popup's top looked clumsy. Stages and order: New, Under Process, Visit / Meeting, Potential Clients, Negotiation, Converted, Dead. ClickUp leads from Important Bulk / Bulk / Potential Customers to Potential. Call and WhatsApp buttons again. Quantity out of the requirement, into the client's details. A round-3 preview was approved.
 - **Built.** Dossier rule 34: the new stage (ranked like Under Process; nothing asked to enter it), renamed stages everywhere, the board's sixth column, Call back in the popup, on the cards and on My day, the redesigned left side (stage bar, Move to next, plain rows, the name without its typed-in number), Quantity in Client details.
 - **Database.** Stage CHECK widened; `sales_leads_furthest`, `sales_lead_stuck`, `move_sales_lead`, `sales_board_page` re-issued from their latest definitions (stage lines only, generated); **one data move** (the ClickUp leads, one `moved` line each). **Back up first.** `db push` is NOT safe here (it would also push the never-applied 20270624–0628): apply by hand as before.
