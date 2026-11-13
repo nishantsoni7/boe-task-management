@@ -104,6 +104,7 @@ export function parseHdfcStatement(rows: unknown[][]): ParsedBankStatement {
   const end = summaryIdx < 0 ? rows.length : summaryIdx
 
   const lines: ParsedBankLine[] = []
+  let reversedPaise = 0
   for (let i = headerIdx + 1; i < end; i++) {
     const r = rows[i]
     const date = isoFromBankDate(r[0])
@@ -115,8 +116,14 @@ export function parseHdfcStatement(rows: unknown[][]): ParsedBankStatement {
       }
       continue
     }
-    const withdrawal = round2(cellAmount(r[4]))
-    const deposit = round2(cellAmount(r[5]))
+    // HDFC writes a reversed card debit as a NEGATIVE withdrawal (the balance goes up),
+    // e.g. -47.64 under Withdrawal Amt. That is money in, so it is stored as a deposit.
+    const cellWithdrawal = round2(cellAmount(r[4]))
+    const cellDeposit = round2(cellAmount(r[5]))
+    const reversal = cellWithdrawal < 0 && cellDeposit === 0
+    const withdrawal = reversal ? 0 : cellWithdrawal
+    const deposit = reversal ? -cellWithdrawal : cellDeposit
+    if (reversal) reversedPaise += toPaise(deposit)
     if ((withdrawal === 0) === (deposit === 0) || withdrawal < 0 || deposit < 0) {
       throw new BankStatementError(`Line ${lines.length + 1} (${date}) must have exactly one of withdrawal or deposit.`)
     }
@@ -172,8 +179,9 @@ export function parseHdfcStatement(rows: unknown[][]): ParsedBankStatement {
     throw new BankStatementError('The last balance does not equal the closing balance in the statement summary.')
   }
   if (declaredDebits !== null && declaredCredits !== null) {
-    const d = lines.reduce((a, l) => a + toPaise(l.withdrawal), 0)
-    const c = lines.reduce((a, l) => a + toPaise(l.deposit), 0)
+    // The summary counts a reversal inside Debits (net), not as a credit: seen 13 Nov 2026.
+    const d = lines.reduce((a, l) => a + toPaise(l.withdrawal), 0) - reversedPaise
+    const c = lines.reduce((a, l) => a + toPaise(l.deposit), 0) - reversedPaise
     if (d !== toPaise(declaredDebits) || c !== toPaise(declaredCredits)) {
       throw new BankStatementError('The statement summary totals do not match its lines.')
     }
