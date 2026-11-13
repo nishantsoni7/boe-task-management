@@ -12,6 +12,12 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Bug.** `scoreCard.module.css` defined `.star` twice: for the band pill and for the Star Seller card (#728). The two rules merged, so every "Star" pill (your band, the Top 5) took the card's border, padding and bottom margin.
 - **Fix.** The card's class is now `.starCard` (`StarSellerCard.tsx`). The pill is unchanged.
 
+## 2026-11-13 — Confirmed Payments: the Order / PI column shows names only, no amounts (branch `fix/confirmed-order-column-no-amounts`, PR pending) · no SQL
+- **Owner ask.** After trying #718/#719 live: search works, but the amount repeated in the Order / PI column "is not making sense and is creating a mess"; details in a separate popup or remove it.
+- **Built.** `AllocatedAgainstCell` draws each Order, PI Draft or old order by name only (links unchanged, "N allocations" header unchanged), in the table and on the phone cards. A part-allocated payment keeps the amber word "Unallocated", without its figure. The popup the status icon opens already lists every destination with its own amount, the allocated total and what is left, so nothing was lost; the list's accessible name still carries the figures for a screen reader. Column widths and the cards threshold are unchanged.
+- **Proof.** `allocatedAgainst.render.test.tsx`: the old amount assertions turned into "no amount on screen" (table cell, card cell) plus "the accessible name and the popup keep them".
+- **Not seen signed in.** No browser test (owner's rule).
+- **Rollback.** Revert the PR; nothing in the database changed.
 ## 2026-11-13 — Quotations: links back to quotation requests and PI drafts, and revisions to win (PR #730 merged as `dafb5eb0` 2026-11-13 09:16 IST, deployed) · `20270629000000` → APPLIED 2026-11-13 before the merge
 - **Owner approval.** The quotation team builds a request's quotation in Quotations; it belongs to the salesperson who asked; "Send to sales" completes the request like today's Send.
 - **Built.** "Make it in Quotations" on a quotation request; a Quotation request card with "Send to sales" on the quotation; "From quotation QT-… · vN" on the PI draft (loaded after the page draws); "Revisions to win" on Reports.

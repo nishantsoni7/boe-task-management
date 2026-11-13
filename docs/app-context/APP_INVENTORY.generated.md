@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `0f49298` — Docs: record that the Day Close and Scoreboard migrations reached production on 2026-11-13
-- Commits on this branch: 75
+- Commit: `e184fc5` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 80
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 204
 - Migrations: 446 (first `20260530_create_positions.sql`, latest `20270701000000_finance_confirmed_payments_order_search.sql`)
 - Tables ever created: 249 (dropped at some point: 8)   SQL functions: 1018   Enums: 0
@@ -14,7 +14,12 @@
 
 ## Latest 25 commits
 
+- `e184fc5` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `0f49298` 2026-11-13 Docs: record that the Day Close and Scoreboard migrations reached production on 2026-11-13
+- `2c21410` 2026-11-13 Docs: stamp #730 (Quotations links back) as merged dafb5eb0 (#734)
+- `dafb5eb` 2026-11-13 Quotations: links back to quotation requests and PI drafts, and revisions to win (#730)
+- `a3e764a` 2026-11-13 Docs: stamp #719 (Confirmed Payments search, order total, old-order client) as merged ebfc7df8 (#732)
+- `51b3fff` 2026-11-13 Docs: record the merge of #729 ("With Sales" on the Operations queue) (#731)
 - `a441fa9` 2026-11-13 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
 - `c6f1117` 2026-11-13 Scoreboard: stop the Star Seller card's style leaking into the Star band pill
 - `a08aeb5` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL) (#733)
@@ -34,11 +39,6 @@
 - `124292b` 2026-11-12 Docs: quotation versions merged as 3c4c8605, 20270623000000 applied (#722)
 - `3c4c860` 2026-11-12 Quotations: versions and compare (migration 20270623000000, renumbered; apply before merge) (#714)
 - `210e60f` 2026-11-12 Docs: record the merge of #716 (Returned to Sales status) (#717)
-- `8eb156e` 2026-11-12 Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (#716)
-- `b3f0ac2` 2026-11-12 Docs: other-modules dedupe merged (#711, #712) and recounted live (#715)
-- `2466d96` 2026-11-12 Day Close: plan by 10:30, proof per item, close before punch-out, strikes, leave lock (migration 20270622000000, applied) (#713)
-- `3e26083` 2026-11-12 Meetings, Review Workflow, Samples and Assets look up permissions once (#712)
-- `72c5797` 2026-11-12 Other modules read your own row once (#711)
 
 ## Pages by top-level area
 

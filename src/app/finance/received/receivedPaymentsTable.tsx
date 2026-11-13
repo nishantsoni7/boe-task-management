@@ -172,8 +172,11 @@ export function ConfirmedAllocationBadge({ status, paymentId, onOpen, compact }:
 
 // ── Allocated Against ─────────────────────────────────────────────────────────
 //
-// WHERE THE MONEY WENT, in the row itself: every active destination, each with
-// its own amount, and what is left. Built by buildAllocatedAgainst() from the
+// WHERE THE MONEY WENT, in the row itself: every active destination, by name
+// only. NO AMOUNTS (owner, 2026-11-13): a line's amount repeated the Amount
+// column for the usual one-Order payment and cluttered the row; each
+// destination's amount, the allocated total and what is left are in the
+// allocation popup the status icon opens. Built by buildAllocatedAgainst() from the
 // COMPLETE targets read (received_payment_allocation_targets, 20261216000000),
 // never from allocated_order_number, the legacy order_id or the caller's own
 // partial RLS read of the allocation table.
@@ -222,16 +225,13 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
   }
 
   // One line per destination. The NAME truncates visually and keeps its full
-  // text in `title` and in the list's accessible name; the AMOUNT never
-  // truncates, because a clipped figure is a wrong figure.
+  // text in `title` and in the list's accessible name (which still carries the
+  // amounts, for a screen reader).
   const lineStyle: React.CSSProperties = {
     ...small, display: 'flex', alignItems: 'baseline', gap: '6px', minWidth: 0,
   }
   const nameStyle: React.CSSProperties = {
     minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-  }
-  const amountStyle: React.CSSProperties = {
-    flexShrink: 0, whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', color: colors.secondary,
   }
 
   return (
@@ -283,16 +283,12 @@ export function AllocatedAgainstCell({ view, hrefFor, onOpen, fill }: {
                 {line.label}
               </span>
             )}
-            <span aria-hidden="true" style={{ color: colors.muted, flexShrink: 0 }}>·</span>
-            <span style={amountStyle}>{fmtAmount(line.amount)}</span>
           </div>
         )
       })}
       {view.unallocated && (
         <div role="listitem" style={{ ...lineStyle, color: '#805B0D', fontWeight: 600 }}>
           <span style={nameStyle}>{UNALLOCATED_LINE_WORD}</span>
-          <span aria-hidden="true" style={{ flexShrink: 0 }}>·</span>
-          <span style={{ ...amountStyle, color: '#805B0D' }}>{fmtAmount(view.unallocated)}</span>
         </div>
       )}
     </div>
