@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `87c23d4` — BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, apply before merge)
-- Commits on this branch: 66
+- Commit: `f648831` — Merge main; docs: Star Seller migration 20270628000000 applied by the owner before the merge
+- Commits on this branch: 68
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 204
 - Migrations: 444 (first `20260530_create_positions.sql`, latest `20270628000000_star_seller_focus.sql`)
 - Tables ever created: 249 (dropped at some point: 8)   SQL functions: 1012   Enums: 0
-- Test files: 817   Next.js 16.2.6, React 19.2.4
+- Test files: 818   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `f648831` 2026-11-13 Merge main; docs: Star Seller migration 20270628000000 applied by the owner before the merge
+- `d937dae` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
 - `87c23d4` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, apply before merge)
 - `001472f` 2026-11-13 BOE Scoreboard, slice 3: the monthly review and awards (migration 20270627000000, applied) (#727)
 - `70acf17` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
@@ -37,8 +39,6 @@
 - `9665229` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
 - `5635226` 2026-11-12 Docs: SEO brief biggest falls merged as a266a005 (#701) (#705)
 - `b46b60f` 2026-11-12 Docs: record the merge of #704 (sent-back status and the salesperson's card) (#706)
-- `b30d3b7` 2026-11-12 Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
-- `a266a00` 2026-11-12 SEO brief: the biggest falls first in the ranking part (#701)
 
 ## Pages by top-level area
 
@@ -160,7 +160,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 4 source, 7 test
 - `src/lib/notifications` — 7 source, 23 test
-- `src/lib/orders` — 107 source, 166 test
+- `src/lib/orders` — 107 source, 167 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test

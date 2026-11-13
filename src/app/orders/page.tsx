@@ -41,6 +41,7 @@ import { FlaggedPiStrip } from '@/components/orders/dashboard/FlaggedPiStrip'
 import { useViewAs } from '@/contexts/ViewAsContext'
 import { SalespersonDashboardView } from '@/components/orders/dashboard/SalespersonDashboardView'
 import { OperationsDashboardView, OperationsResponses } from '@/components/orders/dashboard/OperationsDashboardView'
+import { QUEUE_HANDOFF_COLUMNS, loadOrdersWithSales, type QueueHandoff } from '@/lib/orders/operationsHandoff'
 import {
   OPS_ERROR_BODY,
   OPS_ERROR_HEADING,
@@ -192,17 +193,22 @@ export default function OrdersDashboardPage() {
     const [{ count: draftCount }, handoffsRes] = await Promise.all([
       supabase.from('order_submissions').select('*', { count: 'exact', head: true })
         .in('status', PI_DRAFT_LIST_STATUSES as unknown as string[]),
-      supabase.from('order_operations_handoffs').select('status, assigned_to')
+      supabase.from('order_operations_handoffs').select(QUEUE_HANDOFF_COLUMNS)
         .in('status', ['awaiting', 'clarification_needed']).is('superseded_at', null),
     ])
     if (ticket !== latest.current) return
-    const live = handoffsRes.error ? null : ((handoffsRes.data ?? []) as { status: string; assigned_to: string | null }[])
+    const all = handoffsRes.error ? null : ((handoffsRes.data ?? []) as unknown as QueueHandoff[])
+    // Returned to Sales (2026-11-13): said apart, never counted as waiting on Operations.
+    const withSales = all ? await loadOrdersWithSales(supabase, all) : new Set<string>()
+    if (ticket !== latest.current) return
+    const live = all ? all.filter(h => !withSales.has(h.order_id)) : null
     setCounts({
       ...NO_ORDER_DASHBOARD_COUNTS,
       piDrafts:             draftCount ?? undefined,
       operationsReview:     live ? live.filter(h => h.status === 'awaiting' && h.assigned_to === viewerId).length : undefined,
       operationsUnassigned: live ? live.filter(h => h.status === 'awaiting' && h.assigned_to === null).length : undefined,
       operationsFlagged:    live ? live.filter(h => h.status === 'clarification_needed').length : undefined,
+      operationsWithSales:  all ? withSales.size : undefined,
     })
   }
 

@@ -19,6 +19,16 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - Full `npm test`: 20,720 tests; the 1 failure is `piDetail.render`, which passes alone.
 
 ## 2026-11-13 — BOE Scoreboard, slice 3: the monthly review and awards (PR #727, squash-merged 2026-11-13 as `001472f`) · `20270627000000` → APPLIED 2026-11-13 by the owner, before the merge (owner's word; not re-checked from the cloud session)
+## 2026-11-13 — Orders: "With Sales" on the Operations queue (branch `feat/ops-dashboard-with-sales`, PR pending) · no migration
+- **Owner ask.** "Label it With Sales on the Operations dashboard too."
+- **Changed.** The Orders dashboard's Operations Review card no longer counts a PI that is "Returned to Sales" as awaiting or flagged; it says "N with Sales: waiting for the revised PI" instead (the card shows while only such PIs remain). The queue it opens (`/orders/all?ops=awaiting`) shows "With Sales · Waiting for the revised PI" in Factory Status for those Orders, on the table and on a phone. One shared rule, `loadOrdersWithSales` (the Order page's `salesReturnStage`, with the answer read from `clarification_responded_at`), one extra history read only when live handoffs exist; a failed read labels nothing.
+- **Not changed.** The database, who sees the queue, the Order page.
+- **Proof.** New `opsWithSales.test.ts` (6); `tsc`, eslint, full `npm test`, `next build`. Not seen signed in.
+- **Rollback.** Revert the PR.
+
+## 2026-11-13 — BOE Scoreboard, slice 2: the team vote and the owner's rating (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270626000000` → NOT applied (apply before the merge)
+
+## 2026-11-13 — BOE Scoreboard, slice 3: the monthly review and awards (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270627000000` → NOT applied (apply before the merge)
 - **Owner ask.** "Start building the monthly review and awards screen."
 - **Built:** `/tasks/monthly-review`, in the admin sidebar, for the owner alone.
   - The month's final standings from the frozen nightly record, with the change on last month.

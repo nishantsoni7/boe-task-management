@@ -25,6 +25,7 @@ import {
   AWAITING_OPERATIONS_REVIEW_LABEL,
   AWAITING_OPERATIONS_REVIEW_SUB,
   OPERATIONS_REVIEW_QUEUE_HREF,
+  WITH_SALES_NOTE,
 } from './operationsHandoff'
 
 /** The importer. The one way a new Order begins. */
@@ -48,6 +49,8 @@ export type OrderDashboardCounts = {
    * it is resolved, whoever it is addressed to.
    */
   operationsFlagged: number | undefined
+  /** Live handoffs returned to Sales (2026-11-13): no longer waiting on Operations, so not in the two above. */
+  operationsWithSales?: number | undefined
 }
 
 export const NO_ORDER_DASHBOARD_COUNTS: OrderDashboardCounts = {
@@ -112,18 +115,21 @@ export function orderDashboardCards(input: {
   const awaitingMe = counts.operationsReview ?? 0
   const unassigned = counts.operationsUnassigned ?? 0
   const flagged = counts.operationsFlagged ?? 0
-  if (awaitingMe > 0 || unassigned > 0 || flagged > 0) {
+  const withSales = counts.operationsWithSales ?? 0
+  if (awaitingMe > 0 || unassigned > 0 || flagged > 0 || withSales > 0) {
     // The headline is what waits on THIS reader; the subtitle names the two
     // things that wait on an administrator: nobody assigned, and a version the
     // reviewer could not accept (flagged), which stays here until resolved.
     const admin = [
       unassigned > 0 ? `${unassigned} with no reviewer assigned` : null,
       flagged > 0 ? `${flagged} flagged: clarification needed` : null,
+      // Returned to Sales: said, but never counted as waiting on Operations.
+      withSales > 0 ? `${withSales} with Sales: ${WITH_SALES_NOTE.charAt(0).toLowerCase()}${WITH_SALES_NOTE.slice(1)}` : null,
     ].filter(Boolean).join(' · ')
     cards.push({
       key: 'operations_review',
       label: AWAITING_OPERATIONS_REVIEW_LABEL,
-      value: awaitingMe > 0 ? awaitingMe : unassigned + flagged,
+      value: awaitingMe > 0 ? awaitingMe : (unassigned + flagged || withSales),
       sub: awaitingMe > 0 ? (admin ? `${AWAITING_OPERATIONS_REVIEW_SUB} · ${admin}` : AWAITING_OPERATIONS_REVIEW_SUB) : admin,
       href: OPERATIONS_REVIEW_QUEUE_HREF,
       tone: 'attention',
