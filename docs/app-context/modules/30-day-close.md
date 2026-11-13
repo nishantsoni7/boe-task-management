@@ -146,6 +146,8 @@ The leave integration in `requestHandlers.ts` and the 🔒 mark on the leave que
 
 ## 9. The team switch (`20270704000000_day_close_team_switch.sql`, 2026-11-13)
 
+**Applied 2026-11-13** by the owner after PR #746 merged (`22d9f77`). An `information_schema` check confirmed `team_live` is present. The team stays **paused** until the owner switches it on in Control Center.
+
 **Owner, 2026-11-13:** the team had not been introduced to Day Close or the Scoreboard but was already seeing the red "Your plan was due" strip and the Scoreboard card. Hide them, and stop the rules behind them, until he introduces them.
 
 - **The switch.** `day_close_settings.team_live` (boolean, NOT NULL, default **false**) and `live_since` (timestamptz, set when it is turned ON). The existing row becomes **paused** the moment the migration applies. Written only by `changeMembers` action `set_live { live: boolean }` (`POST /api/day-close/members`), an **administrator's** alone (the reviewer seat is not enough). Read from `GET /api/day-close/members` (`live`, `live_since`). Screen: Control Center > Day Close & Scoreboard (`/admin/control-center/day-close`, `DayCloseLiveSetting.tsx`); switching ON asks for a second click and says what starts.

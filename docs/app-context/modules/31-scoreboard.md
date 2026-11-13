@@ -233,6 +233,8 @@ The Factory Focus table and its original guard are built from `20270221000000` i
 
 ## 11. Who sees the Top 5 (`20270705000000`, 2026-11-13)
 
+**State.** PR #744 merged as `dcbe0c9`. The owner applied the migration on 2026-11-13, and an `information_schema` check confirmed the column is present.
+
 **Owner ask.** "Everyone is still able to see the rankings. How do I hide it?" Chosen: only administrators, with a switch.
 
 | | Staff | Administrators |

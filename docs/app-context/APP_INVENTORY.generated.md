@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `21d49e71` — Merge main; renumber the Top 5 switch migration to 20270703000000
-- Commits on this branch: 94
+- Commit: `b95fe16a` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 102
 - Pages (`page.tsx`): 193   API routes (`route.ts`): 205
 - Migrations: 451 (first `20260530_create_positions.sql`, latest `20270705000000_scoreboard_top5_switch.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,6 +14,14 @@
 
 ## Latest 25 commits
 
+- `b95fe16a` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `dcbe0c9f` 2026-11-13 Scoreboard: hide the Top 5 from staff, with the owner's switch (migration 20270705000000) (#744)
+- `48754e2a` 2026-11-13 Merge main; renumber the Top 5 switch migration to 20270705000000
+- `22d9f772` 2026-11-13 Day Close and the Scoreboard: paused for the team behind one Control Center switch that starts off (migration 20270704000000) (#746)
+- `73b80e2d` 2026-11-13 Docs: stamp #743 (bank statement reversal lines) as merged 48b0cd83, deployed 12:43 IST (no SQL) (#745)
+- `47db4a17` 2026-11-13 Sales: the lead opens as a centered popup with one update box; next-working-day follow-ups; No answer moves New on (migration 20270703000100) (#742)
+- `0e188497` 2026-11-13 Sales: an Admin can be given leads when ticked; auto-allot switch on the Lead Master (migration 20270703000000) (#741)
+- `48b0cd83` 2026-11-13 Bank Statements: a reversed card debit no longer stops the upload (no SQL) (#743)
 - `21d49e71` 2026-11-13 Merge main; renumber the Top 5 switch migration to 20270703000000
 - `00176e44` 2026-11-13 Scoreboard: hide the Top 5 from staff, with the owner's switch
 - `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
@@ -31,14 +39,6 @@
 - `e184fc52` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `0f492986` 2026-11-13 Docs: record that the Day Close and Scoreboard migrations reached production on 2026-11-13
 - `2c214103` 2026-11-13 Docs: stamp #730 (Quotations links back) as merged dafb5eb0 (#734)
-- `dafb5eb0` 2026-11-13 Quotations: links back to quotation requests and PI drafts, and revisions to win (#730)
-- `a3e764a8` 2026-11-13 Docs: stamp #719 (Confirmed Payments search, order total, old-order client) as merged ebfc7df8 (#732)
-- `51b3fff9` 2026-11-13 Docs: record the merge of #729 ("With Sales" on the Operations queue) (#731)
-- `a441fa9d` 2026-11-13 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
-- `c6f1117d` 2026-11-13 Scoreboard: stop the Star Seller card's style leaking into the Star band pill
-- `a08aeb57` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL) (#733)
-- `6474047c` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- `4a9cb0d3` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL)
 
 ## Pages by top-level area
 

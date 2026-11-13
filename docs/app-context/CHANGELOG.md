@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-13 — Scoreboard: the Top 5 hidden from staff, with the owner's switch (branch `claude/boe1-employee-monitoring-t5ypei`) · migration `20270705000000` (NOT YET APPLIED)
+## 2026-11-13 — Scoreboard: the Top 5 hidden from staff, with the owner's switch (branch `claude/boe1-employee-monitoring-t5ypei`) · PR #744 merged `dcbe0c9` · migration `20270705000000` APPLIED 2026-11-13 (owner ran it; verified by an `information_schema` query: true)
 - **Owner ask.** "Everyone is still able to see the rankings. How do I hide it?" Chosen: only administrators, with a switch.
 - **Built.**
   - Column `day_close_settings.scoreboard_top5_public` (default false).
@@ -16,7 +16,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - PGlite: 5 checks.
   - `tsc`, eslint, full `npm test`, `next build`.
 - **Rollback.** Revert the PR, then `alter table public.day_close_settings drop column scoreboard_top5_public`.
-## 2026-11-13 — Day Close and the Scoreboard are paused for the team behind one Control Center switch (PR #746, branch `feat/day-close-pause`, open, not merged) · `20270704000000` → NOT yet applied
+## 2026-11-13 — Day Close and the Scoreboard are paused for the team behind one Control Center switch (PR #746 merged `22d9f77`) · `20270704000000` → APPLIED 2026-11-13 (owner ran it; verified: `team_live` present)
 - **Owner ask.** The team had not been introduced to Day Close or the Scoreboard but already saw the red "Your plan was due at 10:30 am" strip and the Scoreboard card. Hide them "till I introduce them", and (owner's choice) pause the rules behind them too.
 - **Built.** Control Center > Day Close & Scoreboard > Go live: one switch, starting PAUSED. Paused hides the Modules strip, the red / strike / proof banner on the Today card, the Scoreboard card and evening line, the vote card and the Star Seller card, and stops the nightly strikes, the nightly score record, the proof rule and the leave lock. Switching ON asks for a second click and counts from that day.
 - **Fails closed.** Anything but a stored `true` is paused, and an unreadable switch (migration not applied) is paused, so the code can deploy first and hide everything at once. The proof rule is a database trigger, so it keeps asking for proof until the migration is applied.
