@@ -34,16 +34,31 @@ export type DayCloseSettings = {
   reviewer_id: string | null
   plan_due_minutes: number
   close_opens_minutes: number
+  /** The team switch (20270704000000). Only a stored true is live; anything else is paused. */
+  team_live: boolean
+  /** When the switch was last turned on: Day Close days count from here. */
+  live_since: string | null
 }
 
+const SETTINGS_COLUMNS = 'reviewer_id, plan_due_minutes, close_opens_minutes'
+
 export async function readSettings(svc: ServiceClient): Promise<DayCloseSettings> {
-  const { data, error } = await svc.from('day_close_settings')
-    .select('reviewer_id, plan_due_minutes, close_opens_minutes').eq('singleton', true).maybeSingle()
+  // PAUSED UNLESS THE DATABASE SAYS LIVE. If the switch columns cannot be read (the migration is not applied
+  // yet), the times and the reviewer are still read and the team is treated as paused.
+  let live = true
+  let { data, error } = await svc.from('day_close_settings')
+    .select(`${SETTINGS_COLUMNS}, team_live, live_since`).eq('singleton', true).maybeSingle()
+  if (error) {
+    live = false
+    ;({ data, error } = await svc.from('day_close_settings').select(SETTINGS_COLUMNS).eq('singleton', true).maybeSingle())
+  }
   if (error) throw new Error(error.message)
   return {
     reviewer_id: (data?.reviewer_id as string | null) ?? null,
     plan_due_minutes: (data?.plan_due_minutes as number | undefined) ?? PLAN_DUE_MINUTES,
     close_opens_minutes: (data?.close_opens_minutes as number | undefined) ?? CLOSE_OPENS_MINUTES,
+    team_live: live && data?.team_live === true,
+    live_since: live ? ((data?.live_since as string | null | undefined) ?? null) : null,
   }
 }
 
@@ -199,7 +214,8 @@ export async function loadMyDay(caller: Caller, now: Date = new Date()): Promise
   const settings = await readSettings(svc)
   const viewer = await viewerOf(caller, settings)
   const today = istToday(now)
-  const base = { today, planDue: settings.plan_due_minutes, closeOpens: settings.close_opens_minutes, viewer }
+  // `live` is the team switch: the screens drop every red / strike / proof message while it is false.
+  const base = { today, planDue: settings.plan_due_minutes, closeOpens: settings.close_opens_minutes, viewer, live: settings.team_live }
   if (!viewer.isMember) return ok({ ...base, member: false })
 
   const me = await svc.from('users').select('minop_user_id').eq('id', caller.id).maybeSingle()
@@ -233,8 +249,10 @@ export async function loadMyDay(caller: Caller, now: Date = new Date()): Promise
   })
 }
 
-/** The strip on the Modules page: only what the person must do now. Silent for non-members. */
+/** The strip on the Modules page: only what the person must do now. Silent for non-members, and while the team switch is off. */
 export async function loadMyPrompt(caller: Caller, now: Date = new Date()): Promise<Result> {
+  // Paused: answer at once, without working out the person's day.
+  if (!(await readSettings(caller.svc)).team_live) return ok({ today: istToday(now), prompt: { kind: 'none' } })
   const r = await loadMyDay(caller, now)
   if (r.status !== 200 || !r.body.member) return ok({ today: istToday(now), prompt: { kind: 'none' } })
   return ok({ today: r.body.today, prompt: r.body.prompt, counts: r.body.counts })
@@ -497,7 +515,7 @@ export async function loadMembers(caller: Caller): Promise<Result> {
     .filter(u => !u.is_deleted)
     .map(u => ({ id: String(u.id), name: String(u.full_name ?? 'Unknown'), role: String(u.role), member: on.has(String(u.id)) }))
     .sort((a, b) => a.name.localeCompare(b.name))
-  return ok({ people: list, reviewer_id: settings.reviewer_id, viewer })
+  return ok({ people: list, reviewer_id: settings.reviewer_id, viewer, live: settings.team_live, live_since: settings.live_since })
 }
 
 export async function changeMembers(caller: Caller, body: Record<string, unknown>, now: Date = new Date()): Promise<Result> {
@@ -515,6 +533,19 @@ export async function changeMembers(caller: Caller, body: Record<string, unknown
       .update({ reviewer_id: caller.id, updated_by: caller.id, updated_at: stamp }).eq('singleton', true).is('reviewer_id', null)
     if (error) throw new Error(error.message)
     return ok({ saved: true })
+  }
+
+  if (action === 'set_live') {
+    // The team switch (20270704000000): an administrator's alone. Turning it ON starts the count from now.
+    if (!caller.isAdmin) return fail(403, 'Only an administrator can switch Day Close and the Scoreboard on or off.')
+    if (typeof body.live !== 'boolean') return fail(400, 'Choose on or off.')
+    const { error } = await caller.svc.from('day_close_settings')
+      .update(body.live
+        ? { team_live: true, live_since: stamp, updated_by: caller.id, updated_at: stamp }
+        : { team_live: false, updated_by: caller.id, updated_at: stamp })
+      .eq('singleton', true)
+    if (error) throw new Error(error.message)
+    return ok({ saved: true, live: body.live })
   }
 
   let ids: string[] = []
@@ -551,12 +582,14 @@ export async function changeMembers(caller: Caller, body: Record<string, unknown
 
 /** Writes the strikes for a date. Idempotent: a strike is written once and a decided one is never touched. */
 export async function evaluateDay(svc: ServiceClient, date: string): Promise<{ date: string; judged: number; written: number }> {
+  // Paused: nobody is struck for a rule the team has not been introduced to.
+  const settings = await readSettings(svc)
+  if (!settings.team_live) return { date, judged: 0, written: 0 }
   const people = await activeMembers(svc)
   if (people.length === 0 || isSunday(date)) return { date, judged: 0, written: 0 }
   const ids = people.map(p => p.id)
   const minopIds = people.map(p => p.minop_user_id).filter((v): v is string => !!v)
-  const [settings, holiday, leave, times, plansRead] = await Promise.all([
-    readSettings(svc),
+  const [holiday, leave, times, plansRead] = await Promise.all([
     isHoliday(svc, date),
     onFullDayLeave(svc, ids, date),
     machineTimes(svc, minopIds, date),
@@ -615,6 +648,9 @@ export async function lockLeaveIfPending(
   today: string,
 ): Promise<string | null> {
   if (!isLockedLeaveType(request.request_type)) return null
+  // Paused: leave is never locked for a rule the team has not been introduced to (an unreadable switch is paused).
+  const live = await readSettings(svc).then(s => s.team_live, () => false)
+  if (!live) return null
   const member = await svc.from('day_close_members').select('active').eq('employee_id', request.employee_id).maybeSingle()
   if (member.error || !member.data?.active) return null
   let pending: PendingWork

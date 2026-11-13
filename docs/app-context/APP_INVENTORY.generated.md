@@ -5,18 +5,19 @@
 
 ## Snapshot
 
-- Commit: `b7435483` — Docs: merge main into the stamp branch; regenerate the app inventory
-- Commits on this branch: 1305
-- Pages (`page.tsx`): 192   API routes (`route.ts`): 204
-- Migrations: 449 (first `20260530_create_positions.sql`, latest `20270703000100_sales_comments_and_due_dates.sql`)
+- Commit: `33824593` — Sales: Visit / Meeting stage and the owner's stage names; ClickUp Important Bulk / Bulk leads to Potential Clients; Call back; the popup's left side redesigned (migration 20270705000000)
+- Commits on this branch: 1306
+- Pages (`page.tsx`): 193   API routes (`route.ts`): 204
+- Migrations: 451 (first `20260530_create_positions.sql`, latest `20270705000000_sales_visit_meeting_stage.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
-- Test files: 826   Next.js 16.2.6, React 19.2.4
+- Test files: 828   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `b7435483` 2026-11-13 Docs: merge main into the stamp branch; regenerate the app inventory
+- `33824593` 2026-11-13 Sales: Visit / Meeting stage and the owner's stage names; ClickUp Important Bulk / Bulk leads to Potential Clients; Call back; the popup's left side redesigned (migration 20270705000000)
+- `73b80e2d` 2026-11-13 Docs: stamp #743 (bank statement reversal lines) as merged 48b0cd83, deployed 12:43 IST (no SQL) (#745)
+- `47db4a17` 2026-11-13 Sales: the lead opens as a centered popup with one update box; next-working-day follow-ups; No answer moves New on (migration 20270703000100) (#742)
 - `0e188497` 2026-11-13 Sales: an Admin can be given leads when ticked; auto-allot switch on the Lead Master (migration 20270703000000) (#741)
-- `32bc53cb` 2026-11-13 Docs: stamp #743 (bank statement reversal lines) as merged 48b0cd83, deployed 12:43 IST (no SQL)
 - `48b0cd83` 2026-11-13 Bank Statements: a reversed card debit no longer stops the upload (no SQL) (#743)
 - `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
 - `a4750ab7` 2026-11-13 Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom (migration 20270702000000) (#739)
@@ -38,13 +39,12 @@
 - `bc56cccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
 - `ce42144b` 2026-11-13 Docs: record the merge of #723 (Operations locked while with Sales) (#725)
 - `dde7f4c3` 2026-11-13 Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
-- `1d6b9184` 2026-11-13 Payroll and the My pages read your own row once (#720)
 
 ## Pages by top-level area
 
 - **(root)** (1): `/`
 - **account** (1): `/account`
-- **admin** (14): `/admin/control-center`, `/admin/control-center/action-queue`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/for-you`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/review-rankings`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
+- **admin** (15): `/admin/control-center`, `/admin/control-center/action-queue`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/day-close`, `/admin/control-center/for-you`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/review-rankings`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
 - **announcements** (2): `/announcements`, `/announcements/[id]`
 - **assets-access** (3): `/assets-access`, `/assets-access/[id]`, `/assets-access/notifications`
 - **attendance** (14): `/attendance`, `/attendance/correction-log`, `/attendance/employees`, `/attendance/employees/[id]`, `/attendance/holidays`, `/attendance/minop`, `/attendance/minop/incoming`, `/attendance/monthly-review`, `/attendance/monthly-review/[userId]`, `/attendance/notifications`, `/attendance/records`, `/attendance/requests`, `/attendance/today`, `/attendance/upload`
@@ -148,7 +148,7 @@
 - `src/lib/boeCredits` — 6 source, 9 test
 - `src/lib/controlCenter` — 2 source, 1 test
 - `src/lib/customerReviews` — 30 source, 41 test
-- `src/lib/dayClose` — 5 source, 3 test
+- `src/lib/dayClose` — 5 source, 4 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
 - `src/lib/finance` — 60 source, 75 test
@@ -213,8 +213,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_META_APP_ID` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (14 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (156 reads)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (15 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (157 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
 - `NEXT_PUBLIC_WA_SIGNUP_CONFIG_ID` (1 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
@@ -491,8 +491,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270604000000_payroll_results_half_paid_leave.sql`
-- `20270605000000_boe_credits_open_months_follow_target.sql`
 - `20270606000000_sales_lead_master_date_range.sql`
 - `20270607000000_finance_payment_request_old_order.sql`
 - `20270608000000_finance_merge_duplicate_payment_request.sql`
@@ -521,6 +519,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270702000000_review_rankings_switch.sql`
 - `20270703000000_sales_admin_can_be_given_leads.sql`
 - `20270703000100_sales_comments_and_due_dates.sql`
+- `20270704000000_day_close_team_switch.sql`
+- `20270705000000_sales_visit_meeting_stage.sql`
 
 ## All SQL function names
 

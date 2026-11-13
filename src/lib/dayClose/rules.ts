@@ -289,3 +289,20 @@ export function dayPrompt(input: {
   if (minutes >= (input.closeOpensMinutes ?? CLOSE_OPENS_MINUTES)) return { kind: 'close_day', open: input.openItems }
   return { kind: 'none' }
 }
+/**
+ * The first day Day Close is judged for one person this month, or null when it is not judged at all
+ * (not switched on, or the team switch is off: 20270704000000). Days count from the LATEST of the day the
+ * person was added, the start of the month and the day the team switch was last turned on, so days while
+ * paused are neither credit nor blame.
+ */
+export function dayCloseSince(input: {
+  active: boolean
+  addedAt: string
+  month: string
+  teamLive: boolean
+  liveSince: string | null
+}): string | null {
+  if (!input.active || !input.teamLive) return null
+  const liveFrom = input.liveSince ? istDateOf(new Date(input.liveSince)) : input.month
+  return [istDateOf(new Date(input.addedAt)), input.month, liveFrom].sort().at(-1) as string
+}

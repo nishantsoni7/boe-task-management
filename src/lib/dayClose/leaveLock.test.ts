@@ -28,7 +28,7 @@ beforeEach(() => {
   db = new MemorySupabase({
     users: [user(OWNER, 'Nishant', 'admin'), user(ADMIN_B, 'Second Admin', 'admin'), user(DHRUV, 'Dhruv', 'member'),
       user(RAKESH, 'Rakesh', 'member'), user(OTHER, 'Other', 'member')],
-    day_close_settings: [{ singleton: true, reviewer_id: OWNER, plan_due_minutes: 630, close_opens_minutes: 1080 }],
+    day_close_settings: [{ singleton: true, reviewer_id: OWNER, plan_due_minutes: 630, close_opens_minutes: 1080, team_live: true, live_since: null }],
     day_close_members: [{ employee_id: DHRUV, active: true }, { employee_id: RAKESH, active: true }],
     tasks: [
       { id: 't1', title: 'Vendor report', status: 'working', due_date: '2026-11-11', assigned_to: DHRUV, created_by: OWNER },

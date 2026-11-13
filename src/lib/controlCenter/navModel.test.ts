@@ -24,7 +24,13 @@ describe('navigation model', () => {
   })
 
   test('the sidebar is short', () => {
-    assert.equal(NAV_HUBS.length, 8)
+    assert.equal(NAV_HUBS.length, 9)
+  })
+
+  test('Day Close & Scoreboard > Go live is findable, opens its own page, and has its own hub', () => {
+    assert.equal(searchSections('pause scoreboard')[0]?.id, 'day-close-switch')
+    assert.equal(searchSections('strikes')[0]?.id, 'day-close-switch')
+    assert.equal(activeHub({ pathname: `${MAIN_PATH}/day-close`, tab: null })?.id, 'day-close')
   })
 
   test('Reviews > Rankings is findable, opens its own page, and belongs to the Reviews hub', () => {
