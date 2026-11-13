@@ -126,7 +126,8 @@ describe('the Confirmed Orders list opens on Running (owner, 2026-11-03)', () =>
   })
 
   test('Factory Status is drawn by FactoryCell in the table and in the phone card, from one extra read', () => {
-    assert.equal((page.match(/<FactoryCell view=\{factoryView\(o, dispatch\.get\(o\.id\)\)\} \/>/g) ?? []).length, 2)
+    // In the Operations queue an Order returned to Sales reads "With Sales" instead (2026-11-13).
+    assert.equal((page.match(/<FactoryCell view=\{withSalesOrders\.has\(o\.id\) \? WITH_SALES_FACTORY_VIEW : factoryView\(o, dispatch\.get\(o\.id\)\)\} \/>/g) ?? []).length, 2)
     assert.equal((page.match(/rpc\('orders_dispatch_progress'\)/g) ?? []).length, 1)
     assert.ok(page.includes('loadAdvance(), loadDispatch()]'), 'Refresh re-reads it')
     assert.ok(page.includes('setDispatch(error ? new Map() : parseDispatchProgress(data))'), 'a failed read draws no line')

@@ -5,16 +5,17 @@
 
 ## Snapshot
 
-- Commit: `3fa33e0b` — Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL)
-- Commits on this branch: 1286
+- Commit: `d937dae8` — Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
+- Commits on this branch: 1287
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 203
 - Migrations: 443 (first `20260530_create_positions.sql`, latest `20270627000000_scoreboard_monthly_review.sql`)
 - Tables ever created: 249 (dropped at some point: 8)   SQL functions: 1011   Enums: 0
-- Test files: 817   Next.js 16.2.6, React 19.2.4
+- Test files: 818   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `3fa33e0b` 2026-11-12 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL)
+- `d937dae8` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
+- `001472f1` 2026-11-13 BOE Scoreboard, slice 3: the monthly review and awards (migration 20270627000000, applied) (#727)
 - `70acf170` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
 - `bc56cccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
 - `ce42144b` 2026-11-13 Docs: record the merge of #723 (Operations locked while with Sales) (#725)
@@ -38,7 +39,6 @@
 - `b46b60f3` 2026-11-12 Docs: record the merge of #704 (sent-back status and the salesperson's card) (#706)
 - `b30d3b7b` 2026-11-12 Orders: "sent back to the salesperson" shows that it went, and reaches the salesperson's dashboard (#704)
 - `a266a005` 2026-11-12 SEO brief: the biggest falls first in the ranking part (#701)
-- `7f60c716` 2026-11-12 Docs: record the merges of #693 and #699 (with #697), and the live recount (#702)
 
 ## Pages by top-level area
 
@@ -160,7 +160,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 4 source, 7 test
 - `src/lib/notifications` — 7 source, 23 test
-- `src/lib/orders` — 107 source, 166 test
+- `src/lib/orders` — 107 source, 167 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test

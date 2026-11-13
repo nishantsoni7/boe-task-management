@@ -24,7 +24,9 @@ import {
   type UnreadUpdateRow,
 } from '@/lib/orders/orderUnreadUpdates'
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
-import { OPERATIONS_REVIEW_QUEUE_BANNER } from '@/lib/orders/operationsHandoff'
+import {
+  OPERATIONS_REVIEW_QUEUE_BANNER, QUEUE_HANDOFF_COLUMNS, WITH_SALES_LABEL, WITH_SALES_NOTE, loadOrdersWithSales, type QueueHandoff,
+} from '@/lib/orders/operationsHandoff'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
 import { listReturnPathWithSearch, withReturnTo } from '@/lib/navigation/recordReturn'
@@ -34,6 +36,7 @@ import {
   cancelledOrderGapText,
   compareOrderNumber,
   factoryView,
+  type FactoryView,
   orderListFlags,
   orderListSubtotal,
   parseDispatchProgress,
@@ -252,6 +255,9 @@ function ProjectFlags({ sample, commission }: { sample: SampleType | null; commi
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
+/** Factory Status for an Order whose PI was returned to Sales (2026-11-13): not with Operations any more. */
+const WITH_SALES_FACTORY_VIEW: FactoryView = { tone: 'not_aligned', label: WITH_SALES_LABEL, note: WITH_SALES_NOTE }
+
 export default function AllOrdersPage() {
   const [pageLoading,  setPageLoading]  = useState(true)
   const [profile,      setProfile]      = useState<UserProfile | null>(null)
@@ -310,6 +316,8 @@ export default function AllOrdersPage() {
    * scoped by the Order's own RLS. The dashboard card links here.
    */
   const [awaitingOps, setAwaitingOps] = useState<Map<string, string | null>>(new Map())
+  /** In the queue, the Orders whose PI is "Returned to Sales" (2026-11-13): their status reads With Sales. */
+  const [withSalesOrders, setWithSalesOrders] = useState<Set<string>>(new Set())
   const opsFilter = listState.ops
   /**
    * THE PENDENCIES COLUMN (owner, 2026-10-27): the newest Fabric / Finish status
@@ -340,13 +348,14 @@ export default function AllOrdersPage() {
   const loadAwaitingOps = async () => {
     const { data, error } = await supabase
       .from('order_operations_handoffs')
-      .select('order_id, assigned_to')
+      .select(QUEUE_HANDOFF_COLUMNS)
       // Awaiting AND flagged: a flagged version is still unresolved work.
       .in('status', ['awaiting', 'clarification_needed'])
       .is('superseded_at', null)
-    if (error) { setAwaitingOps(new Map()); return }
-    setAwaitingOps(new Map(((data ?? []) as { order_id: string; assigned_to: string | null }[])
-      .map(r => [r.order_id, r.assigned_to])))
+    if (error) { setAwaitingOps(new Map()); setWithSalesOrders(new Set()); return }
+    const rows = (data ?? []) as unknown as QueueHandoff[]
+    setAwaitingOps(new Map(rows.map(r => [r.order_id, r.assigned_to])))
+    setWithSalesOrders(await loadOrdersWithSales(supabase, rows))
   }
 
   const loadOrders = async () => {
@@ -926,7 +935,7 @@ export default function AllOrdersPage() {
                     <span className="orders-list-card-advance">Adv <AdvanceCell percent={advance.get(o.id)} /></span>
                   </div>
                   <div className="orders-list-card-status">
-                    <span className="orders-list-card-factory"><FactoryCell view={factoryView(o, dispatch.get(o.id))} /></span>
+                    <span className="orders-list-card-factory"><FactoryCell view={withSalesOrders.has(o.id) ? WITH_SALES_FACTORY_VIEW : factoryView(o, dispatch.get(o.id))} /></span>
                     <span className={overdue ? 'orders-list-card-due is-overdue' : 'orders-list-card-due'}>
                       {overdue ? `Overdue · ${fmtShortDate(o.due_date)}` : `Due ${fmtShortDate(o.due_date)}`}
                     </span>
@@ -1060,7 +1069,7 @@ export default function AllOrdersPage() {
                             <AdvanceCell percent={advance.get(o.id)} />
                           </td>
                           <td className="orders-after-value">
-                            <FactoryCell view={factoryView(o, dispatch.get(o.id))} />
+                            <FactoryCell view={withSalesOrders.has(o.id) ? WITH_SALES_FACTORY_VIEW : factoryView(o, dispatch.get(o.id))} />
                           </td>
                           <td>
                             <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />
