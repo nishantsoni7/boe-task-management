@@ -1,5 +1,7 @@
 # 30 - Day Close (staff accountability: plan, proof, close, strikes)
 
+> **Apply-state correction (2026-11-13).** The six migrations `20270622000000`, `20270624000000`, `20270625000000`, `20270626000000`, `20270627000000` and `20270628000000` were **not** in production when their PRs merged. Team Today showed "Something went wrong" and the scoreboard tables were missing (`to_regclass` checks all false). After a `backup-all.mjs` backup, the owner applied all six in order through the SQL Editor on 2026-11-13; a check then showed every table and column present. **Lesson:** after "Migration applied", confirm with a `to_regclass` / `information_schema` query before merging.
+
 **History.**
 - First built as a separate "My Day" list: PR #713, merged as `2466d96`, migration `20270622000000`. The owner said it was **APPLIED 2026-11-12, before that merge**; this was not re-checked from the cloud session.
 - Folded into **Task Management** the same day (owner: "My Day is very similar to Self Tasks… it will create confusion"). This is migration `20270624000000_day_close_in_tasks.sql` (PR #721, merged as `db54a23`; the owner said it was applied before the merge).

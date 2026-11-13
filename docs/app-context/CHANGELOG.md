@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — Day Close and Scoreboard migrations actually applied to production · no new SQL
+- `20270622000000`, `20270624000000`, `20270625000000`, `20270626000000`, `20270627000000` and `20270628000000` were missing from production despite being recorded as applied. Team Today returned 500.
+- The owner applied all six on 2026-11-13, after a backup, and verified them by query. Dossiers 30 and 31 now carry the correction.
+
 ## 2026-11-13 — Scoreboard: the "Star" band pill fixed (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
 - **Bug.** `scoreCard.module.css` defined `.star` twice: for the band pill and for the Star Seller card (#728). The two rules merged, so every "Star" pill (your band, the Top 5) took the card's border, padding and bottom margin.
 - **Fix.** The card's class is now `.starCard` (`StarSellerCard.tsx`). The pill is unchanged.

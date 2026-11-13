@@ -1,5 +1,7 @@
 # 31 - BOE Scoreboard (one monthly score, seen twice a day)
 
+> **Apply-state correction (2026-11-13).** The six migrations `20270622000000`, `20270624000000`, `20270625000000`, `20270626000000`, `20270627000000` and `20270628000000` were **not** in production when their PRs merged. Team Today showed "Something went wrong" and the scoreboard tables were missing (`to_regclass` checks all false). After a `backup-all.mjs` backup, the owner applied all six in order through the SQL Editor on 2026-11-13; a check then showed every table and column present. **Lesson:** after "Migration applied", confirm with a `to_regclass` / `information_schema` query before merging.
+
 Built 2026-11-12 on branch `claude/boe1-employee-monitoring-t5ypei`. Migration `20270625000000_scoreboard.sql` was **APPLIED 2026-11-12 by the owner, before the merge** (PR #724; owner's word, not re-checked from the cloud session).
 
 The plan (with the owner's decisions) is the artifact "BOE Scoreboard: one score, seen daily, rewarded monthly". The code is the truth.

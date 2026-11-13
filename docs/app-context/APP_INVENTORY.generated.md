@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `4a9cb0d` — Retire the Performance module: the Scoreboard replaces it (no SQL)
-- Commits on this branch: 69
+- Commit: `a441fa9` — Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 74
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 204
 - Migrations: 445 (first `20260530_create_positions.sql`, latest `20270701000000_finance_confirmed_payments_order_search.sql`)
 - Tables ever created: 249 (dropped at some point: 8)   SQL functions: 1015   Enums: 0
@@ -14,7 +14,12 @@
 
 ## Latest 25 commits
 
+- `a441fa9` 2026-11-13 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- `c6f1117` 2026-11-13 Scoreboard: stop the Star Seller card's style leaking into the Star band pill
+- `a08aeb5` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL) (#733)
+- `6474047` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `4a9cb0d` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL)
+- `ebfc7df` 2026-11-13 Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (migration 20270701000000, applied 13 Nov) (#719)
 - `d31d54f` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
 - `561c458` 2026-11-13 Orders: "With Sales" on the Operations queue (#729)
 - `d937dae` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
@@ -34,11 +39,6 @@
 - `3e26083` 2026-11-12 Meetings, Review Workflow, Samples and Assets look up permissions once (#712)
 - `72c5797` 2026-11-12 Other modules read your own row once (#711)
 - `8ea2511` 2026-11-12 Docs: pricing model v2 merged as cccdf395, 20270621000000 applied (#710)
-- `cccdf39` 2026-11-12 Pricing model v2: prices from parameters, with reasons (migration 20270621000000, apply before merge) (#709)
-- `f92dd80` 2026-11-12 Docs: record the merge of #707 (Finance) and the live recount (#708)
-- `3ff36f7` 2026-11-12 Fewer repeated requests: Finance (#707)
-- `9665229` 2026-11-12 Docs: WhatsApp Connection page merged (#688) (#689)
-- `5635226` 2026-11-12 Docs: SEO brief biggest falls merged as a266a005 (#701) (#705)
 
 ## Pages by top-level area
 
