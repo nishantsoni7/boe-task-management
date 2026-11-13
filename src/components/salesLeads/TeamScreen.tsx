@@ -28,7 +28,8 @@ import s from './salesPages.module.css'
 // Team: the one page a manager opens. What could be lost today comes first, because that is the part somebody can still
 // do something about. The numbers below it answer where leads drop off, why they die and who is keeping up.
 
-const FUNNEL = ['Leads', 'Under process', 'Potential client', 'Negotiation', 'Converted']
+// Visit / Meeting counts with Under Process (20270705000000: same rank).
+const FUNNEL = ['Leads', 'Under Process or Visit / Meeting', 'Potential Clients', 'Negotiation', 'Converted']
 const PERIODS = [
   { key: 'month', label: 'This month' },
   { key: 'quarter', label: 'Last 3 months' },

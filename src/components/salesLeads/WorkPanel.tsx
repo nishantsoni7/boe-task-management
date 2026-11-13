@@ -2,16 +2,16 @@
 
 import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CalendarDays, ChevronLeft, ChevronRight, MessageCircle, Search, X } from 'lucide-react'
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, MessageCircle, Phone, Search, X } from 'lucide-react'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
-import { formatPhone } from '@/lib/exhibitionLeads/phone'
+import { formatPhone, telHref } from '@/lib/exhibitionLeads/phone'
 import {
   addComment, changeDue, fetchWorkLead, SALES_KEY, updateFacts,
   type LeadFacts, type WorkDetail, type WorkLead,
 } from '@/lib/salesLeads/api'
 import {
-  activityTag, BOARD_STAGES, CLIENT_TYPES, dueOf, followUpChoices, isSunday, lastLabel, marketLabel, nextWorkingDay, parseValue,
-  QUICK_NOTES, SEGMENTS, stageLabel, STAGE_GUIDE, TEMPERATURES, valueLabel,
+  activityTag, CLIENT_TYPES, dueOf, followUpChoices, isSunday, lastLabel, marketLabel, NEXT_STAGE, nextWorkingDay, parseValue,
+  PATH_STAGES, QUICK_NOTES, SEGMENTS, stageLabel, STAGE_GUIDE, TEMPERATURES, valueLabel,
   type CommentTag, type Stage, type Temperature,
 } from '@/lib/salesLeads/board'
 import { sourceLabel } from '@/lib/salesLeads/constants'
@@ -23,16 +23,13 @@ import s from './leadBoard.module.css'
 
 // One lead in a popup in the middle of the page (owner, 2026-11-13, after a clickable preview, on the lines of ClickUp):
 // on the left who the client is, where the lead stands and what they want; on the right one box to write an update and
-// everything that happened, newest first, a day at a time. No calling from here and no "how did it go" form. Previous
-// and next walk the list the lead was opened from; Esc, the cross or a click outside closes it. On a phone it fills the
-// screen and the two sides are two tabs.
+// everything that happened, newest first, a day at a time. Call and WhatsApp beside the name (Call came back on
+// 2026-11-13); no "how did it go" form. Previous and next walk the list the lead was opened from; Esc, the cross or a
+// click outside closes it. On a phone it fills the screen and the two sides are two tabs.
 
 /** Only one menu is open at a time; Escape closes it before it closes the popup. */
 type Menu = 'due' | 'next' | null
 type Tab = 'details' | 'activity'
-
-/** The four steps of a sale. Follow up later, Converted and Dead are the other ways a lead can go. */
-const STEPS: readonly Stage[] = BOARD_STAGES.filter(stage => stage !== 'follow_up_later')
 
 /** The list the lead was opened from, so Previous and Next can walk it. */
 export type LeadNav = { ids: readonly string[]; label: string }
@@ -138,7 +135,7 @@ function PanelBody({ detail, work, focusLog, closeAfterPost, menu, setMenu, onCl
     <div className={s.mBody}>
       <div className={s.mLeft} aria-label="Lead details">
         <Who lead={lead} work={work} canWork={canWork} closed={closed} />
-        <StateBox lead={lead} work={work} canWork={canWork} closed={closed} menu={menu} setMenu={setMenu} />
+        <StateBox lead={lead} since={stageSince(detail)} work={work} canWork={canWork} closed={closed} menu={menu} setMenu={setMenu} />
         <Details lead={lead} work={work} canWork={canWork} />
         {!canWork && <div className={s.readOnly}>You can read this lead. {lead.holder_name ? `${lead.holder_name} holds it, and only` : 'Only'} the person holding it can write on it or move it.</div>}
       </div>
@@ -165,17 +162,26 @@ function useCloseOnOutside(open: boolean, close: () => void) {
 
 // ── Left: who, where it stands, what they want ──────────────────────────────────────────────────────────────────────
 
+/** The name, the number and how to reach them: Call (from the phone's dialler) and WhatsApp (owner, 2026-11-13). */
 function Who({ lead, work, canWork, closed }: { lead: WorkLead; work: LeadWork; canWork: boolean; closed: boolean }) {
   return (
     <div className={s.mWho}>
       <div className={s.mWhoText}>
         <h2 className={s.mName}>{leadTitle(lead)}</h2>
-        <div className={s.mSub}>
-          {lastLabel(lead, work.today)} · {marketLabel(lead)}{lead.stuck && <span className={s.metaRed}> · Stuck</span>}
+        <div className={s.mMeta}>
+          {lead.name && <span className={s.mPhone}>{formatPhone(lead.phone)}</span>}
+          {lead.name && <span className={s.mDot} aria-hidden="true">·</span>}
+          <span>{marketLabel(lead)}</span>
+          <span className={s.mDot} aria-hidden="true">·</span>
+          <span>{lastLabel(lead, work.today)}</span>
+          {lead.stuck && <span className={s.mStuck}>Stuck</span>}
         </div>
       </div>
       {canWork && !closed && (
-        <button type="button" className={s.mWa} onClick={() => work.openWhatsApp(lead)}><MessageCircle aria-hidden="true" />WhatsApp</button>
+        <div className={s.mReach}>
+          <a className={s.mCall} href={telHref(lead.phone)}><Phone aria-hidden="true" />Call</a>
+          <button type="button" className={s.mWa} onClick={() => work.openWhatsApp(lead)}><MessageCircle aria-hidden="true" />WhatsApp</button>
+        </div>
       )}
     </div>
   )
@@ -183,70 +189,106 @@ function Who({ lead, work, canWork, closed }: { lead: WorkLead; work: LeadWork; 
 
 const HEAT_CLASS: Record<Temperature, string> = { hot: s.heatHot, warm: s.heatWarm, cold: s.heatCold }
 
-function StateBox({ lead, work, canWork, closed, menu, setMenu }: {
-  lead: WorkLead; work: LeadWork; canWork: boolean; closed: boolean; menu: Menu; setMenu: (m: Menu) => void
+/**
+ * When the lead entered its stage, from its own history: the last move, else the stage ClickUp gave it, else when it was
+ * brought in. Null when the history says nothing.
+ */
+function stageSince(detail: WorkDetail): string | null {
+  const marks = detail.events.filter(e => e.kind === 'moved' || e.kind === 'clickup_status' || e.kind === 'imported' || e.kind === 'added')
+  return marks.reduce<string | null>((latest, e) => (!latest || e.at > latest ? e.at : latest), null) ?? detail.lead.assigned_at
+}
+
+/** Days since the lead entered its stage, in words. */
+const inStage = (since: string, now: number) => {
+  const d = Math.max(0, Math.floor((now - Date.parse(since)) / 86_400_000))
+  return d === 0 ? 'today' : d === 1 ? '1 day' : `${d} days`
+}
+
+/**
+ * Where it stands: one stage bar (a click on a step moves the lead), "Move to" the next step, and the three ways out;
+ * then Hot / Warm / Cold, the next follow-up and who holds it, as plain rows.
+ */
+function StateBox({ lead, since, work, canWork, closed, menu, setMenu }: {
+  lead: WorkLead; since: string | null; work: LeadWork; canWork: boolean; closed: boolean; menu: Menu; setMenu: (m: Menu) => void
 }) {
+  // The moment the popup opened: "12 days" in the stage does not need to tick.
+  const [now] = useState(() => Date.now())
   const due = dueOf(lead, work.today)
   const to = (stage: Stage) => work.moveTo(lead, stage)
   const heat = (value: Temperature) => {
     if (value !== lead.temperature) void work.guarded(async () => { await updateFacts(work.supabase, lead.id, { temperature: value }) })
   }
+  const at = PATH_STAGES.indexOf(lead.stage)
+  const next = NEXT_STAGE[lead.stage]
   return (
-    <div className={s.mBox}>
-      {closed && (
-        <div className={s.mClosed}>
-          <b>{stageLabel(lead.stage)}</b>{lead.stage === 'dead' && <> · {due.label}</>}
-          {lead.dead_note && <div className={s.nextSub}>{lead.dead_note}</div>}
+    <>
+      <section className={s.mStage} aria-label="Stage">
+        <div className={s.mStageHead}>
+          <span className={s.mStageKey}>{closed ? 'Reopen to' : 'Stage'}</span>
+          <span className={s.mStageNow}>
+            {stageLabel(lead.stage)}{lead.stage === 'dead' && ` · ${due.label}`}
+            {since && <small> · {inStage(since, now)}</small>}
+          </span>
         </div>
-      )}
-      <div className={`${s.mRow} ${s.mRowTop}`}>
-        <span className={s.mKey}>{closed ? 'Reopen to' : 'Stage'}</span>
-        <div className={s.mVal}>
-          <div className={s.mStages} role="group" aria-label={closed ? 'Reopen this lead in a stage' : 'Move this lead to a stage'}>
-            {STEPS.map(stage => (
-              <button key={stage} type="button" title={STAGE_GUIDE[stage]} aria-pressed={lead.stage === stage} disabled={!canWork || lead.stage === stage} onClick={() => to(stage)}>
-                {stageLabel(stage)}
+        {lead.dead_note && <p className={s.mDeadNote}>{lead.dead_note}</p>}
+        <ol className={s.mPath}>
+          {PATH_STAGES.map((stage, i) => (
+            <li key={stage} className={i < at ? s.mPathDone : i === at ? s.mPathNow : undefined}>
+              <button
+                type="button" title={STAGE_GUIDE[stage]} aria-current={i === at ? 'step' : undefined}
+                aria-label={i === at ? `${stageLabel(stage)}, the stage it is in` : `Move to ${stageLabel(stage)}`}
+                disabled={!canWork || i === at} onClick={() => to(stage)}
+              >
+                <i aria-hidden="true" /><span>{stageLabel(stage)}</span>
               </button>
-            ))}
-          </div>
-          <div className={s.mOuts}>
-            <button type="button" className={s.mOut} aria-pressed={lead.stage === 'follow_up_later'} disabled={!canWork || lead.stage === 'follow_up_later'} onClick={() => to('follow_up_later')}>Follow up later</button>
+            </li>
+          ))}
+        </ol>
+        {canWork && (
+          <div className={s.mStageActs}>
+            {!closed && next && (
+              <button type="button" className={s.mNextStage} onClick={() => to(next)}>Move to {stageLabel(next)}<ArrowRight aria-hidden="true" /></button>
+            )}
+            <span className={s.mSpacer} />
+            {lead.stage !== 'follow_up_later' && <button type="button" className={s.mGhost} onClick={() => to('follow_up_later')}>Follow up later</button>}
             {!closed && (
               <>
-                <button type="button" className={`${s.mOut} ${s.mOutWin}`} disabled={!canWork} onClick={() => to('converted')}>Converted</button>
-                <button type="button" className={`${s.mOut} ${s.mOutDead}`} disabled={!canWork} onClick={() => to('dead')}>Dead</button>
+                <button type="button" className={`${s.mGhost} ${s.mGhostWon}`} onClick={() => to('converted')}>Converted</button>
+                <button type="button" className={`${s.mGhost} ${s.mGhostLost}`} onClick={() => to('dead')}>Dead</button>
               </>
             )}
           </div>
+        )}
+      </section>
+      <dl className={s.mRows}>
+        <div>
+          <dt>Hot / Warm / Cold</dt>
+          <dd>
+            <span className={s.mHeat} role="group" aria-label="How warm is this lead?">
+              {TEMPERATURES.map(t => (
+                <button key={t.value} type="button" aria-pressed={lead.temperature === t.value} disabled={!canWork} onClick={() => heat(t.value)}>
+                  <i className={`${s.heat} ${HEAT_CLASS[t.value]}`} aria-hidden="true" />{t.label}
+                </button>
+              ))}
+            </span>
+          </dd>
         </div>
-      </div>
-      <div className={s.mRow}>
-        <span className={s.mKey}>Hot / Warm / Cold</span>
-        <div className={s.mVal}>
-          <div className={s.mHeat} role="group" aria-label="How warm is this lead?">
-            {TEMPERATURES.map(t => (
-              <button key={t.value} type="button" aria-pressed={lead.temperature === t.value} disabled={!canWork} onClick={() => heat(t.value)}>
-                <i className={`${s.heat} ${HEAT_CLASS[t.value]}`} aria-hidden="true" />{t.label}
-              </button>
-            ))}
+        {!closed && (
+          <div>
+            <dt>Next follow-up</dt>
+            <dd><DueChip lead={lead} work={work} canWork={canWork} open={menu === 'due'} setOpen={open => setMenu(open ? 'due' : null)} /></dd>
           </div>
+        )}
+        <div>
+          <dt>Held by</dt>
+          <dd>
+            {lead.holder_name
+              ? <span className={s.mPerson}><i className={s.mAvSm} aria-hidden="true">{initialsOf(lead.holder_name)}</i>{lead.holder_name}</span>
+              : <span className={s.mNone}>Nobody yet</span>}
+          </dd>
         </div>
-      </div>
-      {!closed && (
-        <div className={s.mRow}>
-          <span className={s.mKey}>Next follow-up</span>
-          <div className={s.mVal}><DueChip lead={lead} work={work} canWork={canWork} open={menu === 'due'} setOpen={open => setMenu(open ? 'due' : null)} /></div>
-        </div>
-      )}
-      <div className={s.mRow}>
-        <span className={s.mKey}>Held by</span>
-        <div className={s.mVal}>
-          {lead.holder_name
-            ? <span className={s.mPerson}><i className={s.mAvSm} aria-hidden="true">{initialsOf(lead.holder_name)}</i>{lead.holder_name}</span>
-            : <span className={s.mNone}>Nobody yet</span>}
-        </div>
-      </div>
-    </div>
+      </dl>
+    </>
   )
 }
 
@@ -353,9 +395,9 @@ function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canW
           {text('location', 'Location')}
           <div className={s.field}><label className={s.label} htmlFor="fact-type">Type of client</label><select id="fact-type" className={s.input} value={form.client_type} onChange={e => set({ client_type: e.target.value })}><option value="">Not set</option>{CLIENT_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
           <div className={s.field}><label className={s.label} htmlFor="fact-seg">Segment</label><select id="fact-seg" className={s.input} value={form.segment} onChange={e => set({ segment: e.target.value })}><option value="">Not set</option>{SEGMENTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+          {text('quantity', 'Quantity')}
           <div className={s.field}><label className={s.label} htmlFor="fact-value">Expected order value (₹)</label><input id="fact-value" className={s.input} inputMode="decimal" placeholder="e.g. 14 L" value={form.value} onChange={e => set({ value: e.target.value })} /></div>
           <div className={`${s.field} ${s.mFull}`}><label className={s.label} htmlFor="fact-req">Requirement</label><textarea id="fact-req" className={s.input} value={form.requirement} onChange={e => set({ requirement: e.target.value })} /></div>
-          {text('quantity', 'Quantity')}
           {text('timeline', 'Needed by')}
         </div>
         {problem && <div className="boe-callout boe-callout-error" role="alert">{problem}</div>}
@@ -371,29 +413,30 @@ function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canW
   const none = <span className={s.mNone}>Not shared</span>
   return (
     <>
-      <section className={s.mSec} aria-label="Client">
+      <section className={s.mSec} aria-label="Client details">
         <div className={s.mSecHead}>
-          <h3 className={s.mH3}>Client</h3>
+          <h3 className={s.mH3}>Client details</h3>
           {canWork && <button type="button" className={s.linkBtn} onClick={edit}>Edit details</button>}
         </div>
-        <dl className={s.mDl}>
+        <dl className={s.mRows}>
           <div><dt>Phone</dt><dd>{formatPhone(lead.phone)} <button type="button" className={s.mCopy} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button></dd></div>
           <div><dt>Email</dt><dd>{lead.email || none}</dd></div>
           <div><dt>Location</dt><dd>{lead.location || none}</dd></div>
           <div><dt>Type of client</dt><dd>{kind || none}</dd></div>
+          {/* Quantity lives with the client's details (owner, 2026-11-13), not under the requirement. */}
+          <div><dt>Quantity</dt><dd>{lead.quantity || none}</dd></div>
           <div><dt>Source</dt><dd>{sourceLabel(lead.source)}</dd></div>
         </dl>
       </section>
       <section className={s.mSec} aria-label="Requirement">
-        <h3 className={s.mH3}>Requirement</h3>
+        <div className={s.mSecHead}><h3 className={s.mH3}>Requirement</h3></div>
         {lead.requirement ? <p className={s.mReq}>{lead.requirement}</p> : <p className={s.mNone}>The client has not said what they need yet.</p>}
-        <dl className={s.mDl}>
-          <div><dt>Quantity</dt><dd>{lead.quantity || none}</dd></div>
+        <dl className={s.mRows}>
           <div><dt>Needed by</dt><dd>{lead.timeline || none}</dd></div>
         </dl>
       </section>
       <section className={s.mSec} aria-label="Expected order value">
-        <h3 className={s.mH3}>Expected order value</h3>
+        <div className={s.mSecHead}><h3 className={s.mH3}>Expected order value</h3></div>
         <div className={s.mValue}>
           {lead.expected_value_paise !== null
             ? <span className={s.mBig}>{valueLabel(lead.expected_value_paise)}</span>
@@ -536,8 +579,8 @@ function Composer({ lead, work, focus, menu, setMenu, onPosted }: {
   const notResponding = tag === 'not_responding'
   // What posting does besides saving the words, when it is not obvious.
   const hint = notResponding
-    ? `Counts as a try, not a contact.${lead.stage === 'new' ? ' The lead moves from New to Under process.' : ''}`
-    : lead.stage === 'new' && text.trim() !== '' ? 'Posting this moves the lead from New to Under process.' : null
+    ? `Counts as a try, not a contact.${lead.stage === 'new' ? ' The lead moves from New to Under Process.' : ''}`
+    : lead.stage === 'new' && text.trim() !== '' ? 'Posting this moves the lead from New to Under Process.' : null
 
   function type(next: string) {
     setText(next)

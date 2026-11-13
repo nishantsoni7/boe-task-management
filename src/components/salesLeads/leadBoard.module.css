@@ -125,6 +125,7 @@
 .act:hover { background: #FAF8F5; }
 .act svg { width: 14px; height: 14px; }
 .actLabel { display: none; }
+.actCall { color: #963B27; }
 /* Always on a card: one click opens Move to (owner, 2026-11-13). Dragging still works on a desktop. */
 .moveBtn { flex: 0 0 auto; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #E4DED7; border-radius: 7px; background: #fff; color: #686D6C; cursor: pointer; padding: 0; }
 .moveBtn:hover { background: #F8EAE4; border-color: #E8C4B8; color: #963B27; }
@@ -179,37 +180,10 @@
 .mWho { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .mWhoText { min-width: 0; }
 .mName { margin: 0; font: 700 24px/1.2 var(--boe-font-heading); letter-spacing: -0.015em; color: #303536; overflow-wrap: anywhere; }
-.mSub { margin-top: 4px; font-size: 12.5px; color: #686D6C; }
 .metaRed { color: #A12438; font-weight: 600; }
 .mWa { flex: 0 0 auto; height: 38px; padding: 0 13px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; font: 600 13px var(--boe-font-body); color: #303536; cursor: pointer; }
 .mWa:hover { background: #FAF8F5; }
 .mWa svg { width: 16px; height: 16px; color: #2F7D4F; }
-.mBox { border: 1px solid #ECE7E0; border-radius: 12px; padding: 4px 14px; }
-.mClosed { padding: 10px 0; border-bottom: 1px solid #F1EEE9; font-size: 13.5px; }
-.nextSub { font-size: 12px; color: #686D6C; margin-top: 1px; }
-.mRow { display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid #F1EEE9; }
-.mRow:first-child, .mClosed + .mRow { border-top: 0; }
-.mRowTop { align-items: start; }
-.mRowTop .mKey { padding-top: 11px; }
-.mKey { font-size: 12.5px; color: #686D6C; }
-.mVal { min-width: 0; }
-.mStages { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid #CFC8BF; border-radius: 10px; overflow: hidden; }
-.mStages button { height: 40px; border: 0; border-right: 1px solid #E4DED7; background: #fff; font: 500 12.5px/1.15 var(--boe-font-body); color: #4C5352; cursor: pointer; padding: 0 4px; }
-.mStages button:last-child { border-right: 0; }
-.mStages button:hover:not(:disabled) { background: #FAF8F5; }
-.mStages button:disabled { cursor: default; }
-.mStages button[aria-pressed="true"] { background: #B9472E; color: #fff; font-weight: 600; }
-.mOuts { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-.mOut { height: 32px; padding: 0 12px; border: 1px solid #E4DED7; border-radius: 999px; background: #fff; font: 500 12.5px var(--boe-font-body); color: #4C5352; cursor: pointer; }
-.mOut:hover:not(:disabled) { background: #FAF8F5; }
-.mOut[aria-pressed="true"] { border-color: #B9472E; background: #F8EAE4; color: #963B27; font-weight: 600; }
-.mOut:disabled:not([aria-pressed="true"]) { opacity: .5; cursor: not-allowed; }
-.mOutWin { color: #2F7D4F; border-color: #BFDCC9; }
-.mOutDead { color: #686D6C; }
-.mHeat { display: inline-flex; border: 1px solid #CFC8BF; border-radius: 10px; overflow: hidden; }
-.mHeat button { height: 36px; padding: 0 13px; border: 0; border-right: 1px solid #E4DED7; background: #fff; display: inline-flex; align-items: center; gap: 7px; font: 500 12.5px var(--boe-font-body); color: #4C5352; cursor: pointer; }
-.mHeat button:last-child { border-right: 0; }
-.mHeat button[aria-pressed="true"] { background: #F8EAE4; color: #963B27; font-weight: 600; }
 .mDue { height: 36px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px 0 11px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; cursor: pointer; color: #303536; font: 400 13px var(--boe-font-body); }
 .mDue:hover:not(:disabled) { background: #FAF8F5; }
 .mDue svg { width: 15px; height: 15px; color: #686D6C; }
@@ -220,17 +194,60 @@
 .mChange { color: #B9472E; font-weight: 600; font-size: 12.5px; margin-left: 4px; }
 .mPerson { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; }
 .mAvSm { width: 24px; height: 24px; border-radius: 50%; background: #F8EAE4; color: #963B27; display: inline-flex; align-items: center; justify-content: center; font: normal 700 10px var(--boe-font-body); }
-.mSec { display: flex; flex-direction: column; gap: 8px; }
-.mSecHead { display: flex; align-items: center; justify-content: space-between; }
-.mDl { margin: 0; display: flex; flex-direction: column; }
-.mDl > div { display: grid; grid-template-columns: 124px minmax(0, 1fr); gap: 12px; padding: 6px 0; }
-.mDl dt { font-size: 12.5px; color: #686D6C; }
-.mDl dd { margin: 0; font-weight: 500; overflow-wrap: anywhere; }
 .mCopy { margin-left: 6px; border: 1px solid #E4DED7; background: #fff; border-radius: 6px; font: 600 11.5px var(--boe-font-body); color: #4C5352; padding: 1px 7px; cursor: pointer; }
 .mCopy:hover { background: #FAF8F5; }
-.mReq { margin: 0; font-size: 13.5px; line-height: 1.5; padding: 10px 12px; background: #FAF8F5; border: 1px solid #ECE7E0; border-radius: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.mValue { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border: 1px solid #ECE7E0; border-radius: 12px; }
 .mBig { font: 700 22px var(--boe-font-heading); font-variant-numeric: tabular-nums; }
+
+/* Round 3 (owner, 2026-11-13: "clumsy"): the name and how to reach them, one stage bar, then plain rows. */
+.mMeta { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; color: #686D6C; }
+.mPhone { color: #303536; font-weight: 600; font-variant-numeric: tabular-nums; }
+.mDot { color: #CFC8BF; }
+.mStuck { margin-left: 2px; height: 20px; padding: 0 8px; border-radius: 999px; background: #FCEEEF; color: #A12438; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; }
+.mReach { display: flex; gap: 8px; flex: 0 0 auto; }
+.mCall { height: 38px; padding: 0 14px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #B9472E; border-radius: 10px; background: #B9472E; color: #fff; font: 600 13px var(--boe-font-body); text-decoration: none; }
+.mCall:hover { background: #A33E27; }
+.mCall svg { width: 15px; height: 15px; }
+.mStage { border: 1px solid #ECE7E0; border-radius: 14px; padding: 14px 16px 12px; background: #fff; }
+.mStageHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.mStageKey { font-size: 12px; font-weight: 600; color: #686D6C; text-transform: uppercase; letter-spacing: .05em; }
+.mStageNow { font: 700 14px var(--boe-font-heading); color: #963B27; text-align: right; }
+.mStageNow small { font: 500 12px var(--boe-font-body); color: #686D6C; }
+.mDeadNote { margin: -6px 0 10px; font-size: 12.5px; color: #686D6C; }
+.mPath { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.mPath li { position: relative; }
+.mPath li + li::before { content: ''; position: absolute; top: 9px; right: 50%; width: 100%; height: 3px; background: #E4DED7; border-radius: 2px; }
+.mPath li.mPathDone::before, .mPath li.mPathNow::before { background: #E9A592; }
+.mPath button { position: relative; z-index: 1; width: 100%; border: 0; background: none; padding: 0 2px; display: flex; flex-direction: column; align-items: center; gap: 7px; cursor: pointer; font: 500 11.5px/1.25 var(--boe-font-body); color: #686D6C; text-align: center; }
+.mPath button:disabled { cursor: default; }
+.mPath i { width: 21px; height: 21px; border-radius: 50%; border: 2px solid #CFC8BF; background: #fff; box-sizing: border-box; transition: transform .12s, border-color .12s; }
+.mPath button:hover:not(:disabled) i { transform: scale(1.12); border-color: #B9472E; }
+.mPath button:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; border-radius: 6px; }
+.mPathDone i { border-color: #E9A592; background: #F8EAE4; }
+.mPathDone button { color: #4C5352; }
+.mPathNow i { border-color: #B9472E; background: #B9472E; box-shadow: 0 0 0 4px #F8EAE4; }
+.mPathNow button { color: #963B27; font-weight: 700; }
+.mStageActs { display: flex; align-items: center; gap: 6px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #F1EEE9; flex-wrap: wrap; }
+.mNextStage { height: 32px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px; border: 1px solid #E8C4B8; border-radius: 9px; background: #F8EAE4; color: #963B27; font: 600 12.5px var(--boe-font-body); cursor: pointer; }
+.mNextStage:hover { background: #F3DCD3; }
+.mNextStage svg { width: 14px; height: 14px; }
+.mSpacer { flex: 1; }
+.mGhost { height: 32px; padding: 0 10px; border: 0; border-radius: 8px; background: none; font: 500 12.5px var(--boe-font-body); color: #4C5352; cursor: pointer; }
+.mGhost:hover { background: #F1EEE9; }
+.mGhostWon { color: #2F7D4F; }
+.mGhostLost { color: #A12438; }
+.mRows { margin: 0; display: flex; flex-direction: column; }
+.mRows > div { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; align-items: center; min-height: 40px; padding: 4px 0; border-bottom: 1px solid #F4F1EC; }
+.mRows > div:last-child { border-bottom: 0; }
+.mRows dt { font-size: 12.5px; color: #686D6C; }
+.mRows dd { margin: 0; font-size: 13.5px; font-weight: 500; color: #303536; overflow-wrap: anywhere; }
+.mHeat { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.mHeat button { height: 30px; padding: 0 11px; border: 1px solid #E4DED7; border-radius: 999px; background: #fff; display: inline-flex; align-items: center; gap: 6px; font: 500 12.5px var(--boe-font-body); color: #4C5352; cursor: pointer; }
+.mHeat button:hover:not(:disabled) { background: #FAF8F5; }
+.mHeat button[aria-pressed="true"] { border-color: #E8C4B8; background: #F8EAE4; color: #963B27; font-weight: 600; }
+.mSec { display: flex; flex-direction: column; gap: 6px; }
+.mSecHead { display: flex; align-items: center; justify-content: space-between; padding-bottom: 6px; border-bottom: 1px solid #ECE7E0; }
+.mReq { margin: 4px 0 2px; font-size: 13.5px; line-height: 1.55; color: #303536; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mValue { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
 .mForm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; }
 .mFull { grid-column: 1 / -1; }
 
@@ -376,7 +393,7 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
 .heroDo .step svg { width: 15px; height: 15px; }
 .heroDo .flag { margin-left: 8px; font-size: 12.5px; font-weight: 500; }
 .heroDo p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.45; color: #4C5352; overflow-wrap: anywhere; }
-.heroActs { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(2, minmax(0, 1fr)); gap: 8px; }
+.heroActs { display: grid; grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr)); gap: 8px; }
 .heroActs :global(.boe-btn) { height: 46px; padding: 0 10px; font-size: 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; text-decoration: none; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .heroActs svg { width: 15px; height: 15px; flex-shrink: 0; }
 .then { margin: 4px 0 -2px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #686D6C; }
@@ -387,7 +404,7 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
 .hint { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 12px; border: 1px solid #E6D2A0; background: #FFFCF4; font-size: 13.5px; line-height: 1.45; color: #5F4709; }
 .hint :global(.boe-btn) { margin-left: auto; height: 36px; padding: 0 12px; font-size: 13px; flex-shrink: 0; }
 .rows { display: flex; flex-direction: column; background: #fff; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); overflow: hidden; }
-.row { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) 96px 96px; gap: 4px 14px; align-items: center; padding: 8px 14px; min-height: 40px; border-bottom: 1px solid #F1EEE9; cursor: pointer; }
+.row { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) 96px 96px 40px; gap: 4px 14px; align-items: center; padding: 8px 14px; min-height: 40px; border-bottom: 1px solid #F1EEE9; cursor: pointer; }
 .row:last-child { border-bottom: 0; }
 .row:hover { background: #FAF8F5; }
 .row:focus-visible { outline: 2px solid #B9472E; outline-offset: -2px; }
@@ -395,6 +412,9 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
 .rowWho { display: flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
 .row .name { flex: 0 1 auto; font-size: 14px; margin-right: 4px; }
 .rowWhat { min-width: 0; }
+.rowCall { width: 40px; height: 40px; border-radius: 10px; border: 1px solid #E4DED7; color: #963B27; background: #fff; display: inline-flex; align-items: center; justify-content: center; }
+.rowCall:hover { background: #F8EAE4; border-color: #E8C4B8; }
+.rowCall svg { width: 16px; height: 16px; }
 .more { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; border: 1px dashed #CFC8BF; border-radius: 12px; font-size: 13px; color: #4C5352; background: #fff; text-decoration: none; }
 
 /* ── Narrower (the app's phone breakpoint; BoardScreen's useNarrow uses the same) ── */
@@ -421,8 +441,8 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .card { padding: 12px; cursor: default; }
   .cardStuck { padding-left: 10px; }
   .card .name { font-size: 14.5px; }
-  /* No Call (owner, 2026-11-13): WhatsApp and No answer on every card; Move is the button beside the name. */
-  .acts, .card:hover .acts, .card:focus-within .acts { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0; background: none; }
+  /* Call, WhatsApp and No answer on every card (Call back, owner 2026-11-13); Move is the button beside the name. */
+  .acts, .card:hover .acts, .card:focus-within .acts { position: static; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0; background: none; }
   .act { width: auto; height: 44px; flex-direction: row; gap: 6px; font-size: 13px; }
   .actLabel { display: block; }
   .act svg { width: 15px; height: 15px; }
@@ -446,10 +466,11 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .hero { padding: 14px; }
   .heroMain { grid-template-columns: minmax(0, 1fr); }
   .heroName { font-size: 20px; }
-  .heroActs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .heroActs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .heroActs :global(.boe-btn):first-child { grid-column: 1 / -1; height: 52px; font-size: 16px; }
   .heroActs :global(.boe-btn):not(:first-child) { flex-direction: column; height: 56px; gap: 2px; font-size: 12px; }
-  .row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'who due' 'what flag'; padding: 9px 12px; gap: 3px 10px; }
+  .row { grid-template-columns: minmax(0, 1fr) auto 44px; grid-template-areas: 'who due call' 'what flag call'; padding: 9px 10px 9px 12px; gap: 3px 10px; }
+  .rowCall { grid-area: call; width: 44px; height: 44px; }
   .rowWho { grid-area: who; }
   .rowDue { grid-area: due; text-align: right; }
   .rowWhat { grid-area: what; }
@@ -470,11 +491,15 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .modal[data-tab="details"] .mRight, .modal[data-tab="activity"] .mLeft { display: none; }
   .mRight { border-left: 0; }
   .mLeft { padding: 16px 14px 28px; }
-  .mRow, .mDl > div, .mForm { grid-template-columns: minmax(0, 1fr); gap: 6px; }
-  .mRowTop .mKey { padding-top: 0; }
-  .mStages button { height: 46px; }
-  .mOut, .mChip { height: 40px; }
-  .mHeat button, .mDue { height: 44px; }
+  .mRows > div, .mForm { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px 0; }
+  .mWho { flex-direction: column; }
+  .mReach { width: 100%; }
+  .mCall, .mWa { flex: 1; justify-content: center; height: 46px; }
+  .mPath button { font-size: 11px; }
+  .mNextStage, .mGhost { height: 40px; }
+  .mChip { height: 40px; }
+  .mHeat button { height: 40px; }
+  .mDue { height: 44px; }
   .mCompose { margin: 0 12px 10px; }
   .mCompose textarea { font-size: 16px; }
   .mRHead, .mSearch { padding-left: 12px; padding-right: 12px; }

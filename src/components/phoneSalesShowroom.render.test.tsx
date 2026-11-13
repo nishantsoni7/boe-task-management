@@ -282,18 +282,18 @@ describe('Phase 4: the public showroom', () => {
 describe('Phase 4: Sales', () => {
   const board = read('src/components/salesLeads/BoardScreen.tsx')
   const boardCss = read('src/components/salesLeads/leadBoard.module.css')
-  // Owner, 2026-11-13: nobody calls from BOE One, so a card has no Call. A phone shows WhatsApp and No answer on every
-  // card; Move is a button on the card itself, always visible, on a desktop too.
-  test('the board: phone at 767px in the CSS and the JS, no Call, WhatsApp and No answer on a phone card, Move always shown, the queue a chip', () => {
+  // Owner, 2026-11-13: Call, WhatsApp and No answer on every card on a phone (Call came back the same day, after a
+  // morning without it); Move is a button on the card itself, always visible, on a desktop too.
+  test('the board: phone at 767px in the CSS and the JS, Call, WhatsApp and No answer on a phone card, Move always shown, the queue a chip', () => {
     assert.equal(boardCss.includes('max-width: 700px'), false)
     assert.ok(board.includes("matchMedia('(max-width: 767px)')"))
     assert.equal(board.includes('700px'), false)
-    assert.equal(board.includes('telHref'), false)
-    assert.equal(board.includes('s.actMore') || board.includes('s.actCall'), false)
+    assert.ok(board.includes('href={telHref(lead.phone)}') && board.includes('s.actCall'))
+    assert.equal(board.includes('s.actMore'), false)
     assert.ok(board.includes('className={s.moveBtn}'))
     assert.ok(board.includes('s.queueChip'))
     const phone = phoneBlock(boardCss, '/* ── Narrower')
-    assert.ok(phone.includes('.acts, .card:hover .acts, .card:focus-within .acts { position: static; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));'))
+    assert.ok(phone.includes('.acts, .card:hover .acts, .card:focus-within .acts { position: static; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));'))
     assert.ok(phone.includes('.menuField select { height: 44px; font-size: 16px; }'))
     assert.ok(phone.includes('.menuItem { min-height: 44px; }'))
     assert.ok(phone.includes('.queueChip { display: inline-flex; flex: 0 0 auto; height: 40px;'))

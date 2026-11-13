@@ -67,8 +67,8 @@ export function useLeadWork() {
   const noAnswer = (lead: WorkLead) => guarded(async () => {
     const r = await logNoAnswer(supabase, lead.id)
     if ((r.streak ?? 0) >= 3) setDialog({ type: 'three', lead: r.lead })
-    // A New lead that nobody answered has had its first try, so it is now Under process.
-    else said(`No answer logged${lead.stage === 'new' ? '. Moved to Under process' : ''}. Next try ${comesBack(r.lead)}.`, r.activity_id)
+    // A New lead that nobody answered has had its first try, so it is now Under Process.
+    else said(`No answer logged${lead.stage === 'new' ? '. Moved to Under Process' : ''}. Next try ${comesBack(r.lead)}.`, r.activity_id)
   })
 
   const messageSent = (lead: WorkLead, label: string) => guarded(async () => {
