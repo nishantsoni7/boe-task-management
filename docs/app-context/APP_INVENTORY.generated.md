@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `d543c175` — Renumber the Visit / Meeting migration to 20270710000000
-- Commits on this branch: 1309
+- Commit: `d9c6d851` — Merge main (#744, Scoreboard Top 5 switch 20270705000000) into this branch: keep both
+- Commits on this branch: 1311
 - Pages (`page.tsx`): 193   API routes (`route.ts`): 205
 - Migrations: 452 (first `20260530_create_positions.sql`, latest `20270710000000_sales_visit_meeting_stage.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,8 +14,10 @@
 
 ## Latest 25 commits
 
+- `d9c6d851` 2026-11-13 Merge main (#744, Scoreboard Top 5 switch 20270705000000) into this branch: keep both
 - `d543c175` 2026-11-13 Renumber the Visit / Meeting migration to 20270710000000
 - `082cf744` 2026-11-13 Merge main (#746, Day Close switch 20270704000000) into this branch: keep both
+- `dcbe0c9f` 2026-11-13 Scoreboard: hide the Top 5 from staff, with the owner's switch (migration 20270705000000) (#744)
 - `33824593` 2026-11-13 Sales: Visit / Meeting stage and the owner's stage names; ClickUp Important Bulk / Bulk leads to Potential Clients; Call back; the popup's left side redesigned (migration 20270705000000)
 - `22d9f772` 2026-11-13 Day Close and the Scoreboard: paused for the team behind one Control Center switch that starts off (migration 20270704000000) (#746)
 - `73b80e2d` 2026-11-13 Docs: stamp #743 (bank statement reversal lines) as merged 48b0cd83, deployed 12:43 IST (no SQL) (#745)
@@ -37,8 +39,6 @@
 - `d31d54fd` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
 - `561c4588` 2026-11-13 Orders: "With Sales" on the Operations queue (#729)
 - `d937dae8` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
-- `001472f1` 2026-11-13 BOE Scoreboard, slice 3: the monthly review and awards (migration 20270627000000, applied) (#727)
-- `70acf170` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
 
 ## Pages by top-level area
 
