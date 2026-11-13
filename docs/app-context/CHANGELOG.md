@@ -4,17 +4,22 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (branch `feat/confirmed-payments-orders`, PR 1 of 2) · no SQL
-- **Owner ask.** The Confirmed Payments list should show the Order number / PI number each payment was recorded against, several for a split payment; the Allocation status should shrink to small icons; the client of an old order was not shown ("Not identified"). PR 2 (migration) adds search by order number with a confirmed total and editing an old order's client.
-- **Built.**
-  - New **Order / PI** column after Client (190px): one line per Order, PI Draft (reference and reserved number) or old order with its own amount; links where the reader may open the record. No new query: it reads the complete allocation targets the page already loads once per page.
-  - **Allocation status** is one small icon (column 156px to 48px): ring, half, tick, "!" in the pill colours, words in the tooltip and accessible name. Phone cards keep the word pill.
-  - **Old-order client:** a payment whose money is only on old orders of one client shows that client (display only; no write).
-  - The table is about 80px wider: `CONFIRMED_TABLE_MIN_CONTAINER_PX` 1045 to 1125. A 1366px laptop with the sidebar pinned open now gets cards (the hover rail still gets the table).
-- **Proof.** `tsc`; eslint on the changed files; 3,203 finance, navigation and UI tests, 0 failures (offline env). `paymentSurfaces.test.ts`, `allocatedAgainst.render.test.tsx` and `allocatedAgainst.test.ts` updated and extended.
-- **Not seen signed in.** No browser test (owner's rule).
-- **Rollback.** Revert the PR; nothing in the database changed.
-## 2026-11-13 — BOE Scoreboard, slice 2: the team vote and the owner's rating (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270626000000` → NOT applied (apply before the merge)
+## 2026-11-13 — BOE Scoreboard, slice 3: the monthly review and awards (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270627000000` → NOT applied (apply before the merge)
+- **Owner ask.** "Start building the monthly review and awards screen."
+- **Built:** `/tasks/monthly-review`, in the admin sidebar, for the owner alone.
+  - The month's final standings from the frozen nightly record, with the change on last month.
+  - Suggested awards that the owner confirms or changes: Star Performer, Star Seller (highest approved sales), Most Improved (ending 55+), Team Player (most votes), Never Late. Nobody with under 10 working days can win.
+  - "Freeze and announce" saves the awards for good. The WhatsApp message is ready to copy.
+  - Private reviews for the lowest scorer and the Red zone: up to 3 goals and a check-in date. Two Red months in a row is a written warning; three is a role and salary review.
+  - Everybody's card shows last month's champions, and their own private goals.
+- **Not yet built.** The Star Seller's Factory Focus slot (Orders module) and retiring the old Performance pages.
+- **Database.**
+  - `scoreboard_months`: frozen once.
+  - `scoreboard_awards`: one winner per award but Never Late; no change once frozen.
+  - `scoreboard_reviews`.
+- **Proof.** `review.test.ts` (9) and `scoreboard_monthly_review_pglite.mjs` (5).
+
+## 2026-11-13 — BOE Scoreboard, slice 2: the team vote and the owner's rating (PR #726, squash-merged 2026-11-13 as `70acf17`) · `20270626000000` → APPLIED 2026-11-13 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 - **Owner ask.** "Start building the team vote and owner rating."
 - **Built.**
   - **Vote:** in the last 3 days of the month each scored person gives 3 secret votes, with an optional "how they helped" line. A card on `/modules` and the Task dashboard shows only while the vote is open. It is worth 10 points: 8 for votes received (3 or more is full), 2 for voting.
@@ -26,6 +31,16 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - `scoreboard_vote_rating_pglite.mjs`: 5 checks.
   - Full `npm test`: 20,711 tests; the 1 failure is `piDetail.render`, which passes alone.
 
+## 2026-11-12 — Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (branch `feat/confirmed-payments-orders`, PR 1 of 2) · no SQL
+- **Owner ask.** The Confirmed Payments list should show the Order number / PI number each payment was recorded against, several for a split payment; the Allocation status should shrink to small icons; the client of an old order was not shown ("Not identified"). PR 2 (migration) adds search by order number with a confirmed total and editing an old order's client.
+- **Built.**
+  - New **Order / PI** column after Client (190px): one line per Order, PI Draft (reference and reserved number) or old order with its own amount; links where the reader may open the record. No new query: it reads the complete allocation targets the page already loads once per page.
+  - **Allocation status** is one small icon (column 156px to 48px): ring, half, tick, "!" in the pill colours, words in the tooltip and accessible name. Phone cards keep the word pill.
+  - **Old-order client:** a payment whose money is only on old orders of one client shows that client (display only; no write).
+  - The table is about 80px wider: `CONFIRMED_TABLE_MIN_CONTAINER_PX` 1045 to 1125. A 1366px laptop with the sidebar pinned open now gets cards (the hover rail still gets the table).
+- **Proof.** `tsc`; eslint on the changed files; 3,203 finance, navigation and UI tests, 0 failures (offline env). `paymentSurfaces.test.ts`, `allocatedAgainst.render.test.tsx` and `allocatedAgainst.test.ts` updated and extended.
+- **Not seen signed in.** No browser test (owner's rule).
+- **Rollback.** Revert the PR; nothing in the database changed.
 ## 2026-11-12 — BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (PR #724, squash-merged 2026-11-13 as `bc56ccc`) · `20270625000000` → APPLIED 2026-11-12 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 - **Owner ask.** Replace the Performance numbers with one monthly score that people see twice a day, with rewards and reviews. Plan and decisions are in dossier 31.
 - **Built.**

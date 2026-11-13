@@ -5,7 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import {
   LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
   ChevronRight,
-  Home, Bell, RefreshCw, FileText, Plus, UsersRound,
+  Home, Bell, RefreshCw, FileText, Plus, UsersRound, Trophy,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
@@ -358,6 +358,14 @@ export function DashboardLayout({
               icon={<UsersRound size={15} strokeWidth={1.8} />}
               active={pathname === '/tasks/team-today'}
               onClick={() => navTo('/tasks/team-today')}
+            />
+          )}
+          {!inViewMode && offersTeamToday(profile?.role) && (
+            <NavLeaf
+              label="Monthly Review"
+              icon={<Trophy size={15} strokeWidth={1.8} />}
+              active={pathname === '/tasks/monthly-review'}
+              onClick={() => navTo('/tasks/monthly-review')}
             />
           )}
 
