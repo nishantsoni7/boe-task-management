@@ -73,6 +73,6 @@
 .goalList { margin: 0; padding-left: 18px; font-size: 13px; color: #303536; }
 
 /* The Star Seller's Super Priority */
-.star { background: #FAF0DA; border: 1px solid #E6D2A0; border-radius: 12px; padding: 12px 14px; margin: 0 0 16px; display: flex; flex-direction: column; gap: 6px; }
+.starCard { background: #FAF0DA; border: 1px solid #E6D2A0; border-radius: 12px; padding: 12px 14px; margin: 0 0 16px; display: flex; flex-direction: column; gap: 6px; }
 .starTitle { font-family: var(--boe-font-heading); font-weight: 800; font-size: 14px; color: #805B0D; }
 .starOrder { font-size: 14px; font-weight: 600; color: #303536; }

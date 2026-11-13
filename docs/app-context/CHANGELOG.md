@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — Day Close and Scoreboard migrations actually applied to production · no new SQL
+- `20270622000000`, `20270624000000`, `20270625000000`, `20270626000000`, `20270627000000` and `20270628000000` were missing from production despite being recorded as applied. Team Today returned 500.
+- The owner applied all six on 2026-11-13, after a backup, and verified them by query. Dossiers 30 and 31 now carry the correction.
+
+## 2026-11-13 — Scoreboard: the "Star" band pill fixed (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
+- **Bug.** `scoreCard.module.css` defined `.star` twice: for the band pill and for the Star Seller card (#728). The two rules merged, so every "Star" pill (your band, the Top 5) took the card's border, padding and bottom margin.
+- **Fix.** The card's class is now `.starCard` (`StarSellerCard.tsx`). The pill is unchanged.
+
 ## 2026-11-13 — Confirmed Payments: the Order / PI column shows names only, no amounts (branch `fix/confirmed-order-column-no-amounts`, PR pending) · no SQL
 - **Owner ask.** After trying #718/#719 live: search works, but the amount repeated in the Order / PI column "is not making sense and is creating a mess"; details in a separate popup or remove it.
 - **Built.** `AllocatedAgainstCell` draws each Order, PI Draft or old order by name only (links unchanged, "N allocations" header unchanged), in the table and on the phone cards. A part-allocated payment keeps the amber word "Unallocated", without its figure. The popup the status icon opens already lists every destination with its own amount, the allocated total and what is left, so nothing was lost; the list's accessible name still carries the figures for a screen reader. Column widths and the cards threshold are unchanged.
