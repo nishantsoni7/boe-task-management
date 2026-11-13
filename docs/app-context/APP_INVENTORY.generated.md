@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f11ff8aa` — Day Close and the Scoreboard: paused for the team behind one Control Center switch that starts off
-- Commits on this branch: 1304
+- Commit: `577e2634` — Merge origin/main into feat/day-close-pause
+- Commits on this branch: 1306
 - Pages (`page.tsx`): 193   API routes (`route.ts`): 204
 - Migrations: 450 (first `20260530_create_positions.sql`, latest `20270704000000_day_close_team_switch.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
+- `577e2634` 2026-11-13 Merge origin/main into feat/day-close-pause
 - `f11ff8aa` 2026-11-13 Day Close and the Scoreboard: paused for the team behind one Control Center switch that starts off
+- `47db4a17` 2026-11-13 Sales: the lead opens as a centered popup with one update box; next-working-day follow-ups; No answer moves New on (migration 20270703000100) (#742)
 - `0e188497` 2026-11-13 Sales: an Admin can be given leads when ticked; auto-allot switch on the Lead Master (migration 20270703000000) (#741)
 - `48b0cd83` 2026-11-13 Bank Statements: a reversed card debit no longer stops the upload (no SQL) (#743)
 - `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
@@ -37,8 +39,6 @@
 - `bc56cccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
 - `ce42144b` 2026-11-13 Docs: record the merge of #723 (Operations locked while with Sales) (#725)
 - `dde7f4c3` 2026-11-13 Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
-- `1d6b9184` 2026-11-13 Payroll and the My pages read your own row once (#720)
-- `db54a236` 2026-11-13 Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
 
 ## Pages by top-level area
 
