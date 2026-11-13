@@ -4,7 +4,19 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (PR #724) · `20270625000000` → APPLIED 2026-11-12 by the owner, before the merge (owner's word; not re-checked from the cloud session)
+## 2026-11-13 — BOE Scoreboard, slice 2: the team vote and the owner's rating (branch `claude/boe1-employee-monitoring-t5ypei`) · `20270626000000` → NOT applied (apply before the merge)
+- **Owner ask.** "Start building the team vote and owner rating."
+- **Built.**
+  - **Vote:** in the last 3 days of the month each scored person gives 3 secret votes, with an optional "how they helped" line. A card on `/modules` and the Task dashboard shows only while the vote is open. It is worth 10 points: 8 for votes received (3 or more is full), 2 for voting.
+  - **Owner's rating:** 1–5 with a reason the person reads, from the 25th. It is worth its number of points, on Team Today for the reviewer only.
+  - Both close at 23:00 IST on the last day. The vote counts in the month's final record.
+- **Database.** `scoreboard_votes` (not self, at most 3 a voter, never changed) and `scoreboard_ratings`, both closed to the browser.
+- **Proof.**
+  - `vote.test.ts` and the new `score.test.ts` cases: 21 tests with the existing ones.
+  - `scoreboard_vote_rating_pglite.mjs`: 5 checks.
+  - Full `npm test`: 20,711 tests; the 1 failure is `piDetail.render`, which passes alone.
+
+## 2026-11-12 — BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (PR #724, squash-merged 2026-11-13 as `bc56ccc`) · `20270625000000` → APPLIED 2026-11-12 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 - **Owner ask.** Replace the Performance numbers with one monthly score that people see twice a day, with rewards and reviews. Plan and decisions are in dossier 31.
 - **Built.**
   - The score, six parts and two tracks, month-to-date as points earned out of points possible (`src/lib/scoreboard/score.ts`).

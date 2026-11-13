@@ -51,8 +51,8 @@ The owner's ask (2026-11-12): the Performance module "is of no use… except num
 | plan_on_time | 7.5 | Day Close days since switched on, minus `no_plan`/`plan_late` strikes not waived |
 | closed_before_leaving | 7.5 | The same, for `day_not_closed`/`closed_after_leaving` |
 | informed_leave | 5 | Requests this month asked before the shift (`informed_before_shift`); full marks with no request |
-| team_vote | 10 | **Not built yet**: left out |
-| owner_rating | 5 | **Not built yet**: left out |
+| team_vote | 10 | 8 × min(1, votes received ÷ 3) + 2 for casting your own three. Counted only in the month's final record: its last day, once over |
+| owner_rating | 5 | The owner's 1–5 is worth its number of points, counted from when it is given. Its reason is shown to the person |
 | loyalty | 5 | Completed years since `joining_date`, up to 5 |
 
 - **Track:** from `scoreboard_targets.track`, defaulting to general. Sales staff need their track set on the 1st, otherwise they are scored on tasks.
@@ -95,9 +95,8 @@ Both tables are closed to the browser.
 1. Apply `20270625000000` before merging. Without it, `/api/scoreboard/me` returns 500 and the card draws nothing; the rest of the page is unaffected.
 2. **Backfill uses today's targets and today's view of past records.** Task history and punches are exact. Strikes exist only from when Day Close was switched on. Run the November backfill **after** setting November's targets.
 3. A sales person without `track = sales` for the month is scored on tasks.
-4. The vote and the owner's rating are not built: the score's 100 is out of the other 85 until they are.
+4. The vote counts only in the month's final record. Before that, the score is out of the parts that count; a rating counts as soon as it is given.
 5. Not yet built from the plan:
-   - the vote and the rating;
    - the monthly review screen (freeze, awards, 1:1 goals);
    - the Star Seller's Factory Focus slot;
    - retiring the old Performance pages and launcher card (a data change, the owner's call).
@@ -109,3 +108,37 @@ Both tables are closed to the browser.
 | `src/lib/scoreboard/score.test.ts` | 14 tests on real-looking November weeks: every part, pacing, leave fairness, the day in progress, bands, tips |
 | `supabase/tests/scoreboard_pglite.mjs` | 4 checks: closed tables, target rules, the frozen day, safe re-run |
 | The server's assembly (`scoreEveryone`) | **Not exercised by a test.** Its PostgREST filters (`or` with `in`) are beyond MemorySupabase. Check it against real rows once live |
+
+## 8. The team vote and the owner's rating (`20270626000000`, slice 2)
+
+**When.**
+- The vote is open for the **last 3 days of the month**: 28–30 November.
+- Ratings open from the **25th**.
+- Both close at **23:00 IST on the last day**, before the 23:30 final record. Pure rules: `src/lib/scoreboard/vote.ts`.
+
+**The vote.**
+- Each scored person gives 3 votes to 3 different colleagues, with an optional line on how they helped.
+- Never yourself; cast once.
+- The `VoteCard` on `/modules` and the Task dashboard shows only while the vote is open.
+- **Secret:** no route returns who voted for whom. A voter sees only their own; the owner sees totals and the anonymous lines, only after the vote closes.
+
+**The rating.**
+- The owner (`day_close_settings.reviewer_id`) gives 1–5 and one line of reason for each person.
+- It can be changed until the close.
+- `RatingsEditor` on Team Today, shown to the reviewer only.
+
+**Tables** (both closed to the browser):
+
+| Table | What it holds |
+|---|---|
+| `scoreboard_votes` | Primary key (month, voter, nominee). Not self. A trigger allows at most 3 per voter per month, and no UPDATE or DELETE |
+| `scoreboard_ratings` | Primary key (month, employee). Rating 1–5, reason 3–300 characters |
+
+**Routes.**
+- `GET/POST /api/scoreboard/vote`
+- `GET/POST /api/scoreboard/ratings`: reviewer only.
+
+**Tests.**
+- `vote.test.ts`: windows, including midnight on the 1st, and validation.
+- `score.test.ts`: the vote and rating parts.
+- `scoreboard_vote_rating_pglite.mjs`: 5 checks.

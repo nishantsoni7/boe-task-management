@@ -2,7 +2,7 @@
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { bandOf, computeScore, fastestTip, pillarTotals, type ScoreFacts } from './score'
+import { bandOf, computeScore, fastestTip, pillarTotals, voteRatio, type ScoreFacts } from './score'
 
 const ist = (date: string, hhmm: string) => new Date(`${date}T${hhmm}:00+05:30`).toISOString()
 // November 2026: 1st is a Sunday. Working days Mon-Sat.
@@ -17,7 +17,7 @@ function facts(over: Partial<ScoreFacts> = {}): ScoreFacts {
     leaveDates: new Set(), arrivals: new Map(workingDates.map(d => [d, 600])), graceEndMinutes: 615,
     tasks: [], role: null, sales: null, leads: [],
     dayClose: { since: null, planStrikeDates: new Set(), closeStrikeDates: new Set() },
-    requestsInformed: [], years: 2,
+    requestsInformed: [], years: 2, vote: null, rating: null,
     ...over,
   }
 }
@@ -133,5 +133,26 @@ describe('telling the person', () => {
   test('the fastest way up is where the most points are lost', () => {
     const r = computeScore(facts({ tasks: [{ priority: 'medium', due_date: '2026-11-03', handed_in_at: null }] }))
     assert.match(fastestTip(r.parts) ?? '', /Hand in your tasks/)
+  })
+})
+
+describe('team vote and owner rating', () => {
+  test('not counted until there is one', () => {
+    assert.equal(part(facts(), 'team_vote').earned, null)
+    assert.equal(part(facts(), 'owner_rating').earned, null)
+  })
+
+  test('the vote: 8 for votes received (3 or more is full), 2 for voting yourself', () => {
+    assert.equal(voteRatio({ received: 0, voted: false }), 0)
+    assert.equal(voteRatio({ received: 0, voted: true }), 0.2)
+    assert.equal(part(facts({ vote: { received: 3, voted: true } }), 'team_vote').earned, 10)
+    assert.equal(part(facts({ vote: { received: 6, voted: false } }), 'team_vote').earned, 8)
+    assert.equal(part(facts({ vote: { received: 1, voted: true } }), 'team_vote').earned, 4.67)
+  })
+
+  test('the rating is worth its number, and the reason is shown', () => {
+    const r = part(facts({ rating: { value: 4, reason: 'Great follow-ups' } }), 'owner_rating')
+    assert.equal(r.earned, 4)
+    assert.equal(r.note, '4 of 5: Great follow-ups')
   })
 })

@@ -8,8 +8,9 @@
 //   Attendance 20  present on working days (10), punched in by the grace time (10)
 //   Discipline 20  Day Close: plan on time (7.5) and day closed before leaving (7.5); leave asked before the
 //                  shift, not on the day (5)
-//   Team 10        the monthly vote          } not counted until they exist for the month
-//   Owner 5        the owner's 1-5 rating    }
+//   Team 10        the monthly vote: up to 8 for votes received (3 or more is full), 2 for casting your own
+//                  three. Counted once the vote has closed (the month's last day, in the final record)
+//   Owner 5        the owner's 1-5 rating, worth its number of points, counted from when it is given
 //   Loyalty 5      1 point per completed year, up to 5
 //
 // MONTH-TO-DATE, POINTS EARNED OUT OF POINTS POSSIBLE SO FAR. A part with nothing to judge yet (no task due,
@@ -99,6 +100,10 @@ export type ScoreFacts = {
   requestsInformed: boolean[]
   /** Completed years with BOE, or null when the joining date is unknown. */
   years: number | null
+  /** The month's vote, once it has closed; null before that. */
+  vote: { received: number; voted: boolean } | null
+  /** The owner's rating for the month, once given. */
+  rating: { value: number; reason: string } | null
 }
 
 export type Part = { key: PartKey; pillar: Pillar; label: string; max: number; earned: number | null; note: string }
@@ -139,6 +144,14 @@ function pace(f: ScoreFacts): number {
   if (total === 0) return 1
   const gone = f.monthWorkingDates.filter(d => d < f.date || (d === f.date && f.dayComplete)).length
   return Math.max(1, gone) / total
+}
+
+/** Votes needed for full marks on the votes-received share. */
+export const VOTES_FOR_FULL = 3
+
+/** 8 of the 10 for votes received (3 or more is full), 2 for casting your own. */
+export function voteRatio(v: { received: number; voted: boolean }): number {
+  return (8 * Math.min(1, v.received / VOTES_FOR_FULL) + (v.voted ? 2 : 0)) / 10
 }
 
 export function computeScore(f: ScoreFacts): ScoreResult {
@@ -198,9 +211,12 @@ export function computeScore(f: ScoreFacts): ScoreResult {
   parts.push(part('informed_leave', f.requestsInformed.length ? asked / f.requestsInformed.length : 1,
     f.requestsInformed.length ? `${asked} of ${f.requestsInformed.length} requests asked in advance` : 'No request this month'))
 
-  // ── Team, owner (not built yet: left out until they exist), loyalty ──
-  parts.push(part('team_vote', null, 'The vote opens in the last 3 days of the month'))
-  parts.push(part('owner_rating', null, 'Given at the end of the month'))
+  // ── Team vote, owner's rating, loyalty ──
+  parts.push(part('team_vote', f.vote ? voteRatio(f.vote) : null, f.vote
+    ? `${f.vote.received} ${f.vote.received === 1 ? 'vote' : 'votes'} from colleagues${f.vote.voted ? '; you voted' : '; you did not vote'}`
+    : 'The vote is held in the last 3 days of the month'))
+  parts.push(part('owner_rating', f.rating ? f.rating.value / 5 : null,
+    f.rating ? `${f.rating.value} of 5: ${f.rating.reason}` : 'Given at the end of the month'))
   parts.push(part('loyalty', f.years === null ? null : Math.min(5, Math.max(0, f.years)) / 5,
     f.years === null ? 'Joining date not recorded' : `${f.years} ${f.years === 1 ? 'year' : 'years'} with BOE`))
 

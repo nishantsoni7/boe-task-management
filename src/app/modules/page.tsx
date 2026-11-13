@@ -53,6 +53,7 @@ import { AttentionPanel, AttentionStrip, type AttentionSources } from './Attenti
 import { PunchStrip } from './PunchStrip'
 import { DayStrip } from './DayStrip'
 import { ScoreCard } from '@/components/scoreboard/ScoreCard'
+import { VoteCard } from '@/components/scoreboard/VoteCard'
 import styles from './modules.module.css'
 
 // ── Module definition ─────────────────────────────────────────────────────────
@@ -950,6 +951,8 @@ export default function BoeOsHomePage() {
           {/* The Scoreboard, the morning half (owner, 2026-11-12): the score, the change, the top 5. Never while
               previewing somebody else. Draws nothing for anybody not scored. */}
           {!editingOrder && <ScoreCard enabled={!viewMode} />}
+          {/* The monthly team vote: only while it is open (the month's last 3 days), only for the scored. */}
+          {!editingOrder && <VoteCard enabled={!viewMode} />}
 
           {/* ── Quick actions, small screens only ──
               Above the Modules heading because its whole reason for existing is
