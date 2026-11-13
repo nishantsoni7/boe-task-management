@@ -165,12 +165,13 @@ export const deadReasonLabel = (reason: string | null) => DEAD_REASONS.find(r =>
 /** What the database says is still missing before a move forward. */
 export type NeededFact = 'contact' | 'requirement' | 'quantity' | 'quotation' | 'value' | 'timeline'
 export const FACT_LABELS: Record<NeededFact, string> = {
-  contact: 'First contact', requirement: 'Requirement', quantity: 'Quantity', quotation: 'Quotation', value: 'Expected value', timeline: 'Timeline',
+  // The owner's words (2026-11-13): "approximate Project Value" and "Expected Timeline".
+  contact: 'First contact', requirement: 'Requirement', quantity: 'Quantity', quotation: 'Quotation', value: 'Project value (approx.)', timeline: 'Expected timeline',
 }
 /** The facts a person can type; the other two are things that have to happen, and are logged. */
 export const TYPED_FACTS: readonly NeededFact[] = ['requirement', 'quantity', 'value', 'timeline']
 export const FACT_HINTS: Partial<Record<NeededFact, string>> = {
-  requirement: 'What do they want?', quantity: 'e.g. 80 chairs, 20 tables', value: 'Expected value in ₹', timeline: 'When do they need it?',
+  requirement: 'What do they want?', quantity: 'e.g. 80 chairs, 20 tables', value: 'Roughly, in ₹ (e.g. 8 L)', timeline: 'When do they need it?',
 }
 
 type Facts = {
@@ -193,7 +194,8 @@ export function checklistFor(lead: Facts, quotationSent: boolean): { to: Stage; 
   const items = to === 'under_process'
     ? [item('contact', lead.first_contact_at ? 'Logged' : null)]
     : to === 'potential'
-      ? [item('requirement', lead.requirement), item('quantity', lead.quantity)]
+      // The project value, not the quantity (20270711000000).
+      ? [item('requirement', lead.requirement), item('value', lead.expected_value_paise === null ? null : valueLabel(lead.expected_value_paise))]
       : [
           item('quotation', quotationSent ? 'Sent' : null),
           item('value', lead.expected_value_paise === null ? null : valueLabel(lead.expected_value_paise)),

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `b9b552f7` — Sales: Visit / Meeting stage and the owner's stage names; ClickUp Important Bulk / Bulk leads to Potential Clients; Call back; popup left side redesigned (migration 20270710000000) (#749)
-- Commits on this branch: 1310
+- Commit: `0f5b7f63` — Docs: stamp #749 (Visit / Meeting, ClickUp move, Call back) as merged b9b552f7, migration 20270710000000 applied (no SQL) (#750)
+- Commits on this branch: 1311
 - Pages (`page.tsx`): 193   API routes (`route.ts`): 205
-- Migrations: 452 (first `20260530_create_positions.sql`, latest `20270710000000_sales_visit_meeting_stage.sql`)
+- Migrations: 453 (first `20260530_create_positions.sql`, latest `20270711000000_sales_value_timeline_gates.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
 - Test files: 829   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `0f5b7f63` 2026-11-13 Docs: stamp #749 (Visit / Meeting, ClickUp move, Call back) as merged b9b552f7, migration 20270710000000 applied (no SQL) (#750)
 - `b9b552f7` 2026-11-13 Sales: Visit / Meeting stage and the owner's stage names; ClickUp Important Bulk / Bulk leads to Potential Clients; Call back; popup left side redesigned (migration 20270710000000) (#749)
 - `54e54084` 2026-11-13 Docs: record 20270705000000 (Top 5 switch) as applied (no SQL) (#748)
 - `814f1e7f` 2026-11-13 Docs: stamp #746 (Day Close and Scoreboard team switch) as merged 22d9f772, migration 20270704000000 applied (no SQL) (#747)
@@ -38,7 +39,6 @@
 - `d31d54fd` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
 - `561c4588` 2026-11-13 Orders: "With Sales" on the Operations queue (#729)
 - `d937dae8` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
-- `001472f1` 2026-11-13 BOE Scoreboard, slice 3: the monthly review and awards (migration 20270627000000, applied) (#727)
 
 ## Pages by top-level area
 
@@ -491,7 +491,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270607000000_finance_payment_request_old_order.sql`
 - `20270608000000_finance_merge_duplicate_payment_request.sql`
 - `20270609000000_sales_whatsapp_capture.sql`
 - `20270610000000_task_health_check_stops_escalating.sql`
@@ -521,6 +520,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270704000000_day_close_team_switch.sql`
 - `20270705000000_scoreboard_top5_switch.sql`
 - `20270710000000_sales_visit_meeting_stage.sql`
+- `20270711000000_sales_value_timeline_gates.sql`
 
 ## All SQL function names
 
