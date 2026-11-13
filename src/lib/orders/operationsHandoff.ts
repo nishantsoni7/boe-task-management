@@ -35,7 +35,9 @@
 //   Not assigned     no active operations reviewer is configured. The handoff
 //                    is real and awaiting, and an administrator must act.
 
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { describeAdvanceRefusal } from './advanceReadiness'
+import { readSentBackComments, sentBackHistoryRead } from './flaggedPis'
 
 export type OperationsHandoffStatus = 'awaiting' | 'accepted' | 'clarification_needed'
 
@@ -729,6 +731,44 @@ export const SALES_RETURN_INSTRUCTION: Record<SalesReturnStage, string> = {
 }
 /** What the operations reviewer sees in place of Accept / Cannot accept / Flag lines while the PI is with Sales. */
 export const OPERATIONS_LOCKED_FOR_SALES = 'With Sales for changes. Operations reviews the revised PI once it is approved.'
+
+/** The Operations queue's word for a PI returned to Sales, and its line (owner, 2026-11-13). */
+export const WITH_SALES_LABEL = 'With Sales'
+export const WITH_SALES_NOTE = 'Waiting for the revised PI'
+
+/** The live handoff columns the queue reads to tell "with Sales" (clarification_responded_at: 20270422000000). */
+export type QueueHandoff = {
+  id: string; order_id: string; status: string; assigned_to: string | null
+  clarification_at: string | null; clarification_responded_at: string | null
+}
+export const QUEUE_HANDOFF_COLUMNS = 'id, order_id, status, assigned_to, clarification_at, clarification_responded_at'
+
+/**
+ * The Orders whose live, undecided handoff is "Returned to Sales" — the same rule as the Order page
+ * (salesReturnStage), with the answer to Operations read from the handoff's own column. One read of the
+ * send-back history for these Orders; a failed read means none (the queue is then as it was).
+ */
+export async function loadOrdersWithSales(supabase: SupabaseClient, handoffs: readonly QueueHandoff[]): Promise<Set<string>> {
+  const out = new Set<string>()
+  if (handoffs.length === 0) return out
+  try {
+    const { data, error } = await sentBackHistoryRead(supabase)([...new Set(handoffs.map(h => h.order_id))])
+    if (error) return out
+    const sent = readSentBackComments(data, handoffs.map(h => ({ handoffId: h.id })))
+    for (const h of handoffs) {
+      const stage = salesReturnStage({
+        live: { status: h.status as OperationsHandoffStatus, superseded_at: null, clarification_at: h.clarification_at },
+        sent: sent[h.id] ?? null,
+        answer: h.clarification_responded_at ? { atIso: h.clarification_responded_at } : null,
+        pendingRevision: false,
+      })
+      if (stage) out.add(h.order_id)
+    }
+  } catch {
+    return out
+  }
+  return out
+}
 
 /** The ERP card's one line while the PI is with Sales. */
 export const SALES_RETURN_SUMMARY: Record<SalesReturnStage, string> = {

@@ -40,8 +40,9 @@ describe('the queue links', () => {
   })
 
   test('a refused handoffs read leaves its links absent, never a false "nothing waits"', () => {
-    assert.match(QUEUES, /const live = handoffsRes\.error \? null :/)
-    assert.equal((QUEUES.match(/: undefined,/g) ?? []).length, 3)
+    assert.match(QUEUES, /const all = handoffsRes\.error \? null :/)
+    // Four absent-on-failure counts since "with Sales" was said apart (2026-11-13).
+    assert.equal((QUEUES.match(/: undefined,/g) ?? []).length, 4)
   })
 
   test('a newer read is never overwritten by an older one', () => {
