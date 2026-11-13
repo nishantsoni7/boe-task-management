@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a4a53022` — Docs: stamp #751 (Board status dropdown, project value and timeline gates) as merged 6417fe89, migration 20270711000000 applied (no SQL) (#752)
-- Commits on this branch: 1313
+- Commit: `e9a5f6bd` — Orders: Pending from client no longer slides off the right edge on a phone (#753)
+- Commits on this branch: 1314
 - Pages (`page.tsx`): 193   API routes (`route.ts`): 205
 - Migrations: 453 (first `20260530_create_positions.sql`, latest `20270711000000_sales_value_timeline_gates.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `e9a5f6bd` 2026-11-13 Orders: Pending from client no longer slides off the right edge on a phone (#753)
 - `a4a53022` 2026-11-13 Docs: stamp #751 (Board status dropdown, project value and timeline gates) as merged 6417fe89, migration 20270711000000 applied (no SQL) (#752)
 - `6417fe89` 2026-11-13 Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (migration 20270711000000) (#751)
 - `0f5b7f63` 2026-11-13 Docs: stamp #749 (Visit / Meeting, ClickUp move, Call back) as merged b9b552f7, migration 20270710000000 applied (no SQL) (#750)
@@ -38,7 +39,6 @@
 - `51b3fff9` 2026-11-13 Docs: record the merge of #729 ("With Sales" on the Operations queue) (#731)
 - `a08aeb57` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL) (#733)
 - `ebfc7df8` 2026-11-13 Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (migration 20270701000000, applied 13 Nov) (#719)
-- `d31d54fd` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
 
 ## Pages by top-level area
 
