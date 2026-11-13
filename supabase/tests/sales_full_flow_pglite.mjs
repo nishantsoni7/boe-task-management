@@ -90,7 +90,8 @@ for (const f of ['20270515000000_register_sales_marketing_pricing_modules.sql', 
   '20270525000000_sales_lead_board.sql', '20270526000000_sales_notification_types.sql', '20270526000100_sales_go_live.sql',
   '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql', '20270530000000_sales_sheet_import.sql',
   '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql', '20270601000000_sales_board_page.sql', '20270602000000_sales_auto_allot.sql',
-  '20270606000000_sales_lead_master_date_range.sql', '20270609000000_sales_whatsapp_capture.sql', '20270613000000_sales_whatsapp_classify.sql']) {
+  '20270606000000_sales_lead_master_date_range.sql', '20270609000000_sales_whatsapp_capture.sql', '20270613000000_sales_whatsapp_classify.sql',
+  '20270703000000_sales_admin_can_be_given_leads.sql']) {
   await db.exec(mig(f))
 }
 // Off until its own checks at the end, so everything before reads exactly as it did before 20270602000000.
@@ -1215,6 +1216,52 @@ await step('Browser users cannot fire the alert job', () =>
     must(await scalar(`select to_regprocedure('public.sales_leads_page(text, text, text, text, integer, integer)') is null`), 'old function still there')
     must(await scalar(`select not has_function_privilege('anon', 'public.sales_leads_page(text, text, text, text, integer, integer, date, date)', 'EXECUTE')`), 'open to anon')
     must(await scalar(`select has_function_privilege('authenticated', 'public.sales_leads_page(text, text, text, text, integer, integer, date, date)', 'EXECUTE')`), 'authenticated lost it')
+  })
+}
+
+{
+  // ── An Admin can be given leads (20270703000000) ──────────────────────────
+  await step('An Admin is never given a lead by default: not listed, not in Control Center as holding, and an allot is refused', async () => {
+    const ids = (await one(U.ashok, `select public.list_sales_lead_holders()`)).map(p => p.id)
+    must(!ids.includes(U.admin), 'the Admin is listed without a tick')
+    const row = (await one(U.admin, `select public.list_sales_team()`)).find(m => m.id === U.admin)
+    must(row && row.is_admin && row.can_hold === false && row.hold_set === null, JSON.stringify(row))
+    const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, ['+91 97111 00940'])
+    await expectErr(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, /Sales job/, [L.lead.id, U.admin])
+  })
+  await step('Ticked, the Admin is listed, can be allotted a lead, and works it; only Admin can tick', async () => {
+    await expectErr(U.leadmgr, `select public.set_sales_lead_holding($1, true)`, /SALES_FORBIDDEN/, [U.admin])
+    const r = await one(U.admin, `select public.set_sales_lead_holding($1, true)`, [U.admin])
+    must(r.can_hold === true, JSON.stringify(r))
+    const ids = (await one(U.leadmgr, `select public.list_sales_lead_holders()`)).map(p => p.id)
+    must(ids.includes(U.admin), 'the ticked Admin is not listed')
+    const row = (await one(U.admin, `select public.list_sales_team()`)).find(m => m.id === U.admin)
+    must(row.can_hold === true && row.hold_set === true && row.level === 'manual', JSON.stringify(row))
+    const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, ['+91 97111 00941'])
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [L.lead.id, U.admin])
+    must(await scalar(`select assigned_to = $2 from public.sales_leads where id = $1`, [L.lead.id, U.admin]), 'not held by the Admin')
+    const w = await one(U.admin, `select public.sales_lead_no_answer($1)`, [L.lead.id])
+    must(w.status === 'saved', JSON.stringify(w))
+    // A salesperson still reads only their own leads: the Admin holding one does not widen anything.
+    await expectErr(U.mohit, `select public.sales_lead_no_answer($1)`, /SALES_NOT_FOUND|SALES_FORBIDDEN/, [L.lead.id])
+  })
+  await step('Taking the tick off (null) removes the Admin from every list; the lead they hold stays with them', async () => {
+    const held = Number(await scalar(`select count(*) from public.sales_leads where assigned_to = $1`, [U.admin]))
+    const r = await one(U.admin, `select public.set_sales_lead_holding($1, null)`, [U.admin])
+    must(r.can_hold === false, JSON.stringify(r))
+    const ids = (await one(U.leadmgr, `select public.list_sales_lead_holders()`)).map(p => p.id)
+    must(!ids.includes(U.admin), 'still listed after the tick came off')
+    must(Number(await scalar(`select count(*) from public.sales_leads where assigned_to = $1`, [U.admin])) === held && held > 0, 'the lead moved')
+  })
+  await step('Everybody who is not an Admin is decided exactly as before', async () => {
+    const team = await one(U.admin, `select public.list_sales_team()`)
+    const by = id => team.find(m => m.id === id)
+    must(by(U.ashok).can_hold === true && by(U.ashok).hold_set === null, 'salesperson')
+    must(by(U.leadmgr).can_hold === false && by(U.leadmgr).hold_set === null, 'lead manager')
+    must(by(U.nobody).can_hold === false, 'no Sales job')
+  })
+  await step('sales_lead_can_hold is still internal: a browser cannot call it', async () => {
+    must(await scalar(`select not has_function_privilege('authenticated', 'public.sales_lead_can_hold(uuid)', 'EXECUTE')`), 'open to authenticated')
   })
 }
 

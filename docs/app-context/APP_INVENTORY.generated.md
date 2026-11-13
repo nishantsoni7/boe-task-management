@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `76bfa461` — Docs: regenerate the app inventory after rebasing on main
-- Commits on this branch: 1303
+- Commit: `15257dfe` — Docs: one blank line between changelog entries after the merge
+- Commits on this branch: 1306
 - Pages (`page.tsx`): 192   API routes (`route.ts`): 204
-- Migrations: 448 (first `20260530_create_positions.sql`, latest `20270703000100_sales_comments_and_due_dates.sql`)
+- Migrations: 449 (first `20260530_create_positions.sql`, latest `20270703000100_sales_comments_and_due_dates.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
 - Test files: 826   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `15257dfe` 2026-11-13 Docs: one blank line between changelog entries after the merge
+- `97ff8cd5` 2026-11-13 Merge main (#743) into this branch: keep both changelog entries, regenerate the inventory
+- `48b0cd83` 2026-11-13 Bank Statements: a reversed card debit no longer stops the upload (no SQL) (#743)
 - `76bfa461` 2026-11-13 Docs: regenerate the app inventory after rebasing on main
 - `724ad7f1` 2026-11-13 Sales: the lead opens as a centered popup with one update box; follow-ups on the next working day; No answer moves a New lead on (migration 20270703000100)
 - `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
@@ -36,9 +39,6 @@
 - `bc56cccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
 - `ce42144b` 2026-11-13 Docs: record the merge of #723 (Operations locked while with Sales) (#725)
 - `dde7f4c3` 2026-11-13 Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
-- `1d6b9184` 2026-11-13 Payroll and the My pages read your own row once (#720)
-- `db54a236` 2026-11-13 Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
-- `124292b3` 2026-11-12 Docs: quotation versions merged as 3c4c8605, 20270623000000 applied (#722)
 
 ## Pages by top-level area
 
@@ -491,7 +491,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270603000000_finance_payment_admin_notes.sql`
 - `20270604000000_payroll_results_half_paid_leave.sql`
 - `20270605000000_boe_credits_open_months_follow_target.sql`
 - `20270606000000_sales_lead_master_date_range.sql`
@@ -520,6 +519,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270629000000_quotation_links.sql`
 - `20270701000000_finance_confirmed_payments_order_search.sql`
 - `20270702000000_review_rankings_switch.sql`
+- `20270703000000_sales_admin_can_be_given_leads.sql`
 - `20270703000100_sales_comments_and_due_dates.sql`
 
 ## All SQL function names
