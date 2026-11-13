@@ -14,7 +14,7 @@ import { createClient } from '@/lib/supabase/client'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { AppLink } from '@/components/ui/AppLink'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
-import { CLICKUP_DRAFT_BUCKET, formatBytes, type BackupOrder } from '@/lib/orders/clickupDrafts'
+import { CLICKUP_DRAFT_BUCKET, findBackupFolder, formatBytes, type BackupDir, type BackupOrder } from '@/lib/orders/clickupDrafts'
 import { callDrafts } from '../callDrafts'
 import styles from '../clickupDrafts.module.css'
 
@@ -58,11 +58,14 @@ export default function ClickupImportPage() {
     // Asked here, not while drawing: the server draws this page too, and it has no window.
     if (!('showDirectoryPicker' in window)) { setMessage('This browser cannot open a folder. Use Chrome or Edge on a computer.'); return }
     try {
-      const picked = await (window as unknown as { showDirectoryPicker: (o: { mode: 'read' }) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ mode: 'read' })
-      const text = await (await (await picked.getFileHandle('orders.json')).getFile()).text()
+      const chosen = await (window as unknown as { showDirectoryPicker: (o: { mode: 'read' }) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({ mode: 'read' })
+      // The Windows folder window easily lands one level up: accept the folder around the backup too.
+      const folder = await findBackupFolder(chosen as unknown as BackupDir) as unknown as FileSystemDirectoryHandle | null
+      if (!folder) { setMessage('There is no orders.json in that folder, or in a folder inside it. Choose the backup folder.'); return }
+      const text = await (await (await folder.getFileHandle('orders.json')).getFile()).text()
       const parsed = JSON.parse(text) as { orders?: BackupOrder[] }
       if (!Array.isArray(parsed.orders) || parsed.orders.length === 0) { setMessage('This folder has no orders in its orders.json.'); return }
-      setDir(picked); setOrders(parsed.orders)
+      setDir(folder); setOrders(parsed.orders)
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return
       setMessage('That folder could not be read. Choose the folder that holds orders.json and the files folder.')
@@ -129,7 +132,7 @@ export default function ClickupImportPage() {
         <section className={styles.card} aria-label="How it works">
           <h3 className={styles.cardTitle}>Copy the ClickUp backup into Draft Orders</h3>
           <ol className={styles.steps}>
-            <li>Choose the backup folder (the one that holds <strong>orders.json</strong> and a <strong>files</strong> folder).</li>
+            <li>Choose the backup folder (the one that holds <strong>orders.json</strong> and a <strong>files</strong> folder, or the folder around it).</li>
             <li>Press Start. Each order&apos;s files go to private storage, then the order itself is saved.</li>
             <li>Keep this tab open until it says it is finished. If it stops, run it again: what is already stored is skipped.</li>
           </ol>

@@ -112,6 +112,8 @@ export function pendingModuleTitle(pathname: string): string {
     if (section === 'import') return 'Upload PI'
     if (section === 'notifications') return 'Notifications'
     if (section === 'requests') return 'Order Requests'
+    // The same words the Draft Orders (ClickUp) pages say once they land.
+    if (section === 'clickup') return id === 'import' ? 'Import from ClickUp backup' : id ? 'Draft order' : 'Draft Orders (ClickUp)'
     return 'Confirmed Order'
   }
   return ''

@@ -85,6 +85,10 @@ describe('the header while a route is still loading says what the page will say'
     assert.equal(pendingModuleTitle('/orders/import'), 'Upload PI')
     assert.equal(pendingModuleTitle(`/orders/${ORDER_ID}`), 'Confirmed Order')
     assert.equal(pendingModuleTitle('/orders/notifications'), 'Notifications')
+    // Draft Orders (ClickUp) used to read as an Order record: "Confirmed Order" over the loading skeleton.
+    assert.equal(pendingModuleTitle('/orders/clickup'), 'Draft Orders (ClickUp)')
+    assert.equal(pendingModuleTitle(`/orders/clickup/${ORDER_ID}`), 'Draft order')
+    assert.equal(pendingModuleTitle('/orders/clickup/import'), 'Import from ClickUp backup')
   })
 
   test('Finance', () => {

@@ -12,8 +12,8 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  clientNameOf, draftFilePath, draftWorkbook, formatBytes, inr, isClickupId, isFileId, istToIso, orderedFields, parseSaveOrder, statusLabel,
-  type DraftOrder,
+  clientNameOf, draftFilePath, draftWorkbook, findBackupFolder, formatBytes, inr, isClickupId, isFileId, istToIso, orderedFields, parseSaveOrder, statusLabel,
+  type BackupDir, type DraftOrder,
 } from './clickupDrafts'
 
 const ROOT = process.cwd()
@@ -172,6 +172,49 @@ describe('what the screens show', () => {
     assert.equal(sheets[1].rows[1][2], '535 Acme ji.XLSX')
     assert.match(String(sheets[1].rows[1][3]), /2026/, 'the upload date is in the file row')
     assert.equal(sheets[2].rows.length, 2)
+  })
+})
+
+describe('choosing the backup folder', () => {
+  // A stand-in for a folder handle: only what the import reads.
+  type Fake = BackupDir & { kind: 'directory' }
+  const folder = (name: string, hasOrders = false, inside: Fake[] = [], files: string[] = []): Fake => ({
+    name, kind: 'directory',
+    getFileHandle: async n => { if (n === 'orders.json' && hasOrders) return {}; throw new Error('NotFoundError') },
+    entries: async function* () {
+      for (const d of inside) yield [d.name, d] as [string, Fake]
+      for (const f of files) yield [f, { kind: 'file' }] as [string, { kind: string }]
+    },
+  })
+
+  test('the folder that holds orders.json is used as it is', async () => {
+    const backup = folder('2026-11-13', true, [folder('files')])
+    assert.equal(await findBackupFolder(backup), backup)
+  })
+
+  test('the folder around it works too: the Windows window lands one level up', async () => {
+    const dated = folder('2026-11-13', true, [folder('files'), folder('tasks')])
+    const parent = folder('clickup-running-orders', false, [dated])
+    assert.equal(await findBackupFolder(parent), dated)
+  })
+
+  test('with several dated backups the newest name wins; files and folders without orders.json are passed over', async () => {
+    const older = folder('2026-11-12', true)
+    const newer = folder('2026-11-13', true)
+    const empty = folder('2026-11-14', false)
+    const parent = folder('clickup-running-orders', false, [older, empty, newer], ['notes.txt'])
+    assert.equal(await findBackupFolder(parent), newer)
+  })
+
+  test('a folder with no backup in it, or one level down, is refused (null)', async () => {
+    assert.equal(await findBackupFolder(folder('Documents', false, [folder('Zoom'), folder('Adobe')], ['a.txt'])), null)
+    assert.equal(await findBackupFolder(folder('empty')), null)
+  })
+
+  test('the import page uses it', () => {
+    const page = read('src/app/orders/clickup/import/page.tsx')
+    assert.ok(page.includes('findBackupFolder(chosen'))
+    assert.ok(page.indexOf('findBackupFolder(chosen') < page.indexOf("getFileHandle('orders.json')"), 'the folder is found before orders.json is read')
   })
 })
 
