@@ -134,6 +134,18 @@ export function sizeInInches(text: string | null | undefined): number[] | null {
   return out.map(n => Math.round(n * 100) / 100)
 }
 
+/** One dimensions unit for the whole quotation (20270714000000). Switching it only changes the label: the numbers stay as typed. */
+export type DimensionUnit = 'in' | 'cm'
+export const DIMENSION_UNITS: readonly { value: DimensionUnit; label: string }[] = [{ value: 'in', label: 'Inches' }, { value: 'cm', label: 'Centimetres' }]
+export const toDimensionUnit = (v: unknown): DimensionUnit => (v === 'cm' ? 'cm' : 'in')
+
+const OWN_UNIT = /['"’”]|\b(?:ft|feet|foot|in|inch(?:es)?|cm|mm|m|mtr|meters?|metres?)\b/i
+/** The size as typed, with the quotation's unit after it unless the text already carries one ("83 × 68" → "83 × 68 in"; 6'0" × 6'6" stays). */
+export function sizeWithUnit(text: string | null | undefined, unit: DimensionUnit): string {
+  const t = (text ?? '').trim()
+  return !t || !/\d/.test(t) || OWN_UNIT.test(t) ? t : `${t} ${unit}`
+}
+
 /** A wa.me link with the message filled in; the person presses send in WhatsApp (no API, no cost). */
 export function whatsappLink(phone: string | null | undefined, text: string): string {
   let digits = (phone ?? '').replace(/\D/g, '')

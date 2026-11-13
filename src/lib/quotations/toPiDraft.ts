@@ -35,7 +35,7 @@ export async function piWorkbookFor(s: Supabase, q: Quotation): Promise<Uint8Arr
   return buildPiWorkbook({
     quoteNo: q.quote_no, clientName: h.client_name, projectName: h.project_name, contactPhone: h.contact_phone,
     supplyState: h.supply_state, createdByName: q.owner_name, transportNote: h.transport_note,
-    money: h, areas: q.areas, lines: q.lines, pictures: await loadPictures(s, q),
+    money: h, dimensionUnit: h.dimension_unit, areas: q.areas, lines: q.lines, pictures: await loadPictures(s, q),
   })
 }
 

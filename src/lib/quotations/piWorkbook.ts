@@ -6,7 +6,7 @@
 // 80 products). The round trip is pinned by piWorkbook.test.ts against the real reader.
 
 import type { Workbook } from 'exceljs'
-import { lineQty, type QuoteArea, type QuoteLine, type QuoteMoney } from './math'
+import { lineQty, sizeWithUnit, type DimensionUnit, type QuoteArea, type QuoteLine, type QuoteMoney } from './math'
 
 export const PI_FIRST_PRODUCT_ROW = 32
 const TEMPLATE_SLOTS = 80
@@ -21,6 +21,8 @@ export type PiWorkbookInput = {
   createdByName: string | null
   transportNote: string | null
   money: QuoteMoney
+  /** The quotation's dimensions unit. Centimetres are written after bare sizes so the PI does not read them as inches; inches stay as typed. */
+  dimensionUnit?: DimensionUnit
   areas: readonly QuoteArea[]
   lines: readonly QuoteLine[]
   /** The picture for each line's image_path, as JPEG bytes. */
@@ -83,7 +85,7 @@ export function conversionProblems(areas: readonly QuoteArea[], lines: readonly 
   return problems.filter(p => p.lines.length > 0)
 }
 
-export function piFigures(input: Pick<PiWorkbookInput, 'money' | 'areas' | 'lines'>): PiFigures {
+export function piFigures(input: Pick<PiWorkbookInput, 'money' | 'areas' | 'lines' | 'dimensionUnit'>): PiFigures {
   const ordered = piLines(input.lines)
   const lines: PiLine[] = ordered.map((l, i) => {
     const area = input.areas.find(a => a.key === l.area_key)
@@ -93,7 +95,7 @@ export function piFigures(input: Pick<PiWorkbookInput, 'money' | 'areas' | 'line
       sequence: `B${String(i + 1).padStart(3, '0')}`,
       name: area ? `${area.name} · ${l.name.trim()}` : l.name.trim(),
       quantity,
-      dimensions: l.size_text.trim(),
+      dimensions: input.dimensionUnit === 'cm' ? sizeWithUnit(l.size_text, 'cm') : l.size_text.trim(),
       material: l.material.trim(),
       customization: [l.finish && `Finish: ${l.finish.trim()}`, l.spec.trim(), l.client_note.trim()].filter(Boolean).join(' · '),
       costPerPiece,

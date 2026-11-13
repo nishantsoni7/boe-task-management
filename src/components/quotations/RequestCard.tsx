@@ -13,7 +13,7 @@ import s from './quotations.module.css'
 
 type Supabase = ReturnType<typeof createClient>
 
-export function RequestCard({ supabase, base, userId, dirty, onDone }: { supabase: Supabase; base: Quotation; userId: string; dirty: boolean; onDone: (msg: string) => void }) {
+export function RequestCard({ id, supabase, base, userId, dirty, onDone }: { id?: string; supabase: Supabase; base: Quotation; userId: string; dirty: boolean; onDone: (msg: string) => void }) {
   const [note, setNote] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
@@ -32,7 +32,7 @@ export function RequestCard({ supabase, base, userId, dirty, onDone }: { supabas
     onDone(`Sent to ${r.asked_by ?? 'sales'}: the request is complete and they have been told.`)
   }
   return (
-    <section className={s.card}>
+    <section id={id} className={s.card}>
       <div className={s.cardHead}><h2>Quotation request</h2></div>
       <div className={s.cardBody} style={{ display: 'grid', gap: 8 }}>
         <div className={s.small}><Link href={`/tasks/${r.id}`} className={s.name}>{r.title}</Link><br />Asked by {r.asked_by ?? '—'} · {done ? 'sent to sales' : r.status.replace(/_/g, ' ')}</div>
