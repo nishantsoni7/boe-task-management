@@ -24,6 +24,13 @@ export function dayLabelLong(date: string): string {
   return `${WEEKDAYS[new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay()]} ${p.d} ${MONTHS[p.m - 1]} ${p.y}`
 }
 
+/** "Mon 16 Nov": the short day a follow-up is written with. */
+export function dayShort(date: string): string {
+  const p = parts(date)
+  if (!p) return date
+  return `${WEEKDAYS[new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay()]} ${p.d} ${MONTHS[p.m - 1]}`
+}
+
 /** The list's "Received" column: Today, Yesterday, then "12 Oct" (and the year once it is not this one). */
 export function receivedLabel(date: string, today: string): string {
   if (date === today) return 'Today'
@@ -42,6 +49,33 @@ const WHEN = new Intl.DateTimeFormat('en-IN', {
 export function whenLabel(iso: string): string {
   const d = new Date(iso)
   return Number.isNaN(d.getTime()) ? iso : WHEN.format(d).replace(/\b(am|pm)\b/i, m => m.toLowerCase())
+}
+
+const IST_DAY = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' })
+const IST_TIME = new Intl.DateTimeFormat('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true })
+const LONG_DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+const LONG_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+/** The India day ("2026-11-13") a moment in a lead's history fell on. */
+export function istDayOf(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : IST_DAY.format(d)
+}
+
+/** "10:45 am", India time: the time beside an entry, under its day heading. */
+export function timeLabel(iso: string): string {
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? '' : IST_TIME.format(d).replace(/\b(am|pm)\b/i, m => m.toLowerCase())
+}
+
+/** The heading over one day of a lead's activity: Today, Yesterday, "Thursday, 12 November" (with the year once it is not this one). */
+export function dayHeading(day: string, today: string): string {
+  if (day === today) return 'Today'
+  if (day === istAddDays(today, -1)) return 'Yesterday'
+  const p = parts(day)
+  if (!p) return day
+  const name = `${LONG_DAYS[new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay()]}, ${p.d} ${LONG_MONTHS[p.m - 1]}`
+  return p.y === parts(today)?.y ? name : `${name} ${p.y}`
 }
 
 const FIELD_WORDS: Record<string, string> = {
