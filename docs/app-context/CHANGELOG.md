@@ -4,6 +4,21 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (PR #728) · `20270628000000` → APPLIED 2026-11-13 by the owner, before the merge (owner's word; not re-checked from the cloud session)
+- **Owner ask.** "Start building the Star Seller Factory Focus slot." Decided earlier: 1 order a month, their own order, in Factory Focus until dispatched.
+- **Built.**
+  - Last month's announced Star Seller puts one of their own open Orders into Factory Focus, once per award.
+  - `StarSellerCard` on `/modules` and the Task dashboard shows everybody the winner and the pick (Order number and their line only). The Star Seller picks there.
+  - `/api/scoreboard/star-seller`.
+- **Database.**
+  - `order_factory_focus_selections` gains `kind` and `award_month`, with one Star Seller pick per award.
+  - `scoreboard_star_seller(month)`.
+  - `order_factory_focus_guard` is restated with one added branch. The owner's 2-a-month limit counts only owner picks. Only the owner removes. Owner rules are otherwise unchanged.
+- **Proof.**
+  - `star_seller_focus_pglite.mjs`: 6 checks, on the table and guard cut from `20270221000000` itself.
+  - Full `npm test`: 20,720 tests; the 1 failure is `piDetail.render`, which passes alone.
+
+## 2026-11-13 — BOE Scoreboard, slice 3: the monthly review and awards (PR #727, squash-merged 2026-11-13 as `001472f`) · `20270627000000` → APPLIED 2026-11-13 by the owner, before the merge (owner's word; not re-checked from the cloud session)
 ## 2026-11-13 — Orders: "With Sales" on the Operations queue (branch `feat/ops-dashboard-with-sales`, PR pending) · no migration
 - **Owner ask.** "Label it With Sales on the Operations dashboard too."
 - **Changed.** The Orders dashboard's Operations Review card no longer counts a PI that is "Returned to Sales" as awaiting or flagged; it says "N with Sales: waiting for the revised PI" instead (the card shows while only such PIs remain). The queue it opens (`/orders/all?ops=awaiting`) shows "With Sales · Waiting for the revised PI" in Factory Status for those Orders, on the table and on a phone. One shared rule, `loadOrdersWithSales` (the Order page's `salesReturnStage`, with the answer read from `clarification_responded_at`), one extra history read only when live handoffs exist; a failed read labels nothing.
