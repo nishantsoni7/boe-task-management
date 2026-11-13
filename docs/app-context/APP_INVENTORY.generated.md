@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `577e2634` — Merge origin/main into feat/day-close-pause
+- Commit: `22d9f772` — Day Close and the Scoreboard: paused for the team behind one Control Center switch that starts off (migration 20270704000000) (#746)
 - Commits on this branch: 1306
 - Pages (`page.tsx`): 193   API routes (`route.ts`): 204
 - Migrations: 450 (first `20260530_create_positions.sql`, latest `20270704000000_day_close_team_switch.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `577e2634` 2026-11-13 Merge origin/main into feat/day-close-pause
-- `f11ff8aa` 2026-11-13 Day Close and the Scoreboard: paused for the team behind one Control Center switch that starts off
+- `22d9f772` 2026-11-13 Day Close and the Scoreboard: paused for the team behind one Control Center switch that starts off (migration 20270704000000) (#746)
+- `73b80e2d` 2026-11-13 Docs: stamp #743 (bank statement reversal lines) as merged 48b0cd83, deployed 12:43 IST (no SQL) (#745)
 - `47db4a17` 2026-11-13 Sales: the lead opens as a centered popup with one update box; next-working-day follow-ups; No answer moves New on (migration 20270703000100) (#742)
 - `0e188497` 2026-11-13 Sales: an Admin can be given leads when ticked; auto-allot switch on the Lead Master (migration 20270703000000) (#741)
 - `48b0cd83` 2026-11-13 Bank Statements: a reversed card debit no longer stops the upload (no SQL) (#743)
