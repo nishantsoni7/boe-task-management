@@ -81,6 +81,8 @@ Immutability: 20261206000000 must never be edited or re-applied; 20261207000000 
 
 ### 4a. The ranking switch (`20270702000000_review_rankings_switch.sql`, 2026-11-13)
 
+Shipped in PR #739 (`a4750ab7`). `20270702000000` APPLIED to production 2026-11-13 by the owner (after a verified backup and a rolled-back rehearsal); the switch row reads `rankings_visible = false`, so the ranking is hidden until an administrator turns it on.
+
 - `public.review_display_settings`: ONE row (`id boolean primary key default true check (id)`), `rankings_visible boolean not null default false`, `updated_by`, `updated_at`. RLS on; `authenticated` can SELECT, no client can INSERT/UPDATE/DELETE; `anon` reads nothing.
 - `set_review_rankings_visible(boolean)`: the only write. SECURITY DEFINER, `search_path = public, pg_temp`, refuses anyone but an active, non-deleted `users.role = 'admin'` (42501), refuses null (22023). Executable by `authenticated`, not `anon`.
 - Starts OFF. The screens read it through `useReviewRankings()` (`src/hooks/queries/useReviewRankings.ts`) and **fail closed**: loading, a failed read, a missing row or a database without the table all mean hidden. Only a stored `true` shows the ranking (`readRankingsVisible`, `src/lib/customerReviews/rankingsSwitch.ts`).

@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `ce228ace` — Docs: record PR #739 in the changelog entry
+- Commit: `a4750ab7` — Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom (migration 20270702000000) (#739)
 - Commits on this branch: 1300
 - Pages (`page.tsx`): 192   API routes (`route.ts`): 204
 - Migrations: 447 (first `20260530_create_positions.sql`, latest `20270702000000_review_rankings_switch.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `ce228ace` 2026-11-13 Docs: record PR #739 in the changelog entry
-- `39aea00f` 2026-11-13 Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom of the page
+- `a4750ab7` 2026-11-13 Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom (migration 20270702000000) (#739)
+- `7ba4b29b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps) (no SQL) (#738)
 - `2e4ade2e` 2026-11-13 Docs: stamp #735 (Confirmed Payments Order / PI column, names only) as merged bab48de7 (#737)
 - `a8a6ec45` 2026-11-13 Scoreboard: fix the "Star" band pill; record the Day Close/Scoreboard migrations' real apply date (no SQL) (#736)
 - `bab48de7` 2026-11-13 Confirmed Payments: the Order / PI column shows names only, no amounts (#735)
