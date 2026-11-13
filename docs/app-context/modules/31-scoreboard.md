@@ -183,7 +183,7 @@ Both tables are closed to the browser.
 - `review.test.ts`: 9 tests.
 - `scoreboard_monthly_review_pglite.mjs`: 5 checks.
 
-**Not built:** retiring the old Performance pages and launcher card.
+**Performance retired** (2026-11-13): the card is gone and the pages redirect. See dossier 13.
 
 ## 10. The Star Seller's Super Priority (`20270628000000`, slice 4)
 

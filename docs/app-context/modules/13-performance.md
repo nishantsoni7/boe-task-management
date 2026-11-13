@@ -1,5 +1,15 @@
 # 13 - Performance (personal & team)
 
+> **RETIRED 2026-11-13 (owner: "there should be no separate module for Performance management").** The BOE Scoreboard
+> (dossier 31) replaced it.
+> - The launcher card is gone.
+> - `/performance` redirects to `/modules`, where the person's own score card is; `/performance/team` redirects to
+>   `/tasks/team-today`. Both redirects are in `next.config.ts` and are temporary (307).
+> - The page files, API routes, tables (`daily_work_logs`, `performance_app_opens`) and permission rows are **kept**: nothing
+>   is deleted, and removing the redirects and restoring the card brings the module back.
+> - The EOD log is now written by "Close my day" (dossier 30) for everybody switched on for Day Close.
+> - The rest of this page describes the module as it was.
+
 Verified against checkout `852e0493`. Unverifiable claims are labelled "(unverified, from memory)". Source of truth for rules:
 `docs/Module Docs/PERFORMANCE_MODULE.md` (consolidated 2026-08-05); this file re-verifies it against code.
 

@@ -184,23 +184,17 @@ describe('the screens ask the same question as the routes', () => {
       'View As on the personal page is no longer decided by a capability')
   })
 
-  test('the Performance card always opens the PERSONAL report', () => {
-    // Personal Performance and Team Performance are not alternatives, and a card
-    // that chose between them was the second half of the original defect: a
-    // Team Performance holder was routed to /performance/team and left with no
-    // route to their own score, month, history or EOD.
-    //
-    // Everybody lands on their own report because everybody is first an
-    // individual employee. A `view_team` holder crosses over by the Team View
-    // link the personal page renders, and comes back by "← My Report".
+  test('Performance is retired: no launcher card, and the old pages redirect (owner, 2026-11-13)', () => {
+    // The BOE Scoreboard replaced Performance (dossier 31). Everybody's own score is on the Modules page and the
+    // Task Management dashboard; the team's day is Team Today. The old addresses keep working as redirects.
     const source = read('src/app/modules/page.tsx')
-    assert.match(source, /const performanceHref = '\/performance'/,
-      'the Performance card must open the personal report')
-    assert.ok(!/performanceHref\s*=[\s\S]{0,200}\?\s*'\/performance\/team'/.test(source),
-      'the either/or destination is back — Team Performance must not replace Personal')
-    // And neither half of the old role test may return.
-    assert.ok(!/effectiveProfile\?\.role === 'admin' \|\| effectiveProfile\?\.role === 'manager'/.test(source),
-      'the role-derived Performance href is back')
+    assert.equal(source.includes("canOpenModule('performance')"), false, 'the Performance card is back')
+    assert.equal(/href: performanceHref/.test(source), false, 'the Performance card is back')
+    const config = read('next.config.ts')
+    assert.match(config, /source: '\/performance\/team', destination: '\/tasks\/team-today'/)
+    assert.match(config, /source: '\/performance', destination: '\/modules'/)
+    // The team redirect must come before the bare one, or /performance/team would match nothing specific.
+    assert.ok(config.indexOf("'/performance/team'") < config.indexOf("source: '/performance',"))
   })
 
   test('both Performance surfaces stay reachable from each other', () => {

@@ -25,7 +25,7 @@ import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/q
 import { intakeState, showQuickLink } from '@/lib/exhibitionLeads/intake'
 import { Armchair, ArrowUpRight, ChartNoAxesCombined, Check, ChevronRight, ContactRound, Factory, FileText, Image as ImageIcon, Megaphone, Search, Tag } from 'lucide-react'
 import {
-  TaskIcon, BoxIcon, CalIcon, AssetIcon, MembersIcon, ControlCenterIcon, PerformanceIcon, FinanceIcon,
+  TaskIcon, BoxIcon, CalIcon, AssetIcon, MembersIcon, ControlCenterIcon, FinanceIcon,
   OrdersIcon, ReviewOutreachIcon, MeetingsIcon, ShowroomIcon,
 } from '@/components/modules/ModuleIcons'
 import {
@@ -405,27 +405,9 @@ export default function BoeOsHomePage() {
   // now an explicit `showroom_qr:view` grant, and inferring authority from a
   // free-text team name is exactly the implicit rule this work removes.
 
-  // Where the Performance card goes: the management landing for whoever holds
-  // Team Performance, their own report for everyone else.
-  //
-  // Derived from the capability, not from `users.role`. The role version sent
-  // every manager to /performance/team and therefore offered a manager no route
-  // to their own report at all — one of the two ways a Manager silently lost
-  // Personal Performance (the other was the View As gate on /performance). The
-  // destination is unchanged for everyone who holds Team Performance today,
-  // because 20261109000000 grants view_team at role level to exactly the admins
-  // and managers this test used to name.
-  //
-  // AND THE DESTINATION IS ALWAYS THE PERSONAL REPORT. Personal Performance and
-  // Team Performance are not alternatives — a manager needs both — so a card
-  // that chose between them was the second half of the same defect: routing a
-  // Team Performance holder to /performance/team left them with no route to
-  // their own score, month, history or EOD, which is exactly what "Dhruv cannot
-  // reach his own Performance" meant. Everybody lands on their own report
-  // because everybody is first an individual employee, and the Team View link
-  // the personal page already renders for a `view_team` holder is the way
-  // across. /performance/team keeps its own "← My Report" link back.
-  const performanceHref = '/performance'
+  // PERFORMANCE IS RETIRED (owner, 2026-11-13): the BOE Scoreboard replaced its numbers, and the owner asked
+  // for no separate module. The score is seen on this page (ScoreCard) and on the Task Management dashboard;
+  // the team's day is Team Today. The old pages redirect (next.config.ts) and offer no card here.
 
   // ── Attendance & Payroll — one card for what used to be two ────────────────
   //
@@ -552,18 +534,6 @@ export default function BoeOsHomePage() {
       // still works and redirects here; the card skips the hop.
       href: '/admin/control-center/people',
       icon: <MembersIcon />,
-      notificationCount: null,
-    }] : []),
-    // Gated by the existing `performance` row in app_modules (live, sort 80).
-    // Destination follows the effective profile so View As lands on the viewed
-    // user's own page; the team route is still authorized server-side against
-    // the real caller, so this grants nothing on its own.
-    ...(canOpenModule('performance') ? [{
-      key: 'performance',
-      title: 'Performance Management',
-      description: 'Review personal performance, EOD discipline, team execution, and employees requiring attention.',
-      href: performanceHref,
-      icon: <PerformanceIcon />,
       notificationCount: null,
     }] : []),
     ...(canOpenModule('finance') ? [{
