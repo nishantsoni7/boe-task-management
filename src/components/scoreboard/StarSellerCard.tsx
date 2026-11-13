@@ -41,7 +41,7 @@ export function StarSellerCard({ enabled }: { enabled: boolean }) {
 
   if (pick) {
     return (
-      <section className={styles.star} aria-label="Star Seller’s Super Priority">
+      <section className={styles.starCard} aria-label="Star Seller’s Super Priority">
         <span className={styles.starTitle}>★ Star Seller’s Super Priority</span>
         <span className={styles.starOrder}>Order {pick.orderNumber ?? '—'}{pick.active ? '' : ' (done)'}</span>
         <span className={styles.muted}>Chosen by {seller.isMe ? 'you' : seller.name}, {data.monthLabel}’s Star Seller.{pick.note ? ` “${pick.note}”` : ''} It is in Factory Focus until dispatched.</span>
@@ -51,7 +51,7 @@ export function StarSellerCard({ enabled }: { enabled: boolean }) {
 
   if (!seller.isMe) {
     return (
-      <section className={styles.star} aria-label="Star Seller">
+      <section className={styles.starCard} aria-label="Star Seller">
         <span className={styles.starTitle}>★ {seller.name} is {data.monthLabel}’s Star Seller</span>
         <span className={styles.muted}>The highest sales of the month earn one Order of their choice in Factory Focus.</span>
       </section>
@@ -68,7 +68,7 @@ export function StarSellerCard({ enabled }: { enabled: boolean }) {
   }
 
   return (
-    <section className={styles.star} aria-labelledby="star-pick-heading">
+    <section className={styles.starCard} aria-labelledby="star-pick-heading">
       <span id="star-pick-heading" className={styles.starTitle}>★ You are {data.monthLabel}’s Star Seller</span>
       <span className={styles.muted}>Choose one of your open Orders for Super Priority. It goes into Factory Focus, where the factory sees it first, and every salesperson sees your name on it.</span>
       {(data.openOrders ?? []).length === 0 ? (

@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — Scoreboard: the "Star" band pill fixed (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
+- **Bug.** `scoreCard.module.css` defined `.star` twice: for the band pill and for the Star Seller card (#728). The two rules merged, so every "Star" pill (your band, the Top 5) took the card's border, padding and bottom margin.
+- **Fix.** The card's class is now `.starCard` (`StarSellerCard.tsx`). The pill is unchanged.
+
 ## 2026-11-13 — Performance retired: the Scoreboard replaces it (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
 - **Owner ask.** "Retire the old Performance pages." Earlier: "there should be no separate module for Performance management."
 - **Changed.**
