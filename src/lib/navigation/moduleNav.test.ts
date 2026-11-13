@@ -21,6 +21,12 @@ describe('the Orders entry a path belongs to', () => {
     assert.equal(activeOrdersNav('/orders/import'), 'drafts', 'Upload PI is the start of the PI Drafts workflow')
   })
 
+  test('Draft Orders (ClickUp) lights itself, not Confirmed Orders (an unknown segment would read as an Order record)', () => {
+    assert.equal(activeOrdersNav('/orders/clickup'), 'clickup')
+    assert.equal(activeOrdersNav(`/orders/clickup/${ORDER_ID}`), 'clickup')
+    assert.equal(activeOrdersNav('/orders/clickup/import'), 'clickup')
+  })
+
   test('the dashboard is lit only on the dashboard', () => {
     assert.equal(activeOrdersNav('/orders/'), 'dashboard', 'a trailing slash is the same place')
     assert.notEqual(activeOrdersNav('/orders/all'), 'dashboard')

@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (PR #754) · `20270713000000` → APPLIED by the owner 2026-11-13 (run by hand after a fresh verified backup, recorded with `migration repair`)
+- **Owner ask.** Take all the details of ClickUp's Running Orders (client, the files with their upload dates) into a draft section of BOE One, to test before anything moves to the real order list, and keep a complete copy because the ClickUp subscription is ending.
+- **Done outside the app (read-only, verified).** A local backup of all 521 orders and 1,064 files (4.3 GB) in `~/BOE-Development/backups/clickup-running-orders/2026-11-13/`, with the owner's one-off ClickUp token (to be deleted in ClickUp).
+- **Built.** Dossier 01 "Draft Orders (ClickUp)": Administrators-only sidebar entry; list with status tabs, search and Excel; an order page with every field, files with upload dates, comments and history; a browser import of the backup folder that sends files straight to private storage.
+- **Database.** New closed table `clickup_draft_orders` and private bucket `clickup-draft-files`; nothing existing is touched. It creates a table, so by the owner's rule back up first. Applied by hand (`db push` would also push 20270624-0628).
+- **Proof.** PGlite 17/17, 23 unit tests, the real backup through the import's validator (521 of 521). Not proven: a signed-in screen, the folder import end to end, the project's Storage size limit.
+- **Rollback.** Empty the bucket, drop the table, delete the bucket row (dossier 01).
+
 ## 2026-11-13 — Confirmed Order on a phone: the Pendencies card no longer wraps into hidden side-by-side columns (PR #753, squash-merged 19:03 IST as `e9a5f6bd`, deployed 19:05 IST) · no SQL
 - **Seen** (Order 546, a 390 px wide frame, real data): "Pending from client" (its list and the add box) and the Update button / read-only note were drawn to the right of "Fabric / Finish" at x=298..677 in a 375 px column and cut off by `.boe-main-content { overflow: clip }`. No scrollbar showed, so the clipping hid the fault. At 755 and 1425 px wide the card was fine.
 - **Cause.** `.order-ff` is `display: flex; flex-wrap: wrap`. In the summary panel the card is switched to `flex-direction: column` but keeps `wrap`. The 560 px phone rule gives `.order-ff-items` and `.order-ff-end` `flex-basis: 100%` (written for the old one-line strip); in a column that resolves against the grid-stretched height, so each child fills a whole column and the card wraps into four.

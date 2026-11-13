@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import { ArrowLeftRight, LayoutDashboard, List, FileText, Bell, GraduationCap, Archive } from 'lucide-react'
+import { ArrowLeftRight, LayoutDashboard, List, FileText, Bell, GraduationCap, Archive, ClipboardList } from 'lucide-react'
 import { LEARNING_PATH, canTrainCustomizeImage } from '@/lib/orders/customizationLearning'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import type { UserProfile } from '@/lib/types'
@@ -158,6 +158,11 @@ export function OrdersLayout({
     { label: 'PI Drafts',        path: '/orders/drafts', icon: <FileText        size={15} strokeWidth={1.8} />, key: 'drafts' },
     ...(canSeeOldOrders
       ? [{ label: 'Old orders (BDPI)', path: '/orders/bdpi', icon: <Archive size={15} strokeWidth={1.8} />, key: 'bdpi' as const }]
+      : []),
+    // Draft Orders (ClickUp), 20270713000000: Administrators only. Drawn from
+    // the role this layout already reads; every route asks the database again.
+    ...(role === 'admin'
+      ? [{ label: 'Draft Orders (ClickUp)', path: '/orders/clickup', icon: <ClipboardList size={15} strokeWidth={1.8} />, key: 'clickup' as const }]
       : []),
   ]
 
