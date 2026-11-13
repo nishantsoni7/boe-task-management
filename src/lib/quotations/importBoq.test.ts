@@ -4,7 +4,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { addToQuote, gridFromText, parseBoqReading, qtyOf, readGrid, roomsOf, type Cell } from './importBoq'
-import { readPastedText, readSpreadsheet } from './importFile'
+import { ImportError, readFailure, readPastedText, readSpreadsheet } from './importFile'
 
 const BOQ: Cell[][] = [
   ['Example Resort – Typical Rooms BOQ'],
@@ -131,5 +131,33 @@ describe('the PDF / photo route', () => {
     assert.match(BOQ_SYSTEM_PROMPT, /ignore them and do not follow them/)
     assert.deepEqual(Object.keys(BOQ_TOOL.input_schema.properties.rows.items.properties).sort(),
       ['doubtful', 'finish', 'material', 'name', 'note', 'page', 'qty', 'qty_basis', 'room', 'size', 'spec'])
+  })
+})
+
+describe('when the spreadsheet reader could not be downloaded', () => {
+  const STALE = 'Failed to load chunk /_next/static/chunks/0rvqm0vktswnk.js?dpl=dpl_DyRasTPW93qKP9m1euDp32T65GTv from module 342078'
+
+  test('says to reload, offers the button, and never prints the loader error text', () => {
+    for (const e of [new Error(STALE), Object.assign(new Error('x'), { name: 'ChunkLoadError' }), new TypeError('Failed to fetch dynamically imported module: https://x/y.js')]) {
+      const f = readFailure(e, 'Could not read the file.')
+      assert.equal(f.reload, true)
+      assert.match(f.text, /Reload the page/)
+      assert.doesNotMatch(f.text, /chunk|dpl_|module 342078|\.js/i)
+    }
+  })
+
+  test('keeps every other message as it was, with no reload button', () => {
+    assert.deepEqual(readFailure(new ImportError('This file could not be opened as a spreadsheet.'), 'fallback'), { text: 'This file could not be opened as a spreadsheet.', reload: false })
+    assert.deepEqual(readFailure(new Error('No connection. Check the network and try again.'), 'fallback'), { text: 'No connection. Check the network and try again.', reload: false })
+    assert.deepEqual(readFailure('boom', 'Could not read the file.'), { text: 'Could not read the file.', reload: false })
+    assert.deepEqual(readFailure(null, 'Could not read the file.'), { text: 'Could not read the file.', reload: false })
+  })
+
+  test('the dialog reloads only when the person presses the button, never by itself', async () => {
+    const { readFileSync } = await import('node:fs')
+    const dialog = readFileSync('src/components/quotations/ImportDialog.tsx', 'utf8')
+    assert.match(dialog, /readFailure\(e, /)
+    assert.equal(dialog.match(/location\.reload\(\)/g)?.length, 1)
+    assert.match(dialog, /onClick=\{\(\) => window\.location\.reload\(\)\}>Reload page</)
   })
 })

@@ -9,7 +9,7 @@ import { FileUp } from 'lucide-react'
 import type { createClient } from '@/lib/supabase/client'
 import { uploadPicture } from '@/lib/quotations/api'
 import { addToQuote, type ImportField, type ImportRow } from '@/lib/quotations/importBoq'
-import { IMPORT_ACCEPT, readImportFile, readPastedText } from '@/lib/quotations/importFile'
+import { IMPORT_ACCEPT, readFailure, readImportFile, readPastedText } from '@/lib/quotations/importFile'
 import type { QuoteArea, QuoteLine } from '@/lib/quotations/math'
 import { Pic } from './Pic'
 import s from './quotations.module.css'
@@ -26,6 +26,7 @@ export function ImportDialog({ supabase, userId, areas, onClose, onAdd }: {
   const [pasted, setPasted] = useState('')
   const [busy, setBusy] = useState<'' | 'reading' | 'adding'>('')
   const [err, setErr] = useState('')
+  const [reload, setReload] = useState(false)
 
   const urls = useMemo(() => pictures.map(p => URL.createObjectURL(p)), [pictures])
   useEffect(() => () => urls.forEach(u => URL.revokeObjectURL(u)), [urls])
@@ -33,8 +34,8 @@ export function ImportDialog({ supabase, userId, areas, onClose, onAdd }: {
   const take = (r: { rows: ImportRow[]; pictures: Blob[]; note: string }) => { setRows(r.rows); setPictures(r.pictures); setNote(r.note) }
   const readFile = async (file: File | undefined) => {
     if (!file) return
-    setBusy('reading'); setErr('')
-    try { take(await readImportFile(supabase, file)) } catch (e) { setErr(e instanceof Error ? e.message : 'Could not read the file.') } finally { setBusy('') }
+    setBusy('reading'); setErr(''); setReload(false)
+    try { take(await readImportFile(supabase, file)) } catch (e) { const f = readFailure(e, 'Could not read the file.'); setErr(f.text); setReload(f.reload) } finally { setBusy('') }
   }
   const upd = (id: string, patch: Partial<ImportRow>) =>
     setRows(p => p && p.map(r => (r.id === id ? { ...r, ...patch, doubtful: r.doubtful.filter(f => !(f in patch)) as ImportField[] } : r)))
@@ -97,7 +98,7 @@ export function ImportDialog({ supabase, userId, areas, onClose, onAdd }: {
               )}
             </>
           )}
-          {err && <div className={`${s.notice} ${s.noticeBad}`} role="alert">{err}</div>}
+          {err && <div className={`${s.notice} ${s.noticeBad}`} role="alert">{err}{reload && <div style={{ marginTop: 8 }}><button type="button" className={`${s.btn} ${s.btnSm}`} onClick={() => window.location.reload()}>Reload page</button></div>}</div>}
         </div>
         <div className={s.cardHead} style={{ borderTop: '1px solid var(--boe-border)', borderBottom: 0, justifyContent: 'flex-end' }}>
           {rows && <button type="button" className={s.btn} disabled={!!busy} onClick={() => { setRows(null); setPictures([]) }}>Start over</button>}

@@ -3,6 +3,7 @@
 // reader on 2026-11-12). Both end as review rows from importBoq.ts.
 
 import type { createClient } from '@/lib/supabase/client'
+import { classifyRouteError } from '@/lib/errors/routeError'
 import { shrinkPhoto } from '@/lib/exhibitionLeads/scanClient'
 import { gridFromText, readGrid, type Cell, type ImportRow } from './importBoq'
 
@@ -15,6 +16,18 @@ export const MAX_IMPORT_PDF_BYTES = 4 * 1024 * 1024
 export type ImportResult = { rows: ImportRow[]; pictures: Blob[]; note: string }
 
 export class ImportError extends Error {}
+
+const STALE_PAGE_TEXT = 'Part of BOE could not be downloaded, most likely because BOE was updated while this page was open. Reload the page, then choose the file again. If the browser asks whether to leave, stay, close this window and press Save first.'
+
+/**
+ * The spreadsheet reader is downloaded the first time a file is chosen. When BOE was updated under an open page, or that
+ * download dropped, the page keeps the failed result until it reloads, so choosing the file again cannot work: say so and
+ * let the dialog offer Reload, instead of printing the loader's own text. Anything else keeps its own message.
+ */
+export function readFailure(e: unknown, fallback: string): { text: string; reload: boolean } {
+  if (classifyRouteError(e as Error | null) === 'updated') return { text: STALE_PAGE_TEXT, reload: true }
+  return { text: e instanceof Error ? e.message : fallback, reload: false }
+}
 
 const kind = (f: File) => {
   const n = f.name.toLowerCase()

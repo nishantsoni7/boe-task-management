@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `bc43c2f2` — Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (migration 20270713000000)
-- Commits on this branch: 1314
+- Commit: `df8ef1f7` — Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (migration 20270713000000) (#754)
+- Commits on this branch: 1316
 - Pages (`page.tsx`): 196   API routes (`route.ts`): 209
 - Migrations: 454 (first `20260530_create_positions.sql`, latest `20270713000000_clickup_draft_orders.sql`)
 - Tables ever created: 251 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
-- `bc43c2f2` 2026-11-13 Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (migration 20270713000000)
+- `df8ef1f7` 2026-11-13 Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (migration 20270713000000) (#754)
+- `a203fcef` 2026-11-13 Docs: stamp #753 (Pendencies card on a phone) as merged e9a5f6bd, deployed 19:05 IST (no SQL) (#755)
+- `e9a5f6bd` 2026-11-13 Orders: Pending from client no longer slides off the right edge on a phone (#753)
 - `a4a53022` 2026-11-13 Docs: stamp #751 (Board status dropdown, project value and timeline gates) as merged 6417fe89, migration 20270711000000 applied (no SQL) (#752)
 - `6417fe89` 2026-11-13 Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (migration 20270711000000) (#751)
 - `0f5b7f63` 2026-11-13 Docs: stamp #749 (Visit / Meeting, ClickUp move, Call back) as merged b9b552f7, migration 20270710000000 applied (no SQL) (#750)
@@ -37,8 +39,6 @@
 - `dafb5eb0` 2026-11-13 Quotations: links back to quotation requests and PI drafts, and revisions to win (#730)
 - `a3e764a8` 2026-11-13 Docs: stamp #719 (Confirmed Payments search, order total, old-order client) as merged ebfc7df8 (#732)
 - `51b3fff9` 2026-11-13 Docs: record the merge of #729 ("With Sales" on the Operations queue) (#731)
-- `a08aeb57` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL) (#733)
-- `ebfc7df8` 2026-11-13 Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (migration 20270701000000, applied 13 Nov) (#719)
 
 ## Pages by top-level area
 
