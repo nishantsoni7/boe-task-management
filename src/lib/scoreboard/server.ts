@@ -240,13 +240,18 @@ export async function loadMyScore(caller: Caller, now: Date = new Date()): Promi
   // The top 5 by today's score (only names, never anybody's rank). Ties: alphabetical.
   const ranked = everyone.filter(s => s.result.score !== null)
     .sort((a, b) => (b.result.score as number) - (a.result.score as number) || a.name.localeCompare(b.name))
-  const top5 = ranked.slice(0, 5).map(s => ({ name: s.name, score: s.result.score, band: s.result.band, bandLabel: BAND_LABEL[s.result.band as Band] }))
+  // Owner, 2026-11-13: staff see only their own score unless the owner switches the Top 5 on for everyone.
+  // Administrators always see it. The switch reads as "hidden" if it cannot be read.
+  const showTop = caller.isAdmin || await top5IsPublic(svc)
+  const top5 = showTop
+    ? ranked.slice(0, 5).map(s => ({ name: s.name, score: s.result.score, band: s.result.band, bandLabel: BAND_LABEL[s.result.band as Band] }))
+    : []
 
   // Most improved: the biggest rise since the first recorded day of the month (at least 3 days in).
   const firstByPerson = new Map<string, number>()
   for (const r of rows) if (r.score !== null && !firstByPerson.has(r.employee_id)) firstByPerson.set(r.employee_id, r.score)
   const days = new Set(rows.map(r => r.score_date)).size
-  const improved = days >= 3
+  const improved = showTop && days >= 3
     ? ranked.map(s => ({ name: s.name, rise: (s.result.score as number) - (firstByPerson.get(s.id) ?? (s.result.score as number)) }))
         .filter(x => x.rise > 0).sort((a, b) => b.rise - a.rise)[0] ?? null
     : null
@@ -280,6 +285,34 @@ export async function loadMyScore(caller: Caller, now: Date = new Date()): Promi
 // ─── The owner's monthly settings: tracks and targets ────────────────────────
 
 const MONTH_RE = /^\d{4}-\d{2}-01$/
+
+// ─── Who sees the Top 5 (owner, 2026-11-13) ──────────────────────────────────
+
+/** Whether the Top 5 and "Most improved" are shown to everyone. Hidden on any read failure (fail closed). */
+export async function top5IsPublic(svc: ServiceClient): Promise<boolean> {
+  const { data, error } = await svc.from('day_close_settings').select('scoreboard_top5_public').eq('singleton', true).maybeSingle()
+  if (error) return false
+  return (data as { scoreboard_top5_public?: boolean } | null)?.scoreboard_top5_public === true
+}
+
+export async function loadVisibility(caller: Caller): Promise<Result> {
+  if (!caller.isAdmin) return fail(403, 'Forbidden')
+  return ok({ top5Public: await top5IsPublic(caller.svc) })
+}
+
+export async function saveVisibility(caller: Caller, body: Record<string, unknown>, now: Date = new Date()): Promise<Result> {
+  if (!caller.isAdmin) return fail(403, 'Forbidden')
+  if (typeof body.top5Public !== 'boolean') return fail(400, 'Say whether the Top 5 is shown to everyone.')
+  const { data, error } = await caller.svc.from('day_close_settings')
+    .update({ scoreboard_top5_public: body.top5Public, updated_by: caller.id, updated_at: now.toISOString() })
+    .eq('singleton', true).select('scoreboard_top5_public')
+  if (error) {
+    if (/scoreboard_top5_public/.test(error.message)) return fail(409, 'The switch needs migration 20270702000000 applied first.')
+    throw new Error(error.message)
+  }
+  if ((data ?? []).length === 0) return fail(409, 'Day Close settings are missing.')
+  return ok({ top5Public: body.top5Public })
+}
 
 export async function loadTargets(caller: Caller, monthParam: string | null, now: Date = new Date()): Promise<Result> {
   if (!caller.isAdmin) return fail(403, 'Forbidden')

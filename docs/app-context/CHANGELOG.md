@@ -4,6 +4,19 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — Scoreboard: the Top 5 hidden from staff, with the owner's switch (branch `claude/boe1-employee-monitoring-t5ypei`) · migration `20270702000000` (NOT YET APPLIED)
+- **Owner ask.** "Everyone is still able to see the rankings. How do I hide it?" Chosen: only administrators, with a switch.
+- **Built.**
+  - Column `day_close_settings.scoreboard_top5_public` (default false).
+  - `/api/scoreboard/me` sends staff no Top 5 or "Most improved" unless the switch is on. Administrators always get them.
+  - "Who sees the Top 5" on Team Today → People & targets (`/api/scoreboard/visibility`, administrators only).
+- **Safe before the migration.** An unreadable switch reads as hidden, so merging alone already hides the list.
+- **Proof.**
+  - `visibility.test.ts`: 4 tests.
+  - PGlite: 5 checks.
+  - `tsc`, eslint, full `npm test`, `next build`.
+- **Rollback.** Revert the PR, then `alter table public.day_close_settings drop column scoreboard_top5_public`.
+
 ## 2026-11-13 — Team Today and Monthly Review redesigned (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
 - **Owner ask.** "Redesign the new pages of Team Today and Monthly review with better UI… analyze the priority of options… give two previews." The owner chose Option A for both, with Option B's score bars and WhatsApp preview in the review.
 - **Team Today** has three tabs:

@@ -1264,6 +1264,8 @@ describe('the applied migrations are frozen', () => {
       '20270629000000_quotation_links.sql',
       // Finance, Confirmed Payments: search by any order number, an order's confirmed total, an old order's client corrected: three functions, one guard restated, one history event.
       '20270701000000_finance_confirmed_payments_order_search.sql',
+      // Scoreboard: the Top 5 hidden from staff by default, with the owner's switch on day_close_settings.
+      '20270702000000_scoreboard_top5_switch.sql',
     ])
   })
 
@@ -1771,6 +1773,7 @@ describe('the applied migrations are frozen', () => {
       '20270628000000_star_seller_focus.sql',
       '20270629000000_quotation_links.sql',
       '20270701000000_finance_confirmed_payments_order_search.sql',
+      '20270702000000_scoreboard_top5_switch.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `62318971` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- Commits on this branch: 87
-- Pages (`page.tsx`): 191   API routes (`route.ts`): 204
-- Migrations: 446 (first `20260530_create_positions.sql`, latest `20270701000000_finance_confirmed_payments_order_search.sql`)
+- Commit: `2d5efe6e` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 90
+- Pages (`page.tsx`): 191   API routes (`route.ts`): 205
+- Migrations: 447 (first `20260530_create_positions.sql`, latest `20270702000000_scoreboard_top5_switch.sql`)
 - Tables ever created: 249 (dropped at some point: 8)   SQL functions: 1018   Enums: 0
-- Test files: 824   Next.js 16.2.6, React 19.2.4
+- Test files: 825   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `2d5efe6e` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `7ba4b29b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps) (no SQL) (#738)
+- `67232773` 2026-11-13 Docs: regenerate the app inventory after merging main
 - `62318971` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `be99bd7b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps)
 - `2e4ade2e` 2026-11-13 Docs: stamp #735 (Confirmed Payments Order / PI column, names only) as merged bab48de7 (#737)
@@ -36,9 +39,6 @@
 - `d31d54fd` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
 - `561c4588` 2026-11-13 Orders: "With Sales" on the Operations queue (#729)
 - `d937dae8` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
-- `001472f1` 2026-11-13 BOE Scoreboard, slice 3: the monthly review and awards (migration 20270627000000, applied) (#727)
-- `70acf170` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
-- `bc56cccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
 
 ## Pages by top-level area
 
@@ -129,7 +129,7 @@
 - **restore-user** (1): ` [POST]`
 - **sales** (3): `/alerts/[slot] [GET]`, `/capture/website [POST]`, `/capture/whatsapp [GET,POST]`
 - **samples** (4): `/notifications [DELETE,GET,PATCH]`, `/notifications/[id] [DELETE,PATCH]`, `/notifications/delete-selected [POST]`, `/notify [POST]`
-- **scoreboard** (7): `/me [GET]`, `/ratings [GET,POST]`, `/review [GET,POST]`, `/snapshot [GET]`, `/star-seller [GET,POST]`, `/targets [GET,POST]`, `/vote [GET,POST]`
+- **scoreboard** (8): `/me [GET]`, `/ratings [GET,POST]`, `/review [GET,POST]`, `/snapshot [GET]`, `/star-seller [GET,POST]`, `/targets [GET,POST]`, `/visibility [GET,POST]`, `/vote [GET,POST]`
 - **showroom** (13): `/admin/categories [GET,POST]`, `/admin/categories/[id] [DELETE,PATCH]`, `/admin/products [GET,POST]`, `/admin/products/[product_code] [DELETE,GET,PATCH]`, `/inquiry [GET,POST]`, `/inquiry-items [POST]`, `/inquiry-items/[itemId] [DELETE,PATCH]`, `/inquiry/[id] [GET,PATCH]`, `/products [GET]`, `/products/by-code/[product_code] [GET]`, `/quotation/[id] [GET,POST]`, `/salesperson/[user_id] [GET]`, `/share/[token] [GET]`
 - **task-detail** (1): ` [GET]`
 - **tasks** (3): `/[id]/copy [POST]`, `/[id]/notify-assignment [POST]`, `/people [GET]`
@@ -169,7 +169,7 @@
 - `src/lib/quotations` — 12 source, 7 test
 - `src/lib/salesLeads` — 15 source, 14 test
 - `src/lib/samples` — 1 source, 1 test
-- `src/lib/scoreboard` — 6 source, 3 test
+- `src/lib/scoreboard` — 6 source, 4 test
 - `src/lib/security` — 2 source, 7 test
 - `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 12 source, 12 test
@@ -490,7 +490,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270601000000_sales_board_page.sql`
 - `20270602000000_sales_auto_allot.sql`
 - `20270603000000_finance_payment_admin_notes.sql`
 - `20270604000000_payroll_results_half_paid_leave.sql`
@@ -520,6 +519,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270628000000_star_seller_focus.sql`
 - `20270629000000_quotation_links.sql`
 - `20270701000000_finance_confirmed_payments_order_search.sql`
+- `20270702000000_scoreboard_top5_switch.sql`
 
 ## All SQL function names
 

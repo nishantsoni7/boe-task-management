@@ -4,7 +4,9 @@
 // people already are). On the Modules page and the Task Management dashboard:
 //
 //   your month-to-date score, its band, the change since yesterday's record, the month's line,
-//   where the points come from, the one fastest way up, and the top 5 (names only; nobody sees a rank)
+//   where the points come from, the one fastest way up, and the top 5 (names only; nobody sees a rank).
+//   The top 5 and "Most improved" reach staff only when the owner switches them on (2026-11-13); the server
+//   sends an empty list otherwise, and administrators always get them.
 //
 // The evening half is the line under "Day closed" on the Today card (EveningScoreLine). Both read
 // /api/scoreboard/me, which takes the person from the bearer token. Nothing is drawn while loading, if the
