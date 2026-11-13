@@ -1282,6 +1282,8 @@ describe('the applied migrations are frozen', () => {
       '20270713000000_clickup_draft_orders.sql',
       // Quotations, the builder redesign: client email, company name, GSTIN and one dimensions unit per quotation (four columns), the product note for the client copied into Remarks, quotation_save and quotation_client_doc re-issued.
       '20270714000000_quotation_builder_fields.sql',
+      // Price learning, piece 1: four closed tables (batches, PIs, lines, feedback) and their functions; pricing_all_points and pricing_pool re-issued with the learned lines (pool cap 800 → 2,500).
+      '20270715000000_pricing_learning.sql',
     ])
   })
 
@@ -1799,6 +1801,7 @@ describe('the applied migrations are frozen', () => {
       '20270713000000_clickup_draft_orders.sql',
       // Quotations, the builder redesign: client email, company name, GSTIN and one dimensions unit per quotation (four columns), the product note for the client copied into Remarks, quotation_save and quotation_client_doc re-issued.
       '20270714000000_quotation_builder_fields.sql',
+      '20270715000000_pricing_learning.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

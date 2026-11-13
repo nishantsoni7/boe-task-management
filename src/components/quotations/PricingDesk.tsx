@@ -12,6 +12,7 @@ import { formatINR } from '@/lib/currency'
 import { formatDateIN } from '@/lib/quotations/math'
 import { suggestPrice } from '@/lib/pricing/suggest'
 import type { ModelSuggestion } from '@/lib/pricing/model'
+import { SuggestionFeedback, type FeedbackLine } from '@/components/pricing/learning/SuggestionFeedback'
 import { istDateOf } from '@/lib/istDate'
 import {
   errorText, fetchPriceQueue, fetchPriceSettings, savePriceSettings,
@@ -22,7 +23,11 @@ import s from './quotations.module.css'
 type Supabase = ReturnType<typeof createClient>
 
 /** "Last ordered ₹60,000 · ₹56,000–₹60,000 over 2 orders · last quoted ₹54,000  [Use]" */
-export function PriceHintLine({ hint, model, price, editable, onUse }: { hint?: PriceHint; model?: ModelSuggestion | null; price: number | null; editable: boolean; onUse: (p: number) => void }) {
+export function PriceHintLine({ hint, model, price, editable, onUse, feedback }: {
+  hint?: PriceHint; model?: ModelSuggestion | null; price: number | null; editable: boolean; onUse: (p: number) => void
+  /** The line behind the suggestion; with it, a doorway to feedback and to correcting the logic sits under every suggestion (owner, 13 Nov 2026). */
+  feedback?: { line: FeedbackLine; clientType: string | null; quotationId: string | null; isDesk: boolean }
+}) {
   if (!model && (!hint || (!hint.ordered && !hint.quoted))) return null
   const o = hint?.ordered ?? null
   const sug = model ?? (hint?.points ? suggestPrice(hint.points) : null)
@@ -34,6 +39,10 @@ export function PriceHintLine({ hint, model, price, editable, onUse }: { hint?: 
       {o && <>Last ordered <b>{formatINR(Number(o.last))}</b>{Number(o.count) > 1 && <> · {formatINR(Number(o.min))}–{formatINR(Number(o.max))} over {o.count}</>}</>}
       {hint?.quoted && <>{o ? ' · ' : ''}last quoted {formatINR(Number(hint.quoted.last))}</>}
       {editable && price !== last && <> <button type="button" className={s.linkBtn} onClick={() => onUse(last)}>Use</button></>}
+      {sug && feedback && (
+        <div><SuggestionFeedback source="quotation" line={feedback.line} clientType={feedback.clientType} quotationId={feedback.quotationId} isDesk={feedback.isDesk}
+          suggestion={{ price: sug.price, low: sug.low, high: sug.high, confidence: sug.confidence, basis: sug.basis, reasons: model?.reasons ?? [] }} /></div>
+      )}
     </div>
   )
 }

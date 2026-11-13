@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { BarChart3, FileText, Home, Plus } from 'lucide-react'
+import { BarChart3, FileText, Home, Plus, Sparkles } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import type { QuotationAccess } from '@/lib/quotations/api'
 import { BoeBrandIcon } from './BoeBrandIcon'
@@ -32,8 +32,10 @@ export function QuotationsLayout({ profile, access, title, subtitle, actions, on
 
   const items = [
     ...(access.create ? [{ href: `${BASE}?new=1`, label: 'New quotation', icon: Plus, active: false, primary: true }] : []),
-    { href: BASE, label: 'Quotations', icon: FileText, active: pathname === BASE || (pathname.startsWith(`${BASE}/`) && !pathname.startsWith(`${BASE}/reports`)), primary: false },
+    { href: BASE, label: 'Quotations', icon: FileText, active: pathname === BASE || (pathname.startsWith(`${BASE}/`) && !pathname.startsWith(`${BASE}/reports`) && !pathname.startsWith(`${BASE}/learning`)), primary: false },
     { href: `${BASE}/reports`, label: 'Reports', icon: BarChart3, active: pathname.startsWith(`${BASE}/reports`), primary: false },
+    // Price learning is the pricing desk's (Admin, or edit + see-all), the same rule as price approval; the database decides.
+    ...(access.admin || (access.edit && access.view_all) ? [{ href: `${BASE}/learning`, label: 'Price learning', icon: Sparkles, active: pathname.startsWith(`${BASE}/learning`), primary: false }] : []),
   ]
 
   return (
