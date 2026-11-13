@@ -101,6 +101,27 @@ export function draftFilePath(clickupId: string, fileId: string): string {
   return `${clickupId}/${fileId}`
 }
 
+/** The little of a folder handle the import reads (a real FileSystemDirectoryHandle fits; a test can fake it). */
+export type BackupDir = {
+  name: string
+  getFileHandle(name: string): Promise<unknown>
+  entries(): AsyncIterable<[string, { kind: string } & Partial<BackupDir>]>
+}
+
+/**
+ * The folder that holds orders.json: the one chosen, or the single dated folder inside it (the Windows folder
+ * window easily lands one level up, on clickup-running-orders instead of 2026-11-13). The newest-named one wins.
+ */
+export async function findBackupFolder<D extends BackupDir>(chosen: D): Promise<D | null> {
+  const has = (d: BackupDir) => d.getFileHandle('orders.json').then(() => true, () => false)
+  if (await has(chosen)) return chosen
+  const inside: D[] = []
+  for await (const [, entry] of chosen.entries()) if (entry.kind === 'directory') inside.push(entry as unknown as D)
+  inside.sort((a, b) => b.name.localeCompare(a.name))
+  for (const d of inside) if (await has(d)) return d
+  return null
+}
+
 /** "2026-10-01 17:39:56" (IST) or "2026-10-01" → an ISO instant; anything else → null. */
 export function istToIso(value: unknown): string | null {
   const s = typeof value === 'string' ? value.trim() : ''

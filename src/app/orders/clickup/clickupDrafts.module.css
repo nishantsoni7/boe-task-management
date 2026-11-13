@@ -11,7 +11,8 @@
 .count { font-variant-numeric: tabular-nums; opacity: 0.8; }
 
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-.grow { flex: 1 1 220px; max-width: 360px; }
+/* Not flex: the search box sits in a COLUMN (.opp-page), where a flex basis of 220px made it 220px TALL. */
+.grow { width: 100%; max-width: 360px; }
 .right { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
 
 .pill {
@@ -46,7 +47,9 @@
 
 .fileLink { color: var(--boe-brand); text-decoration: underline; font-size: 12.5px; white-space: nowrap; }
 
-.steps { margin: 0; padding-left: 18px; font-size: 13px; color: var(--boe-text); display: flex; flex-direction: column; gap: 4px; }
+/* list-style is set here: the global reset removes the numbers of every ol. */
+.steps { margin: 0; padding-left: 20px; list-style: decimal; font-size: 13px; color: var(--boe-text); }
+.steps li { margin-bottom: 4px; }
 .progress { height: 8px; border-radius: 999px; background: var(--boe-surface-sunken); overflow: hidden; }
 .progressFill { height: 100%; background: var(--boe-brand); transition: width 0.2s ease; }
 .problems { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--boe-error); max-height: 220px; overflow: auto; }
