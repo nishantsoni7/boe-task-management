@@ -8,6 +8,7 @@ import { ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
 import { formatDateTime } from '@/lib/ui'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { TaskAttachmentGallery } from '@/components/tasks/TaskAttachmentGallery'
+import { MakeInQuotations } from '@/components/quotations/QuotationLinks'
 import type { GalleryEntry } from '@/lib/tasks/taskGallery'
 import {
   attachmentStatusLabel, failureSummary, type PendingAttachment,
@@ -40,6 +41,8 @@ export type QuotationComposer = {
 }
 
 export type QuotationTask = {
+  /** Optional so existing callers and fixtures stay valid; "Make it in Quotations" needs it and is drawn only with it. */
+  id?: string
   title: string
   priority: string
   status: string
@@ -168,6 +171,8 @@ export function QuotationDetailView(p: Props) {
                 : <p style={{ margin: '6px 0 0', fontSize: '12.5px', color: colors.muted, fontStyle: 'italic' }}>Sales added no written requirement — see the files below.</p>}
             </div>
           </div>
+
+          {p.canSend && !done && task.id && <MakeInQuotations supabase={p.supabase} taskId={task.id} />}
 
           <TaskAttachmentGallery
             entries={p.requestFiles}

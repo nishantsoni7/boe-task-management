@@ -26,6 +26,7 @@ import { ImportDialog } from './ImportDialog'
 import { StatusPill } from './ListScreen'
 import { StudioDialog } from './StudioDialog'
 import { VersionsCard } from './VersionsCard'
+import { RequestCard } from './RequestCard'
 import { PriceCard, PriceHintLine } from './PricingDesk'
 import { productType } from '@/lib/pricing/features'
 import { priceLine, type ModelSuggestion } from '@/lib/pricing/model'
@@ -346,6 +347,7 @@ export default function BuilderScreen() {
                 onUse={p => { updLine(line.key, { image_path: p }); setStudioFor(null); setMsg({ tone: 'ok', text: 'Picture changed. Save to keep it.' }) }} />
             ) : null
           })()}
+          {profile && <RequestCard supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
           <VersionsCard supabase={supabase} base={base} dirty={dirty} busy={busy} onSent={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />
           <PriceCard price={base.price} mayEdit={base.may_edit} dirty={dirty} busy={busy}
             onAsk={() => act(() => requestPriceApproval(supabase, id), 'Sent to the pricing desk.')}
@@ -393,7 +395,7 @@ export default function BuilderScreen() {
 
 function describe(e: { kind: string; detail: Record<string, unknown> }): string {
   switch (e.kind) {
-    case 'created': return 'Started'
+    case 'created': return e.detail.from_request ? 'Started from a quotation request' : 'Started'
     case 'saved': return `Saved: ${e.detail.lines ?? 0} lines, ${formatINR(Number(e.detail.value_before_gst ?? 0))} before GST`
     case 'status': return `${STATUS_LABEL[e.detail.from as QuotationStatus] ?? e.detail.from} → ${STATUS_LABEL[e.detail.to as QuotationStatus] ?? e.detail.to}${e.detail.note ? `: ${e.detail.note}` : ''}`
     case 'shared': return 'Client link created'
