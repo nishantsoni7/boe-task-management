@@ -1883,8 +1883,9 @@ describe('the drafts list carries the review queue', () => {
     // entry of its own: it is a SECTION of PI Drafts, so a reviewer finds it
     // where the records already are.
     // Old orders (BDPI, 20270503000000) is the one addition, and it is drawn
-    // only for holders of view_payment_plan.
-    assert.deepEqual(items, ['Dashboard', 'Confirmed Orders', 'PI Drafts', 'Old orders (BDPI)'],
+    // only for holders of view_payment_plan. Draft Orders (ClickUp, 20270713000000)
+    // is the other, drawn only for an Administrator.
+    assert.deepEqual(items, ['Dashboard', 'Confirmed Orders', 'PI Drafts', 'Old orders (BDPI)', 'Draft Orders (ClickUp)'],
       'the review queue is not an entry of its own')
   })
 })

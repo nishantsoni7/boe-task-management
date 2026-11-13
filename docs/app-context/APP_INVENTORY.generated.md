@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `6417fe89` — Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (migration 20270711000000) (#751)
-- Commits on this branch: 1312
-- Pages (`page.tsx`): 193   API routes (`route.ts`): 205
-- Migrations: 453 (first `20260530_create_positions.sql`, latest `20270711000000_sales_value_timeline_gates.sql`)
-- Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
-- Test files: 829   Next.js 16.2.6, React 19.2.4
+- Commit: `a4a53022` — Docs: stamp #751 (Board status dropdown, project value and timeline gates) as merged 6417fe89, migration 20270711000000 applied (no SQL) (#752)
+- Commits on this branch: 1313
+- Pages (`page.tsx`): 196   API routes (`route.ts`): 209
+- Migrations: 454 (first `20260530_create_positions.sql`, latest `20270713000000_clickup_draft_orders.sql`)
+- Tables ever created: 251 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
+- Test files: 831   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `a4a53022` 2026-11-13 Docs: stamp #751 (Board status dropdown, project value and timeline gates) as merged 6417fe89, migration 20270711000000 applied (no SQL) (#752)
 - `6417fe89` 2026-11-13 Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (migration 20270711000000) (#751)
 - `0f5b7f63` 2026-11-13 Docs: stamp #749 (Visit / Meeting, ClickUp move, Call back) as merged b9b552f7, migration 20270710000000 applied (no SQL) (#750)
 - `b9b552f7` 2026-11-13 Sales: Visit / Meeting stage and the owner's stage names; ClickUp Important Bulk / Bulk leads to Potential Clients; Call back; popup left side redesigned (migration 20270710000000) (#749)
@@ -38,7 +39,6 @@
 - `a08aeb57` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL) (#733)
 - `ebfc7df8` 2026-11-13 Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (migration 20270701000000, applied 13 Nov) (#719)
 - `d31d54fd` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
-- `561c4588` 2026-11-13 Orders: "With Sales" on the Operations queue (#729)
 
 ## Pages by top-level area
 
@@ -67,7 +67,7 @@
 - **my-issues** (2): `/my-issues`, `/my-issues/notifications`
 - **my-payroll** (2): `/my-payroll`, `/my-payroll/[periodId]`
 - **notifications** (1): `/notifications`
-- **orders** (16): `/orders`, `/orders/[id]`, `/orders/[id]/dispatch/[lotId]`, `/orders/[id]/edit-pi`, `/orders/[id]/payment-plan`, `/orders/all`, `/orders/bdpi`, `/orders/bdpi/[id]`, `/orders/customize-learning`, `/orders/drafts`, `/orders/drafts/[submissionId]`, `/orders/drafts/[submissionId]/edit-pi`, `/orders/import`, `/orders/notifications`, `/orders/requests`, `/orders/requests/[id]`
+- **orders** (19): `/orders`, `/orders/[id]`, `/orders/[id]/dispatch/[lotId]`, `/orders/[id]/edit-pi`, `/orders/[id]/payment-plan`, `/orders/all`, `/orders/bdpi`, `/orders/bdpi/[id]`, `/orders/clickup`, `/orders/clickup/[id]`, `/orders/clickup/import`, `/orders/customize-learning`, `/orders/drafts`, `/orders/drafts/[submissionId]`, `/orders/drafts/[submissionId]/edit-pi`, `/orders/import`, `/orders/notifications`, `/orders/requests`, `/orders/requests/[id]`
 - **payroll** (10): `/payroll`, `/payroll/credits`, `/payroll/how-it-works`, `/payroll/monthly-review`, `/payroll/monthly-review/[userId]`, `/payroll/notifications`, `/payroll/results/[periodId]`, `/payroll/results/[periodId]/[employeeId]`, `/payroll/results/[periodId]/salary-report`, `/payroll/settings`
 - **performance** (2): `/performance`, `/performance/team`
 - **pricing** (1): `/pricing`
@@ -116,7 +116,7 @@
 - **notifications** (4): ` [DELETE,GET]`, `/[id] [DELETE]`, `/delete-selected [POST]`, `/mark-read [POST]`
 - **notify-status-update** (1): ` [POST]`
 - **objections** (2): ` [GET,POST]`, `/review [POST]`
-- **orders** (29): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/dispatch/read-paper [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/number [POST]`, `/[id]/payment-plan/pdf [GET]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/bdpi/[id]/delete [POST]`, `/bdpi/[id]/pdf [GET]`, `/bdpi/[id]/pictures [GET]`, `/bdpi/import [POST]`, `/customize-learning/attempts [GET,PATCH]`, `/customize-learning/examples [GET,PATCH,POST]`, `/customize-learning/rules [GET,PATCH,POST]`, `/fabric-finish/image [POST]`, `/fabric-finish/refresh [POST]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/customization-feedback [POST]`, `/pi-edits/interpret-customization [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
+- **orders** (33): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/dispatch/read-paper [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/number [POST]`, `/[id]/payment-plan/pdf [GET]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/bdpi/[id]/delete [POST]`, `/bdpi/[id]/pdf [GET]`, `/bdpi/[id]/pictures [GET]`, `/bdpi/import [POST]`, `/clickup-drafts [GET]`, `/clickup-drafts/[id] [GET]`, `/clickup-drafts/[id]/files/[fileId] [GET]`, `/clickup-drafts/import [POST]`, `/customize-learning/attempts [GET,PATCH]`, `/customize-learning/examples [GET,PATCH,POST]`, `/customize-learning/rules [GET,PATCH,POST]`, `/fabric-finish/image [POST]`, `/fabric-finish/refresh [POST]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/customization-feedback [POST]`, `/pi-edits/interpret-customization [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
 - **payroll** (19): `/adjustments [GET,POST]`, `/adjustments/[id] [DELETE]`, `/ask [POST]`, `/attendance-correction [POST]`, `/delete [GET,POST]`, `/generate [POST]`, `/lock [POST]`, `/monthly-review [GET]`, `/monthly-review/detail [GET]`, `/my-result [GET]`, `/my-result/review [POST]`, `/participation [GET,PATCH]`, `/periods [GET,POST]`, `/results [GET]`, `/results/detail [GET]`, `/salary-report [GET]`, `/settings [GET,PUT]`, `/settlement [PATCH]`, `/unlock [POST]`
 - **performance** (2): ` [GET,POST]`, `/app-open [POST]`
 - **performance-audit** (1): ` [POST]`
@@ -160,7 +160,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 4 source, 7 test
 - `src/lib/notifications` — 7 source, 23 test
-- `src/lib/orders` — 107 source, 167 test
+- `src/lib/orders` — 108 source, 168 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
@@ -234,7 +234,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Storage buckets named in migrations
 
-`announcement-files`, `asset-documents`, `customer-review-custom-proofs`, `customer-review-project-images`, `customer-review-test-screenshots`, `day-proof`, `exhibition-lead-cards`, `expense-bills`, `image-editor-results`, `inventory-images`, `meeting-evidence`, `meeting-product-images`, `order-approval-evidence`, `order-files`, `order-request-attachments`, `payment-proofs`, `quotation-images`, `task-attachments`, `vendor-visit-photos`
+`announcement-files`, `asset-documents`, `clickup-draft-files`, `customer-review-custom-proofs`, `customer-review-project-images`, `customer-review-test-screenshots`, `day-proof`, `exhibition-lead-cards`, `expense-bills`, `image-editor-results`, `inventory-images`, `meeting-evidence`, `meeting-product-images`, `order-approval-evidence`, `order-files`, `order-request-attachments`, `payment-proofs`, `quotation-images`, `task-attachments`, `vendor-visit-photos`
 
 ## Tables (first migration that created each; * = dropped later)
 
@@ -277,6 +277,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `boe_credit_review_rewards` — 20261104000000
 - `boe_credit_settings` — 20261101000000
 - `boe_credit_transactions` — 20261101000000
+- `clickup_draft_orders` — 20270713000000
 - `customer_review_custom_duplicate_checks` — 20270224000000
 - `customer_review_custom_duplicate_flags` — 20270224000000
 - `customer_review_custom_submission_events` — 20261206000000
@@ -491,7 +492,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270608000000_finance_merge_duplicate_payment_request.sql`
 - `20270609000000_sales_whatsapp_capture.sql`
 - `20270610000000_task_health_check_stops_escalating.sql`
 - `20270611000000_my_flagged_pis.sql`
@@ -521,6 +521,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270705000000_scoreboard_top5_switch.sql`
 - `20270710000000_sales_visit_meeting_stage.sql`
 - `20270711000000_sales_value_timeline_gates.sql`
+- `20270713000000_clickup_draft_orders.sql`
 
 ## All SQL function names
 

@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (PR open) · `20270713000000` → NOT APPLIED
+- **Owner ask.** Take all the details of ClickUp's Running Orders (client, the files with their upload dates) into a draft section of BOE One, to test before anything moves to the real order list, and keep a complete copy because the ClickUp subscription is ending.
+- **Done outside the app (read-only, verified).** A local backup of all 521 orders and 1,064 files (4.3 GB) in `~/BOE-Development/backups/clickup-running-orders/2026-11-13/`, with the owner's one-off ClickUp token (to be deleted in ClickUp).
+- **Built.** Dossier 01 "Draft Orders (ClickUp)": Administrators-only sidebar entry; list with status tabs, search and Excel; an order page with every field, files with upload dates, comments and history; a browser import of the backup folder that sends files straight to private storage.
+- **Database.** New closed table `clickup_draft_orders` and private bucket `clickup-draft-files`; nothing existing is touched. It creates a table, so by the owner's rule back up first. Apply by hand (`db push` would also push 20270624-0628).
+- **Proof.** PGlite 17/17, 23 unit tests, the real backup through the import's validator (521 of 521). Not proven: a signed-in screen, the folder import end to end, the project's Storage size limit.
+- **Rollback.** Empty the bucket, drop the table, delete the bucket row (dossier 01).
+
 ## 2026-11-13 — Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (PR #751, merged 16:50 IST as `6417fe89`) · `20270711000000` → APPLIED by the owner before the merge (run by hand, recorded with `migration repair`)
 - **Owner ask** (screenshots of the live popup): the stage is a "Board status", not a timeline (any status to any other); choose option B, a dropdown. Do not ask for the quantity: ask for an approximate project value before Potential Clients, and the project value (if empty) and the expected timeline before Negotiation. The update box should have a round focus border.
 - **Built.** Dossier rule 35. The popup's stage bar, Move to next and Converted / Dead buttons are replaced by one Board status dropdown; the facts are called Project value (approx.) and Expected timeline.
