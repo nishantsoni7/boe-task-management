@@ -1,0 +1,93 @@
+/* ── Team Today (redesign 2026-11-13, owner chose "attention first") ─────────────────────────────────
+   What needs the owner sits on top, then one compact table, worst first. Phone: the table scrolls inside
+   its box; the top cards stack. Status pairs are the app's own; terracotta only on the one action. LIGHT ONLY. */
+
+.page { display: flex; flex-direction: column; gap: 18px; max-width: 1200px; }
+
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dayLabel { font-size: 14px; color: #4C5352; }
+.dateInput {
+  min-height: 40px; padding: 0 10px; border: 1px solid #CFC7BD; border-radius: 8px;
+  font: inherit; font-size: 14px; color: #303536; background: #fff;
+}
+.dateInput:focus-visible { outline: 2px solid #B9472E; outline-offset: 1px; }
+
+.tabs { display: flex; gap: 24px; border-bottom: 1px solid #E4DED7; overflow-x: auto; }
+.tab {
+  background: none; border: none; border-bottom: 2px solid transparent; padding: 10px 2px; min-height: 44px;
+  font: inherit; font-size: 14px; font-weight: 600; color: #5F6463; cursor: pointer; white-space: nowrap;
+}
+.tab[aria-current='page'] { color: #303536; border-bottom-color: #B9472E; }
+.tab:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
+
+.top { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 860px) { .top { grid-template-columns: minmax(0, 1fr); } }
+
+.card { background: #fff; border: 1px solid #E4DED7; border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.cardHead { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+.h2 { margin: 0; font-family: var(--boe-font-heading); font-size: 17px; font-weight: 800; color: #303536; letter-spacing: -0.01em; }
+.eyebrow { margin: 0; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #5F6463; }
+.muted { margin: 0; font-size: 13px; color: #5F6463; line-height: 1.5; }
+
+.decision { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 12px 0; border-top: 1px solid #F1EEE9; }
+.decision:first-of-type { border-top: none; }
+.decisionText { flex: 1 1 220px; min-width: 0; }
+.decisionTitle { margin: 0; font-weight: 600; font-size: 14.5px; color: #303536; overflow-wrap: anywhere; }
+.decisionSub { margin: 2px 0 0; font-size: 13px; color: #5F6463; overflow-wrap: anywhere; }
+.decisionActions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.decisionActions :global(.boe-btn) { min-height: 40px; }
+.noteInput {
+  min-height: 40px; width: 220px; max-width: 100%; padding: 0 10px; border: 1px solid #CFC7BD; border-radius: 8px;
+  font: inherit; font-size: 14px; color: #303536; box-sizing: border-box;
+}
+.noteInput:focus-visible { outline: 2px solid #B9472E; outline-offset: 1px; }
+.error { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: #B42332; flex-basis: 100%; }
+.link { color: #335A86; font-weight: 600; font-size: 14px; }
+
+.pulse { display: flex; flex-direction: column; gap: 14px; }
+.kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.kpiNum { font-family: var(--boe-font-heading); font-size: 26px; font-weight: 800; color: #303536; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.kpiOf { font-size: 14px; font-weight: 600; color: #5F6463; }
+.kpiLabel { font-size: 12px; color: #5F6463; }
+.timeline { position: relative; height: 8px; border-radius: 4px; background: #EFEDE9; }
+.timelineFill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: #335A86; }
+.timelineMark { position: absolute; top: -4px; width: 2px; height: 16px; background: #303536; border-radius: 1px; }
+.timelineTick { position: absolute; top: 0; width: 1px; height: 8px; background: #FFFFFF; }
+.timelineLabels { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; color: #5F6463; }
+
+.roster { padding: 0; overflow: hidden; }
+.rosterHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px 12px; }
+.counts { display: flex; flex-wrap: wrap; gap: 6px; }
+.scroll { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; min-width: 820px; }
+.table th {
+  text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: #5F6463; border-bottom: 1px solid #E4DED7; white-space: nowrap;
+}
+.table td { padding: 10px 12px; border-bottom: 1px solid #F1EEE9; font-size: 14px; color: #303536; white-space: nowrap; vertical-align: middle; }
+.group td { background: #FAF8F5; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #4C5352; padding: 8px 12px; }
+.name { font-weight: 700; }
+.num { font-variant-numeric: tabular-nums; }
+.bad { color: #A61F2D; font-weight: 700; }
+.bar { display: inline-block; width: 64px; height: 6px; border-radius: 3px; background: #EFEDE9; vertical-align: middle; margin-right: 8px; overflow: hidden; }
+.barFill { display: block; height: 100%; background: #276247; border-radius: 3px; }
+.cellChips { display: flex; flex-wrap: wrap; gap: 4px; }
+.detailsBtn {
+  background: none; border: none; padding: 0 4px; min-height: 36px; color: #335A86; font: inherit; font-size: 13px; font-weight: 600;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 2px; white-space: nowrap;
+}
+.detailsBtn:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
+.detailRow td { background: #FBFAF8; white-space: normal; padding: 12px 16px 16px; }
+.detail { display: flex; flex-direction: column; gap: 10px; max-width: 760px; }
+.detailFacts { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 13px; color: #4C5352; }
+.detailFacts strong { color: #303536; }
+
+.chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.chipRed { background: #FBE9EB; color: #A61F2D; }
+.chipAmber { background: #FBF1DC; color: #7A4F00; }
+.chipGreen { background: #E5F0EA; color: #22573F; }
+.chipGrey { background: #EFEDE9; color: #4C5352; }
+.chipBlue { background: #E9EFF6; color: #2C4F78; }
+
+.footnote { margin: 0; font-size: 13px; color: #5F6463; line-height: 1.5; }
+.srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }

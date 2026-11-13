@@ -93,7 +93,7 @@ All tables are closed to the browser; the service-role routes take the actor fro
 |---|---|---|
 | `GET/POST /api/day-close/me` | Member (own day only) | Load; `file_plan`; `close_day { summary, carryovers[] }` |
 | `GET /api/day-close/prompt` | Anyone (silent if not a member) | The Modules-page strip |
-| `GET /api/day-close/team?date=` | Admin or reviewer | Team Today |
+| `GET /api/day-close/team?date=` | Admin or reviewer | Team Today. Also returns `lockedLeave`: pending leave requests locked by work pending (a failed read leaves it empty) |
 | `POST /api/day-close/strikes/[id]` | Reviewer only | Uphold or waive a strike |
 | `GET/POST /api/day-close/members` | Admin or reviewer | Who takes part |
 | `GET /api/day-close/evaluate` | Vercel cron 23:15 IST, `CRON_SECRET` | Writes the night's strikes |
@@ -101,6 +101,19 @@ All tables are closed to the browser; the service-role routes take the actor fro
 **Screens**
 - `src/components/dayClose/DayCard.tsx`: first on `/dashboard` (hidden under View As).
 - `/tasks/team-today`: `TeamTodayScreen`. The sidebar entry is shown to admins, not while previewing.
+  - **Redesigned 2026-11-13 ("attention first", the owner's pick from two previews).** Three tabs:
+
+    | Tab | Shows |
+    |---|---|
+    | Today | **Needs your decision** (open strikes with Uphold / Waive…, which asks for a reason; locked leave, linking to Attendance requests), **The day so far** (planned, closed, tasks done; the office-day time bar 10:00 to 6:30), then **Everyone, worst first**: one table grouped Needs attention / On track / Away, each row opening to that person's tasks, carry-over reasons and end-of-day note |
+    | People & targets | Who takes part (open by default) and the Scoreboard targets |
+    | Ratings | The owner's monthly ratings (the reviewer only) |
+
+  - The grouping and chips come from `src/lib/dayClose/teamView.ts` (pure):
+    - a missing plan is grey "Plan due 10:30 am" until it is due (later for a late arrival), then red;
+    - "Not closed" only after 6:30 pm;
+    - "No punch" only for people linked to the machine, once their plan is due.
+  - Styles are in `teamToday.module.css`. `dayClose.module.css` still serves the Today card.
 - `src/app/modules/DayStrip.tsx`: the strip on `/modules`. It opens Task Management.
 
 **Removed with this change:** `/my-day`, the "My Day" employee nav entry, `/attendance/day-close` and its Attendance tab, `/api/day-close/proof`.
@@ -121,6 +134,7 @@ The leave integration in `requestHandlers.ts` and the 🔒 mark on the leave que
 | Test | Checks |
 |---|---|
 | `src/lib/dayClose/rules.test.ts` | Times, the judgement, the prompt, the task-based day, carry-overs, the summary, leave rules |
+| `src/lib/dayClose/teamView.test.ts` | 13 tests on Team Today's chips and groups: never red before the plan is due, late arrivals, late plans, day off, leave, closing, punches, overdue, strikes, order |
 | `src/lib/dayClose/leaveLock.test.ts` | The real attendance-request handlers and the nightly check, over MemorySupabase |
 | `supabase/tests/day_close_pglite.mjs` | 13 checks on `20270622000000` |
 | `supabase/tests/day_close_in_tasks_pglite.mjs` | 10 checks on `20270624000000`: the drop guard, carry-overs, and proof in every case, including the attachment written after the status in one transaction |
