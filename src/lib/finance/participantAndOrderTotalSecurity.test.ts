@@ -1259,6 +1259,7 @@ describe('the applied migrations are frozen', () => {
       '20270624000000_day_close_in_tasks.sql',
       '20270625000000_scoreboard.sql',
       '20270626000000_scoreboard_vote_rating.sql',
+      '20270627000000_scoreboard_monthly_review.sql',
     ])
   })
 
@@ -1762,6 +1763,7 @@ describe('the applied migrations are frozen', () => {
       '20270624000000_day_close_in_tasks.sql',
       '20270625000000_scoreboard.sql',
       '20270626000000_scoreboard_vote_rating.sql',
+      '20270627000000_scoreboard_monthly_review.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

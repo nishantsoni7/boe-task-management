@@ -97,7 +97,6 @@ Both tables are closed to the browser.
 3. A sales person without `track = sales` for the month is scored on tasks.
 4. The vote counts only in the month's final record. Before that, the score is out of the parts that count; a rating counts as soon as it is given.
 5. Not yet built from the plan:
-   - the monthly review screen (freeze, awards, 1:1 goals);
    - the Star Seller's Factory Focus slot;
    - retiring the old Performance pages and launcher card (a data change, the owner's call).
 
@@ -142,3 +141,48 @@ Both tables are closed to the browser.
 - `vote.test.ts`: windows, including midnight on the 1st, and validation.
 - `score.test.ts`: the vote and rating parts.
 - `scoreboard_vote_rating_pglite.mjs`: 5 checks.
+
+## 9. The monthly review and awards (`20270627000000`, slice 3)
+
+**Screen.** `/tasks/monthly-review`, an admin sidebar entry. `MonthlyReviewScreen` is for the owner alone; `/api/scoreboard/review` checks the reviewer seat.
+
+**What it shows.**
+- **Final standings:** each person's last `scoreboard_daily` row of the month (the frozen record), with the change on last month, votes and sales.
+- **Suggested awards** (`suggestAwards`, `src/lib/scoreboard/review.ts`). Nobody with under 10 counted working days can win; ties go alphabetically.
+
+  | Award | Rule |
+  |---|---|
+  | Star Performer | Highest score |
+  | Star Seller | Highest approved PIs before GST in the month |
+  | Most Improved | Biggest rise on last month's final, ending 55 or more |
+  | Team Player | Most votes |
+  | Never Late | Present and punctual both full |
+
+  The owner confirms or changes each pick and may add a line.
+- **Freeze and announce:** the month must have ended. Awards are written, then `scoreboard_months`. The WhatsApp message comes from `announcement()`, winners only.
+- **Private reviews** (`reviewFlags`): the lowest scorer and anybody below 40. The step follows the Red streak over the last 3 months.
+
+  | Red months in a row | Step |
+  |---|---|
+  | 1 | Private 1:1 and goals |
+  | 2 | Written warning |
+  | 3 | Role and salary review |
+
+  The owner saves 1–3 goals, a check-in date, whether a warning was given, and a private note. **A low score is never announced.**
+- **Everybody's card** (`monthMessages`) shows last month's champions once frozen, and the person's own goals from last month's review.
+
+**Tables** (all closed to the browser):
+
+| Table | Rule |
+|---|---|
+| `scoreboard_months` | Written once; never changed |
+| `scoreboard_awards` | One winner per award except Never Late; nothing added or changed once the month is frozen |
+| `scoreboard_reviews` | 1–3 goals; the check-in falls after the month |
+
+**Tests.**
+- `review.test.ts`: 9 tests.
+- `scoreboard_monthly_review_pglite.mjs`: 5 checks.
+
+**Not built:**
+- The Star Seller's Super Priority slot in Factory Focus. It is an Orders module change: Factory Focus is owner-only in `select_order_for_factory_focus`.
+- Retiring the old Performance pages and launcher card.
