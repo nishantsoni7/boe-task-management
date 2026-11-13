@@ -293,6 +293,24 @@ export function oldOrderClientOf(view: AllocatedAgainstView): string | null {
   return first
 }
 
+/** One active old-order allocation of a payment, for the window that corrects its client. */
+export type LegacyOrderRow = { allocationId: string; orderNo: string; clientName: string }
+
+/**
+ * The ACTIVE old-order allocations of one payment, from the complete read, in
+ * the order they were made. Empty while that read has not answered or when the
+ * payment has none — the Edit window then draws no "Old orders" section.
+ */
+export function legacyOrdersOf(paymentId: string, rows: readonly AllocationTargetRow[] | null): LegacyOrderRow[] {
+  return (rows ?? [])
+    .filter(r => r.payment_request_id === paymentId && r.target_type === 'legacy_order' && r.target_reference)
+    .map(r => ({
+      allocationId: r.allocation_id,
+      orderNo: String(r.target_reference).trim(),
+      clientName: normalizeLegacyClientName(r.target_client_name),
+    }))
+}
+
 /**
  * What the Allocation Status badge may say for this cell. Never a status while
  * the complete read is in flight or after it failed: a confident Zero or Full

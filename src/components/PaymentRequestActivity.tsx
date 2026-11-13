@@ -62,6 +62,8 @@ function markerColor(row: ActivityRow): string {
   if (row.event_type === 'allocation_created')  return colors.green
   if (row.event_type === 'allocation_reversed') return colors.amber
   if (row.event_type === 'allocation_moved')    return colors.blue
+  // An old order's client corrected: a change worth noticing, neither good nor bad.
+  if (row.event_type === 'allocation_legacy_client_corrected') return colors.blue
   if (row.event_type === 'request_deleted')     return colors.red
   // A duplicate request folded into this payment: worth noticing, neither good nor bad.
   if (row.event_type === 'request_merged_in' || row.event_type === 'request_merged') return colors.blue

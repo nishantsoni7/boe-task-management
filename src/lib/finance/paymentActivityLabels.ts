@@ -203,6 +203,15 @@ export function paymentActivityLabel(
       const kind = targetKind(p.target_type)
       return `Payment allocated to ${namedTarget(kind, p.target_id, resolve, p)}`
     }
+    // The client typed with an OLD order was corrected (correct_legacy_order_client,
+    // 20270701000000). Both names come from the server-written payload.
+    case 'allocation_legacy_client_corrected': {
+      const no = str(p.legacy_order_no).trim()
+      const from = str(p.previous_client_name).trim()
+      const to = str(p.legacy_client_name).trim()
+      const head = no ? `Client of old order ${no} corrected` : 'Client of an old order corrected'
+      return from && to ? `${head} from ${from} to ${to}` : to ? `${head} to ${to}` : head
+    }
     case 'allocation_reversed': {
       // The REASON is part of the event: a reversal is a correction somebody
       // made on purpose, and the trail is where a reader checks why. It is the
