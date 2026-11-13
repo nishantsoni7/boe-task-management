@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `2ae6df0a` — Sales: an Admin can be given leads when ticked, and the auto-allot switch is on the Lead Master (migration 20270703000000)
-- Commits on this branch: 1302
+- Commit: `2faac909` — Docs: regenerate the app inventory after rebasing on main
+- Commits on this branch: 1303
 - Pages (`page.tsx`): 192   API routes (`route.ts`): 204
 - Migrations: 448 (first `20260530_create_positions.sql`, latest `20270703000000_sales_admin_can_be_given_leads.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1019   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `2faac909` 2026-11-13 Docs: regenerate the app inventory after rebasing on main
 - `2ae6df0a` 2026-11-13 Sales: an Admin can be given leads when ticked, and the auto-allot switch is on the Lead Master (migration 20270703000000)
 - `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
 - `a4750ab7` 2026-11-13 Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom (migration 20270702000000) (#739)
@@ -38,7 +39,6 @@
 - `1d6b9184` 2026-11-13 Payroll and the My pages read your own row once (#720)
 - `db54a236` 2026-11-13 Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
 - `124292b3` 2026-11-12 Docs: quotation versions merged as 3c4c8605, 20270623000000 applied (#722)
-- `3c4c8605` 2026-11-12 Quotations: versions and compare (migration 20270623000000, renumbered; apply before merge) (#714)
 
 ## Pages by top-level area
 
