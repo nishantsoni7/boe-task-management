@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `22d9f772` — Day Close and the Scoreboard: paused for the team behind one Control Center switch that starts off (migration 20270704000000) (#746)
-- Commits on this branch: 1306
-- Pages (`page.tsx`): 193   API routes (`route.ts`): 204
-- Migrations: 450 (first `20260530_create_positions.sql`, latest `20270704000000_day_close_team_switch.sql`)
+- Commit: `47df49ab` — Docs: stamp #746 (Day Close and Scoreboard team switch) as merged 22d9f772, migration 20270704000000 applied (no SQL)
+- Commits on this branch: 1307
+- Pages (`page.tsx`): 193   API routes (`route.ts`): 205
+- Migrations: 451 (first `20260530_create_positions.sql`, latest `20270705000000_scoreboard_top5_switch.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
-- Test files: 828   Next.js 16.2.6, React 19.2.4
+- Test files: 829   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `47df49ab` 2026-11-13 Docs: stamp #746 (Day Close and Scoreboard team switch) as merged 22d9f772, migration 20270704000000 applied (no SQL)
 - `22d9f772` 2026-11-13 Day Close and the Scoreboard: paused for the team behind one Control Center switch that starts off (migration 20270704000000) (#746)
 - `73b80e2d` 2026-11-13 Docs: stamp #743 (bank statement reversal lines) as merged 48b0cd83, deployed 12:43 IST (no SQL) (#745)
 - `47db4a17` 2026-11-13 Sales: the lead opens as a centered popup with one update box; next-working-day follow-ups; No answer moves New on (migration 20270703000100) (#742)
@@ -38,7 +39,6 @@
 - `70acf170` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
 - `bc56cccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
 - `ce42144b` 2026-11-13 Docs: record the merge of #723 (Operations locked while with Sales) (#725)
-- `dde7f4c3` 2026-11-13 Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
 
 ## Pages by top-level area
 
@@ -129,7 +129,7 @@
 - **restore-user** (1): ` [POST]`
 - **sales** (3): `/alerts/[slot] [GET]`, `/capture/website [POST]`, `/capture/whatsapp [GET,POST]`
 - **samples** (4): `/notifications [DELETE,GET,PATCH]`, `/notifications/[id] [DELETE,PATCH]`, `/notifications/delete-selected [POST]`, `/notify [POST]`
-- **scoreboard** (7): `/me [GET]`, `/ratings [GET,POST]`, `/review [GET,POST]`, `/snapshot [GET]`, `/star-seller [GET,POST]`, `/targets [GET,POST]`, `/vote [GET,POST]`
+- **scoreboard** (8): `/me [GET]`, `/ratings [GET,POST]`, `/review [GET,POST]`, `/snapshot [GET]`, `/star-seller [GET,POST]`, `/targets [GET,POST]`, `/visibility [GET,POST]`, `/vote [GET,POST]`
 - **showroom** (13): `/admin/categories [GET,POST]`, `/admin/categories/[id] [DELETE,PATCH]`, `/admin/products [GET,POST]`, `/admin/products/[product_code] [DELETE,GET,PATCH]`, `/inquiry [GET,POST]`, `/inquiry-items [POST]`, `/inquiry-items/[itemId] [DELETE,PATCH]`, `/inquiry/[id] [GET,PATCH]`, `/products [GET]`, `/products/by-code/[product_code] [GET]`, `/quotation/[id] [GET,POST]`, `/salesperson/[user_id] [GET]`, `/share/[token] [GET]`
 - **task-detail** (1): ` [GET]`
 - **tasks** (3): `/[id]/copy [POST]`, `/[id]/notify-assignment [POST]`, `/people [GET]`
@@ -169,7 +169,7 @@
 - `src/lib/quotations` — 12 source, 7 test
 - `src/lib/salesLeads` — 15 source, 14 test
 - `src/lib/samples` — 1 source, 1 test
-- `src/lib/scoreboard` — 6 source, 3 test
+- `src/lib/scoreboard` — 6 source, 4 test
 - `src/lib/security` — 2 source, 7 test
 - `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 12 source, 12 test
@@ -491,7 +491,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270605000000_boe_credits_open_months_follow_target.sql`
 - `20270606000000_sales_lead_master_date_range.sql`
 - `20270607000000_finance_payment_request_old_order.sql`
 - `20270608000000_finance_merge_duplicate_payment_request.sql`
@@ -521,6 +520,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270703000000_sales_admin_can_be_given_leads.sql`
 - `20270703000100_sales_comments_and_due_dates.sql`
 - `20270704000000_day_close_team_switch.sql`
+- `20270705000000_scoreboard_top5_switch.sql`
 
 ## All SQL function names
 

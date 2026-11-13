@@ -4,6 +4,19 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-13 — Scoreboard: the Top 5 hidden from staff, with the owner's switch (branch `claude/boe1-employee-monitoring-t5ypei`) · migration `20270705000000` (NOT YET APPLIED)
+- **Owner ask.** "Everyone is still able to see the rankings. How do I hide it?" Chosen: only administrators, with a switch.
+- **Built.**
+  - Column `day_close_settings.scoreboard_top5_public` (default false).
+  - `/api/scoreboard/me` sends staff no Top 5 or "Most improved" unless the switch is on. Administrators always get them.
+  - "Who sees the Top 5" on Team Today → People & targets (`/api/scoreboard/visibility`, administrators only).
+- **Safe before the migration.** An unreadable switch reads as hidden, so merging alone already hides the list.
+- **Proof.**
+  - `visibility.test.ts`: 4 tests.
+  - PGlite: 5 checks.
+  - `tsc`, eslint, full `npm test`, `next build`.
+- **Rollback.** Revert the PR, then `alter table public.day_close_settings drop column scoreboard_top5_public`.
+
 ## 2026-11-13 — Day Close and the Scoreboard are paused for the team behind one Control Center switch (PR #746, squash-merged 2026-11-13 as `22d9f772` at 13:43 IST, deployed 13:45 IST) · `20270704000000` → APPLIED 2026-11-13 by the owner (backup of 13:30 IST, verified, used as the rollback copy)
 - **Owner ask.** The team had not been introduced to Day Close or the Scoreboard but already saw the red "Your plan was due at 10:30 am" strip and the Scoreboard card. Hide them "till I introduce them", and (owner's choice) pause the rules behind them too.
 - **Built.** Control Center > Day Close & Scoreboard > Go live: one switch, starting PAUSED. Paused hides the Modules strip, the red / strike / proof banner on the Today card, the Scoreboard card and evening line, the vote card and the Star Seller card, and stops the nightly strikes, the nightly score record, the proof rule and the leave lock. Switching ON asks for a second click and counts from that day.
