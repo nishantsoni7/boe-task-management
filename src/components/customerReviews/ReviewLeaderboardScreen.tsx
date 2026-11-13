@@ -23,6 +23,8 @@ import {
   type Leaderboard,
   type LeaderboardRow,
 } from '@/lib/customerReviews/reviewReport'
+import { RANKINGS_OFF_BODY, RANKINGS_OFF_TITLE } from '@/lib/customerReviews/rankingsSwitch'
+import { useReviewRankings } from '@/hooks/queries/useReviewRankings'
 
 // ── The monthly review leaderboard, for every signed-in employee ─────────────
 //
@@ -70,9 +72,11 @@ export function ReviewLeaderboardScreen() {
     return () => { active = false }
   }, [supabase, router])
 
+  // Switched off by an administrator (Control Center → Reviews → Rankings): nothing is read.
+  const rankings = useReviewRankings()
   const board = useQuery({
     queryKey: [...REVIEW_LEADERBOARD_KEY, month],
-    enabled: ready,
+    enabled: ready && rankings.visible,
     queryFn: async (): Promise<Leaderboard> => {
       const { data, error } = await supabase.rpc('customer_review_leaderboard', { p_month: month })
       if (error) throw new Error('The leaderboard could not be loaded.')
@@ -89,7 +93,24 @@ export function ReviewLeaderboardScreen() {
     router.replace('/login')
   }
 
-  if (!ready) return <LoadingScreen />
+  if (!ready || !rankings.known) return <LoadingScreen />
+
+  if (!rankings.visible) {
+    return (
+      <AttendancePayrollLayout profile={profile} title="Review leaderboard" subtitle="Switched off" onSignOut={handleSignOut}>
+        <div style={{ maxWidth: 760, minWidth: 0 }}>
+          <div role="status" style={{ padding: '26px 18px', borderRadius: 12, border: `1px dashed ${colors.border}`, background: colors.base, textAlign: 'center' }}>
+            <Trophy size={22} strokeWidth={1.6} aria-hidden="true" style={{ color: colors.muted }} />
+            <p style={{ margin: '8px 0 2px', fontSize: 14, fontWeight: 700, color: colors.primary }}>{RANKINGS_OFF_TITLE}</p>
+            <p style={{ margin: 0, fontSize: 12.5, color: colors.secondary }}>{RANKINGS_OFF_BODY}</p>
+            <p style={{ margin: '12px 0 0', fontSize: 12.5 }}>
+              <Link href="/my-credits" style={{ color: colors.secondary, fontWeight: 600 }}>Your BOE Credits</Link>
+            </p>
+          </div>
+        </div>
+      </AttendancePayrollLayout>
+    )
+  }
 
   const data = board.data
   const months = data ? monthChoices(data.current_month, 6) : []

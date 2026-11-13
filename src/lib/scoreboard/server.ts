@@ -307,7 +307,7 @@ export async function saveVisibility(caller: Caller, body: Record<string, unknow
     .update({ scoreboard_top5_public: body.top5Public, updated_by: caller.id, updated_at: now.toISOString() })
     .eq('singleton', true).select('scoreboard_top5_public')
   if (error) {
-    if (/scoreboard_top5_public/.test(error.message)) return fail(409, 'The switch needs migration 20270702000000 applied first.')
+    if (/scoreboard_top5_public/.test(error.message)) return fail(409, 'The switch needs migration 20270703000000 applied first.')
     throw new Error(error.message)
   }
   if ((data ?? []).length === 0) return fail(409, 'Day Close settings are missing.')

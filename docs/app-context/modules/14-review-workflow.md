@@ -11,7 +11,7 @@ Identifiers vs names: route `/customer-reviews`, API `/api/customer-reviews`, mo
   - Candidate = holder of `customer_review_requests.use`: submits/edits/deletes/reapplies their own custom reviews.
   - Reviewer = holder of `customer_review_requests.verify`: sees all submissions, approves/rejects (never their own), gets notifications, sees Reports, History, pending badge.
   - Admin (`users.role = 'admin'`, active, not deleted): reject-after-approval, admin delete of a custom review, permanent purge of internal test cards, and (via `can_manage_boe_credits()`) may change the awarded amount on approval.
-  - Every signed-in employee: reads the current-month leaderboard (`customer_review_leaderboard`), no Review permission needed.
+  - Every signed-in employee: reads the current-month leaderboard (`customer_review_leaderboard`), no Review permission needed, **while an administrator has the ranking switched on** (Control Center > Reviews > Rankings; OFF from the day `20270702000000` ships, see section 4a).
 
 ## 2. Status at commit 852e0493
 
@@ -29,12 +29,13 @@ Pages (`src/app/customer-reviews/`):
 
 | Route | What | Who |
 |---|---|---|
-| `/customer-reviews` | Landing: current-month leaderboard (`leaderboardLanding.ts`), Submit review button, custom-review workspace (`CustomReviewsScreen` -> `CustomReviewSubmissions`) | everyone with module entry |
+| `/customer-reviews` | Landing: Submit review button, custom-review workspace (`CustomReviewsScreen` -> `CustomReviewSubmissions`), then, LAST and only while the ranking is switched on, the current-month leaderboard (`ReviewsLeaderboardPanel`, `leaderboardLanding.ts`). It never leads the page (owner, 2026-11-13) | everyone with module entry |
 | `/customer-reviews/custom` | Custom Submissions queue (`CustomSubmissionsScreen`, `CustomSubmissionList`); reads `?submission=<id>` (notification deep link; needs Suspense) | verify; others bounced to root |
 | `/customer-reviews/history` | read-only list of retired generated reviews (`HistoryScreen`) | verify |
 | `/customer-reviews/reports` | admin dashboard (`ReportsScreen`, `ReviewCharts`) | verify |
 | `/customer-reviews/notifications` | shared `NotificationsView` filtered to `customer_review_*` types | verify (sidebar) |
-| `/my-credits/leaderboard` | `ReviewLeaderboardScreen` | all signed-in |
+| `/my-credits/leaderboard` | `ReviewLeaderboardScreen` (past months); while the ranking is switched off it shows "The review ranking is switched off" and reads nothing | all signed-in |
+| `/admin/control-center/review-rankings` | `ReviewRankingsSetting`: the on/off switch | admin (Control Center gate) |
 | batches, images, progress, mine, reviews, `[id]` | REDIRECT to `/customer-reviews` | n/a |
 
 Module entry guard: `src/app/customer-reviews/layout.tsx` (client). Reads the signed-in person's permission context (since 2026-11-12, #712 merged as `3e26083e`): only `profile.is_active` from the profile, then `use` OR `verify` for `customer_review_requests` from the resolved map; a failed profile read or a failed resolve (an empty map) denies. `useCustomerReviews` takes its first capabilities from the same answer (`cachedModulePermissions`, under 30 s old; focus refreshes ask the database), and the landing page no longer runs the hook a second time. No admin role short-circuit (an admin with both permissions revoked is shut out). The old "purge page for admin without verify" exception is gone with `/[id]`.
@@ -77,6 +78,17 @@ Storage buckets (all private): `customer-review-test-screenshots` (path segment 
 Migration chain: `20261017000000_customer_review_outreach`, `20261021000000_seed_customer_review_test_cards`, `20261023000000_review_workflow_ai_drafts`, `20261025000000_..._remove_legacy_test_data`, `20261026000000_..._batch_approval`, `20261027000000_..._generation_claims`, `20261030000000_..._deletion_and_replacement`, `20261031000000_..._twelve_drafts_editing_and_images`, `20261102000000_boe_credits_review_reward`, `20261107000000_review_types_assignment_and_image_groups` (~2100 lines, 17 functions), `20261108000000_..._variable_batch_size`, `20261114000000_review_generation_word_range_and_body_length`, `20261123000000_review_native_share_records_the_open`, `20261205000000_..._custom_submissions`, `20261206000000_..._custom_reapply_and_monthly_rules`, `20261207000000_..._reapplied_event_attempt_number`, `20261209000000_..._test_card_admin_purge`, `20270223000000_..._custom_edit_delete`, `20270224000000_..._custom_duplicate_detection`, `20270225000000_..._reporting_and_leaderboard`, `20270304000000_..._admin_reject_and_delete`. Also `20261111000000_permission_module_labels_follow_the_registry` (not review-file-named; fixes `permission_modules` labels for orders and this module).
 
 Immutability: 20261206000000 must never be edited or re-applied; 20261207000000 is its permanent forward repair. Never edit any applied migration.
+
+### 4a. The ranking switch (`20270702000000_review_rankings_switch.sql`, 2026-11-13)
+
+Shipped in PR #739 (`a4750ab7`). `20270702000000` APPLIED to production 2026-11-13 by the owner (after a verified backup and a rolled-back rehearsal); the switch row reads `rankings_visible = false`, so the ranking is hidden until an administrator turns it on.
+
+- `public.review_display_settings`: ONE row (`id boolean primary key default true check (id)`), `rankings_visible boolean not null default false`, `updated_by`, `updated_at`. RLS on; `authenticated` can SELECT, no client can INSERT/UPDATE/DELETE; `anon` reads nothing.
+- `set_review_rankings_visible(boolean)`: the only write. SECURITY DEFINER, `search_path = public, pg_temp`, refuses anyone but an active, non-deleted `users.role = 'admin'` (42501), refuses null (22023). Executable by `authenticated`, not `anon`.
+- Starts OFF. The screens read it through `useReviewRankings()` (`src/hooks/queries/useReviewRankings.ts`) and **fail closed**: loading, a failed read, a missing row or a database without the table all mean hidden. Only a stored `true` shows the ranking (`readRankingsVisible`, `src/lib/customerReviews/rankingsSwitch.ts`).
+- Hiding is a DISPLAY rule only. `customer_review_leaderboard()` is unchanged and still answers any signed-in employee who calls it directly (names and eligible-review counts, as before). Locking it in the database would mean changing that function; not done.
+- Surfaces that obey it: the landing panel (draws nothing and does not run its query), `/my-credits/leaderboard` (a message instead of the board), the "Review leaderboard" button and phone-menu item on `/my-credits`. `ReviewLeaderCard.tsx` is not rendered anywhere and is NOT gated: gate it with `useReviewRankings()` before ever using it.
+- The board explains itself ("How is this ranked?", text in `HOW_RANKED`) because the team asked what the parameters are: reward-eligible reviews in the month, ties share a rank, points = credits / 10, not a performance score.
 
 ## 5. Permissions & access
 
@@ -158,6 +170,7 @@ Run: `npx tsx --test src/lib/customerReviews/*.test.ts` (project uses `node:test
 - Candidate remained OPTIONAL at generation (making mandatory is a product decision).
 - Authenticated UI check of the purge control on a real eligible record never done.
 - Stale doc text to fix: `Module Docs/CUSTOMER_REVIEW_OUTREACH.md` "NOT applied" banners; dashboard leader card statement.
+- The ranking is hidden for everyone until an administrator turns it on in Control Center > Reviews > Rankings. Whether the team gets it back, and when, is the owner's call. Tests: `src/lib/customerReviews/rankingsSwitch.test.ts` (switch, screens, order, SQL text); the SQL itself was executed on PGlite (19 checks) before merge.
 
 ## 12. Recheck before changing this module
 

@@ -229,7 +229,7 @@ Both tables are closed to the browser.
 
 The Factory Focus table and its original guard are built from `20270221000000` itself.
 
-## 11. Who sees the Top 5 (`20270702000000`, 2026-11-13)
+## 11. Who sees the Top 5 (`20270703000000`, 2026-11-13)
 
 **Owner ask.** "Everyone is still able to see the rankings. How do I hide it?" Chosen: only administrators, with a switch.
 

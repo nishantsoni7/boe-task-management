@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-13 — Scoreboard: the Top 5 hidden from staff, with the owner's switch (branch `claude/boe1-employee-monitoring-t5ypei`) · migration `20270702000000` (NOT YET APPLIED)
+## 2026-11-13 — Scoreboard: the Top 5 hidden from staff, with the owner's switch (branch `claude/boe1-employee-monitoring-t5ypei`) · migration `20270703000000` (NOT YET APPLIED)
 - **Owner ask.** "Everyone is still able to see the rankings. How do I hide it?" Chosen: only administrators, with a switch.
 - **Built.**
   - Column `day_close_settings.scoreboard_top5_public` (default false).
@@ -16,6 +16,15 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
   - PGlite: 5 checks.
   - `tsc`, eslint, full `npm test`, `next build`.
 - **Rollback.** Revert the PR, then `alter table public.day_close_settings drop column scoreboard_top5_public`.
+## 2026-11-13 — Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom of the page (PR #739, squash-merged 2026-11-13 as `a4750ab7` at 11:14 IST, deployed 11:16 IST) · `20270702000000` → APPLIED 2026-11-13 by the owner, after a verified backup (11:33 IST)
+- **Owner ask.** The team had started seeing the ranking and was asking for its parameters. Hide it for everyone by default, with an option in Control Center; when shown, it must not lead the page and needs a better design.
+- **Built.** Control Center > Reviews > Rankings (one switch). Off: the Reviews landing panel, the "Review leaderboard" button on BOE Credits and the Past months page all hide (the page says the ranking is switched off). On: the board sits LAST on `/customer-reviews`, with rank badges, a bar per person against the leader, and a "How is this ranked?" note.
+- **Fails closed.** The screens treat loading, a failed read, a missing row or a missing table as hidden, so the code can deploy before the migration is applied and the ranking is already hidden.
+- **Database.** One table (`review_display_settings`, one row, starts `false`) and one admin-only function (`set_review_rankings_visible`). `customer_review_leaderboard()` is not touched, so hiding is a display rule only.
+- **Proof.** PGlite rehearsal of the migration (19 checks: applies twice, one row, starts hidden, member/deleted/inactive admin/signed-out refused, no direct client write, re-apply keeps the choice); `rankingsSwitch.test.ts`; `navModel.test.ts`.
+- **Applied.** The owner ran the backup, a rolled-back rehearsal on the live database ("REHEARSAL OK", nothing kept), then the migration with `supabase db query --linked --file` and `supabase migration repair 20270702000000 --status applied`. Read-only check afterwards: one row, `rankings_visible = false`, `anon` cannot execute the function, `authenticated` can execute it and cannot write the table; `migration list` shows `20270702000000` in `remote`. The ranking has NOT been switched on: it stays hidden until an administrator turns it on in Control Center > Reviews > Rankings. Not seen signed in.
+- **Trap found while applying.** The live migration history has no row for `20270624000000`, `20270625000000`, `20270626000000`, `20270627000000` and `20270628000000` (applied by hand on 2026-11-13 without a repair). `supabase db push` would try to run them again, so never use it until they are repaired; use `db query --file` + `migration repair` as above.
+- **Rollback.** Revert the PR, then `drop function public.set_review_rankings_visible(boolean); drop table public.review_display_settings;` (header of the migration).
 
 ## 2026-11-13 — Team Today and Monthly Review redesigned (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
 - **Owner ask.** "Redesign the new pages of Team Today and Monthly review with better UI… analyze the priority of options… give two previews." The owner chose Option A for both, with Option B's score bars and WhatsApp preview in the review.
