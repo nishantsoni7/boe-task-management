@@ -99,6 +99,13 @@ describe('the notifications: one banner per item, tinted by kind', () => {
     assert.match(css, /\.order-ff-pend-item \{\s*display: flex;\s*flex-wrap: wrap;/)
   })
 
+  test('the stacked Pendencies card never wraps into side-by-side columns, so Pending from client cannot slide off a phone', () => {
+    // The 560px strip rule gives .order-ff-items / .order-ff-end flex-basis 100%; in the stacked (column) card that
+    // resolved against the stretched grid height and the card wrapped into 4 columns (found 2026-11-13, order page at 390px).
+    assert.match(css, /\.order-sum-groups > \.order-ff, \.order-docs-row > \.order-ff \{ flex-wrap: nowrap; \}/)
+    assert.match(css, /\.order-sum-groups \.order-ff-items, \.order-sum-groups \.order-ff-end, \.order-docs-row \.order-ff-items, \.order-docs-row \.order-ff-end \{ flex-basis: auto; \}/)
+  })
+
   test('an item with no separate reason uses its label as the title — every existing condition still draws', () => {
     const items = orderAttentionItems({ ...open, hasSalesperson: false })
     assert.deepEqual(items.map(i => i.label), ['Salesperson not set'])
