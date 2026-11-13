@@ -28,7 +28,7 @@ export function resolveControlCenterTab(tabParam: string | null): ControlCenterT
   return TABS.find(t => t === tabParam) ?? 'overview'
 }
 
-export type HubId = 'home' | 'people' | 'access' | 'orders' | 'announcements' | 'for-you' | 'reviews' | 'records'
+export type HubId = 'home' | 'people' | 'access' | 'orders' | 'announcements' | 'for-you' | 'reviews' | 'day-close' | 'records'
 
 export type NavSection = {
   id: string
@@ -168,6 +168,16 @@ export const NAV_HUBS: readonly NavHub[] = [
       description: 'Show or hide the review leaderboard for everyone.',
       keywords: ['leaderboard', 'ranking', 'rankings', 'hide ranking', 'show ranking', 'review ranking', 'top reviewer',
         'points', 'customer reviews', 'who leads'],
+    }],
+  },
+  {
+    id: 'day-close',
+    label: 'Day Close & Scoreboard',
+    sections: [{
+      id: 'day-close-switch', label: 'Go live', href: `${MAIN_PATH}/day-close`,
+      description: 'Switch Day Close and the Scoreboard on for the team, or pause them.',
+      keywords: ['day close', 'scoreboard', 'score', 'strike', 'strikes', 'plan due', 'pause', 'hide', 'go live', 'introduce',
+        'team today', 'close my day', 'proof', 'leave lock', 'red strip'],
     }],
   },
   {

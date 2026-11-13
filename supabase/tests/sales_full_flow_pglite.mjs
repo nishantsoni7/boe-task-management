@@ -90,7 +90,8 @@ for (const f of ['20270515000000_register_sales_marketing_pricing_modules.sql', 
   '20270525000000_sales_lead_board.sql', '20270526000000_sales_notification_types.sql', '20270526000100_sales_go_live.sql',
   '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql', '20270530000000_sales_sheet_import.sql',
   '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql', '20270601000000_sales_board_page.sql', '20270602000000_sales_auto_allot.sql',
-  '20270606000000_sales_lead_master_date_range.sql', '20270609000000_sales_whatsapp_capture.sql', '20270613000000_sales_whatsapp_classify.sql']) {
+  '20270606000000_sales_lead_master_date_range.sql', '20270609000000_sales_whatsapp_capture.sql', '20270613000000_sales_whatsapp_classify.sql',
+  '20270703000000_sales_admin_can_be_given_leads.sql']) {
   await db.exec(mig(f))
 }
 // Off until its own checks at the end, so everything before reads exactly as it did before 20270602000000.
@@ -1215,6 +1216,145 @@ await step('Browser users cannot fire the alert job', () =>
     must(await scalar(`select to_regprocedure('public.sales_leads_page(text, text, text, text, integer, integer)') is null`), 'old function still there')
     must(await scalar(`select not has_function_privilege('anon', 'public.sales_leads_page(text, text, text, text, integer, integer, date, date)', 'EXECUTE')`), 'open to anon')
     must(await scalar(`select has_function_privilege('authenticated', 'public.sales_leads_page(text, text, text, text, integer, integer, date, date)', 'EXECUTE')`), 'authenticated lost it')
+  })
+}
+
+{
+  // ── An Admin can be given leads (20270703000000) ──────────────────────────
+  await step('An Admin is never given a lead by default: not listed, not in Control Center as holding, and an allot is refused', async () => {
+    const ids = (await one(U.ashok, `select public.list_sales_lead_holders()`)).map(p => p.id)
+    must(!ids.includes(U.admin), 'the Admin is listed without a tick')
+    const row = (await one(U.admin, `select public.list_sales_team()`)).find(m => m.id === U.admin)
+    must(row && row.is_admin && row.can_hold === false && row.hold_set === null, JSON.stringify(row))
+    const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, ['+91 97111 00940'])
+    await expectErr(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, /Sales job/, [L.lead.id, U.admin])
+  })
+  await step('Ticked, the Admin is listed, can be allotted a lead, and works it; only Admin can tick', async () => {
+    await expectErr(U.leadmgr, `select public.set_sales_lead_holding($1, true)`, /SALES_FORBIDDEN/, [U.admin])
+    const r = await one(U.admin, `select public.set_sales_lead_holding($1, true)`, [U.admin])
+    must(r.can_hold === true, JSON.stringify(r))
+    const ids = (await one(U.leadmgr, `select public.list_sales_lead_holders()`)).map(p => p.id)
+    must(ids.includes(U.admin), 'the ticked Admin is not listed')
+    const row = (await one(U.admin, `select public.list_sales_team()`)).find(m => m.id === U.admin)
+    must(row.can_hold === true && row.hold_set === true && row.level === 'manual', JSON.stringify(row))
+    const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, ['+91 97111 00941'])
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [L.lead.id, U.admin])
+    must(await scalar(`select assigned_to = $2 from public.sales_leads where id = $1`, [L.lead.id, U.admin]), 'not held by the Admin')
+    const w = await one(U.admin, `select public.sales_lead_no_answer($1)`, [L.lead.id])
+    must(w.status === 'saved', JSON.stringify(w))
+    // A salesperson still reads only their own leads: the Admin holding one does not widen anything.
+    await expectErr(U.mohit, `select public.sales_lead_no_answer($1)`, /SALES_NOT_FOUND|SALES_FORBIDDEN/, [L.lead.id])
+  })
+  await step('Taking the tick off (null) removes the Admin from every list; the lead they hold stays with them', async () => {
+    const held = Number(await scalar(`select count(*) from public.sales_leads where assigned_to = $1`, [U.admin]))
+    const r = await one(U.admin, `select public.set_sales_lead_holding($1, null)`, [U.admin])
+    must(r.can_hold === false, JSON.stringify(r))
+    const ids = (await one(U.leadmgr, `select public.list_sales_lead_holders()`)).map(p => p.id)
+    must(!ids.includes(U.admin), 'still listed after the tick came off')
+    must(Number(await scalar(`select count(*) from public.sales_leads where assigned_to = $1`, [U.admin])) === held && held > 0, 'the lead moved')
+  })
+  await step('Everybody who is not an Admin is decided exactly as before', async () => {
+    const team = await one(U.admin, `select public.list_sales_team()`)
+    const by = id => team.find(m => m.id === id)
+    must(by(U.ashok).can_hold === true && by(U.ashok).hold_set === null, 'salesperson')
+    must(by(U.leadmgr).can_hold === false && by(U.leadmgr).hold_set === null, 'lead manager')
+    must(by(U.nobody).can_hold === false, 'no Sales job')
+  })
+  await step('sales_lead_can_hold is still internal: a browser cannot call it', async () => {
+    must(await scalar(`select not has_function_privilege('authenticated', 'public.sales_lead_can_hold(uuid)', 'EXECUTE')`), 'open to authenticated')
+  })
+}
+
+{
+  // ── Comments, follow-up dates and the next working day (20270703000100) ──
+  // Applied here, so every check above reads exactly as it did before.
+  await db.exec(mig('20270703000100_sales_comments_and_due_dates.sql'))
+  const isSun = d => new Date(`${d}T00:00:00Z`).getUTCDay() === 0
+  const nwd = isSun(day(1)) ? day(2) : day(1)
+  const fresh = async phone => {
+    const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, [phone])
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [L.lead.id, U.ashok])
+    return L.lead.id
+  }
+  const lead = id => db.query(`select * from public.sales_leads where id = $1`, [id]).then(r => r.rows[0])
+  const comment = (uid, id, note, tag = null, due = null) =>
+    one(uid, `select public.add_sales_lead_comment($1, $2, $3, $4::date)`, [id, note, tag, due])
+
+  await step('The next working day skips a Sunday and nothing else', async () => {
+    must(await scalar(`select public.sales_next_working_day('2026-11-13') = '2026-11-14'`), 'Fri to Sat')
+    must(await scalar(`select public.sales_next_working_day('2026-11-14') = '2026-11-16'`), 'Sat to Mon')
+    must(await scalar(`select public.sales_next_working_day('2026-11-15') = '2026-11-16'`), 'Sun to Mon')
+  })
+  await step('A plain comment on a New lead: a note, a contact, Under process, follow-up the next working day', async () => {
+    const id = await fresh('+91 97111 00950')
+    const r = await comment(U.ashok, id, 'Spoke to him, wants 60 chairs')
+    must(r.status === 'saved' && r.streak === 0, JSON.stringify(r))
+    const l = await lead(id)
+    must(l.stage === 'under_process' && l.first_contact_at && l.next_step === 'Follow up', `stage ${l.stage}`)
+    must(await scalar(`select next_due_on::text = $2 from public.sales_leads where id = $1`, [id, nwd]), 'due')
+    const a = (await db.query(`select kind, outcome, note from public.sales_lead_activities where lead_id = $1 and undone_at is null`, [id])).rows
+    must(a.length === 1 && a[0].kind === 'note' && a[0].outcome === 'note' && a[0].note === 'Spoke to him, wants 60 chairs', JSON.stringify(a))
+    must(Number(await scalar(`select count(*) from public.sales_lead_events where lead_id = $1 and kind = 'moved' and detail = 'new>under_process'`, [id])) === 1, 'no move line')
+  })
+  await step('"Client not responding" on a New lead: a try, not a contact; Under process; the streak counts', async () => {
+    const id = await fresh('+91 97111 00951')
+    const r = await comment(U.ashok, id, 'Client not responding.', 'not_responding')
+    must(r.streak === 1, JSON.stringify(r))
+    const l = await lead(id)
+    must(l.stage === 'under_process' && !l.first_contact_at && l.first_attempt_at, `stage ${l.stage}, contact ${l.first_contact_at}`)
+    must(await scalar(`select outcome = 'no_answer' from public.sales_lead_activities where lead_id = $1`, [id]), 'outcome')
+    const r2 = await comment(U.ashok, id, 'Still not responding.', 'not_responding', day(3))
+    must(r2.streak === 2 && await scalar(`select next_due_on::text = $2 from public.sales_leads where id = $1`, [id, day(3)]), 'chosen date')
+  })
+  await step('The No answer button on a New lead moves it to Under process, back on the next working day', async () => {
+    const id = await fresh('+91 97111 00952')
+    const r = await one(U.ashok, `select public.sales_lead_no_answer($1)`, [id])
+    must(r.streak === 1 && r.lead.stage === 'under_process', JSON.stringify(r.lead?.stage))
+    must(await scalar(`select next_due_on::text = $2 from public.sales_leads where id = $1`, [id, nwd]), 'not the next working day')
+  })
+  await step('Undo of the comment puts the lead back in New, with its old date', async () => {
+    const id = await fresh('+91 97111 00953')
+    const before = await scalar(`select next_due_on::text from public.sales_leads where id = $1`, [id])
+    const r = await comment(U.ashok, id, 'Called, he picked up')
+    await one(U.ashok, `select public.undo_sales_lead_activity($1)`, [r.activity_id])
+    const l = await lead(id)
+    must(l.stage === 'new' && !l.first_contact_at, `stage ${l.stage}`)
+    must(await scalar(`select next_due_on::text = $2 from public.sales_leads where id = $1`, [id, before]), 'date not put back')
+  })
+  await step('"Shared quotation" is a logged quotation, so the lead shows one sent', async () => {
+    const id = await fresh('+91 97111 00954')
+    await comment(U.ashok, id, 'Shared the quotation.', 'quotation')
+    must(await scalar(`select kind = 'quotation' and outcome = 'sent' from public.sales_lead_activities where lead_id = $1`, [id]), 'kind')
+    const d = await one(U.ashok, `select public.get_sales_lead($1)`, [id])
+    must(d.quotation_sent === true, JSON.stringify(d.quotation_sent))
+  })
+  await step('A comment is refused when empty, in the past, with an unknown note, on a closed lead, or by somebody else', async () => {
+    const id = await fresh('+91 97111 00955')
+    await expectErr(U.ashok, `select public.add_sales_lead_comment($1, '   ')`, /Write what happened/, [id])
+    await expectErr(U.ashok, `select public.add_sales_lead_comment($1, 'x', null, $2::date)`, /past/, [id, day(-1)])
+    await expectErr(U.ashok, `select public.add_sales_lead_comment($1, 'x', 'meeting')`, /Unknown quick note/, [id])
+    await expectErr(U.mohit, `select public.add_sales_lead_comment($1, 'x')`, /SALES_NOT_FOUND|SALES_FORBIDDEN/, [id])
+    await move(U.ashok, id, 'dead', 'new', 'wrong_number')
+    await expectErr(U.ashok, `select public.add_sales_lead_comment($1, 'x')`, /Reopen/, [id])
+  })
+  await step('The follow-up date changes in any open stage, with a history line; past, closed and strangers are refused', async () => {
+    const id = await fresh('+91 97111 00956')
+    const was = await scalar(`select next_due_on::text from public.sales_leads where id = $1`, [id])
+    const r = await one(U.ashok, `select public.change_sales_lead_due($1, $2::date)`, [id, day(5)])
+    must(r.status === 'saved' && await scalar(`select next_due_on::text = $2 from public.sales_leads where id = $1`, [id, day(5)]), JSON.stringify(r.status))
+    must(await scalar(`select detail = $2 from public.sales_lead_events where lead_id = $1 and kind = 'due_changed'`, [id, `${was}>${day(5)}`]), 'history line')
+    must((await one(U.ashok, `select public.change_sales_lead_due($1, $2::date)`, [id, day(5)])).status === 'unchanged', 'same date')
+    await expectErr(U.ashok, `select public.change_sales_lead_due($1, $2::date)`, /past/, [id, day(-2)])
+    await expectErr(U.mohit, `select public.change_sales_lead_due($1, $2::date)`, /SALES_NOT_FOUND|SALES_FORBIDDEN/, [id, day(4)])
+    await move(U.ashok, id, 'follow_up_later', 'new', null, null, 'Call back', day(20))
+    must((await one(U.ashok, `select public.change_sales_lead_due($1, $2::date)`, [id, day(9)])).status === 'saved', 'follow up later')
+    await move(U.ashok, id, 'dead', 'follow_up_later', 'wrong_number')
+    await expectErr(U.ashok, `select public.change_sales_lead_due($1, $2::date)`, /closed lead/, [id, day(4)])
+  })
+  await step('The two writes are for signed-in people only; the helpers are internal', async () => {
+    must(await scalar(`select not has_function_privilege('anon', 'public.add_sales_lead_comment(uuid, text, text, date)', 'EXECUTE')`), 'anon comment')
+    must(await scalar(`select not has_function_privilege('anon', 'public.change_sales_lead_due(uuid, date)', 'EXECUTE')`), 'anon due')
+    must(await scalar(`select not has_function_privilege('authenticated', 'public.sales_next_working_day(date)', 'EXECUTE')`), 'helper open')
   })
 }
 

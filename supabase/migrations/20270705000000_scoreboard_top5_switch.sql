@@ -1,4 +1,4 @@
--- 20270703000000_scoreboard_top5_switch.sql
+-- 20270705000000_scoreboard_top5_switch.sql
 --
 -- The Scoreboard's Top 5 (owner, 2026-11-13): "everyone is still able to see the rankings, how do I hide it".
 -- Staff see only their own score; administrators still see the Top 5 and "Most improved"; one switch on

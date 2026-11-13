@@ -1,4 +1,4 @@
-// Database regression suite for 20270703000000 (the Scoreboard Top 5 switch). Runs the REAL Day Close
+// Database regression suite for 20270705000000 (the Scoreboard Top 5 switch). Runs the REAL Day Close
 // migration, then this one, in an in-memory Postgres (PGlite). Run:
 //   node supabase/tests/scoreboard_top5_switch_pglite.mjs <dir with @electric-sql/pglite installed>
 // Expected last line: "all N checks passed".
@@ -19,7 +19,7 @@ const db = new PGlite()
 let checks = 0
 const ok = name => { checks++; console.log(`  ok - ${name}`) }
 
-await assert.rejects(() => db.exec(mig('20270703000000_scoreboard_top5_switch.sql')), /DEPENDENCY MISSING/)
+await assert.rejects(() => db.exec(mig('20270705000000_scoreboard_top5_switch.sql')), /DEPENDENCY MISSING/)
 ok('refuses to run before Day Close exists')
 
 await db.exec(`
@@ -34,14 +34,14 @@ await db.exec(`
   create table if not exists storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
 `)
 await db.exec(mig('20270622000000_day_close.sql'))
-await db.exec(mig('20270703000000_scoreboard_top5_switch.sql'))
+await db.exec(mig('20270705000000_scoreboard_top5_switch.sql'))
 
 const row = await db.query('select scoreboard_top5_public from public.day_close_settings where singleton')
 assert.equal(row.rows[0].scoreboard_top5_public, false)
 ok('the Top 5 starts hidden from staff')
 
 await db.query('update public.day_close_settings set scoreboard_top5_public = true where singleton')
-await db.exec(mig('20270703000000_scoreboard_top5_switch.sql'))
+await db.exec(mig('20270705000000_scoreboard_top5_switch.sql'))
 const again = await db.query('select scoreboard_top5_public from public.day_close_settings where singleton')
 assert.equal(again.rows[0].scoreboard_top5_public, true)
 ok('safe to run again: the owner\'s choice is kept')

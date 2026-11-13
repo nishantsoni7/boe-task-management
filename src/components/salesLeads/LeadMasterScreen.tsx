@@ -23,6 +23,7 @@ import { plural } from '@/lib/salesLeads/format'
 import { istToday } from '@/lib/istDate'
 import { createClient } from '@/lib/supabase/client'
 import { ConfirmChange } from './AllotParts'
+import { AutoAllotSwitch } from './AutoAllotSwitch'
 import { DatesChip, DatesFields, PersonChip } from './LeadFilters'
 import { LeadPanel } from './LeadPanel'
 import { LeadTable } from './LeadTable'
@@ -64,8 +65,10 @@ function WhoChip({ pressed, label, count, kind, onClick }: {
 }
 
 export function LeadMasterScreen() {
-  const { ready } = usePermissionContext()
-  const { canCreate, canEdit, canAssign } = useSalesAccess()
+  const { ready, role } = usePermissionContext()
+  const { canCreate, canEdit, canAssign, readOnly } = useSalesAccess()
+  // The switch belongs to Admin: the database refuses everybody else.
+  const isAdmin = role === 'admin' && !readOnly
   const supabase = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
   const router = useRouter()
@@ -282,8 +285,9 @@ export function LeadMasterScreen() {
             <WhoChip kind="all" label="Everyone" count={first?.everyone ?? null} pressed={state.holder === ''} onClick={() => setState({ holder: '' })} />
             <WhoChip kind="none" label="Not allotted" count={first?.unallotted ?? null} pressed={state.holder === 'none'} onClick={() => setState({ holder: 'none' })} />
             <PersonChip people={chips} holder={state.holder} onPick={id => setState({ holder: id })} />
+            {isAdmin && <span style={{ marginLeft: 'auto' }}><AutoAllotSwitch readOnly={readOnly} /></span>}
             {canAssign && state.holder === 'none' && (first?.unallotted ?? 0) > 0 && (
-              <button type="button" className="boe-btn boe-btn-secondary" style={{ marginLeft: 'auto' }} disabled={allotting} onClick={() => void allotAllWaiting()}>
+              <button type="button" className="boe-btn boe-btn-secondary" style={{ marginLeft: isAdmin ? 0 : 'auto' }} disabled={allotting} onClick={() => void allotAllWaiting()}>
                 <UserRoundCheck aria-hidden="true" />{allotting ? 'Allotting...' : 'Allot waiting leads now'}
               </button>
             )}

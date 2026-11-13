@@ -96,6 +96,12 @@ export const holdsByDefault = (role: SalesRole) => role === 'sales'
 export const holdChoice = (role: SalesRole, ticked: boolean): boolean | null =>
   role === 'none' || ticked === holdsByDefault(role) ? null : ticked
 
+/**
+ * An Admin has no Sales job, so the tick is the whole answer: ticked is kept, unticked is "no choice" (an Admin is
+ * never given a lead unless somebody ticks it). Everybody else goes through holdChoice.
+ */
+export const adminHoldChoice = (ticked: boolean): boolean | null => (ticked ? true : null)
+
 export async function saveHolding(s: Supabase, user: string, canHold: boolean | null): Promise<void> {
   const { error } = await s.rpc('set_sales_lead_holding', { p_user: user, p_can_hold: canHold })
   if (error) throw new Error('Whether leads can be given to them could not be saved. Try again.')

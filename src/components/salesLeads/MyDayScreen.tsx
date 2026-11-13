@@ -3,11 +3,10 @@
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Check, MessageCircle, Pencil, Phone, PhoneMissed } from 'lucide-react'
+import { Check, MessageCircle, Pencil, PhoneMissed } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
-import { formatPhone, telHref } from '@/lib/exhibitionLeads/phone'
 import { fetchMyDay, SALES_KEY, type WorkLead } from '@/lib/salesLeads/api'
 import { lastLabel, rankMyDay, whyFirst } from '@/lib/salesLeads/board'
 import { dayLabelLong, plural } from '@/lib/salesLeads/format'
@@ -17,8 +16,9 @@ import { useLeadWork } from './useLeadWork'
 import { WorkPanel } from './WorkPanel'
 import s from './leadBoard.module.css'
 
-// My day: who to call next. One lead at a time, with the reason it is first, and the rest in order behind it. The only
-// big button on the screen is the next call. Saving anything takes the lead off the list and the next one comes up.
+// My day: who to follow up next. One lead at a time, with the reason it is first, and the rest in order behind it. The
+// only big button on the screen is the update for that lead (nobody calls from here). Saving anything takes the lead off
+// the list and the next one comes up.
 
 const HINT_KEY = 'sales-my-day-hint-seen'
 
@@ -101,7 +101,7 @@ export function MyDayScreen() {
 
         {hint.show && first && (
           <div className={s.hint}>
-            <span><b>New here?</b> Start with the lead on top. Call, then say what happened. The next lead comes up on its own.</span>
+            <span><b>New here?</b> Start with the lead on top. Write what happened, and the next lead comes up on its own.</span>
             <button type="button" className="boe-btn boe-btn-secondary" onClick={hint.dismiss}>Got it</button>
           </div>
         )}
@@ -142,7 +142,7 @@ export function MyDayScreen() {
   return (
     <SalesFrame title="My day" subtitle={`${dayLabelLong(today).slice(0, -5)}, most important first`}>
       {body}
-      {open && <WorkPanel leadId={open.id} work={work} focusLog={open.log} closeAfterPost onClose={() => setOpen(null)} />}
+      {open && <WorkPanel leadId={open.id} work={work} nav={{ ids: shown.map(l => l.id), label: 'on My day' }} onNavigate={id => setOpen({ id, log: false })} focusLog={open.log} closeAfterPost onClose={() => setOpen(null)} />}
       {work.node}
     </SalesFrame>
   )
@@ -171,10 +171,9 @@ function Hero({ lead, today, now, canWork, busy, onOpen, onWhatsApp, onNoAnswer 
         </div>
       </div>
       <div className={s.heroActs}>
-        <a className="boe-btn boe-btn-primary" href={telHref(lead.phone)} onClick={e => e.stopPropagation()}><Phone aria-hidden="true" />Call {formatPhone(lead.phone)}</a>
+        <button type="button" className="boe-btn boe-btn-primary" disabled={!canWork} onClick={inner(() => onOpen(true))}><Pencil aria-hidden="true" />Write an update</button>
         <button type="button" className="boe-btn boe-btn-secondary" disabled={!canWork} onClick={inner(onWhatsApp)}><MessageCircle aria-hidden="true" />WhatsApp</button>
         <button type="button" className="boe-btn boe-btn-secondary" disabled={!canWork || busy} onClick={inner(onNoAnswer)}><PhoneMissed aria-hidden="true" />No answer</button>
-        <button type="button" className="boe-btn boe-btn-secondary" disabled={!canWork} onClick={inner(() => onOpen(true))}><Pencil aria-hidden="true" />Log</button>
       </div>
     </section>
   )
@@ -197,7 +196,6 @@ function Row({ lead, today, now, onOpen }: { lead: WorkLead; today: string; now:
       <div className={s.rowWhat}><StepLine step={lead.next_step} /></div>
       <div className={s.rowFlag}><Flag lead={lead} now={now} /></div>
       <div className={s.rowDue}><Due lead={lead} today={today} /></div>
-      <a className={s.rowCall} href={telHref(lead.phone)} aria-label={`Call ${leadTitle(lead)}`} onClick={e => e.stopPropagation()}><Phone aria-hidden="true" /></a>
     </article>
   )
 }

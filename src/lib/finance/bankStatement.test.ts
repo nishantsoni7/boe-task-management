@@ -70,6 +70,30 @@ describe('parseHdfcStatement', () => {
     assert.throws(() => parseHdfcStatement(rows), BankStatementError)
   })
 
+  // HDFC's own shape (statement of 13 Nov 2026): a reversed card debit is a NEGATIVE withdrawal.
+  const REVERSED = [
+    ['03/10/26', 'POS 4038XXXXXX4533 VERCEL INC.', '0000630619451593', '03/10/26', 47.64, '', 952.36],
+    ['03/10/26', 'POS 4038XXXXXX4533 VERCEL INC.', '0000630619451593', '03/10/26', -47.64, '', 1000],
+    ['04/10/26', 'NEFT DR-HSBC0560002-SOMEONE', 'HDFCH01', '04/10/26', 100, '', 900],
+  ]
+
+  test('a reversed debit (negative withdrawal) is money in, and the net summary still agrees', () => {
+    const s = parseHdfcStatement(sheet(REVERSED, [1000, 100, 0, 900]))
+    assert.equal(s.lines.length, 3)
+    assert.deepEqual([s.lines[0].withdrawal, s.lines[0].deposit], [47.64, 0])
+    assert.deepEqual([s.lines[1].withdrawal, s.lines[1].deposit], [0, 47.64])
+  })
+
+  test('a reversal does not hide a wrong balance or a wrong summary', () => {
+    const wrongBalance = REVERSED.map((r, i) => (i === 1 ? [...r.slice(0, 6), 999] : r))
+    assert.throws(() => parseHdfcStatement(sheet(wrongBalance, [1000, 100, 0, 900])), /do not add up/)
+    assert.throws(() => parseHdfcStatement(sheet(REVERSED, [1000, 147.64, 0, 900])), /summary totals/)
+  })
+
+  test('a negative deposit is still refused', () => {
+    assert.throws(() => parseHdfcStatement(sheet([['01/10/26', 'A', 'R1', '01/10/26', '', -5, 495]], [500, 0, 0, 495])), BankStatementError)
+  })
+
   test('amounts may arrive as strings with commas', () => {
     assert.equal(cellAmount('1,23,456.50'), 123456.5)
     assert.equal(cellAmount(''), 0)

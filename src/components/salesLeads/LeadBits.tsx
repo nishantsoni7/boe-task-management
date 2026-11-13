@@ -4,7 +4,7 @@ import { Bell, CalendarDays, Clock, Crown, Flame, Hourglass, Mail, MessageCircle
 import { formatPhone } from '@/lib/exhibitionLeads/phone'
 import type { LeadEvent, WorkLead } from '@/lib/salesLeads/api'
 import { bigQuantity, cameBack, dueOf, flagOf, marketLabel, stageLabel, type Temperature, TEMPERATURES, valueLabel } from '@/lib/salesLeads/board'
-import { editedFields } from '@/lib/salesLeads/format'
+import { dayShort, editedFields } from '@/lib/salesLeads/format'
 import s from './leadBoard.module.css'
 
 // The small pieces of a lead that look the same on My day, the board and the lead panel.
@@ -62,6 +62,11 @@ export function eventLine(e: LeadEvent): React.ReactNode {
     case 'moved': {
       const [from, to] = (e.detail ?? '').split('>')
       return <>Moved from <b>{stageLabel(from)}</b> to <b>{stageLabel(to)}</b></>
+    }
+    // change_sales_lead_due writes "old>new" (old is empty for a lead that had no date).
+    case 'due_changed': {
+      const [from, to] = (e.detail ?? '').split('>')
+      return <>Follow-up {from ? <>moved from <b>{dayShort(from)}</b> to </> : 'set to '}<b>{dayShort(to ?? '')}</b></>
     }
     default: return e.detail ?? e.kind
   }
