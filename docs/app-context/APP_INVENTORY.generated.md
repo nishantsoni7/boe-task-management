@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a4750ab7` — Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom (migration 20270702000000) (#739)
-- Commits on this branch: 1300
+- Commit: `724ad7f1` — Sales: the lead opens as a centered popup with one update box; follow-ups on the next working day; No answer moves a New lead on (migration 20270703000100)
+- Commits on this branch: 1302
 - Pages (`page.tsx`): 192   API routes (`route.ts`): 204
 - Migrations: 448 (first `20260530_create_positions.sql`, latest `20270703000100_sales_comments_and_due_dates.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `724ad7f1` 2026-11-13 Sales: the lead opens as a centered popup with one update box; follow-ups on the next working day; No answer moves a New lead on (migration 20270703000100)
+- `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
 - `a4750ab7` 2026-11-13 Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom (migration 20270702000000) (#739)
 - `7ba4b29b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps) (no SQL) (#738)
 - `2e4ade2e` 2026-11-13 Docs: stamp #735 (Confirmed Payments Order / PI column, names only) as merged bab48de7 (#737)
@@ -37,8 +39,6 @@
 - `db54a236` 2026-11-13 Day Close moves into Task Management; proof on every finished task (migration 20270624000000, applied) (#721)
 - `124292b3` 2026-11-12 Docs: quotation versions merged as 3c4c8605, 20270623000000 applied (#722)
 - `3c4c8605` 2026-11-12 Quotations: versions and compare (migration 20270623000000, renumbered; apply before merge) (#714)
-- `210e60f8` 2026-11-12 Docs: record the merge of #716 (Returned to Sales status) (#717)
-- `8eb156e4` 2026-11-12 Orders: a PI sent back to the salesperson shows the status "Returned to Sales" (#716)
 
 ## Pages by top-level area
 
