@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-12 — Orders: Operations cannot decide a PI while it is "Returned to Sales" (branch `feat/lock-operations-while-with-sales`, PR pending) · no migration
+## 2026-11-12 — Orders: Operations cannot decide a PI while it is "Returned to Sales" (PR #723, squash-merged 2026-11-13 00:41 IST as `dde7f4c3`, deployed 00:43 IST) · no migration
 - **Owner ask.** "Lock Operations buttons while it is with Sales." Plan approved ("Yes, build it"): screen lock only.
 - **Changed.** While `salesReturnStage` says the PI is with Sales, the operations reviewer's Accept for production, Cannot accept and Flag lines are not drawn on the Order banner; in their place: "With Sales for changes. Operations reviews the revised PI once it is approved." The decision comes back by itself when the return ends (the revised PI approved as a new version, or the owner answers Operations). Re-align / recover on a held, accepted Order are untouched (an accepted PI is never "with Sales").
 - **Not changed.** `decide_order_operations_handoff()` still accepts a decision from the assigned reviewer (no other screen offers one); the Operations dashboard still lists the PI as awaiting review.
