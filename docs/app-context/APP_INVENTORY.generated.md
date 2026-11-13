@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1e6fd600` — Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
-- Commits on this branch: 84
+- Commit: `62318971` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 87
 - Pages (`page.tsx`): 191   API routes (`route.ts`): 204
 - Migrations: 446 (first `20260530_create_positions.sql`, latest `20270701000000_finance_confirmed_payments_order_search.sql`)
 - Tables ever created: 249 (dropped at some point: 8)   SQL functions: 1018   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `62318971` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `be99bd7b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps)
+- `2e4ade2e` 2026-11-13 Docs: stamp #735 (Confirmed Payments Order / PI column, names only) as merged bab48de7 (#737)
 - `1e6fd600` 2026-11-13 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
 - `a8a6ec45` 2026-11-13 Scoreboard: fix the "Star" band pill; record the Day Close/Scoreboard migrations' real apply date (no SQL) (#736)
 - `dd35c763` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
@@ -36,9 +39,6 @@
 - `001472f1` 2026-11-13 BOE Scoreboard, slice 3: the monthly review and awards (migration 20270627000000, applied) (#727)
 - `70acf170` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
 - `bc56cccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
-- `ce42144b` 2026-11-13 Docs: record the merge of #723 (Operations locked while with Sales) (#725)
-- `dde7f4c3` 2026-11-13 Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
-- `1d6b9184` 2026-11-13 Payroll and the My pages read your own row once (#720)
 
 ## Pages by top-level area
 
