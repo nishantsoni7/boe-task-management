@@ -12,6 +12,15 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Rollback.** In the migration's header: the earlier definitions back, drop the three new functions, restore the CHECK lists after removing `note` / `due_changed` rows.
 
 
+
+## 2026-11-13 — Bank Statements: a reversed card debit no longer stops the upload (branch `fix/bank-statement-reversal-lines`, PR not yet opened) · no SQL
+- **Owner report.** Uploading the HDFC PRI statement to 13 Nov failed with "Line 2 (2026-11-03) must have exactly one of withdrawal or deposit."
+- **Cause.** HDFC wrote a Vercel reversal as a NEGATIVE withdrawal (`-47.64`, balance up). The parser refused any negative amount.
+- **Fix.** `parseHdfcStatement` stores a negative withdrawal as a deposit; the summary totals check subtracts reversals from both sides (the bank counts them inside Debits). Balance chain and database rules unchanged. A negative deposit is still refused.
+- **Proof.** `bankStatement.test.ts` (4 new cases); the real 14-line statement now parses with opening 186,970.15, closing 167,181.80, debits 19,788.35, credits 0. Not uploaded signed in.
+- **Known gap.** The reversal lands in Money in as Not matched; mark it "Refund / reversal" by hand.
+- **Rollback.** Revert the PR; nothing in the database changed.
+
 ## 2026-11-13 — Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom of the page (PR #739, squash-merged 2026-11-13 as `a4750ab7` at 11:14 IST, deployed 11:16 IST) · `20270702000000` → APPLIED 2026-11-13 by the owner, after a verified backup (11:33 IST)
 - **Owner ask.** The team had started seeing the ranking and was asking for its parameters. Hide it for everyone by default, with an option in Control Center; when shown, it must not lead the page and needs a better design.
 - **Built.** Control Center > Reviews > Rankings (one switch). Off: the Reviews landing panel, the "Review leaderboard" button on BOE Credits and the Past months page all hide (the page says the ranking is switched off). On: the board sits LAST on `/customer-reviews`, with rank badges, a bar per person against the leader, and a "How is this ranked?" note.
