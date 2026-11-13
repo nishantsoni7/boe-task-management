@@ -5,40 +5,40 @@
 
 ## Snapshot
 
-- Commit: `577e2634` — Merge origin/main into feat/day-close-pause
-- Commits on this branch: 1306
-- Pages (`page.tsx`): 193   API routes (`route.ts`): 204
-- Migrations: 450 (first `20260530_create_positions.sql`, latest `20270704000000_day_close_team_switch.sql`)
+- Commit: `21d49e71` — Merge main; renumber the Top 5 switch migration to 20270703000000
+- Commits on this branch: 94
+- Pages (`page.tsx`): 193   API routes (`route.ts`): 205
+- Migrations: 451 (first `20260530_create_positions.sql`, latest `20270705000000_scoreboard_top5_switch.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
-- Test files: 828   Next.js 16.2.6, React 19.2.4
+- Test files: 829   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `577e2634` 2026-11-13 Merge origin/main into feat/day-close-pause
-- `f11ff8aa` 2026-11-13 Day Close and the Scoreboard: paused for the team behind one Control Center switch that starts off
-- `47db4a17` 2026-11-13 Sales: the lead opens as a centered popup with one update box; next-working-day follow-ups; No answer moves New on (migration 20270703000100) (#742)
-- `0e188497` 2026-11-13 Sales: an Admin can be given leads when ticked; auto-allot switch on the Lead Master (migration 20270703000000) (#741)
-- `48b0cd83` 2026-11-13 Bank Statements: a reversed card debit no longer stops the upload (no SQL) (#743)
+- `21d49e71` 2026-11-13 Merge main; renumber the Top 5 switch migration to 20270703000000
+- `00176e44` 2026-11-13 Scoreboard: hide the Top 5 from staff, with the owner's switch
 - `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
 - `a4750ab7` 2026-11-13 Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom (migration 20270702000000) (#739)
+- `2d5efe6e` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `7ba4b29b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps) (no SQL) (#738)
+- `67232773` 2026-11-13 Docs: regenerate the app inventory after merging main
+- `62318971` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `be99bd7b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps)
 - `2e4ade2e` 2026-11-13 Docs: stamp #735 (Confirmed Payments Order / PI column, names only) as merged bab48de7 (#737)
+- `1e6fd600` 2026-11-13 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
 - `a8a6ec45` 2026-11-13 Scoreboard: fix the "Star" band pill; record the Day Close/Scoreboard migrations' real apply date (no SQL) (#736)
+- `dd35c763` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `bab48de7` 2026-11-13 Confirmed Payments: the Order / PI column shows names only, no amounts (#735)
+- `e184fc52` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `0f492986` 2026-11-13 Docs: record that the Day Close and Scoreboard migrations reached production on 2026-11-13
 - `2c214103` 2026-11-13 Docs: stamp #730 (Quotations links back) as merged dafb5eb0 (#734)
 - `dafb5eb0` 2026-11-13 Quotations: links back to quotation requests and PI drafts, and revisions to win (#730)
 - `a3e764a8` 2026-11-13 Docs: stamp #719 (Confirmed Payments search, order total, old-order client) as merged ebfc7df8 (#732)
 - `51b3fff9` 2026-11-13 Docs: record the merge of #729 ("With Sales" on the Operations queue) (#731)
+- `a441fa9d` 2026-11-13 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- `c6f1117d` 2026-11-13 Scoreboard: stop the Star Seller card's style leaking into the Star band pill
 - `a08aeb57` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL) (#733)
-- `ebfc7df8` 2026-11-13 Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (migration 20270701000000, applied 13 Nov) (#719)
-- `d31d54fd` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
-- `561c4588` 2026-11-13 Orders: "With Sales" on the Operations queue (#729)
-- `d937dae8` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
-- `001472f1` 2026-11-13 BOE Scoreboard, slice 3: the monthly review and awards (migration 20270627000000, applied) (#727)
-- `70acf170` 2026-11-13 BOE Scoreboard, slice 2: the team vote and the owner's rating (migration 20270626000000, applied) (#726)
-- `bc56cccc` 2026-11-13 BOE Scoreboard, slice 1: the score, the nightly record, the morning card and the evening line (migration 20270625000000, applied) (#724)
-- `ce42144b` 2026-11-13 Docs: record the merge of #723 (Operations locked while with Sales) (#725)
-- `dde7f4c3` 2026-11-13 Orders: Operations cannot decide a PI while it is "Returned to Sales" (#723)
+- `6474047c` 2026-11-13 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `4a9cb0d3` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL)
 
 ## Pages by top-level area
 
@@ -129,7 +129,7 @@
 - **restore-user** (1): ` [POST]`
 - **sales** (3): `/alerts/[slot] [GET]`, `/capture/website [POST]`, `/capture/whatsapp [GET,POST]`
 - **samples** (4): `/notifications [DELETE,GET,PATCH]`, `/notifications/[id] [DELETE,PATCH]`, `/notifications/delete-selected [POST]`, `/notify [POST]`
-- **scoreboard** (7): `/me [GET]`, `/ratings [GET,POST]`, `/review [GET,POST]`, `/snapshot [GET]`, `/star-seller [GET,POST]`, `/targets [GET,POST]`, `/vote [GET,POST]`
+- **scoreboard** (8): `/me [GET]`, `/ratings [GET,POST]`, `/review [GET,POST]`, `/snapshot [GET]`, `/star-seller [GET,POST]`, `/targets [GET,POST]`, `/visibility [GET,POST]`, `/vote [GET,POST]`
 - **showroom** (13): `/admin/categories [GET,POST]`, `/admin/categories/[id] [DELETE,PATCH]`, `/admin/products [GET,POST]`, `/admin/products/[product_code] [DELETE,GET,PATCH]`, `/inquiry [GET,POST]`, `/inquiry-items [POST]`, `/inquiry-items/[itemId] [DELETE,PATCH]`, `/inquiry/[id] [GET,PATCH]`, `/products [GET]`, `/products/by-code/[product_code] [GET]`, `/quotation/[id] [GET,POST]`, `/salesperson/[user_id] [GET]`, `/share/[token] [GET]`
 - **task-detail** (1): ` [GET]`
 - **tasks** (3): `/[id]/copy [POST]`, `/[id]/notify-assignment [POST]`, `/people [GET]`
@@ -169,7 +169,7 @@
 - `src/lib/quotations` — 12 source, 7 test
 - `src/lib/salesLeads` — 15 source, 14 test
 - `src/lib/samples` — 1 source, 1 test
-- `src/lib/scoreboard` — 6 source, 3 test
+- `src/lib/scoreboard` — 6 source, 4 test
 - `src/lib/security` — 2 source, 7 test
 - `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 12 source, 12 test
@@ -491,7 +491,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270605000000_boe_credits_open_months_follow_target.sql`
 - `20270606000000_sales_lead_master_date_range.sql`
 - `20270607000000_finance_payment_request_old_order.sql`
 - `20270608000000_finance_merge_duplicate_payment_request.sql`
@@ -521,6 +520,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270703000000_sales_admin_can_be_given_leads.sql`
 - `20270703000100_sales_comments_and_due_dates.sql`
 - `20270704000000_day_close_team_switch.sql`
+- `20270705000000_scoreboard_top5_switch.sql`
 
 ## All SQL function names
 

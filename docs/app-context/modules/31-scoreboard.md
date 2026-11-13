@@ -18,7 +18,7 @@ The owner's ask (2026-11-12): the Performance module "is of no use… except num
 
 | Who | What they see / do |
 |---|---|
-| A scored person: active, `performance_tracking_enabled`, not an administrator | Their score out of 100, band, change since yesterday, the month's line, where the points come from, the one fastest way up, and the **top 5 (names only; nobody sees a rank)** |
+| A scored person: active, `performance_tracking_enabled`, not an administrator | Their score out of 100, band, change since yesterday, the month's line, where the points come from, the one fastest way up. The **top 5 (names only; nobody sees a rank)** and "Most improved" only when the owner's switch is on (§11; off by default) |
 | Administrators | Everything above, and **Scoreboard targets** on Team Today (`/tasks/team-today`): track and targets per person, per month |
 
 ## 2. Owner decisions (2026-11-12)
@@ -230,3 +230,28 @@ Both tables are closed to the browser.
 - the migration is safe to run again.
 
 The Factory Focus table and its original guard are built from `20270221000000` itself.
+
+## 11. Who sees the Top 5 (`20270705000000`, 2026-11-13)
+
+**Owner ask.** "Everyone is still able to see the rankings. How do I hide it?" Chosen: only administrators, with a switch.
+
+| | Staff | Administrators |
+|---|---|---|
+| Switch off (the default) | Their own score only | Top 5 and "Most improved" |
+| Switch on | Top 5 and "Most improved" | Top 5 and "Most improved" |
+
+**Data and server.**
+- Column `day_close_settings.scoreboard_top5_public`, boolean, default false. The table is still closed to the browser.
+- `/api/scoreboard/me` sends staff an empty `top5` and no `mostImproved` unless the switch is on.
+- `top5IsPublic` reads any failure, including the migration not yet applied, as **hidden**.
+
+**The switch.** "Who sees the Top 5" on Team Today → People & targets (`Top5Switch.tsx`), through `GET/POST /api/scoreboard/visibility`, administrators only.
+
+**Not affected.** Announced monthly champions are still shown to everyone, and the vote is unchanged.
+
+**Tests.**
+- `src/lib/scoreboard/visibility.test.ts`: 4 tests.
+- `supabase/tests/scoreboard_top5_switch_pglite.mjs`: 5 checks.
+
+**Rollback.** In the migration header.
+
