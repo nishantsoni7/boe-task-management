@@ -12738,6 +12738,17 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-pi-details-pop dd { grid-column: 2; margin: 0; text-align: left; font-weight: 600; color: #303536; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .order-pi-details-pop > div { row-gap: 0; }
 
+/* PHONE. The popover hangs off the Details button (left: 0, 270px), which on a 375px column ran past the
+   card and was clipped; it now spans the Main PI row instead, so its pointer goes. The Pending from client
+   buttons (12px text, no padding) become 44px tap targets. Wider screens are untouched. */
+@media (max-width: 560px) {
+  .order-pi-head { position: relative; }
+  .order-pi-details { position: static; }
+  .order-pi-details-pop { left: 0; right: 0; min-width: 0; }
+  .order-pi-details-pop::before { display: none; }
+  .order-ff-pend-btn { min-height: 44px; padding: 0 8px; }
+}
+
 /* ── Payment lists: a headline, then one card per payment ── */
 .order-pay-sum { background: #F7F5F1; border: 1px solid #E4DED7; border-radius: 12px; padding: 12px 14px; }
 .order-pay-sum-row { display: flex; justify-content: space-between; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; }

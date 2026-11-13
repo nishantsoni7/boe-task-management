@@ -186,6 +186,18 @@ describe('the Main PI details popover (owner, 2026-10-26)', () => {
     assert.ok(source.includes('order-pi-pop-ic'))
     assert.ok(source.includes('{popoverWhen(uploadedAt)}'))
   })
+
+  test('on a phone the popover spans the Main PI row instead of hanging off the Details button, and the pending buttons are 44px', () => {
+    // At 390px the 270px popover started at the button (x=121) and ran 16px past the column (found 2026-11-13).
+    const lf = css.replace(/\r/g, '')
+    const phone = lf.slice(lf.indexOf('/* PHONE. The popover hangs off the Details button'))
+    const block = phone.slice(phone.indexOf('@media (max-width: 560px) {'), phone.indexOf('\n}\n', phone.indexOf('@media (max-width: 560px) {')))
+    assert.match(block, /\.order-pi-head \{ position: relative; \}/)
+    assert.match(block, /\.order-pi-details \{ position: static; \}/)
+    assert.match(block, /\.order-pi-details-pop \{ left: 0; right: 0; min-width: 0; \}/)
+    assert.match(block, /\.order-pi-details-pop::before \{ display: none; \}/)
+    assert.match(block, /\.order-ff-pend-btn \{ min-height: 44px; padding: 0 8px; \}/)
+  })
 })
 
 describe('the Activity list shows only the main activity (owner, 2026-10-27)', () => {
