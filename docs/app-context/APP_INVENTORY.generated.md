@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `d9c6d851` — Merge main (#744, Scoreboard Top 5 switch 20270705000000) into this branch: keep both
-- Commits on this branch: 1311
+- Commit: `f52c34bb` — Merge main (#747 docs stamp) into this branch; inventory regenerated
+- Commits on this branch: 1313
 - Pages (`page.tsx`): 193   API routes (`route.ts`): 205
 - Migrations: 452 (first `20260530_create_positions.sql`, latest `20270710000000_sales_visit_meeting_stage.sql`)
 - Tables ever created: 250 (dropped at some point: 8)   SQL functions: 1022   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `f52c34bb` 2026-11-13 Merge main (#747 docs stamp) into this branch; inventory regenerated
+- `814f1e7f` 2026-11-13 Docs: stamp #746 (Day Close and Scoreboard team switch) as merged 22d9f772, migration 20270704000000 applied (no SQL) (#747)
 - `d9c6d851` 2026-11-13 Merge main (#744, Scoreboard Top 5 switch 20270705000000) into this branch: keep both
 - `d543c175` 2026-11-13 Renumber the Visit / Meeting migration to 20270710000000
 - `082cf744` 2026-11-13 Merge main (#746, Day Close switch 20270704000000) into this branch: keep both
@@ -37,8 +39,6 @@
 - `a08aeb57` 2026-11-13 Retire the Performance module: the Scoreboard replaces it (no SQL) (#733)
 - `ebfc7df8` 2026-11-13 Confirmed Payments: search by any order number, the order's confirmed total, correct an old order's client (migration 20270701000000, applied 13 Nov) (#719)
 - `d31d54fd` 2026-11-13 BOE Scoreboard, slice 4: the Star Seller's Super Priority in Factory Focus (migration 20270628000000, applied) (#728)
-- `561c4588` 2026-11-13 Orders: "With Sales" on the Operations queue (#729)
-- `d937dae8` 2026-11-13 Confirmed Payments: Order / PI column, status as a small icon, old-order client shown (no SQL) (#718)
 
 ## Pages by top-level area
 

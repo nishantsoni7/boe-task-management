@@ -11,7 +11,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Proof.** `sales_full_flow_pglite.mjs` 136/136 (5 new: the move takes the untouched Important Bulk lead and leaves a person-moved one, another status and a Dead one; Visit / Meeting in from Under Process and from New with nothing asked; out to Potential still asks; the board's new column; unknown stages refused); `board.test.ts` (stage order, `nameWithoutPhone`); render test updated (Call, WhatsApp, No answer on a phone card).
 - **Rollback.** In the migration's header (the move is found by its `moved` lines by nobody at the migration's time).
 
-## 2026-11-13 — Scoreboard: the Top 5 hidden from staff, with the owner's switch (branch `claude/boe1-employee-monitoring-t5ypei`) · migration `20270705000000` (NOT YET APPLIED)
+## 2026-11-13 — Scoreboard: the Top 5 hidden from staff, with the owner's switch (branch `claude/boe1-employee-monitoring-t5ypei`) · PR #744 merged `dcbe0c9` · migration `20270705000000` APPLIED 2026-11-13 (owner ran it; verified by an `information_schema` query: true)
 - **Owner ask.** "Everyone is still able to see the rankings. How do I hide it?" Chosen: only administrators, with a switch.
 - **Built.**
   - Column `day_close_settings.scoreboard_top5_public` (default false).
