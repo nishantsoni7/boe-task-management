@@ -44,6 +44,7 @@ const blankLine = (area_key: string | null, tax_rate: number): QuoteLine => ({
 })
 const LOCKED: QuotationStatus[] = ['confirmed', 'lost', 'archived']
 const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const EMAIL_PROBLEM = 'Check the email address.'
 type Msg = { tone: 'ok' | 'bad' | 'warn'; text: string; undo?: () => void } | null
 
 export default function BuilderScreen() {
@@ -114,12 +115,13 @@ export default function BuilderScreen() {
   const save = useCallback(async () => {
     if (!base || !h || saving) return
     const problem = !h.client_name.trim() ? 'Enter the client’s name.'
-      : h.client_email.trim() && !EMAIL_OK.test(h.client_email.trim()) ? 'Check the email address.'
+      : h.client_email.trim() && !EMAIL_OK.test(h.client_email.trim()) ? EMAIL_PROBLEM
       : areas.some(a => !a.name.trim() || !(a.multiplier >= 1)) ? 'Every room type needs a name and at least 1 room.'
       : lines.some(l => !l.name.trim()) ? 'Every product needs a name.'
       : lines.some(l => !(Number(l.qty) > 0)) ? 'Every product needs a quantity above 0.'
       : null
-    if (problem) { setMsg({ tone: 'bad', text: problem }); return }
+    // The email box lives in the advanced section: open it, or the message points at a box nobody can see.
+    if (problem) { if (problem === EMAIL_PROBLEM) setAdvOpen(true); setMsg({ tone: 'bad', text: problem }); return }
     setSaving(true)
     try {
       const r = await saveQuotation(supabase, base.id, saveDoc({ ...h, lead_time_weeks: effectiveLeadTime(h, areas) }, areas, lines, base.updated_at))
@@ -190,6 +192,19 @@ export default function BuilderScreen() {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1800) }
     catch { (document.getElementById('q-link') as HTMLInputElement | null)?.select() }
   }
+  // The plain Excel of the saved quotation for the client: lines, quantity, price and totals, no pictures (never the internal PI sheet).
+  const downloadExcel = async () => {
+    if (busy) return
+    setBusy(true)
+    try {
+      const [{ clientSheet, clientSheetFileName }, { downloadWorkbook }] = await Promise.all([import('@/lib/quotations/clientSheet'), import('@/lib/finance/expenseReimbursementExport')])
+      await downloadWorkbook(clientSheetFileName(base.quote_no), [clientSheet({
+        quoteNo: base.quote_no, clientName: h.client_name, projectName: h.project_name, issuedOn: formatDateIN(issued), validUntilOn: formatDateIN(validUntil(issued, h.valid_days)),
+        unit: h.dimension_unit, transportNote: h.transport_note, notes: h.notes,
+      }, h, areas, lines)])
+    } catch (e) { setMsg({ tone: 'bad', text: errorText(e) }) }
+    finally { setBusy(false) }
+  }
   const upload = async (key: string, file: File | undefined) => {
     if (!file || !profile) return
     setMsg({ tone: 'warn', text: 'Uploading the picture…' })
@@ -258,7 +273,7 @@ export default function BuilderScreen() {
         </div>
       )}
 
-      <section className={s.card} aria-labelledby="q-client">
+      <section className={`${s.card} ${s.statusCard}`} aria-label="Status">
         <div className={s.statusBar}>
           <span className={s.lab}>Status</span>
           <StatusPill status={base.status} />
@@ -281,13 +296,15 @@ export default function BuilderScreen() {
           )}
           {base.may_edit && dirty && !LOCKED.includes(base.status) && <span className={`${s.small} ${s.muted}`} style={{ flexBasis: '100%' }}>Save your changes before confirming.</span>}
         </div>
+      </section>
+
+      <div className={s.topRow}>
+      <section className={s.card} aria-labelledby="q-client">
         <div className={s.cardHead}><h2 id="q-client">Client</h2><span className={`${s.small} ${s.muted}`}>Basic details. The rest is under Advanced client details.</span></div>
         <div className={s.cardBody}>
           <div className={s.clientGrid}>
             <label className={s.field}><span>Client name *</span><input id="q-client-name" className={s.input} value={h.client_name} onChange={e => updH('client_name', e.target.value)} disabled={!editable} /></label>
-            <label className={s.field}><span>Contact person</span><input id="q-contact" className={s.input} value={h.contact_name} onChange={e => updH('contact_name', e.target.value)} disabled={!editable} /></label>
             <label className={s.field}><span>Contact phone</span><input id="q-phone" className={s.input} value={h.contact_phone} inputMode="tel" onChange={e => updH('contact_phone', e.target.value)} disabled={!editable} /></label>
-            <label className={s.field}><span>Email ID</span><input id="q-email" className={s.input} type="email" inputMode="email" autoComplete="off" maxLength={160} placeholder="name@company.com" value={h.client_email} onChange={e => updH('client_email', e.target.value)} disabled={!editable} /></label>
             <label className={s.field}><span>Delivery state</span><input id="q-state" className={s.input} list="q-states" value={h.supply_state} disabled={!editable}
               onChange={e => { const v = e.target.value; setH(p => (p ? { ...p, supply_state: v, gst_mode: SUPPLY_STATES.some(x => x.toLowerCase() === v.trim().toLowerCase()) ? gstModeForState(v) : p.gst_mode } : p)); touch() }} />
               <datalist id="q-states">{SUPPLY_STATES.map(x => <option key={x} value={x} />)}</datalist>
@@ -296,20 +313,47 @@ export default function BuilderScreen() {
           {h.supply_state && gstModeForState(h.supply_state) !== h.gst_mode && <div className={`${s.notice} ${s.noticeWarn}`} style={{ marginTop: 12 }}>Delivery to {h.supply_state} is normally {gstModeForState(h.supply_state) === 'igst' ? 'IGST' : 'CGST + SGST'}: BOE is registered in Rajasthan. Check before sending (GST type is under Advanced client details).</div>}
           <LeadTime h={h} areas={areas} editable={editable} onChange={patch => { setH(p => (p ? { ...p, ...patch } : p)); touch() }} />
           <button type="button" className={s.advBtn} aria-expanded={advOpen} aria-controls="q-advanced" onClick={() => setAdvOpen(o => !o)}>
-            {advOpen ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />} Advanced client details <span className={s.hintTxt}>Company, client type, project, their role, GST, GSTIN</span>
+            {advOpen ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />} Advanced client details <span className={s.hintTxt}>Company, client type, project, contact person, their role, email, GST, GSTIN</span>
           </button>
           {advOpen && (
             <div id="q-advanced" className={s.advBody}>
               <label className={s.field}><span>Company name</span><input id="q-company" className={s.input} maxLength={160} value={h.company_name} onChange={e => updH('company_name', e.target.value)} disabled={!editable} /></label>
               <label className={s.field}><span>Client type</span><select id="q-type" className={s.input} value={h.client_type} onChange={e => updH('client_type', e.target.value)} disabled={!editable}><option value="">Choose…</option>{CLIENT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
               <label className={s.field}><span>Project</span><input id="q-project" className={s.input} value={h.project_name} onChange={e => updH('project_name', e.target.value)} disabled={!editable} /></label>
+              <label className={s.field}><span>Contact person</span><input id="q-contact" className={s.input} value={h.contact_name} onChange={e => updH('contact_name', e.target.value)} disabled={!editable} /></label>
               <label className={s.field}><span>Their role</span><input id="q-role" className={s.input} value={h.contact_role} onChange={e => updH('contact_role', e.target.value)} disabled={!editable} /></label>
+              <label className={s.field}><span>Email ID</span><input id="q-email" className={s.input} type="email" inputMode="email" autoComplete="off" maxLength={160} placeholder="name@company.com" value={h.client_email} onChange={e => updH('client_email', e.target.value)} disabled={!editable} /></label>
               <label className={s.field}><span>GST type</span><select id="q-gst" className={s.input} value={h.gst_mode} onChange={e => updH('gst_mode', e.target.value as Header['gst_mode'])} disabled={!editable}><option value="igst">IGST (outside Rajasthan)</option><option value="cgst_sgst">CGST + SGST (within Rajasthan)</option></select></label>
               <label className={s.field}><span>GSTIN</span><input id="q-gstin" className={s.input} maxLength={20} autoComplete="off" value={h.client_gstin} onChange={e => updH('client_gstin', e.target.value.toUpperCase())} disabled={!editable} /></label>
             </div>
           )}
         </div>
       </section>
+
+      <section className={s.card} aria-labelledby="q-share">
+        <div className={s.cardHead}><h2 id="q-share">Share with the client</h2></div>
+        <div className={`${s.cardBody} ${s.shareBody}`}>
+          <div className={s.shareDl}>
+            {dirty
+              ? <button type="button" className={s.btn} disabled><Printer size={15} aria-hidden /> Download PDF</button>
+              : <Link className={s.btn} href={`/quotations/${id}/print`} target="_blank"><Printer size={15} aria-hidden /> Download PDF</Link>}
+            <button type="button" className={s.btn} onClick={downloadExcel} disabled={dirty || busy || lines.length === 0}><FileSpreadsheet size={15} aria-hidden /> Download Excel</button>
+          </div>
+          {!base.share_token && <div className={s.small}>One link shows the quotation with pictures and a Save as PDF button. No login needed. Turning it on marks a draft as Sent.</div>}
+          {base.share_token && (
+            <>
+              <div className={s.linkBox}><input id="q-link" className={s.input} value={link} readOnly aria-label="Client link" onFocus={e => e.currentTarget.select()} /><button className={s.iconBtn} onClick={copy} aria-label="Copy link">{copied ? <Check size={16} /> : <Copy size={16} />}</button></div>
+              <a className={`${s.btn} ${s.btnPrimary}`} href={whatsappLink(h.contact_phone, waText)} target="_blank" rel="noreferrer"><MessageCircle size={15} aria-hidden /> Open WhatsApp with the message</a>
+              <div className={`${s.small} ${s.muted}`}>WhatsApp opens with the text ready{h.contact_phone ? ` for ${h.contact_phone}` : ''}; you press send. The message carries the link, which always shows the latest saved version and has its own Save as PDF button.</div>
+            </>
+          )}
+          {base.may_edit && (dirty ? <div className={`${s.small} ${s.dirty}`}>Save first: the PDF, the Excel and the link all use the saved quotation.</div>
+            : base.share_token
+              ? <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => act(() => shareQuotation(supabase, id, false), 'The client link is off.')}>Turn the link off</button>
+              : <button className={`${s.btn} ${s.btnPrimary}`} disabled={busy || lines.length === 0 || base.status === 'archived' || !!base.price?.blocked} title={base.price?.blocked ? 'Waiting for price approval' : undefined} onClick={() => act(() => shareQuotation(supabase, id, true), 'The client link is on.')}><Link2 size={15} aria-hidden /> Create client link</button>)}
+        </div>
+      </section>
+      </div>
 
       <section className={s.card} aria-labelledby="q-products">
         <div className={s.cardHead}>
@@ -392,13 +436,12 @@ export default function BuilderScreen() {
         </div>
       </section>
 
+      <div className={s.pair}>
       <section className={s.card} aria-labelledby="q-terms">
         <div className={s.cardHead}><h2 id="q-terms">Terms and notes</h2></div>
         <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>
-          <div className={s.grid2}>
             <label className={s.field}><span>Notes the client sees</span><textarea id="q-notes" className={s.input} rows={3} value={h.notes} placeholder={DEFAULT_CLIENT_NOTE} onChange={e => updH('notes', e.target.value)} disabled={!editable} /></label>
             <label className={s.field}><span>Internal notes (never shown to the client)</span><textarea id="q-internal" className={s.input} rows={3} value={h.internal_notes} onChange={e => updH('internal_notes', e.target.value)} disabled={!editable} /></label>
-          </div>
           {editable && !h.notes && <div><button className={`${s.btn} ${s.btnSm}`} onClick={() => updH('notes', DEFAULT_CLIENT_NOTE)}>Use the standard note</button></div>}
           <details className={s.stdTerms}>
             <summary><ChevronRight size={16} className={s.chev} aria-hidden /> Standard terms printed with every quotation <span className={s.hintTxt}>{EXPECTATIONS.length} expectations and {TERMS.length} terms, word for word. Read only.</span></summary>
@@ -412,26 +455,19 @@ export default function BuilderScreen() {
           </details>
         </div>
       </section>
+      <section className={s.card}>
+        <div className={s.cardHead}><h2>History</h2></div>
+        <div className={s.cardBody} style={{ paddingTop: 4, paddingBottom: 4 }}>
+          {base.events.length === 0 && <div className={s.small}>Nothing yet.</div>}
+          {base.events.slice(0, 12).map((e, i) => (
+            <div key={i} className={s.event}><span className={s.muted} style={{ minWidth: 92 }}>{formatDateIN(istDateOf(e.at))}</span><span>{describe(e)}{e.actor_name ? ` · ${e.actor_name}` : ''}</span></div>
+          ))}
+        </div>
+      </section>
+      </div>
 
       <div className={s.bottom}>
         <div className={s.bcol}>
-          <section className={s.card}>
-            <div className={s.cardHead}><h2>Share with the client</h2></div>
-            <div className={s.cardBody} style={{ display: 'grid', gap: 10 }}>
-              {!base.share_token && <div className={s.small}>One link shows the quotation with pictures and a Save as PDF button. No login needed. Turning it on marks a draft as Sent.</div>}
-              {base.share_token && (
-                <>
-                  <div className={s.linkBox}><input id="q-link" className={s.input} value={link} readOnly aria-label="Client link" onFocus={e => e.currentTarget.select()} /><button className={s.iconBtn} onClick={copy} aria-label="Copy link">{copied ? <Check size={16} /> : <Copy size={16} />}</button></div>
-                  <a className={`${s.btn} ${s.btnPrimary}`} href={whatsappLink(h.contact_phone, waText)} target="_blank" rel="noreferrer"><MessageCircle size={15} aria-hidden /> Open WhatsApp with the message</a>
-                  <div className={`${s.small} ${s.muted}`}>WhatsApp opens with the text ready{h.contact_phone ? ` for ${h.contact_phone}` : ''}; you press send. The link always shows the latest saved version.</div>
-                </>
-              )}
-              {base.may_edit && (dirty ? <div className={`${s.small} ${s.dirty}`}>Save first, then share.</div>
-                : base.share_token
-                  ? <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => act(() => shareQuotation(supabase, id, false), 'The client link is off.')}>Turn the link off</button>
-                  : <button className={`${s.btn} ${s.btnPrimary}`} disabled={busy || lines.length === 0 || base.status === 'archived' || !!base.price?.blocked} title={base.price?.blocked ? 'Waiting for price approval' : undefined} onClick={() => act(() => shareQuotation(supabase, id, true), 'The client link is on.')}><Link2 size={15} aria-hidden /> Create client link</button>)}
-            </div>
-          </section>
           {profile && <RequestCard id={REQUEST_CARD_ID} supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
           <VersionsCard supabase={supabase} base={base} dirty={dirty} busy={busy} onSent={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />
         </div>
@@ -440,15 +476,6 @@ export default function BuilderScreen() {
             onAsk={() => act(() => requestPriceApproval(supabase, id), 'Sent to the pricing desk.')}
             onDecide={(approve, note) => act(() => decidePrice(supabase, id, approve, note), approve ? 'Prices approved.' : 'Sent back to the salesperson.')} />
           <PiCard base={base} dirty={dirty} busy={busy} stage={piStage} onConfirm={confirmToPi} onDownload={downloadPi} />
-          <section className={s.card}>
-            <div className={s.cardHead}><h2>History</h2></div>
-            <div className={s.cardBody} style={{ paddingTop: 4, paddingBottom: 4 }}>
-              {base.events.length === 0 && <div className={s.small}>Nothing yet.</div>}
-              {base.events.slice(0, 12).map((e, i) => (
-                <div key={i} className={s.event}><span className={s.muted} style={{ minWidth: 92 }}>{formatDateIN(istDateOf(e.at))}</span><span>{describe(e)}{e.actor_name ? ` · ${e.actor_name}` : ''}</span></div>
-              ))}
-            </div>
-          </section>
         </div>
       </div>
 

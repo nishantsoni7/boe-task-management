@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `6a76e4bb` — Merge origin/main into fix/quotation-document-layout
-- Commits on this branch: 1347
+- Commit: `d4b28cda` — Merge origin/main into fix/quotation-document-layout (second time)
+- Commits on this branch: 1349
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 210
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
-- Test files: 852   Next.js 16.2.6, React 19.2.4
+- Test files: 854   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `d4b28cda` 2026-11-14 Merge origin/main into fix/quotation-document-layout (second time)
+- `59a8d9e2` 2026-11-14 Docs: stamp page speed part 6 (#785) as merged e4ba4410, deployed 21:39 IST, verified live (no SQL) (#786)
 - `6a76e4bb` 2026-11-14 Merge origin/main into fix/quotation-document-layout
 - `dfa4297b` 2026-11-14 Quotations: three layout fixes in the premium document, found by rendering a sample of the live PDF (no SQL)
 - `e4ba4410` 2026-11-14 Page speed, part 6: the Modules launcher asks for less (no SQL) (#785)
@@ -37,8 +39,6 @@
 - `d7e49cdc` 2026-11-14 Orders: mark a Confirmed Order whose PI change is waiting for somebody (no SQL) (#767)
 - `ef6682f3` 2026-11-14 Docs: stamp the compact lead popup (#765) as merged 45a2182f, deployed 10:25 IST (no SQL) (#766)
 - `45a2182f` 2026-11-14 Sales: lead popup left side made compact so all of it shows with no scroll bar (#765)
-- `ae4040b9` 2026-11-14 Docs: stamp Price learning piece 1 (#760) as merged b273b165, deployed 06:33 IST, 20270715000000 applied (no SQL) (#763)
-- `b273b165` 2026-11-14 Quotations: Price learning, piece 1 (old PIs fed to the price model 25 at a time, blind-test score, feedback doorway) (#760)
 
 ## Pages by top-level area
 
@@ -167,7 +167,7 @@
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/pricing` — 9 source, 5 test
 - `src/lib/push` — 3 source, 1 test
-- `src/lib/quotations` — 15 source, 9 test
+- `src/lib/quotations` — 16 source, 10 test
 - `src/lib/salesLeads` — 15 source, 15 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test

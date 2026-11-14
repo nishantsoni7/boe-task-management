@@ -81,8 +81,9 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .needs li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .statusBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px; background: var(--boe-surface-quiet); border-bottom: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel) var(--boe-radius-panel) 0 0; }
 .statusBar .lab { font: 600 12px var(--boe-font-body); color: var(--boe-text-muted); margin-right: 2px; }
+.statusCard .statusBar { border-bottom: 0; border-radius: var(--boe-radius-panel); }
 .lostBox { flex-basis: 100%; display: grid; gap: 6px; max-width: 520px; }
-.clientGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px 14px; }
+.clientGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; }
 .taxChip { font-size: 12px; color: var(--boe-text-muted); }
 /* Project type, seats and lead time (20270717000000) */
 .leadRow { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 180px) minmax(0, 1fr); gap: 12px 14px; align-items: start; margin-top: 14px; }
@@ -107,13 +108,13 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .mult { width: 74px; text-align: center; }
 
 /* one product: picture, the boxes, and the numbers */
-.pl { display: grid; grid-template-columns: 148px minmax(0, 1fr) 250px; gap: 20px; padding: 18px 16px; border-top: 1px solid var(--boe-surface-sunken); align-items: start; }
+.pl { display: grid; grid-template-columns: 180px minmax(0, 1fr) 250px; gap: 20px; padding: 18px 16px; border-top: 1px solid var(--boe-surface-sunken); align-items: start; }
 .pl:nth-of-type(even) { background: var(--boe-surface-quiet); }
 .plPic { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.plPicBtn { position: relative; width: 128px; height: 108px; padding: 0; border: 1px solid var(--boe-border); border-radius: 10px; background: #fff; cursor: zoom-in; overflow: hidden; display: block; }
-.plPicImg { width: 100%; height: 100%; object-fit: cover; display: block; }
+.plPicBtn { position: relative; width: 160px; height: 135px; padding: 0; border: 1px solid var(--boe-border); border-radius: 10px; background: #fff; cursor: zoom-in; overflow: hidden; display: block; }
+.plPicImg { width: 100%; height: 100%; object-fit: contain; display: block; }
 .plZoom { position: absolute; right: 6px; bottom: 6px; width: 26px; height: 26px; border-radius: 7px; background: rgba(48,53,54,.78); color: #fff; display: flex; align-items: center; justify-content: center; }
-.plPicEmpty { width: 128px; height: 108px; border-radius: 10px; border: 1px dashed var(--boe-border-strong); background: var(--boe-surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--boe-text-muted); font: 12.5px var(--boe-font-body); cursor: pointer; }
+.plPicEmpty { width: 160px; height: 135px; border-radius: 10px; border: 1px dashed var(--boe-border-strong); background: var(--boe-surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--boe-text-muted); font: 12.5px var(--boe-font-body); cursor: pointer; }
 .plPicEmpty:disabled { cursor: default; }
 .plLinks { display: grid; gap: 1px; justify-items: start; }
 .plLinks .two { display: flex; gap: 12px; }
@@ -157,6 +158,12 @@ textarea.t3 { min-height: 86px; }
 .stdTerms dt { font-weight: 600; } .stdTerms dd { margin: 0; color: var(--boe-text-strong); }
 .bottom { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .bcol { display: grid; gap: 16px; min-width: 0; align-content: start; }
+.topRow { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.shareDl { display: flex; flex-wrap: wrap; gap: 8px; }
+/* one fixed column: a button label that does not wrap would otherwise widen the whole card past its edge on a 320 px phone */
+.shareBody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.shareBody .btn { white-space: normal; text-align: center; }
 .linkBox { display: flex; gap: 6px; }
 .event { display: flex; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--boe-surface-sunken); font-size: 12.5px; }
 .event:last-child { border-bottom: 0; }
@@ -177,24 +184,29 @@ textarea.t3 { min-height: 86px; }
 .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; padding: 0 6px; border: 1px solid var(--boe-border-strong); border-bottom-width: 2px; border-radius: 6px; background: var(--boe-surface); font: 600 11.5px var(--boe-font-body); color: var(--boe-text-strong); }
 .viewerThumbs { display: flex; gap: 8px; max-width: 100%; overflow-x: auto; padding: 2px; }
 .viewerThumb { width: 44px; height: 36px; padding: 0; border-radius: 6px; border: 2px solid transparent; background: #fff; opacity: .65; cursor: pointer; overflow: hidden; flex-shrink: 0; }
-.viewerThumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.viewerThumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .viewerThumb[aria-current='true'] { border-color: var(--boe-brand); opacity: 1; }
 
 /* narrower screens: the product's numbers go under its boxes */
 @media (max-width: 1199px) {
   .clientGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .pl { grid-template-columns: 148px minmax(0, 1fr); }
+  .pl { grid-template-columns: 180px minmax(0, 1fr); }
   .plRight { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; align-items: start; }
 }
 @media (max-width: 900px) {
   .totGrid { grid-template-columns: minmax(0, 1fr); }
 }
+/* under 1024px the Client and Share cards, and Terms and History, sit one under the other */
+@media (max-width: 1023px) {
+  .topRow, .pair { grid-template-columns: minmax(0, 1fr); }
+}
 /* phone */
 @media (max-width: 767px) {
   .grid2, .grid3, .grid4, .clientGrid, .advBody, .bottom, .leadRow, .leadRowNoSeats, .leadEdit { grid-template-columns: minmax(0, 1fr); }
+  .shareDl .btn { flex: 1 1 140px; justify-content: center; }
   .pl { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 12px; }
   .plPic { flex-direction: row; align-items: center; gap: 14px; }
-  .plPicBtn, .plPicEmpty { width: 112px; height: 94px; flex-shrink: 0; }
+  .plPicBtn, .plPicEmpty { width: 140px; height: 118px; flex-shrink: 0; }
   .plLinks { gap: 6px; } .plLinks .two { flex-direction: column; gap: 6px; }
   .c5, .c7, .c12 { grid-column: span 12; } .c3, .c4 { grid-column: span 6; }
   .plRight { grid-template-columns: minmax(0, 1fr); }
