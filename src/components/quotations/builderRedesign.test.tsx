@@ -106,7 +106,7 @@ describe('the quotation reads and saves the new fields', () => {
     assert.equal(d.lines[0].client_note, '', 'a new product has no note for the client')
   })
   test('an Import puts the client file\'s own note into Remarks, joined to its specification, not into a note for the client', () => {
-    const row = (over: Partial<ImportRow>): ImportRow => ({ id: 'r', include: true, room: '', rooms: null, name: 'Bed', size: '', material: '', finish: '', spec: 'Teak', qty: 1, qtyMode: 'fixed', note: 'Pair per room', picture: null, doubtful: [], source: 'Row 2', ...over })
+    const row = (over: Partial<ImportRow>): ImportRow => ({ id: 'r', include: true, room: '', rooms: null, name: 'Bed', size: '', material: '', finish: '', spec: 'Teak', qty: 1, qtyMode: 'fixed', price: null, note: 'Pair per room', picture: null, doubtful: [], source: 'Row 2', ...over })
     const [a, b, c] = addToQuote([row({}), row({ spec: '', note: 'Only a note' }), row({ spec: 'Only spec', note: '' })], []).lines
     assert.deepEqual([a.spec, a.client_note], ['Teak\nPair per room', ''])
     assert.deepEqual([b.spec, b.client_note], ['Only a note', ''])

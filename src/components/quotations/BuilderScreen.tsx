@@ -452,7 +452,7 @@ export default function BuilderScreen() {
 
       {importing && profile && (
         <ImportDialog supabase={supabase} userId={profile.id} areas={areas} onClose={() => setImporting(false)}
-          onAdd={(nextAreas, added) => { setAreas(nextAreas); setLines(p => [...p.filter(l => l.name.trim() || l.unit_price !== null), ...added.map(l => ({ ...l, tax_rate: startRate }))]); touch(); setImporting(false); setMsg({ tone: 'ok', text: `Added ${added.length} products. Check them, add prices, then Save.` }) }} />
+          onAdd={(nextAreas, added) => { setAreas(nextAreas); setLines(p => [...p.filter(l => l.name.trim() || l.unit_price !== null), ...added.map(l => ({ ...l, tax_rate: startRate }))]); touch(); setImporting(false); const priced = added.filter(l => l.unit_price !== null).length; setMsg({ tone: 'ok', text: `Added ${added.length} products${priced ? `, ${priced} with their price` : ''}. Check them${priced < added.length ? ', add the missing prices' : ''}, then Save.` }) }} />
       )}
       {studioFor && profile && (() => {
         const line = lines.find(x => x.key === studioFor)

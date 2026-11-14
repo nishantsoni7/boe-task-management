@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b62262a2` — Docs: stamp the lead popup, board cards and speed work (#761) as merged 8b64c4d3, deployed 06:04 IST, 20270716000000 applied, with the live measurements (no SQL) (#764)
-- Commits on this branch: 1329
+- Commit: `c705b65e` — Docs: SEO Rankings heading merged as 93db82c5 (#769) (#771)
+- Commits on this branch: 1331
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 209
 - Migrations: 457 (first `20260530_create_positions.sql`, latest `20270716000000_sales_board_summary.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1032   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `c705b65e` 2026-11-14 Docs: SEO Rankings heading merged as 93db82c5 (#769) (#771)
+- `93db82c5` 2026-11-14 SEO Rankings: heading no longer says "20" money keywords (#769)
 - `b62262a2` 2026-11-14 Docs: stamp the lead popup, board cards and speed work (#761) as merged 8b64c4d3, deployed 06:04 IST, 20270716000000 applied, with the live measurements (no SQL) (#764)
 - `f0f4c23c` 2026-11-14 Sales: a page frame instead of the full-screen spinner while the permission check runs (no SQL) (#768)
 - `d7e49cdc` 2026-11-14 Orders: mark a Confirmed Order whose PI change is waiting for somebody (no SQL) (#767)
@@ -37,8 +39,6 @@
 - `54e54084` 2026-11-13 Docs: record 20270705000000 (Top 5 switch) as applied (no SQL) (#748)
 - `814f1e7f` 2026-11-13 Docs: stamp #746 (Day Close and Scoreboard team switch) as merged 22d9f772, migration 20270704000000 applied (no SQL) (#747)
 - `dcbe0c9f` 2026-11-13 Scoreboard: hide the Top 5 from staff, with the owner's switch (migration 20270705000000) (#744)
-- `22d9f772` 2026-11-13 Day Close and the Scoreboard: paused for the team behind one Control Center switch that starts off (migration 20270704000000) (#746)
-- `73b80e2d` 2026-11-13 Docs: stamp #743 (bank statement reversal lines) as merged 48b0cd83, deployed 12:43 IST (no SQL) (#745)
 
 ## Pages by top-level area
 

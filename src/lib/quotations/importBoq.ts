@@ -1,11 +1,13 @@
-// Phase 3, Import: a client's BOQ (Excel, CSV, pasted text, or a PDF / photo read on the server) becomes review rows,
-// and the rows the salesperson keeps become room types and products on the quotation. Prices are never imported:
-// they stay blank for the salesperson (owner, 2026-11-12). Nothing here is trusted blindly: every row is shown for
-// review first, and anything the reader was unsure of is marked.
+// Phase 3, Import: a client's BOQ or a BOE PI (Excel, CSV, pasted text, or a PDF / photo read on the server) becomes
+// review rows, and the rows the salesperson keeps become room types and products on the quotation. A client's BOQ
+// brings no prices (owner, 2026-11-12); a PI does (owner, 2026-11-14): a price column written the way BOE's PIs write
+// it ("Cost per piece", "Original price", "Unit price") is read; one headed only "Price" or "Rate" is read and shaded
+// for a person to check (a client's BOQ can head its own rate that way). A PDF or photo never brings prices. Nothing here is trusted blindly: every row is shown for review first, and anything the reader was
+// unsure of is marked.
 
 import type { QuoteArea, QuoteLine } from './math'
 
-export type ImportField = 'name' | 'size' | 'qty' | 'room' | 'material'
+export type ImportField = 'name' | 'size' | 'qty' | 'room' | 'material' | 'price'
 
 export type ImportRow = {
   id: string
@@ -21,6 +23,8 @@ export type ImportRow = {
   spec: string
   qty: number | null
   qtyMode: 'per_unit' | 'fixed'
+  /** Rupees per piece before GST, whole rupees; null when the file has no price column or the cell is empty. */
+  price: number | null
   note: string
   /** Index into the pictures read from the same file (Excel only). */
   picture: number | null
@@ -30,7 +34,7 @@ export type ImportRow = {
 }
 
 export type Cell = string | number | null | undefined
-type Col = 'sno' | 'name' | 'size' | 'qty' | 'room' | 'material' | 'finish' | 'spec' | 'note' | 'picture'
+type Col = 'sno' | 'name' | 'size' | 'qty' | 'room' | 'material' | 'finish' | 'spec' | 'custom' | 'note' | 'picture' | 'price' | 'priceWeak'
 
 // Header words, compared after lower-casing and dropping everything but letters and digits ("Qty (Nos.)" → "qtynos").
 // A heading matches a key when it STARTS with one of its words. Order matters: the first key that matches wins.
@@ -44,8 +48,16 @@ const HEADERS: [Col, string[]][] = [
   ['finish', ['finish', 'colour', 'color', 'polish']],
   ['material', ['material']],
   ['spec', ['specification', 'spec', 'details']],
+  ['custom', ['customi']], // a PI's "Customization(s)"; not "Customer"
+  ['price', ['costperpiece', 'costpiece', 'originalprice', 'unitprice', 'priceperpiece', 'cost']], // the way BOE's PI template heads its price per piece
+  // Older and hand-made PIs head it plainly. A client's BOQ can too, with the client's own rate, so a price read from
+  // one of these is shaded for a person to check, and a template heading in the same sheet always wins.
+  ['priceWeak', ['price', 'rate', 'netrate', 'boeprice', 'pricing', 'amountperpc']],
   ['name', ['description', 'item', 'particular', 'product', 'furniture', 'name', 'article']],
 ]
+
+// A second price column on a PI is an alternative offer, not the price; a dollar price is not a rupee price.
+const NOT_THE_PRICE = /additional|sample|suggest|alternative|recommend|fabric|packing|production|extra|option|usd|dollar/
 
 const norm = (v: Cell) => String(v ?? '').toLowerCase().replace(/[^a-z0-9]/g, '')
 const text = (v: Cell) => String(v ?? '').replace(/\s+/g, ' ').trim()
@@ -59,6 +71,7 @@ function headerCols(row: Cell[]): Partial<Record<Col, number>> {
     if (!n || n.length > 40) return
     for (const [col, words] of HEADERS) {
       if (found[col] !== undefined) continue
+      if ((col === 'price' || col === 'priceWeak') && NOT_THE_PRICE.test(n)) continue
       if (words.some(w => n.startsWith(w))) { found[col] = i; return }
     }
   })
@@ -71,6 +84,13 @@ export function qtyOf(v: Cell): number | null {
   const m = /(\d+(?:\.\d+)?)/.exec(String(v ?? '').replace(/,/g, ''))
   const n = m ? Number(m[1]) : NaN
   return Number.isFinite(n) && n > 0 ? n : null
+}
+
+/** "24,000", "₹ 24000", 24000.4 → 24000 (whole rupees, as the quotation keeps them); null for empty, zero, text or a figure the database refuses. */
+export function priceOf(v: Cell): number | null {
+  const n = qtyOf(v)
+  const r = n === null ? NaN : Math.round(n)
+  return Number.isFinite(r) && r > 0 && r <= 100_000_000_000 ? r : null
 }
 
 /** "BOHO ROOM (56 ROOMS)", "Corporate room x 18", "Suite – 4 keys" → 56, 18, 4. */
@@ -138,13 +158,18 @@ export function readGrid(grid: Cell[][], pictureRows: ReadonlyMap<number, number
     const thisRoom = roomCell || room
     const thisRooms = roomCell ? roomsOf(roomCell) : rooms
     const placed = placeQty(qty, thisRooms, 'unknown')
+    const priceCol = cols.price ?? cols.priceWeak
+    const price = priceCol === undefined ? null : priceOf(row[priceCol])
     const doubtful: ImportField[] = []
     if (placed.unsure) doubtful.push('qty')
     if (!size) doubtful.push('size')
+    // The file has a price column: this product has none, or the column was only headed "Price" / "Rate".
+    if (priceCol !== undefined && (price === null || cols.price === undefined)) doubtful.push('price')
     rows.push({
       id: rid(), include: true, room: roomCell ? roomTitle(roomCell) || roomCell : thisRoom, rooms: thisRooms,
-      name, size, material: text(at('material')), finish: text(at('finish')), spec: text(at('spec')),
-      qty: placed.qty, qtyMode: placed.qtyMode, note: text(at('note')),
+      name, size, material: text(at('material')), finish: text(at('finish')),
+      spec: [text(at('spec')), text(at('custom'))].filter(Boolean).join('\n'),
+      qty: placed.qty, qtyMode: placed.qtyMode, price, note: text(at('note')),
       picture: pictureRows.get(r + 1) ?? null, doubtful, source: `Row ${r + 1}`,
     })
   }
@@ -185,7 +210,7 @@ export function parseBoqReading(raw: unknown): ImportRow[] {
     const page = Number(r.page)
     return [{
       id: rid(), include: true, room, rooms, name, size: str(r.size, 120), material: str(r.material, 200), finish: str(r.finish, 120),
-      spec: str(r.spec, 500), qty: placed.qty, qtyMode: placed.qtyMode, note: str(r.note, 300), picture: null, doubtful,
+      spec: str(r.spec, 500), qty: placed.qty, qtyMode: placed.qtyMode, price: null, note: str(r.note, 300), picture: null, doubtful,
       source: Number.isInteger(page) && page > 0 ? `Page ${page}` : '',
     }]
   })
@@ -197,7 +222,8 @@ const newKey = () => `n${Math.random().toString(36).slice(2, 10)}`
 
 /**
  * The kept rows appended to the quotation: a room type per distinct room (an existing one with the same name is
- * reused), and a product per row with no price. `picturePaths[i]` is the stored path of row i's picture, if any.
+ * reused), and a product per row with the row's price (none when the file gave none). `picturePaths` maps a row's id
+ * to the stored path of its picture, if any.
  */
 export function addToQuote(rows: readonly ImportRow[], areas: readonly QuoteArea[], picturePaths: ReadonlyMap<string, string> = new Map()):
   { areas: QuoteArea[]; lines: QuoteLine[] } {
@@ -216,7 +242,7 @@ export function addToQuote(rows: readonly ImportRow[], areas: readonly QuoteArea
       // Cut to the database's limits (20270614000000), so an imported line can always be saved.
       key: newKey(), area_key, name: r.name.trim().slice(0, 160), size_text: r.size.slice(0, 80), spec: [r.spec.trim(), r.note.trim()].filter(Boolean).join('\n').slice(0, 1600),
       material: r.material.slice(0, 120), finish: r.finish.slice(0, 120), category: '',
-      qty_mode: area_key ? r.qtyMode : 'fixed', qty: Math.min(100000, Math.round((r.qty ?? 1) * 100) / 100) || 1, unit_price: null, tax_rate: 18,
+      qty_mode: area_key ? r.qtyMode : 'fixed', qty: Math.min(100000, Math.round((r.qty ?? 1) * 100) / 100) || 1, unit_price: r.price, tax_rate: 18,
       image_path: picturePaths.get(r.id) ?? null, is_optional: false, client_note: '', internal_note: '', // the file's own note joins the Remarks text: the builder has no separate note for the client (20270714000000)
     }
   })
