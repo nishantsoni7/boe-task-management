@@ -11,7 +11,13 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Proof.** `salesCheckingFrame.test.tsx` (7: the guard shows it only while unresolved and never the children, only Sales passes it, no query or request or action in the frame, no Team or Lead Master, the titles, the board classes), `salesLeads.test.tsx` and `moduleParentGate.test.ts` unchanged in meaning; `tsc` and eslint clean. The real frame component rendered with the real stylesheet at 1440 and at phone width. Not proven yet: the time until the sidebar is on screen after the deploy.
 - **Rollback.** Revert the PR.
 
-## 2026-11-14 — Sales: the lead popup's left side made compact so all of it shows with no scroll bar (branch `fix/lead-popup-left-compact`, PR not opened yet) · no SQL
+## 2026-11-14 — Orders: a PI change waiting for somebody is marked on the Confirmed Orders list (branch `feat/orders-change-highlight`, PR pending) · no SQL
+- **Owner ask (Operations, Nitish).** Highlight orders whose PI was changed and sent for approval, and keep the highlight until the other person accepts, rejects or asks for changes.
+- **Built.** A pill under Factory Status plus a row edge (amber; red when Operations asked Sales for changes) for four states of a PI version 2 or later: awaiting approval, with Sales, Operations asked for changes, awaiting Operations. It is state, the same for everybody who can open the Order, and goes when the step is decided. Rules in `lib/orders/piChangeMarker.ts`; two small reads (`order_pi_versions` pending, `order_operations_handoffs` live) beside the list, under the reader's RLS.
+- **Proof.** `piChangeMarker.test.ts` (new, 10 tests), the startup-shape pin and the two Refresh-line pins updated, tsc and eslint clean. Not proven: seen on a screen or a phone; the pill's wrapping in the Factory Status column.
+- **Rollback.** Revert the PR; nothing in the database changed.
+
+## 2026-11-14 — Sales: the lead popup's left side made compact so all of it shows with no scroll bar (PR #765, squash-merged 10:23 IST as `45a2182f`, deployed 10:25 IST) · no SQL
 - **Owner ask (14 Nov, a screenshot of the live popup).** "The left side section is too big overall. Reduce font size, card sizes so that the complete details are shown without any vertical scroll bar."
 - **Measured first.** The real `WorkPanel` rendered with the real stylesheet at the owner's window (popup 592 px tall, left side 538 px): 847 px of content, so about 40% had to go.
 - **Built (CSS plus one wrapper in `WorkPanel.tsx`).** One `@media (min-width: 768px)` block at the end of `leadBoard.module.css`: name 24 to 19 px, values 14 to 13 px, capital labels 12 to 10.5 px, controls 42-44 to 32 px, thinner cards and gaps; Hot / Warm / Cold beside Board status and "Held by" beside the follow-up (`nRow`, `display: contents` on a phone so the phone stacks them as before); Edit details compacted the same way. The phone rules are untouched.

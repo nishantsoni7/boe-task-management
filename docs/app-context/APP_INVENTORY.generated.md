@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `45a2182f` — Sales: lead popup left side made compact so all of it shows with no scroll bar (#765)
-- Commits on this branch: 1325
+- Commit: `bc3b6514` — Sales: a page frame instead of the full-screen spinner while the permission check runs (no SQL)
+- Commits on this branch: 1326
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 209
 - Migrations: 457 (first `20260530_create_positions.sql`, latest `20270716000000_sales_board_summary.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1032   Enums: 0
-- Test files: 839   Next.js 16.2.6, React 19.2.4
+- Test files: 840   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `bc3b6514` 2026-11-14 Sales: a page frame instead of the full-screen spinner while the permission check runs (no SQL)
 - `45a2182f` 2026-11-14 Sales: lead popup left side made compact so all of it shows with no scroll bar (#765)
 - `ae4040b9` 2026-11-14 Docs: stamp Price learning piece 1 (#760) as merged b273b165, deployed 06:33 IST, 20270715000000 applied (no SQL) (#763)
 - `b273b165` 2026-11-14 Quotations: Price learning, piece 1 (old PIs fed to the price model 25 at a time, blind-test score, feedback doorway) (#760)
@@ -38,7 +39,6 @@
 - `47db4a17` 2026-11-13 Sales: the lead opens as a centered popup with one update box; next-working-day follow-ups; No answer moves New on (migration 20270703000100) (#742)
 - `0e188497` 2026-11-13 Sales: an Admin can be given leads when ticked; auto-allot switch on the Lead Master (migration 20270703000000) (#741)
 - `48b0cd83` 2026-11-13 Bank Statements: a reversed card debit no longer stops the upload (no SQL) (#743)
-- `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
 
 ## Pages by top-level area
 
@@ -160,7 +160,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 4 source, 7 test
 - `src/lib/notifications` — 7 source, 23 test
-- `src/lib/orders` — 108 source, 168 test
+- `src/lib/orders` — 109 source, 169 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
