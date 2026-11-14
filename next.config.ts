@@ -97,6 +97,23 @@ const nextConfig: NextConfig = {
           { key: 'Content-Type', value: 'application/javascript; charset=utf-8' },
         ],
       },
+      // THE BRAND FILES AND THE WEB MANIFEST ARE KEPT FOR A DAY (2026-11-14).
+      //
+      // Files in public/ are sent with `max-age=0, must-revalidate`, so the browser asked the server
+      // whether each one had changed on EVERY page load (the manifest again on every move between
+      // pages), a round trip apiece before it could use a file that has not changed in weeks. They
+      // change rarely and are named in code, so a day is plenty; `stale-while-revalidate` lets the
+      // browser use the old copy at once for up to a week while it fetches a new one, so a replaced
+      // logo still arrives, one visit late at most. The hashed files under /_next/static are already
+      // `immutable` and are not touched.
+      {
+        source: '/brand/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }],
+      },
+      {
+        source: '/manifest.json',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=86400, stale-while-revalidate=604800' }],
+      },
     ]
   },
 
