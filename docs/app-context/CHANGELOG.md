@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-14 — Backups: the pg_dump step's `docker run` is stopped after 5 minutes (branch `fix/backup-pgdump-timeout`, PR pending) · no SQL
+- **Why.** During the pre-migration backup for #776, Docker Desktop hung on `docker run` (even `docker run --rm ... echo` never returned) while `docker info` still answered, so `backup-database.mjs` step 2b sat 20 minutes: its `spawnSync('docker', ...)` had no time limit. Docker Desktop was restarted by hand and works again.
+- **Built.** `spawnSync` gets `timeout: PG_DUMP_TIMEOUT_MS` (5 minutes, `lib.mjs`) and `killSignal: 'SIGKILL'`; `pgDumpFailure()` names a timeout as "Docker Desktop is probably hung: restart it and run backup-all again" and still hides the database URL. The tables then stay NOT COVERED and `verify-backups` fails that layer, as before. Tests: `reliability.test.mjs` (+2; a real hanging child process is cut off), all 34 backup tests pass.
+- **After the merge.** Run `node scripts/backup/install-backup-system.mjs` so the installed copy in `BOE-Development\backups\tools` gets the fix.
+
 ## 2026-11-14 — Quotations: the premium client document (branch `feat/quotation-client-document`, PR pending) · migration 20270717000000 (NOT applied)
 - **Owner ask (14 Nov).** "Yes need to implement it as it is not currently. When I download, it shows the earlier basic PDF." The approved preview (private artifact SJ2F4VQxRPg5MgnYwQHH3i) is built for real; the owner then said "Yes, build it" to six picks (cover A, print-to-PDF, project type with resort = hotel and cafe / brewery = restaurant, photos without captions, salesperson contact printed, no Accept button).
 - **What "download" was.** The builder's "Print / PDF" link and the client link both drew one basic `QuotationDocument` and called `window.print()`; there was no server quotation PDF.
