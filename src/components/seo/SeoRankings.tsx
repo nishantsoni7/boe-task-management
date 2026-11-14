@@ -125,5 +125,5 @@ export function RankingsBody({ data }: { data: SeoData }) {
 }
 
 export function SeoRankings() {
-  return <SeoScreen title="Rankings" subtitle="The 20 money keywords and the 8 cities, India only">{data => <RankingsBody data={data} />}</SeoScreen>
+  return <SeoScreen title="Rankings" subtitle="The money keywords, one per category, and the 8 cities, India only">{data => <RankingsBody data={data} />}</SeoScreen>
 }
