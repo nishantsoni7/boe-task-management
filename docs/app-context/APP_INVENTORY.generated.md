@@ -10,7 +10,7 @@
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 209
 - Migrations: 457 (first `20260530_create_positions.sql`, latest `20270716000000_sales_board_summary.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1032   Enums: 0
-- Test files: 840   Next.js 16.2.6, React 19.2.4
+- Test files: 842   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
@@ -158,7 +158,7 @@
 - `src/lib/meta` — 11 source, 8 test
 - `src/lib/minop` — 13 source, 11 test
 - `src/lib/modules` — 6 source, 7 test
-- `src/lib/navigation` — 4 source, 7 test
+- `src/lib/navigation` — 5 source, 8 test
 - `src/lib/notifications` — 7 source, 23 test
 - `src/lib/orders` — 109 source, 169 test
 - `src/lib/payroll` — 36 source, 35 test

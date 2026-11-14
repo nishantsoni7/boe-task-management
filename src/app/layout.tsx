@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { preconnect } from 'react-dom'
 import localFont from 'next/font/local'
 import { Providers } from '@/components/layout/Providers'
+import { BoeOneLoader } from '@/components/ui/BoeOneLoader'
 import './globals.css'
 
 // ── Fonts: Manrope (headings) + Inter (everything else), self-hosted ──────────
@@ -87,6 +88,8 @@ export default function RootLayout({
     >
       <body>
         <Providers>{children}</Providers>
+        {/* Hidden until AppLink marks <html> while a clicked link waits for its page. */}
+        <BoeOneLoader className="boe-nav-loader" message="Loading..." />
       </body>
     </html>
   )

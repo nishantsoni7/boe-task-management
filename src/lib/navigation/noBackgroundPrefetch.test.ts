@@ -74,7 +74,8 @@ describe('no page is loaded in advance', () => {
 
   it('AppLink turns prefetch off after the caller\'s props, so no caller can turn it back on', () => {
     const src = readFileSync(path.join(ROOT, APP_LINK), 'utf8')
-    assert.ok(src.includes('return <Link {...props} prefetch={false} />'))
+    // `prefetch={false}` after `{...props}`, whatever else the link carries inside.
+    assert.match(src, /<Link \{\.\.\.props\} prefetch=\{false\}>/)
   })
 
   it('nothing calls router.prefetch', () => {

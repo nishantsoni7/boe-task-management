@@ -1796,6 +1796,142 @@ a:focus-visible, summary:focus-visible, [role="button"]:focus-visible, [role="ta
 }
 
 /* ─────────────────────────────────────────────────────
+   BOE ONE LOADER — full-screen, for a wait that is taking long
+   Markup: src/components/ui/BoeOneLoader.tsx. The old .boe-loading rules above
+   stay: the payroll saving overlay and the task-load error box still use them.
+
+   Shown only when the wait is real. The layer is transparent for
+   --boe-loader-delay and then fades in, so a quick page never flashes it. It is
+   all CSS, so it works in the server-rendered HTML before any script has run.
+   The logo forms in a 3.6 s loop that starts when the layer starts to show:
+   outline drawn -> solid fill -> one sweep of light -> let go -> again.
+───────────────────────────────────────────────────── */
+.boe-loader {
+  position: fixed;
+  inset: 0;
+  z-index: 10000; /* above the modals (up to 9999) */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  background:
+    radial-gradient(60vmin 60vmin at 50% 46%, rgba(188, 71, 47, 0.07), rgba(188, 71, 47, 0) 70%),
+    #F7F4EF;
+  opacity: 0;
+  animation: boe-loader-in 0.4s ease-out var(--boe-loader-delay, 0.8s) forwards;
+}
+
+/* Reveal for a link click that is waiting for its page. AppLink sets
+   data-boe-nav-pending on <html>; display none -> flex restarts every animation,
+   so each wait begins at the first frame. Clicks pass through: it only informs. */
+.boe-loader.boe-nav-loader {
+  display: none;
+  --boe-loader-delay: 1.2s;
+  pointer-events: none;
+}
+html[data-boe-nav-pending] .boe-loader.boe-nav-loader { display: flex; }
+
+.boe-loader-mark {
+  width: clamp(84px, 16vmin, 132px);
+  height: auto;
+  overflow: visible;
+}
+.boe-loader-mark path,
+.boe-loader-mark g { transform-box: fill-box; transform-origin: center; }
+
+.boe-loader-trace {
+  fill: none;
+  stroke: #BC472F;
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  stroke-opacity: 0;
+  animation: boe-loader-trace 3.6s var(--boe-loader-delay, 0.8s) infinite;
+}
+.boe-loader-fill {
+  fill: #BC472F;
+  fill-opacity: 0;
+  animation: boe-loader-fill 3.6s var(--boe-loader-delay, 0.8s) infinite;
+}
+.boe-loader-sheen { animation: boe-loader-sheen 3.6s var(--boe-loader-delay, 0.8s) infinite; }
+
+.boe-loader-text {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  color: #686D6C;
+}
+/* One short, kind line at a time under the logo (BoeOneLoader's CHEER_LINES):
+   each is shown for 4.5 s, fades into the next, and the list goes round again.
+   They start 1 s after the layer shows. A cycle is 8 lines x 4.5 s = 36 s; each
+   line's slot is 12.5% of it, and --i (its place in the list) staggers the
+   starts. Two lines of room, so none moves the logo. */
+.boe-loader-lines {
+  position: relative;
+  width: min(36ch, 88vw);
+  height: 3.1em;
+  margin-top: -10px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.boe-loader-line {
+  position: absolute;
+  inset: 0 0 auto 0;
+  margin: 0;
+  text-align: center;
+  color: #4C5352;
+  letter-spacing: 0.01em;
+  opacity: 0;
+  animation: boe-loader-line 36s calc(var(--boe-loader-delay, 0.8s) + 1s + var(--i) * 4.5s) infinite;
+}
+@keyframes boe-loader-line {
+  0%     { opacity: 0; }
+  1.5%   { opacity: 1; }
+  11%    { opacity: 1; }
+  12.5%  { opacity: 0; }
+  100%   { opacity: 0; }
+}
+
+@keyframes boe-loader-in { to { opacity: 1; } }
+
+/* 1. the outline draws itself around the mark */
+@keyframes boe-loader-trace {
+  0%   { stroke-dashoffset: 1; stroke-opacity: 0; animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
+  2%   { stroke-dashoffset: 1; stroke-opacity: 1; animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
+  42%  { stroke-dashoffset: 0; stroke-opacity: 1; }
+  58%  { stroke-dashoffset: 0; stroke-opacity: 0; }
+  100% { stroke-dashoffset: 0; stroke-opacity: 0; }
+}
+/* 2. the solid mark floods in, holds, then lets go */
+@keyframes boe-loader-fill {
+  0%, 32%   { fill-opacity: 0; transform: scale(0.985); animation-timing-function: ease-out; }
+  54%       { fill-opacity: 1; transform: scale(1); }
+  80%       { fill-opacity: 1; transform: scale(1); animation-timing-function: ease-in; }
+  94%, 100% { fill-opacity: 0; transform: scale(0.985); }
+}
+/* 3. one soft sweep of light across the finished mark */
+@keyframes boe-loader-sheen {
+  0%, 52%   { transform: translateX(-260px); opacity: 0; }
+  56%       { opacity: 1; }
+  76%       { transform: translateX(980px); opacity: 1; }
+  80%, 100% { transform: translateX(980px); opacity: 0; }
+}
+
+/* Reduced motion: the finished logo, still, with the same pause before it shows,
+   and the first line, still, instead of the rotation. */
+@media (prefers-reduced-motion: reduce) {
+  .boe-loader-trace,
+  .boe-loader-sheen { display: none; }
+  .boe-loader-fill { animation: none; fill-opacity: 1; }
+  .boe-loader-line:not(:first-child) { display: none; }
+  .boe-loader-line:first-child { animation: boe-loader-in 0.6s ease-out calc(var(--boe-loader-delay, 0.8s) + 1s) forwards; }
+}
+
+/* ─────────────────────────────────────────────────────
    DASHBOARD 3-ZONE LAYOUT
    sidebar | main | context panel
 ───────────────────────────────────────────────────── */
