@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Check } from 'lucide-react'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { useSalesAccess } from '@/hooks/useSalesAccess'
 import {
   logMessageSent, logNoAnswer, moveLead, SALES_KEY, SalesRequestError, undoActivity, updateFacts,
   type LeadFacts, type WorkLead,
@@ -36,6 +37,8 @@ export function useLeadWork() {
   const supabase = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
   const { profile } = usePermissionContext()
+  // Read once here, so the lead popup does not start its own permission read each time it opens.
+  const { readOnly } = useSalesAccess()
   const toast = useToast()
   const [dialog, setDialog] = useState<Dialog | null>(null)
   const [busy, setBusy] = useState(false)
@@ -44,7 +47,12 @@ export function useLeadWork() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: [SALES_KEY] })
   const fail = (e: unknown) => toast.show(e instanceof SalesRequestError ? e.message : 'Something went wrong. Nothing was saved.', true)
 
-  /** One save at a time, and the screen is read again whatever happened: a refusal usually means it was out of date. */
+  /**
+   * One save at a time, and the screen is read again whatever happened: a refusal usually means it was out of date. The
+   * re-read runs in the background (every column and the totals are read again, which takes a while); a save is over when the
+   * database has answered, and the screen catches up as the answers arrive. A second action on a stale screen is refused by
+   * the database (each move says which stage it expects) and the person is told.
+   */
   async function guarded(run: () => Promise<void>) {
     setBusy(true)
     try {
@@ -52,7 +60,7 @@ export function useLeadWork() {
     } catch (e) {
       fail(e)
     } finally {
-      await refresh()
+      void refresh()
       setBusy(false)
     }
   }
@@ -158,7 +166,7 @@ export function useLeadWork() {
   )
 
   return {
-    supabase, today, busy, node, refresh, fail, said, guarded, moveTo, saveAndMove, noAnswer: (l: WorkLead) => void noAnswer(l),
+    supabase, today, busy, readOnly, node, refresh, fail, said, guarded, moveTo, saveAndMove, noAnswer: (l: WorkLead) => void noAnswer(l),
     /** Three tries with no answer: asks what next (a "Client not responding" comment can be the third). */
     threeTries: (lead: WorkLead) => setDialog({ type: 'three', lead }),
     openMove: (lead: WorkLead) => setDialog({ type: 'move', lead }),

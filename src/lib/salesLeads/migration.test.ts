@@ -29,6 +29,7 @@ const BOARD_SQL = read('supabase/migrations/20270525000000_sales_lead_board.sql'
   + read('supabase/migrations/20270703000100_sales_comments_and_due_dates.sql')
   + read('supabase/migrations/20270710000000_sales_visit_meeting_stage.sql')
   + read('supabase/migrations/20270711000000_sales_value_timeline_gates.sql')
+  + read('supabase/migrations/20270716000000_sales_board_summary.sql')
 const API = read('src/lib/salesLeads/api.ts')
 
 // The six functions a browser may call, and the two internals it may not.

@@ -2,8 +2,7 @@
 
 import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CalendarDays, ChevronDown, ChevronLeft, ChevronRight, MessageCircle, Phone, Search, X } from 'lucide-react'
-import { useSalesAccess } from '@/hooks/useSalesAccess'
+import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, MessageCircle, Pencil, Phone, Search, X } from 'lucide-react'
 import { formatPhone, telHref } from '@/lib/exhibitionLeads/phone'
 import {
   addComment, changeDue, fetchWorkLead, SALES_KEY, updateFacts,
@@ -26,13 +25,28 @@ import s from './leadBoard.module.css'
 // everything that happened, newest first, a day at a time. Call and WhatsApp beside the name (Call came back on
 // 2026-11-13); no "how did it go" form. Previous and next walk the list the lead was opened from; Esc, the cross or a
 // click outside closes it. On a phone it fills the screen and the two sides are two tabs.
+//
+// The left side was laid out again on 2026-11-14 (owner approved a clickable preview), in the order a salesperson uses it:
+// who and how to reach them; where the lead stands (one card); what they want and what it is worth; the reference facts.
+// The phone number sits beside the name (with Copy), so the facts no longer repeat it; Type of client and Quantity are no
+// longer shown (they are still stored, and still in Edit details).
+//
+// It opens at once: the list the lead was opened from already holds the lead, so the left side is drawn from that while
+// the full record (history and activity) is read; only the activity waits.
 
 /** Only one menu is open at a time; Escape closes it before it closes the popup. */
 type Menu = 'status' | 'due' | 'next' | null
 type Tab = 'details' | 'activity'
 
-/** The list the lead was opened from, so Previous and Next can walk it. */
-export type LeadNav = { ids: readonly string[]; label: string }
+/**
+ * The list the lead was opened from, so Previous and Next can walk it. `peek` hands back what that list already holds of a
+ * lead (and whether this person may work it), so the popup can show it before the full record has arrived.
+ */
+export type LeadNav = {
+  ids: readonly string[]
+  label: string
+  peek?: (id: string) => { lead: WorkLead; canWork: boolean } | undefined
+}
 
 export function WorkPanel({ leadId, work, nav, onNavigate, focusLog = false, closeAfterPost = false, onClose }: {
   leadId: string
@@ -48,11 +62,21 @@ export function WorkPanel({ leadId, work, nav, onNavigate, focusLog = false, clo
   const [tab, setTab] = useState<Tab>(focusLog ? 'activity' : 'details')
   // Escape closes an open menu first, and the popup only when none is open.
   const ref = useDialogFocus<HTMLDivElement>(() => { if (menu) setMenu(null); else onClose() })
+  const peeked = nav?.peek?.(leadId)
+  const peekLead = peeked?.lead
+  const peekCanWork = peeked?.canWork ?? false
+  // What the list holds, as a stand-in until the record arrives (a lead read before is shown from the cache instead).
+  const stand = useMemo<WorkDetail | undefined>(
+    () => (peekLead ? { clickup: [], lead: peekLead, can_work: peekCanWork, quotation_sent: false, events: [], activities: [] } : undefined),
+    [peekLead, peekCanWork],
+  )
   const detail = useQuery({
     queryKey: [SALES_KEY, 'work', leadId],
     queryFn: () => fetchWorkLead(work.supabase, leadId),
     staleTime: 0,
+    placeholderData: stand,
   })
+  const filling = detail.isPlaceholderData
 
   const at = nav ? nav.ids.indexOf(leadId) : -1
   const prev = at > 0 ? nav?.ids[at - 1] : undefined
@@ -73,7 +97,7 @@ export function WorkPanel({ leadId, work, nav, onNavigate, focusLog = false, clo
     return () => document.removeEventListener('keydown', listen)
   }, [])
 
-  const count = detail.data ? detail.data.activities.length + detail.data.events.length : null
+  const count = detail.data && !filling ? detail.data.activities.length + detail.data.events.length : null
   return (
     <>
       <div className={s.scrim} onClick={onClose} />
@@ -106,7 +130,10 @@ export function WorkPanel({ leadId, work, nav, onNavigate, focusLog = false, clo
         </div>
 
         {detail.data ? (
-          <PanelBody key={leadId} detail={detail.data} work={work} focusLog={focusLog} closeAfterPost={closeAfterPost} menu={menu} setMenu={setMenu} onClose={onClose} />
+          <PanelBody
+            key={leadId} detail={detail.data} work={work} focusLog={focusLog} closeAfterPost={closeAfterPost} menu={menu} setMenu={setMenu} onClose={onClose}
+            filling={filling} loadFailed={filling && detail.isError} reload={() => void detail.refetch()}
+          />
         ) : (
           <div className={s.mLoading}>
             {detail.isPending && 'Loading…'}
@@ -124,24 +151,25 @@ export function WorkPanel({ leadId, work, nav, onNavigate, focusLog = false, clo
   )
 }
 
-function PanelBody({ detail, work, focusLog, closeAfterPost, menu, setMenu, onClose }: {
+function PanelBody({ detail, work, focusLog, closeAfterPost, menu, setMenu, onClose, filling, loadFailed, reload }: {
   detail: WorkDetail; work: LeadWork; focusLog: boolean; closeAfterPost: boolean; menu: Menu; setMenu: (m: Menu) => void; onClose: () => void
+  /** The lead is drawn from the list while its record is read: history and activity are not here yet. */
+  filling: boolean; loadFailed: boolean; reload: () => void
 }) {
   const { lead } = detail
-  const { readOnly } = useSalesAccess()
-  const canWork = detail.can_work && !readOnly
+  const canWork = detail.can_work && !work.readOnly
   const closed = lead.stage === 'converted' || lead.stage === 'dead'
   return (
     <div className={s.mBody}>
       <div className={s.mLeft} aria-label="Lead details">
         <Who lead={lead} work={work} canWork={canWork} closed={closed} />
-        <StateBox lead={lead} since={stageSince(detail)} work={work} canWork={canWork} closed={closed} menu={menu} setMenu={setMenu} />
+        <StateBox lead={lead} since={filling ? null : stageSince(detail)} work={work} canWork={canWork} closed={closed} menu={menu} setMenu={setMenu} />
         <Details lead={lead} work={work} canWork={canWork} />
         {!canWork && <div className={s.readOnly}>You can read this lead. {lead.holder_name ? `${lead.holder_name} holds it, and only` : 'Only'} the person holding it can write on it or move it.</div>}
       </div>
       <ActivitySide
         detail={detail} work={work} canWrite={canWork && !closed} focusLog={focusLog} menu={menu} setMenu={setMenu}
-        onPosted={() => { if (closeAfterPost) onClose() }}
+        onPosted={() => { if (closeAfterPost) onClose() }} filling={filling} loadFailed={loadFailed} reload={reload}
       />
     </div>
   )
@@ -162,19 +190,43 @@ function useCloseOnOutside(open: boolean, close: () => void) {
 
 // ── Left: who, where it stands, what they want ──────────────────────────────────────────────────────────────────────
 
-/** The name, the number and how to reach them: Call (from the phone's dialler) and WhatsApp (owner, 2026-11-13). */
+/**
+ * The name; under it the number (the one contact fact, so it is the biggest line) with Copy beside it, then the market and
+ * how long since the last update. Call (from the phone's dialler) and WhatsApp stay on the right (owner, 2026-11-13).
+ * A lead with no name has the number as its title, so Copy stands alone there.
+ */
 function Who({ lead, work, canWork, closed }: { lead: WorkLead; work: LeadWork; canWork: boolean; closed: boolean }) {
+  const [copied, setCopied] = useState(false)
+  const title = leadTitle(lead)
+  const named = title !== formatPhone(lead.phone)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(lead.phone)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      work.said('The number could not be copied. Select it instead.')
+    }
+  }
+
   return (
     <div className={s.mWho}>
       <div className={s.mWhoText}>
-        <h2 className={s.mName}>{leadTitle(lead)}</h2>
-        <div className={s.mMeta}>
-          {lead.name && <span className={s.mPhone}>{formatPhone(lead.phone)}</span>}
-          {lead.name && <span className={s.mDot} aria-hidden="true">·</span>}
-          <span>{marketLabel(lead)}</span>
-          <span className={s.mDot} aria-hidden="true">·</span>
-          <span>{lastLabel(lead, work.today)}</span>
-          {lead.stuck && <span className={s.mStuck}>Stuck</span>}
+        <h2 className={s.mName}>{title}</h2>
+        <div className={s.nMeta}>
+          <div className={s.nPhoneLine}>
+            {named && <span className={s.mPhone}>{formatPhone(lead.phone)}</span>}
+            <button type="button" className={s.nCopy} data-done={copied ? '1' : '0'} aria-label="Copy number" onClick={() => void copy()}>
+              {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{copied ? 'Copied' : named ? 'Copy' : 'Copy number'}
+            </button>
+          </div>
+          <div className={s.nSub}>
+            <span>{marketLabel(lead)}</span>
+            <span className={s.mDot} aria-hidden="true">·</span>
+            <span>{lastLabel(lead, work.today)}</span>
+            {lead.stuck && <span className={s.mStuck}>Stuck</span>}
+          </div>
         </div>
       </div>
       {canWork && !closed && (
@@ -214,8 +266,8 @@ const STATUS_OPEN: readonly Stage[] = ['new', 'under_process', 'visit_meeting', 
 const STATUS_OUT: readonly Stage[] = ['follow_up_later', 'converted', 'dead']
 
 /**
- * Where it stands: the Board status as one dropdown (owner, 2026-11-13, option B: a lead can go from any status to any
- * other, so it is a choice, not a path); then Hot / Warm / Cold, the next follow-up and who holds it, as plain rows.
+ * Where it stands, as one card (owner, 2026-11-14): the Board status (one dropdown: a lead can go from any status to any
+ * other, so it is a choice, not a path) beside Hot / Warm / Cold, then the next follow-up, then who holds it.
  */
 function StateBox({ lead, since, work, canWork, closed, menu, setMenu }: {
   lead: WorkLead; since: string | null; work: LeadWork; canWork: boolean; closed: boolean; menu: Menu; setMenu: (m: Menu) => void
@@ -227,47 +279,40 @@ function StateBox({ lead, since, work, canWork, closed, menu, setMenu }: {
     if (value !== lead.temperature) void work.guarded(async () => { await updateFacts(work.supabase, lead.id, { temperature: value }) })
   }
   return (
-    <>
-      <section className={s.mStage} aria-label="Board status">
-        <div className={s.mStageHead}>
-          <span className={s.mStageKey}>Board status</span>
-          {since && <span className={s.mSince}>for {inStage(since, now)}</span>}
+    <section className={s.nState} aria-label="Where this lead stands">
+      <div className={s.nPair}>
+        <div className={s.nCell}>
+          <div className={s.nKey}>Board status{since && <small>for {inStage(since, now)}</small>}</div>
+          <StatusMenu lead={lead} work={work} canWork={canWork} open={menu === 'status'} setOpen={open => setMenu(open ? 'status' : null)} />
+          {(lead.stage === 'dead' || lead.dead_note) && (
+            <p className={s.mDeadNote}>{lead.stage === 'dead' ? due.label : ''}{lead.stage === 'dead' && lead.dead_note ? ' · ' : ''}{lead.dead_note}</p>
+          )}
+          {closed && canWork && <p className={s.mDeadNote}>Choose a status to reopen it.</p>}
         </div>
-        <StatusMenu lead={lead} work={work} canWork={canWork} open={menu === 'status'} setOpen={open => setMenu(open ? 'status' : null)} />
-        {(lead.stage === 'dead' || lead.dead_note) && (
-          <p className={s.mDeadNote}>{lead.stage === 'dead' ? due.label : ''}{lead.stage === 'dead' && lead.dead_note ? ' · ' : ''}{lead.dead_note}</p>
-        )}
-        {closed && canWork && <p className={s.mDeadNote}>Choose a status to reopen it.</p>}
-      </section>
-      <dl className={s.mRows}>
-        <div>
-          <dt>Hot / Warm / Cold</dt>
-          <dd>
-            <span className={s.mHeat} role="group" aria-label="How warm is this lead?">
-              {TEMPERATURES.map(t => (
-                <button key={t.value} type="button" aria-pressed={lead.temperature === t.value} disabled={!canWork} onClick={() => heat(t.value)}>
-                  <i className={`${s.heat} ${HEAT_CLASS[t.value]}`} aria-hidden="true" />{t.label}
-                </button>
-              ))}
-            </span>
-          </dd>
+        <div className={s.nCell}>
+          <div className={s.nKey}>Hot / Warm / Cold</div>
+          <span className={s.nHeatSeg} role="group" aria-label="How warm is this lead?">
+            {TEMPERATURES.map(t => (
+              <button key={t.value} type="button" aria-pressed={lead.temperature === t.value} disabled={!canWork} onClick={() => heat(t.value)}>
+                <i className={`${s.heat} ${HEAT_CLASS[t.value]}`} aria-hidden="true" />{t.label}
+              </button>
+            ))}
+          </span>
         </div>
-        {!closed && (
-          <div>
-            <dt>Next follow-up</dt>
-            <dd><DueChip lead={lead} work={work} canWork={canWork} open={menu === 'due'} setOpen={open => setMenu(open ? 'due' : null)} /></dd>
-          </div>
-        )}
-        <div>
-          <dt>Held by</dt>
-          <dd>
-            {lead.holder_name
-              ? <span className={s.mPerson}><i className={s.mAvSm} aria-hidden="true">{initialsOf(lead.holder_name)}</i>{lead.holder_name}</span>
-              : <span className={s.mNone}>Nobody yet</span>}
-          </dd>
+      </div>
+      {!closed && (
+        <div className={s.nCell}>
+          <div className={s.nKey}>Next follow-up</div>
+          <DueChip lead={lead} work={work} canWork={canWork} open={menu === 'due'} setOpen={open => setMenu(open ? 'due' : null)} />
         </div>
-      </dl>
-    </>
+      )}
+      <div className={s.nHeld}>
+        Held by{' '}
+        {lead.holder_name
+          ? <span className={s.mPerson}><i className={s.mAvSm} aria-hidden="true">{initialsOf(lead.holder_name)}</i><b>{lead.holder_name}</b></span>
+          : <span className={s.mNone}>nobody yet</span>}
+      </div>
+    </section>
   )
 }
 
@@ -304,7 +349,7 @@ function StatusMenu({ lead, work, canWork, open, setOpen }: { lead: WorkLead; wo
   )
 }
 
-/** The follow-up date of an open lead, changeable in any stage. */
+/** The follow-up date of an open lead, changeable in any stage. Overdue says so in words, not only in colour. */
 function DueChip({ lead, work, canWork, open, setOpen }: { lead: WorkLead; work: LeadWork; canWork: boolean; open: boolean; setOpen: (open: boolean) => void }) {
   const wrap = useCloseOnOutside(open, () => setOpen(false))
   const date = lead.next_due_on
@@ -321,13 +366,13 @@ function DueChip({ lead, work, canWork, open, setOpen }: { lead: WorkLead; work:
   return (
     <div ref={wrap} className={s.mRel}>
       <button
-        type="button" className={`${s.mDue}${due.tone === 'over' ? ` ${s.mDueOver}` : ''}`} disabled={!canWork} aria-haspopup="menu" aria-expanded={open}
+        type="button" className={`${s.nDue}${due.tone === 'over' ? ` ${s.nDueOver}` : ''}`} disabled={!canWork} aria-haspopup="menu" aria-expanded={open}
         title="Change the follow-up date" onClick={() => setOpen(!open)}
       >
         <CalendarDays aria-hidden="true" />
         <b>{date ? dayShort(date) : 'No date'}</b>
-        {note && <span className={s.mDueNote}>{note}</span>}
-        {canWork && <span className={s.mChange}>Change</span>}
+        {note && <span className={s.nDueNote}>{note}</span>}
+        {canWork && <span className={s.nGo}>Change</span>}
       </button>
       {open && <FollowUpMenu today={work.today} value={date ?? ''} onPick={pick} />}
     </div>
@@ -354,10 +399,13 @@ function FollowUpMenu({ today, value, onPick }: { today: string; value: string; 
   )
 }
 
-/** Client, Requirement and Order value, read as rows; "Edit details" turns all three into one form. */
+/**
+ * What they want (the words, then the project value and when they need it) and the reference facts, read as they are;
+ * "Edit details" turns all of it into one form. Type of client and Quantity are not shown (owner, 2026-11-14) but are
+ * still in the form.
+ */
 function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canWork: boolean }) {
   const [editing, setEditing] = useState(false)
-  const [copied, setCopied] = useState(false)
   const start = useMemo(() => ({
     name: lead.name ?? '', email: lead.email ?? '', location: lead.location ?? '', requirement: lead.requirement ?? '',
     quantity: lead.quantity ?? '', timeline: lead.timeline ?? '', segment: lead.segment ?? '', client_type: lead.client_type ?? '',
@@ -382,16 +430,6 @@ function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canW
       if (Object.keys(facts).length > 0) await updateFacts(work.supabase, lead.id, facts)
       setEditing(false)
     })
-  }
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(lead.phone)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      work.said('The number could not be copied. Select it instead.')
-    }
   }
 
   if (editing) {
@@ -421,40 +459,39 @@ function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canW
     )
   }
 
-  const kind = [CLIENT_TYPES.find(o => o.value === lead.client_type)?.label, SEGMENTS.find(o => o.value === lead.segment)?.label].filter(Boolean).join(' · ')
-  const none = <span className={s.mNone}>Not shared</span>
   return (
     <>
-      <section className={s.mSec} aria-label="Client details">
-        <div className={s.mSecHead}>
-          <h3 className={s.mH3}>Client details</h3>
-          {canWork && <button type="button" className={s.linkBtn} onClick={edit}>Edit details</button>}
+      <section className={s.nSec} aria-label="Requirement">
+        <div className={s.nHead}>
+          <h3 className={s.nH}>Requirement</h3>
+          {canWork && <button type="button" className={`${s.linkBtn} ${s.nEdit}`} onClick={edit}><Pencil aria-hidden="true" />Edit details</button>}
         </div>
-        <dl className={s.mRows}>
-          <div><dt>Phone</dt><dd>{formatPhone(lead.phone)} <button type="button" className={s.mCopy} onClick={() => void copy()}>{copied ? 'Copied' : 'Copy'}</button></dd></div>
-          <div><dt>Email</dt><dd>{lead.email || none}</dd></div>
-          <div><dt>Location</dt><dd>{lead.location || none}</dd></div>
-          <div><dt>Type of client</dt><dd>{kind || none}</dd></div>
-          {/* Quantity lives with the client's details (owner, 2026-11-13), not under the requirement. */}
-          <div><dt>Quantity</dt><dd>{lead.quantity || none}</dd></div>
+        {lead.requirement ? <p className={s.nReq}>{lead.requirement}</p> : <p className={`${s.nReq} ${s.nNone}`}>The client has not said what they need yet.</p>}
+        <div className={s.nTiles}>
+          <div className={s.nTile}>
+            <div className={s.nKey}>Project value (approx.)</div>
+            {lead.expected_value_paise !== null ? (
+              <div className={s.nBig}>{valueLabel(lead.expected_value_paise)}</div>
+            ) : (
+              <>
+                <div className={s.nAsk}><span>Not set yet</span>{canWork && <button type="button" className={s.linkBtn} onClick={edit}>Add</button>}</div>
+                <p className={s.nHelp}>It is asked for before Potential Clients.</p>
+              </>
+            )}
+          </div>
+          <div className={s.nTile}>
+            <div className={s.nKey}>Needed by</div>
+            <div className={`${s.nVal}${lead.timeline ? '' : ` ${s.nNone}`}`}>{lead.timeline || 'Not shared'}</div>
+          </div>
+        </div>
+      </section>
+      <section className={`${s.nSec} ${s.nFactsSec}`} aria-label="Client details">
+        <div className={s.nHead}><h3 className={s.nH}>Client details</h3></div>
+        <dl className={s.nFacts}>
+          <div><dt>Location</dt><dd className={lead.location ? undefined : s.nNone}>{lead.location || 'Not shared'}</dd></div>
           <div><dt>Source</dt><dd>{sourceLabel(lead.source)}</dd></div>
+          <div className={s.nWide}><dt>Email</dt><dd className={lead.email ? undefined : s.nNone}>{lead.email || 'Not shared'}</dd></div>
         </dl>
-      </section>
-      <section className={s.mSec} aria-label="Requirement">
-        <div className={s.mSecHead}><h3 className={s.mH3}>Requirement</h3></div>
-        {lead.requirement ? <p className={s.mReq}>{lead.requirement}</p> : <p className={s.mNone}>The client has not said what they need yet.</p>}
-        <dl className={s.mRows}>
-          <div><dt>Needed by</dt><dd>{lead.timeline || none}</dd></div>
-        </dl>
-      </section>
-      <section className={s.mSec} aria-label="Project value">
-        <div className={s.mSecHead}><h3 className={s.mH3}>Project value (approx.)</h3></div>
-        <div className={s.mValue}>
-          {lead.expected_value_paise !== null
-            ? <span className={s.mBig}>{valueLabel(lead.expected_value_paise)}</span>
-            : <span className={s.mNone}>Not set yet. It is asked for before Potential Clients.</span>}
-          {canWork && lead.expected_value_paise === null && <button type="button" className={s.linkBtn} onClick={edit}>Add</button>}
-        </div>
       </section>
     </>
   )
@@ -476,10 +513,12 @@ function Marked({ text, q }: { text: string; q: string }) {
   return <>{parts.map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : <Fragment key={i}>{p}</Fragment>))}</>
 }
 
-function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPosted }: {
+function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPosted, filling, loadFailed, reload }: {
   detail: WorkDetail; work: LeadWork; canWrite: boolean; focusLog: boolean; menu: Menu; setMenu: (m: Menu) => void; onPosted: () => void
+  filling: boolean; loadFailed: boolean; reload: () => void
 }) {
-  const [updatesOnly, setUpdatesOnly] = useState(false)
+  // Updates only is what is read first (owner, 2026-11-14): "Updates only" is the first button and is on when the popup opens.
+  const [updatesOnly, setUpdatesOnly] = useState(true)
   const [searching, setSearching] = useState(false)
   const [q, setQ] = useState('')
   const [all, setAll] = useState(false)
@@ -509,8 +548,8 @@ function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPoste
         <h3 className={s.mH3}>Activity</h3>
         <div className={s.mTools}>
           <div className={s.mSeg} role="group" aria-label="Show">
-            <button type="button" aria-pressed={!updatesOnly} onClick={() => setUpdatesOnly(false)}>All</button>
             <button type="button" aria-pressed={updatesOnly} onClick={() => setUpdatesOnly(true)}>Updates only</button>
+            <button type="button" aria-pressed={!updatesOnly} onClick={() => setUpdatesOnly(false)}>All</button>
           </div>
           <button
             type="button" className={s.mIcon} aria-label="Search this lead's activity" title="Search" aria-pressed={searching}
@@ -526,7 +565,11 @@ function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPoste
       )}
       {canWrite && <Composer lead={detail.lead} work={work} focus={focusLog} menu={menu} setMenu={setMenu} onPosted={onPosted} />}
       <div className={s.mFeed}>
-        {list.length === 0 && <p className={s.mNone}>{query ? 'Nothing matches.' : 'Nothing yet. The first update appears here.'}</p>}
+        {filling && !loadFailed && <p className={s.mNone} role="status">Loading the activity…</p>}
+        {loadFailed && (
+          <p className={s.mNone} role="alert">The activity could not be loaded. <button type="button" className={s.linkBtn} onClick={reload}>Try again</button></p>
+        )}
+        {!filling && list.length === 0 && <p className={s.mNone}>{query ? 'Nothing matches.' : 'Nothing yet. The first update appears here.'}</p>}
         {list.map((e, i) => {
           const day = istDayOf(e.at)
           const heading = i === 0 || istDayOf(list[i - 1].at) !== day
@@ -615,14 +658,15 @@ function Composer({ lead, work, focus, menu, setMenu, onPosted }: {
     setSaving(true)
     try {
       const r = await addComment(work.supabase, lead.id, { note: text.trim(), tag, nextDue: due })
-      await work.refresh()
+      // The screen reads itself again in the background: nothing here waits for it.
+      void work.refresh()
       work.said(`Saved. Next follow-up ${dayShort(r.lead.next_due_on ?? due)}.`, r.activity_id)
       if (notResponding && (r.streak ?? 0) >= 3) work.threeTries(r.lead)
       setText(''); setQuick(null); setTag(null); setDue(nextWorkingDay(work.today))
       onPosted()
     } catch (e) {
       work.fail(e)
-      await work.refresh()
+      void work.refresh()
     } finally {
       setSaving(false)
     }

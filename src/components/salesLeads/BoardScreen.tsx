@@ -1,10 +1,10 @@
 'use client'
 
 import { AppLink as Link } from '@/components/ui/AppLink'
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { ArrowRight, Ban, Bell, Check, ChevronDown, ChevronsLeft, MessageCircle, Phone, PhoneMissed, SlidersHorizontal, UserPlus } from 'lucide-react'
-import { telHref } from '@/lib/exhibitionLeads/phone'
+import { Ban, CalendarDays, Check, ChevronDown, ChevronsLeft, SlidersHorizontal, UserPlus } from 'lucide-react'
+import { formatPhone } from '@/lib/exhibitionLeads/phone'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
@@ -13,12 +13,12 @@ import { idParam, optionParam, textParam } from '@/lib/listState'
 import { fetchBoard, fetchBoardPage, SALES_KEY, type BoardData, type BoardFilter, type WorkLead } from '@/lib/salesLeads/api'
 import { COLUMN_PAGE, nextOffset, uniqueRows } from '@/lib/salesLeads/boardPage'
 import {
-  BOARD_STAGES, cameBack, flagOf, marketLabel, MARKETS, MARKET_VALUES, SEGMENTS, SEGMENT_VALUES, stageLabel, STAGE_KEYS, TEMPERATURES,
+  BOARD_STAGES, dueOf, MARKETS, MARKET_VALUES, SEGMENTS, SEGMENT_VALUES, stageLabel, STAGE_KEYS, TEMPERATURES,
   TEMPERATURE_VALUES, valueLabel, type Stage,
 } from '@/lib/salesLeads/board'
 import { LEAD_SOURCES, LEAD_SOURCE_VALUES } from '@/lib/salesLeads/constants'
 import { initialsOf } from '@/lib/salesLeads/format'
-import { Due, Flag, leadTitle, StepLine, ValueChip } from './LeadBits'
+import { Due, leadTitle, TempChip } from './LeadBits'
 import { SalesFrame } from './SalesFrame'
 import { useLeadWork, type LeadWork } from './useLeadWork'
 import { WorkPanel, type LeadNav } from './WorkPanel'
@@ -26,9 +26,15 @@ import s from './leadBoard.module.css'
 
 // The Lead Board: every open lead this person may see, by stage. The page itself never scrolls: a toolbar, the totals
 // when they are asked for, then one column per stage, each with its own scroller that keeps loading as you reach the
-// end. Cards drag on a desktop, and every card also has a Move button, because a phone cannot drag and nothing may
-// depend on dragging alone. Each column is in the order the database gives it: overdue first, then today, then the
-// rest, Hot before Warm before Cold, so nobody orders a board by hand.
+// end. Cards drag on a desktop; the other way to move a lead is the Board status menu in the lead popup, because a phone
+// cannot drag and nothing may depend on dragging alone. Each column is in the order the database gives it: overdue first,
+// then today, then the rest, Hot before Warm before Cold, so nobody orders a board by hand.
+//
+// A card is small on purpose (owner, 2026-11-14) and has no buttons: the client's name, the number, Hot / Warm / Cold and the
+// next follow-up. Anything else is one click away, in the popup. A click opens the popup at once: the URL is changed with
+// the browser's own history call (see useListUrlState's `shallow`), not through the router, which would ask the server for
+// the whole page again each time; and a card is a memoized component, so opening or closing the popup draws one lead, not
+// every card on the board.
 
 const LIST_PARAMS = {
   holder: idParam(),
@@ -44,6 +50,7 @@ const LIST_PARAMS = {
 
 type Closed = 'converted' | 'dead'
 const CLOSED: readonly Closed[] = ['converted', 'dead']
+const NOTHING = () => {}
 
 /** What this person chose last on this browser (the totals open, the folded columns). Nothing to remember it in is fine. */
 function useRemembered<T>(key: string, fallback: T): [T, (next: T) => void] {
@@ -70,6 +77,16 @@ function useNarrow(): boolean {
   )
 }
 
+/**
+ * A function whose identity never changes but which always runs the latest one given. A memoized card can take it without
+ * being drawn again each time the screen is.
+ */
+function useStable<A extends unknown[], R>(fn: (...args: A) => R): (...args: A) => R {
+  const latest = useRef(fn)
+  useEffect(() => { latest.current = fn })
+  return useCallback((...args: A) => latest.current(...args), [])
+}
+
 /** One column's leads, a page at a time. A lead that moved while the pages were loading is shown once. */
 function useColumn(stage: Stage, filter: BoardFilter, supabase: LeadWork['supabase'], enabled: boolean) {
   return useInfiniteQuery({
@@ -87,13 +104,13 @@ export function BoardScreen() {
   const { ready, profile } = usePermissionContext()
   const { canAssign, canSeeAll, readOnly } = useSalesAccess()
   const work = useLeadWork()
-  const { state, setState } = useListUrlState(LIST_PARAMS)
+  // The filters, the stage tab and the open lead are in the address; changing them must not ask the server for the page.
+  const { state, setState } = useListUrlState(LIST_PARAMS, { shallow: true })
   const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(state.q, next => setState({ q: next }))
   const [dragging, setDragging] = useState<WorkLead | null>(null)
   // The column a lead was opened from, so the popup's Previous and Next walk it. A lead opened from a link has none.
   const [nav, setNav] = useState<LeadNav | null>(null)
   const [over, setOver] = useState<Stage | null>(null)
-  const [now] = useState(() => Date.now())
   const [totals, setTotals] = useRemembered<boolean>('boe.sales.board.totals', false)
   const [folded, setFolded] = useRemembered<Stage[]>('boe.sales.board.folded', [])
   /** On a desktop Converted and Dead are slim strips; this is the one opened as a column. */
@@ -108,7 +125,8 @@ export function BoardScreen() {
     queryFn: () => fetchBoard(work.supabase, filter),
     placeholderData: keepPreviousData,
     staleTime: 15_000,
-    enabled: ready,
+    // Not held back for the permission read (about 0.3 s of the page's load): the database decides what may be read, and
+    // the board is still not drawn until `ready`.
   })
   const data = board.data
   // A senior or a view_all manager reads other people's leads; only the holder or somebody with assign works them.
@@ -125,6 +143,18 @@ export function BoardScreen() {
     onDragLeave: () => setOver(o => (o === stage ? null : o)),
     onDrop: (e: React.DragEvent) => { e.preventDefault(); drop(stage) },
   })
+
+  // A card was clicked: the popup opens at once, drawn from the row the card holds while the full record is read.
+  const openLead = useStable((stage: Stage, id: string, rows: readonly WorkLead[]) => {
+    const byId = new Map(rows.map(r => [r.id, r] as const))
+    setNav({
+      ids: rows.map(r => r.id),
+      label: `in ${stageLabel(stage)}`,
+      peek: leadId => { const lead = byId.get(leadId); return lead ? { lead, canWork: mayWork(lead) } : undefined },
+    })
+    setState({ lead: id })
+  })
+  const endDrag = useCallback(() => { setDragging(null); setOver(null) }, [])
 
   const filtersSet = [state.market, state.segment, state.temperature, state.source].filter(Boolean).length
   const count = (stage: Stage) => data?.stages[stage]?.n ?? 0
@@ -251,9 +281,9 @@ export function BoardScreen() {
         <div className={s.cols}>
           {BOARD_STAGES.map(stage => (
             <Column
-              key={stage} stage={stage} filter={filter} data={data} work={work} today={today} now={now} enabled={ready && (!narrow || current === stage)}
+              key={stage} stage={stage} filter={filter} data={data} supabase={work.supabase} today={today} enabled={!narrow || current === stage}
               current={current === stage} over={over === stage} folded={folded.includes(stage) && !narrow} showHolder={seesOthers} dragging={dragging} openId={state.lead}
-              canWork={mayWork} onOpen={(id, ids) => { setNav({ ids, label: `in ${stageLabel(stage)}` }); setState({ lead: id }) }} onLeadDrag={setDragging} onLeadDragEnd={() => { setDragging(null); setOver(null) }}
+              canWork={mayWork} onOpen={openLead} onLeadDrag={setDragging} onLeadDragEnd={endDrag}
               onFold={() => setFolded(folded.includes(stage) ? folded.filter(f => f !== stage) : [...folded, stage])}
               {...dropProps(stage)}
             />
@@ -261,9 +291,9 @@ export function BoardScreen() {
           {/* On a phone a tab shows these two lists; on a desktop each is a slim strip that opens as a column. */}
           {CLOSED.map(stage => (
             <Column
-              key={stage} stage={stage} filter={filter} data={data} work={work} today={today} now={now} enabled={ready && (narrow ? current === stage : opened === stage)}
+              key={stage} stage={stage} filter={filter} data={data} supabase={work.supabase} today={today} enabled={narrow ? current === stage : opened === stage}
               current={current === stage} over={over === stage} closed shown={opened === stage} folded={false} showHolder={seesOthers} dragging={dragging} openId={state.lead}
-              canWork={() => false} onOpen={(id, ids) => { setNav({ ids, label: `in ${stageLabel(stage)}` }); setState({ lead: id }) }} onLeadDrag={() => {}} onLeadDragEnd={() => {}} onFold={() => setOpened(null)}
+              canWork={() => false} onOpen={openLead} onLeadDrag={NOTHING} onLeadDragEnd={NOTHING} onFold={() => setOpened(null)}
               {...dropProps(stage)}
             />
           ))}
@@ -312,14 +342,18 @@ function ToolMenu({ button, label, role = 'menu', children }: {
   )
 }
 
-function Column({ stage, filter, data, work, today, now, enabled, current, over, closed = false, shown = false, folded, showHolder, dragging, openId, canWork, onOpen, onLeadDrag, onLeadDragEnd, onFold, ...drop }: {
+function Column({ stage, filter, data, supabase, today, enabled, current, over, closed = false, shown = false, folded, showHolder, dragging, openId, canWork, onOpen, onLeadDrag, onLeadDragEnd, onFold, ...drop }: {
   stage: Stage; filter: BoardFilter; data: BoardData | undefined
-  work: LeadWork; today: string; now: number; enabled: boolean; current: boolean; over: boolean; closed?: boolean; shown?: boolean; folded: boolean
+  supabase: LeadWork['supabase']; today: string; enabled: boolean; current: boolean; over: boolean; closed?: boolean; shown?: boolean; folded: boolean
   showHolder: boolean; dragging: WorkLead | null; openId: string; canWork: (lead: WorkLead) => boolean
-  onOpen: (id: string, ids: string[]) => void; onLeadDrag: (lead: WorkLead) => void; onLeadDragEnd: () => void; onFold: () => void
+  onOpen: (stage: Stage, id: string, rows: readonly WorkLead[]) => void; onLeadDrag: (lead: WorkLead) => void; onLeadDragEnd: () => void; onFold: () => void
 } & Partial<React.HTMLAttributes<HTMLElement>>) {
-  const q = useColumn(stage, filter, work.supabase, enabled && !folded)
+  const q = useColumn(stage, filter, supabase, enabled && !folded)
   const rows = useMemo(() => uniqueRows(q.data?.pages), [q.data])
+  // The cards share one handler for good, so a click needs the column's latest rows without the handler changing with them.
+  const latestRows = useRef(rows)
+  useEffect(() => { latestRows.current = rows })
+  const openCard = useCallback((id: string) => onOpen(stage, id, latestRows.current), [onOpen, stage])
   // A column that is not being read (folded) keeps the numbers of the filter it last had; show the board's own instead.
   const first = q.isPlaceholderData ? undefined : q.data?.pages[0]
   const n = first?.n ?? data?.stages[stage]?.n ?? 0
@@ -359,8 +393,8 @@ function Column({ stage, filter, data, work, today, now, enabled, current, over,
       </header>
       <div ref={list} className={s.colList}>
         {rows.map(lead => (
-          <Card key={lead.id} lead={lead} today={today} now={now} work={work} canWork={canWork(lead)} showHolder={showHolder} open={openId === lead.id} dragged={dragging?.id === lead.id}
-            onOpen={() => onOpen(lead.id, rows.map(r => r.id))} onDrag={onLeadDrag} onDragEnd={onLeadDragEnd} />
+          <Card key={lead.id} lead={lead} today={today} canWork={canWork(lead)} showHolder={showHolder} open={openId === lead.id} dragged={dragging?.id === lead.id}
+            onOpen={openCard} onDrag={onLeadDrag} onDragEnd={onLeadDragEnd} />
         ))}
         {q.isPending && enabled && <div className={s.colLoading}>Loading…</div>}
         {q.isError && rows.length === 0 && (
@@ -395,55 +429,40 @@ function Exit({ stage, count, hint, over, dragging, gone, onShow, ...drop }: {
   )
 }
 
-function Card({ lead, today, now, work, canWork, showHolder, open, dragged, onOpen, onDrag, onDragEnd }: {
-  lead: WorkLead; today: string; now: number; work: LeadWork; canWork: boolean; showHolder: boolean; open: boolean; dragged: boolean
-  onOpen: () => void; onDrag: (lead: WorkLead) => void; onDragEnd: () => void
+/**
+ * A card, small on purpose and with no buttons (owner, 2026-11-14): the client's name, their number, Hot / Warm / Cold and the
+ * next follow-up. Memoized, and given only values and handlers that stay the same between draws, so a draw of the board
+ * leaves every card that did not change alone.
+ */
+const Card = memo(function Card({ lead, today, canWork, showHolder, open, dragged, onOpen, onDrag, onDragEnd }: {
+  lead: WorkLead; today: string; canWork: boolean; showHolder: boolean; open: boolean; dragged: boolean
+  onOpen: (id: string) => void; onDrag: (lead: WorkLead) => void; onDragEnd: () => void
 }) {
-  const stop = (run: () => void) => (e: React.MouseEvent) => { e.stopPropagation(); run() }
   const cls = [s.card, open && s.cardOpen, lead.stuck && s.cardStuck, dragged && s.cardDragging].filter(Boolean).join(' ')
-  const heat = { hot: s.heatHot, warm: s.heatWarm, cold: s.heatCold }[lead.temperature]
-  const hasNote = lead.market === 'export' || !!lead.expected_value_paise || cameBack(lead) || !!flagOf(lead, now)
+  const title = leadTitle(lead)
+  // A lead with no name has its number as the title, so the number is not written twice.
+  const named = title !== formatPhone(lead.phone)
+  const heat = lead.temperature === 'hot' ? 'Hot' : lead.temperature === 'warm' ? 'Warm' : 'Cold'
   return (
     <article
       className={cls}
       tabIndex={0}
-      aria-label={`${leadTitle(lead)}, ${stageLabel(lead.stage)}`}
+      aria-label={`${title}${named ? `, ${formatPhone(lead.phone)}` : ''}, ${stageLabel(lead.stage)}, ${heat}, follow-up ${dueOf(lead, today).label}`}
       draggable={canWork}
       onDragStart={e => { e.dataTransfer.effectAllowed = 'move'; onDrag(lead) }}
       onDragEnd={onDragEnd}
-      onClick={onOpen}
-      onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) onOpen() }}
+      onClick={() => onOpen(lead.id)}
+      onKeyDown={e => { if (e.key === 'Enter' && e.target === e.currentTarget) onOpen(lead.id) }}
     >
       <div className={s.cardTop}>
-        <span className={`${s.heat} ${heat}`} role="img" aria-label={lead.temperature === 'hot' ? 'Hot' : lead.temperature === 'warm' ? 'Warm' : 'Cold'} title={lead.temperature === 'hot' ? 'Hot' : lead.temperature === 'warm' ? 'Warm' : 'Cold'} />
-        <h3 className={`${s.name}${lead.name ? '' : ` ${s.phoneName}`}`}>{leadTitle(lead)}</h3>
-        {/* Always visible, so moving a lead is one click on any screen; dragging the card still works on a desktop. */}
-        {canWork && (
-          <button type="button" className={s.moveBtn} aria-label={`Move ${leadTitle(lead)} to another stage`} title="Move to another stage" onClick={stop(() => work.openMove(lead))}><ArrowRight aria-hidden="true" /></button>
-        )}
+        <h3 className={`${s.name}${named ? '' : ` ${s.phoneName}`}`}>{title}</h3>
         {showHolder && lead.holder_name && <span className={s.avatar} title={lead.holder_name}>{initialsOf(lead.holder_name)}</span>}
       </div>
+      {named && <div className={s.cardPhone}>{formatPhone(lead.phone)}</div>}
       <div className={s.cardMid}>
-        <StepLine step={lead.next_step} />
-        <Due lead={lead} today={today} plain />
+        <TempChip value={lead.temperature} />
+        <span className={s.cardDue} title="Next follow-up"><CalendarDays aria-hidden="true" /><Due lead={lead} today={today} plain /></span>
       </div>
-      {hasNote && (
-        <div className={s.cardNote}>
-          <div className={s.chips}>
-            {lead.market === 'export' && <span className={`${s.chip} ${s.chipExport}`}>{marketLabel(lead)}</span>}
-            <ValueChip paise={lead.expected_value_paise} />
-            {cameBack(lead) && <span className={`${s.chip} ${s.chipAgain}`}><Bell aria-hidden="true" />Enquired again</span>}
-          </div>
-          <Flag lead={lead} now={now} plain />
-        </div>
-      )}
-      {canWork && (
-        <div className={s.acts}>
-          <a className={`${s.act} ${s.actCall}`} href={telHref(lead.phone)} aria-label={`Call ${leadTitle(lead)}`} title="Call" onClick={e => e.stopPropagation()}><Phone aria-hidden="true" /><span className={s.actLabel}>Call</span></a>
-          <button type="button" className={s.act} aria-label={`WhatsApp ${leadTitle(lead)}`} title="WhatsApp" onClick={stop(() => work.openWhatsApp(lead))}><MessageCircle aria-hidden="true" /><span className={s.actLabel}>WhatsApp</span></button>
-          <button type="button" className={s.act} aria-label={`No answer from ${leadTitle(lead)}`} title="No answer" disabled={work.busy} onClick={stop(() => work.noAnswer(lead))}><PhoneMissed aria-hidden="true" /><span className={s.actLabel}>No answer</span></button>
-        </div>
-      )}
     </article>
   )
-}
+})

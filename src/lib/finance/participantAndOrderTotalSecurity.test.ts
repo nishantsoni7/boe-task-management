@@ -1282,6 +1282,8 @@ describe('the applied migrations are frozen', () => {
       '20270713000000_clickup_draft_orders.sql',
       // Quotations, the builder redesign: client email, company name, GSTIN and one dimensions unit per quotation (four columns), the product note for the client copied into Remarks, quotation_save and quotation_client_doc re-issued.
       '20270714000000_quotation_builder_fields.sql',
+      // Sales, the Lead Board's totals without the 480 lead rows nobody read: one new read-only function (sales_board_summary), nothing existing replaced.
+      '20270716000000_sales_board_summary.sql',
     ])
   })
 
@@ -1799,6 +1801,7 @@ describe('the applied migrations are frozen', () => {
       '20270713000000_clickup_draft_orders.sql',
       // Quotations, the builder redesign: client email, company name, GSTIN and one dimensions unit per quotation (four columns), the product note for the client copied into Remarks, quotation_save and quotation_client_doc re-issued.
       '20270714000000_quotation_builder_fields.sql',
+      '20270716000000_sales_board_summary.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
