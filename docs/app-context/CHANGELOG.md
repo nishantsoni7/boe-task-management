@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-14 — Sales: a page frame instead of the spinner while the permission check runs (branch `feat/sales-checking-frame`) · no SQL
+- **Owner ask.** After the live load was traced (first paint 0.42 s, permission answer ~0.95 s, a full-screen spinner in between), the owner chose to show the page frame in that gap.
+- **Built.** `ModuleGuard` gets an optional `checking` prop (shown only while the check has not answered; default the spinner, so the 17 other guarded modules are unchanged); `src/app/sales/layout.tsx` passes `SalesCheckingFrame`: the Sales sidebar and header with the page's own title and grey blocks where the page will be (board columns for the board). Static: no query, no data, no action. Dossier rule 38.
+- **The rule it relaxes.** The guard's header said nothing renders before the access decision; this is the one, deliberate, Sales-only exception. A person without Sales access who opens a Sales address directly sees the empty frame for ~0.5 s before the redirect to Modules.
+- **Proof.** `salesCheckingFrame.test.tsx` (7: the guard shows it only while unresolved and never the children, only Sales passes it, no query or request or action in the frame, no Team or Lead Master, the titles, the board classes), `salesLeads.test.tsx` and `moduleParentGate.test.ts` unchanged in meaning; `tsc` and eslint clean. The real frame component rendered with the real stylesheet at 1440 and at phone width. Not proven yet: the time until the sidebar is on screen after the deploy.
+- **Rollback.** Revert the PR.
+
 ## 2026-11-14 — Orders: a PI change waiting for somebody is marked on the Confirmed Orders list (branch `feat/orders-change-highlight`, PR pending) · no SQL
 - **Owner ask (Operations, Nitish).** Highlight orders whose PI was changed and sent for approval, and keep the highlight until the other person accepts, rejects or asks for changes.
 - **Built.** A pill under Factory Status plus a row edge (amber; red when Operations asked Sales for changes) for four states of a PI version 2 or later: awaiting approval, with Sales, Operations asked for changes, awaiting Operations. It is state, the same for everybody who can open the Order, and goes when the step is decided. Rules in `lib/orders/piChangeMarker.ts`; two small reads (`order_pi_versions` pending, `order_operations_handoffs` live) beside the list, under the reader's RLS.
