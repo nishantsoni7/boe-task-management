@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b399a22a` — Draft Orders (ClickUp): the folder pick accepts the folder around the backup; search box height, loading title and step numbers fixed (#759)
-- Commits on this branch: 1320
+- Commit: `f0f79494` — Quotations: Price learning, piece 1 (old PIs fed to the price model 25 at a time, blind-test score, feedback doorway)
+- Commits on this branch: 1321
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 209
 - Migrations: 456 (first `20260530_create_positions.sql`, latest `20270715000000_pricing_learning.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1031   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `f0f79494` 2026-11-14 Quotations: Price learning, piece 1 (old PIs fed to the price model 25 at a time, blind-test score, feedback doorway)
 - `b399a22a` 2026-11-13 Draft Orders (ClickUp): the folder pick accepts the folder around the backup; search box height, loading title and step numbers fixed (#759)
 - `21126e0e` 2026-11-13 Quotations: the builder redesigned (one column, one dimensions unit, one GST rate, picture pop-up) - migration 20270714000000, apply before merge (#758)
 - `216256c8` 2026-11-13 Docs: stamp #756 (Import says to reload) as merged c9670dd0, deployed 19:58 IST (no SQL) (#757)
@@ -38,7 +39,6 @@
 - `7ba4b29b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps) (no SQL) (#738)
 - `2e4ade2e` 2026-11-13 Docs: stamp #735 (Confirmed Payments Order / PI column, names only) as merged bab48de7 (#737)
 - `a8a6ec45` 2026-11-13 Scoreboard: fix the "Star" band pill; record the Day Close/Scoreboard migrations' real apply date (no SQL) (#736)
-- `bab48de7` 2026-11-13 Confirmed Payments: the Order / PI column shows names only, no amounts (#735)
 
 ## Pages by top-level area
 
