@@ -10,7 +10,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Proof.** `piChangeMarker.test.ts` (new, 10 tests), the startup-shape pin and the two Refresh-line pins updated, tsc and eslint clean. Not proven: seen on a screen or a phone; the pill's wrapping in the Factory Status column.
 - **Rollback.** Revert the PR; nothing in the database changed.
 
-## 2026-11-14 — Sales: the lead popup's left side made compact so all of it shows with no scroll bar (branch `fix/lead-popup-left-compact`, PR not opened yet) · no SQL
+## 2026-11-14 — Sales: the lead popup's left side made compact so all of it shows with no scroll bar (PR #765, squash-merged 10:23 IST as `45a2182f`, deployed 10:25 IST) · no SQL
 - **Owner ask (14 Nov, a screenshot of the live popup).** "The left side section is too big overall. Reduce font size, card sizes so that the complete details are shown without any vertical scroll bar."
 - **Measured first.** The real `WorkPanel` rendered with the real stylesheet at the owner's window (popup 592 px tall, left side 538 px): 847 px of content, so about 40% had to go.
 - **Built (CSS plus one wrapper in `WorkPanel.tsx`).** One `@media (min-width: 768px)` block at the end of `leadBoard.module.css`: name 24 to 19 px, values 14 to 13 px, capital labels 12 to 10.5 px, controls 42-44 to 32 px, thinner cards and gaps; Hot / Warm / Cold beside Board status and "Held by" beside the follow-up (`nRow`, `display: contents` on a phone so the phone stacks them as before); Edit details compacted the same way. The phone rules are untouched.

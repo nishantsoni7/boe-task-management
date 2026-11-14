@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `864cb4cd` — Orders: mark a Confirmed Order whose PI change is waiting for somebody (no SQL)
-- Commits on this branch: 1325
+- Commit: `cddb67a0` — Merge remote-tracking branch 'origin/main' into feat/orders-change-highlight
+- Commits on this branch: 1327
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 209
 - Migrations: 457 (first `20260530_create_positions.sql`, latest `20270716000000_sales_board_summary.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1032   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
+- `cddb67a0` 2026-11-14 Merge remote-tracking branch 'origin/main' into feat/orders-change-highlight
 - `864cb4cd` 2026-11-14 Orders: mark a Confirmed Order whose PI change is waiting for somebody (no SQL)
+- `45a2182f` 2026-11-14 Sales: lead popup left side made compact so all of it shows with no scroll bar (#765)
 - `ae4040b9` 2026-11-14 Docs: stamp Price learning piece 1 (#760) as merged b273b165, deployed 06:33 IST, 20270715000000 applied (no SQL) (#763)
 - `b273b165` 2026-11-14 Quotations: Price learning, piece 1 (old PIs fed to the price model 25 at a time, blind-test score, feedback doorway) (#760)
 - `8b64c4d3` 2026-11-14 Sales: lead popup laid out again, board cards with no buttons, and the Lead Board and popup made fast (migration 20270716000000, additive) (#761)
@@ -37,8 +39,6 @@
 - `73b80e2d` 2026-11-13 Docs: stamp #743 (bank statement reversal lines) as merged 48b0cd83, deployed 12:43 IST (no SQL) (#745)
 - `47db4a17` 2026-11-13 Sales: the lead opens as a centered popup with one update box; next-working-day follow-ups; No answer moves New on (migration 20270703000100) (#742)
 - `0e188497` 2026-11-13 Sales: an Admin can be given leads when ticked; auto-allot switch on the Lead Master (migration 20270703000000) (#741)
-- `48b0cd83` 2026-11-13 Bank Statements: a reversed card debit no longer stops the upload (no SQL) (#743)
-- `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
 
 ## Pages by top-level area
 
