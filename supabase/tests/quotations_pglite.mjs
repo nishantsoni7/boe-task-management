@@ -38,7 +38,7 @@ await db.exec(`
   create function auth.uid() returns uuid language sql stable as
     $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
 
-  create table public.users (id uuid primary key, full_name text, role text not null default 'employee',
+  create table public.users (id uuid primary key, full_name text, phone text, email text, role text not null default 'employee',
     is_active boolean not null default true, is_deleted boolean default false);
   create table public.grants (user_id uuid, module_key text, action_key text);
   create function public.resolve_permission(p_uid uuid, p_module text, p_action text) returns boolean
@@ -63,6 +63,7 @@ await db.exec(`
   insert into public.users (id, full_name, role) values
     ('${U.admin}', 'Admin Person', 'admin'), ('${U.sales}', 'Mohit Sharma', 'employee'), ('${U.sales2}', 'Prerna Purohit', 'employee'),
     ('${U.manager}', 'Manager', 'manager'), ('${U.editor}', 'Pricing Desk', 'employee'), ('${U.nobody}', 'No Access', 'employee');
+  update public.users set phone = ' +91 90000 00001 ', email = 'mohit@boe.example' where id = '${U.sales}';
   insert into public.grants values
     ('${U.sales}', 'quotations', 'view'), ('${U.sales}', 'quotations', 'create'),
     ('${U.sales2}', 'quotations', 'view'), ('${U.sales2}', 'quotations', 'create'),
@@ -99,6 +100,7 @@ await db.exec(`insert into public.quotations (id, quote_no, client_name, owner_i
     ('${FOLD}', 2, 'Spec only', 'Plain', 1, 18, null),
     ('${FOLD}', 3, 'Longest', '${'x'.repeat(1000)}', 1, 18, '${'y'.repeat(500)}');`)
 await db.exec(mig('20270714000000_quotation_builder_fields.sql'))
+await db.exec(mig('20270717000000_quotation_document_fields.sql'))
 
 let checks = 0
 const ok = (name) => { checks++; console.log(`  ok - ${name}`) }
@@ -636,6 +638,69 @@ ok('revisions to win counts the versions of every confirmed quotation in the per
   await rpc(U.sales, 'quotation_save', id2, { header: { client_name: 'Plain Hotel', valid_days: 7, gst_mode: 'igst', dimension_unit: 'cm' }, areas: [], lines: [line] })
   assert.equal(await rpc(U.sales, 'quotation_version_create', id2, null), 2, 'switching the unit is a change that can be sent')
   ok('an inches quotation without a company sends the same copy as before; switching the unit counts as a change')
+}
+
+// ── 20270717000000: project type, seats, lead time, and the salesperson's contact on the client's document ──
+{
+  const id = await rpc(U.sales, 'quotation_create', { client_name: 'Document Hotel' })
+  const g0 = await rpc(U.sales, 'quotation_get', id)
+  assert.deepEqual([g0.quotation.project_type, g0.quotation.seats, g0.quotation.lead_time_weeks, g0.quotation.lead_time_reason], [null, null, null, null])
+  assert.equal(g0.owner_phone, '+91 90000 00001', 'the print page gets the salesperson mobile (trimmed)')
+  assert.equal(g0.owner_email, 'mohit@boe.example')
+  const line = { name: 'Zebra stool', size_text: '83 x 68', qty_fixed: 10, unit_price: 40000, tax_rate: 18 }
+  const header = { client_name: 'Document Hotel', valid_days: 7, gst_mode: 'igst', supply_state: 'Goa' }
+  await rpc(U.sales, 'quotation_save', id, { expected_updated_at: g0.quotation.updated_at, header: { ...header, project_type: 'resort', seats: '', lead_time_weeks: 14, lead_time_reason: ' Client needs it before the season ' }, areas: [], lines: [line] })
+  const g1 = await rpc(U.sales, 'quotation_get', id)
+  assert.deepEqual([g1.quotation.project_type, g1.quotation.seats, g1.quotation.lead_time_weeks, g1.quotation.lead_time_reason], ['resort', null, 14, 'Client needs it before the season'])
+  ok('save stores the project type, the lead time and its reason, and quotation_get returns them')
+
+  // A tab opened before the migration sends none of the four: what is stored must stay. An empty value clears one.
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [line] })
+  const g2 = await rpc(U.sales, 'quotation_get', id)
+  assert.deepEqual([g2.quotation.project_type, g2.quotation.lead_time_weeks, g2.quotation.lead_time_reason], ['resort', 14, 'Client needs it before the season'])
+  await rpc(U.sales, 'quotation_save', id, { header: { ...header, project_type: 'restaurant', seats: 220, lead_time_weeks: 10, lead_time_reason: '' }, areas: [], lines: [line] })
+  const g3 = await rpc(U.sales, 'quotation_get', id)
+  assert.deepEqual([g3.quotation.project_type, g3.quotation.seats, g3.quotation.lead_time_weeks, g3.quotation.lead_time_reason], ['restaurant', 220, 10, null])
+  ok('a save that sends no new keys keeps them; an empty reason clears the override')
+
+  for (const bad of [{ project_type: 'castle' }, { seats: 0 }, { seats: 100001 }, { lead_time_weeks: 0 }, { lead_time_weeks: 105 }, { lead_time_weeks: '', lead_time_reason: 'no weeks' }]) {
+    await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [id, { header: { ...header, ...bad }, areas: [], lines: [line] }], /QUOTATION_INVALID/)
+  }
+  ok('an unknown project type, seats outside 1 to 100,000, weeks outside 1 to 104 and a reason without weeks are refused')
+
+  // The client's copy: the latest SENT version freezes project type, seats and weeks; the reason and live edits stay out.
+  const tok = await rpc(U.sales, 'quotation_share', id, true)
+  const pub = async t => (await as(null, `select public.quotation_public($1) as r`, [t], 'anon')).rows[0].r
+  const p1 = await pub(tok)
+  assert.deepEqual([p1.project_type, p1.seats, p1.lead_time_weeks], ['restaurant', 220, 10])
+  assert.ok(!('lead_time_reason' in p1), 'the reason is internal')
+  assert.deepEqual([p1.salesperson, p1.salesperson_phone, p1.salesperson_email], ['Mohit Sharma', '+91 90000 00001', 'mohit@boe.example'])
+  for (const k of ['client_email', 'contact_phone', 'internal_notes', 'owner_id', 'owner_phone', 'owner_email', 'share_token']) assert.ok(!(k in p1), `client view must not carry ${k}`)
+  await rpc(U.sales, 'quotation_save', id, { header: { ...header, project_type: 'restaurant', seats: 220, lead_time_weeks: 12, lead_time_reason: 'Rush order' }, areas: [], lines: [line] })
+  assert.equal((await pub(tok)).lead_time_weeks, 10, 'a saved but unsent change does not reach the client')
+  assert.equal(await rpc(U.sales, 'quotation_version_create', id, null), 2, 'a changed lead time is a change that can be sent')
+  assert.equal((await pub(tok)).lead_time_weeks, 12)
+  ok('the client link shows project type, seats and lead time from the latest sent version, never the reason, and the salesperson contact')
+
+  // A salesperson with no phone or e-mail: the keys are simply absent, nothing prints "null".
+  const id2 = await rpc(U.sales2, 'quotation_create', { client_name: 'No Contact Hotel' })
+  await rpc(U.sales2, 'quotation_save', id2, { header: { client_name: 'No Contact Hotel', valid_days: 7, gst_mode: 'igst' }, areas: [], lines: [line] })
+  const p2 = await pub(await rpc(U.sales2, 'quotation_share', id2, true))
+  for (const k of ['project_type', 'seats', 'lead_time_weeks', 'salesperson_phone', 'salesperson_email']) assert.ok(!(k in p2), `${k} is left out when it is not set`)
+  assert.equal(p2.salesperson, 'Prerna Purohit')
+  ok('nothing is set: the new keys are absent from the client copy (so an untouched quotation freezes the same copy as before)')
+}
+
+// ── the check the owner runs after applying 20270717000000 (the same text as in temporary/20270717000000-apply.sql) ──
+{
+  const r = await db.query(`select
+    (select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'quotations' and column_name in ('project_type', 'seats', 'lead_time_weeks', 'lead_time_reason')) as new_columns,
+    (select count(*) from public.quotations where project_type is not null or seats is not null or lead_time_weeks is not null or lead_time_reason is not null) as quotations_with_new_values,
+    (select count(*) from public.quotations) as quotations_total,
+    (select bool_and(public.quotation_client_doc(id) ?& array['client_name', 'areas', 'lines'] and not (public.quotation_client_doc(id) ? 'lead_time_reason')) from public.quotations) as client_copy_ok`)
+  assert.equal(Number(r.rows[0].new_columns), 4); assert.equal(r.rows[0].client_copy_ok, true)
+  assert.ok(Number(r.rows[0].quotations_total) > 0)
+  ok('the owner\'s after-apply query runs: four columns, every client copy has its keys and never the lead-time reason')
 }
 
 console.log(`all ${checks} checks passed`)

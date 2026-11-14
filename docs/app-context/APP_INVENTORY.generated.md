@@ -5,17 +5,19 @@
 
 ## Snapshot
 
-- Commit: `61dd1c91` — Docs: stamp page speed part 1 (#775) as merged 39fadbcf, deployed 19:07 IST, verified live (no SQL) (#778)
-- Commits on this branch: 1337
+- Commit: `39a2554c` — Merge origin/main into feat/quotation-client-document
+- Commits on this branch: 1339
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 209
-- Migrations: 458 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
+- Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
-- Test files: 844   Next.js 16.2.6, React 19.2.4
+- Test files: 848   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `39a2554c` 2026-11-14 Merge origin/main into feat/quotation-client-document
 - `61dd1c91` 2026-11-14 Docs: stamp page speed part 1 (#775) as merged 39fadbcf, deployed 19:07 IST, verified live (no SQL) (#778)
 - `39fadbcf` 2026-11-14 Page speed, part 1: every record page prepared and cached, static files kept for a day, page-load audit (no SQL) (#775)
+- `fe03a3b1` 2026-11-14 Quotations: the premium client document, Download PDF, project type and lead time (migration 20270717000000)
 - `4891ae98` 2026-11-14 Docs: stamp Quotations Import of a PI (#773) as merged 111f4ef6, deployed 13:28 IST (no SQL) (#774)
 - `111f4ef6` 2026-11-14 Quotations: Import brings a BOE PI's price, customization and representative picture (no SQL) (#773)
 - `2adad5f7` 2026-11-14 Docs: stamp the BOE One loader (#770) as merged 3dd0cc93, deployed 12:38 IST (no SQL) (#772)
@@ -37,8 +39,6 @@
 - `c9670dd0` 2026-11-13 Quotations: Import says to reload when its code could not be downloaded (#756)
 - `df8ef1f7` 2026-11-13 Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (migration 20270713000000) (#754)
 - `a203fcef` 2026-11-13 Docs: stamp #753 (Pendencies card on a phone) as merged e9a5f6bd, deployed 19:05 IST (no SQL) (#755)
-- `e9a5f6bd` 2026-11-13 Orders: Pending from client no longer slides off the right edge on a phone (#753)
-- `a4a53022` 2026-11-13 Docs: stamp #751 (Board status dropdown, project value and timeline gates) as merged 6417fe89, migration 20270711000000 applied (no SQL) (#752)
 
 ## Pages by top-level area
 
@@ -167,7 +167,7 @@
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/pricing` — 9 source, 5 test
 - `src/lib/push` — 3 source, 1 test
-- `src/lib/quotations` — 13 source, 7 test
+- `src/lib/quotations` — 15 source, 8 test
 - `src/lib/salesLeads` — 15 source, 15 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
@@ -497,7 +497,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270613000000_sales_whatsapp_classify.sql`
 - `20270614000000_quotations_module.sql`
 - `20270615000000_quotation_pi_link.sql`
 - `20270616000000_order_line_flags.sql`
@@ -526,6 +525,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270714000000_quotation_builder_fields.sql`
 - `20270715000000_pricing_learning.sql`
 - `20270716000000_sales_board_summary.sql`
+- `20270717000000_quotation_document_fields.sql`
 - `20270718000000_order_handoff_review_chain.sql`
 
 ## All SQL function names

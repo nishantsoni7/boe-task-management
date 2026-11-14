@@ -4,6 +4,7 @@
 import type { createClient } from '@/lib/supabase/client'
 import { classifyError, toAreas, toLines } from './api'
 import { computeTotals, lineQty, type GstMode } from './math'
+import { projectTypeLabel } from './documentPlan'
 
 type Supabase = ReturnType<typeof createClient>
 
@@ -15,6 +16,8 @@ export type VersionDoc = {
   packing_amount: number; transport_note: string | null; valid_days: number; notes: string | null
   /** Missing in a copy frozen before 20270714000000 (and for an inches quotation without them): none / inches. */
   company_name?: string | null; client_gstin?: string | null; dimension_unit?: string | null
+  /** Missing in a copy frozen before 20270717000000, and whenever they are not set. */
+  project_type?: string | null; seats?: number | null; lead_time_weeks?: number | null
   areas: DocArea[]; lines: DocLine[]
 }
 
@@ -63,6 +66,9 @@ export function compareDocs(a: VersionDoc, b: VersionDoc): Comparison {
   h('Dimensions in', a.dimension_unit === 'cm' ? 'cm' : 'in', b.dimension_unit === 'cm' ? 'cm' : 'in', v => (v === 'cm' ? 'Centimetres' : 'Inches'))
   h('Company name', a.company_name, b.company_name)
   h('GSTIN', a.client_gstin, b.client_gstin)
+  h('Project type', a.project_type, b.project_type, v => projectTypeLabel(v) || '—')
+  h('Seats', a.seats, b.seats)
+  h('Lead time (weeks)', a.lead_time_weeks, b.lead_time_weeks)
   h('Notes for the client', a.notes, b.notes)
 
   const unmatched = [...B.refs]

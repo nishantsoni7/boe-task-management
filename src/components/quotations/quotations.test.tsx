@@ -68,7 +68,7 @@ describe('the printed quotation (real Resort Shamshabad quote)', () => {
   test('room types with their multipliers, per-room quantities and sizes in inches', () => {
     assert.ok(text.includes('Boho room · Boho × 56 rooms'))
     assert.ok(text.includes('112'), '2 bedside tables per room × 56')
-    assert.ok(text.includes('2 × 56'))
+    assert.ok(text.includes('2 per room × 56 rooms'), 'the price table says how the quantity was made')
     assert.ok(text.includes('72 × 78 × 18 in'), "6'0\"×6'6\"×1'6\" shown in inches")
     assert.ok(text.includes('39'), 'a fixed quantity stays as typed')
   })

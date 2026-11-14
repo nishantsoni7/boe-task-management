@@ -84,6 +84,14 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .lostBox { flex-basis: 100%; display: grid; gap: 6px; max-width: 520px; }
 .clientGrid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px 14px; }
 .taxChip { font-size: 12px; color: var(--boe-text-muted); }
+/* Project type, seats and lead time (20270717000000) */
+.leadRow { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 180px) minmax(0, 1fr); gap: 12px 14px; align-items: start; margin-top: 14px; }
+.leadRowNoSeats { grid-template-columns: minmax(0, 220px) minmax(0, 1fr); }
+.leadBox { display: grid; gap: 4px; min-width: 0; align-content: start; }
+.leadLab { font-size: 12px; font-weight: 600; color: var(--boe-text-strong); }
+.leadLine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 36px; }
+.leadEdit { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr); gap: 10px; margin-top: 6px; padding: 12px; border-radius: 10px; background: var(--boe-surface-quiet); border: 1px solid var(--boe-border); }
+.leadActs { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
 .advBtn { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 14px; padding: 9px 12px; border: 1px dashed var(--boe-border-strong); border-radius: var(--boe-radius-control); background: var(--boe-surface-quiet); color: var(--boe-text-strong); font: 600 13px var(--boe-font-body); text-align: left; cursor: pointer; }
 .advBtn:hover { background: var(--boe-surface-hover); }
 .advBtn .hintTxt { font-weight: 400; color: var(--boe-text-muted); font-size: 12.5px; }
@@ -183,7 +191,7 @@ textarea.t3 { min-height: 86px; }
 }
 /* phone */
 @media (max-width: 767px) {
-  .grid2, .grid3, .grid4, .clientGrid, .advBody, .bottom { grid-template-columns: minmax(0, 1fr); }
+  .grid2, .grid3, .grid4, .clientGrid, .advBody, .bottom, .leadRow, .leadRowNoSeats, .leadEdit { grid-template-columns: minmax(0, 1fr); }
   .pl { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 12px; }
   .plPic { flex-direction: row; align-items: center; gap: 14px; }
   .plPicBtn, .plPicEmpty { width: 112px; height: 94px; flex-shrink: 0; }

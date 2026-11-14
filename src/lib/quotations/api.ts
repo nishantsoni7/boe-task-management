@@ -36,6 +36,9 @@ export type Header = {
   packing_amount: number; transport_note: string; valid_days: number; notes: string; internal_notes: string
   /** 20270714000000. The email stays internal (never printed or shown on the client link); company name and GSTIN print under "Prepared for". */
   client_email: string; company_name: string; client_gstin: string; dimension_unit: DimensionUnit
+  /** 20270717000000. The kind of venue ('' = not set; see documentPlan.PROJECT_TYPES), its seats (restaurant, cafe, brewery) and the lead time in
+   *  weeks. The weeks are worked out from the owner's rules and stored; a reason present means a person changed them (the reason stays internal). */
+  project_type: string; seats: number | null; lead_time_weeks: number | null; lead_time_reason: string
 }
 
 export type QuotationEvent = { kind: string; detail: Record<string, unknown>; at: string; actor_name: string | null }
@@ -43,6 +46,8 @@ export type QuotationEvent = { kind: string; detail: Record<string, unknown>; at
 export type Quotation = {
   id: string; quote_no: string; status: QuotationStatus; share_token: string | null; sent_at: string | null
   created_at: string; updated_at: string; owner_name: string | null; may_edit: boolean
+  /** The salesperson's mobile and e-mail, printed on the client document (20270717000000, owner 14 Nov 2026). */
+  owner_phone: string | null; owner_email: string | null
   header: Header; areas: QuoteArea[]; lines: QuoteLine[]; events: QuotationEvent[]
   /** The PI draft this quotation was confirmed into (20270615000000), or null. */
   pi: { id: string; draft_reference: string | null; status: string } | null
@@ -80,6 +85,9 @@ export type PublicQuotation = {
   company_name?: string | null; client_gstin?: string | null; dimension_unit?: DimensionUnit | null
   /** The version the client is seeing (20270623000000); null for a link shared before versions existed. */
   version_no?: number | null
+  /** Set only when set (20270717000000); a copy sent before has none. The salesperson's contact is live, not frozen. */
+  project_type?: string | null; seats?: number | null; lead_time_weeks?: number | null
+  salesperson_phone?: string | null; salesperson_email?: string | null
   areas: QuoteArea[]; lines: QuoteLine[]
 }
 
@@ -156,14 +164,14 @@ export function toLines(rows: DbLine[]): QuoteLine[] {
 }
 
 export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation> {
-  const r = await call<{ quotation: Record<string, unknown>; owner_name: string | null; may_edit: boolean; areas: DbArea[]; lines: DbLine[]; events: QuotationEvent[]; pi?: Quotation['pi']; price?: PriceState; request?: Quotation['request'] }>(
+  const r = await call<{ quotation: Record<string, unknown>; owner_name: string | null; owner_phone?: string | null; owner_email?: string | null; may_edit: boolean; areas: DbArea[]; lines: DbLine[]; events: QuotationEvent[]; pi?: Quotation['pi']; price?: PriceState; request?: Quotation['request'] }>(
     () => s.rpc('quotation_get', { p_id: id }))
   const q = r.quotation as Record<string, string | number | null>
   const str = (k: string) => (q[k] as string | null) ?? ''
   return {
     id: str('id'), quote_no: str('quote_no'), status: q.status as QuotationStatus, share_token: (q.share_token as string | null) ?? null,
     sent_at: (q.sent_at as string | null) ?? null, created_at: str('created_at'), updated_at: str('updated_at'),
-    owner_name: r.owner_name, may_edit: r.may_edit,
+    owner_name: r.owner_name, owner_phone: r.owner_phone ?? null, owner_email: r.owner_email ?? null, may_edit: r.may_edit,
     header: {
       client_name: str('client_name'), project_name: str('project_name'), contact_name: str('contact_name'),
       contact_phone: str('contact_phone'), contact_role: str('contact_role'), client_type: str('client_type'),
@@ -171,6 +179,8 @@ export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation
       fabric_amount: Number(q.fabric_amount) || 0, packing_amount: Number(q.packing_amount) || 0, transport_note: str('transport_note'),
       valid_days: Number(q.valid_days) || 7, notes: str('notes'), internal_notes: str('internal_notes'),
       client_email: str('client_email'), company_name: str('company_name'), client_gstin: str('client_gstin'), dimension_unit: toDimensionUnit(q.dimension_unit),
+      project_type: str('project_type'), seats: q.seats === null || q.seats === undefined ? null : Number(q.seats) || null,
+      lead_time_weeks: q.lead_time_weeks === null || q.lead_time_weeks === undefined ? null : Number(q.lead_time_weeks) || null, lead_time_reason: str('lead_time_reason'),
     },
     areas: toAreas(r.areas), lines: toLines(r.lines), events: r.events, pi: r.pi ?? null, price: r.price ?? null, request: r.request ?? null,
   }
