@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `c705b65e` — Docs: SEO Rankings heading merged as 93db82c5 (#769) (#771)
-- Commits on this branch: 1331
+- Commit: `111f4ef6` — Quotations: Import brings a BOE PI's price, customization and representative picture (no SQL) (#773)
+- Commits on this branch: 1334
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 209
 - Migrations: 457 (first `20260530_create_positions.sql`, latest `20270716000000_sales_board_summary.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1032   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `111f4ef6` 2026-11-14 Quotations: Import brings a BOE PI's price, customization and representative picture (no SQL) (#773)
+- `2adad5f7` 2026-11-14 Docs: stamp the BOE One loader (#770) as merged 3dd0cc93, deployed 12:38 IST (no SQL) (#772)
+- `3dd0cc93` 2026-11-14 Platform: a slow wait shows the BOE One loader over the whole screen (no SQL) (#770)
 - `c705b65e` 2026-11-14 Docs: SEO Rankings heading merged as 93db82c5 (#769) (#771)
 - `93db82c5` 2026-11-14 SEO Rankings: heading no longer says "20" money keywords (#769)
 - `b62262a2` 2026-11-14 Docs: stamp the lead popup, board cards and speed work (#761) as merged 8b64c4d3, deployed 06:04 IST, 20270716000000 applied, with the live measurements (no SQL) (#764)
@@ -36,9 +39,6 @@
 - `6417fe89` 2026-11-13 Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (migration 20270711000000) (#751)
 - `0f5b7f63` 2026-11-13 Docs: stamp #749 (Visit / Meeting, ClickUp move, Call back) as merged b9b552f7, migration 20270710000000 applied (no SQL) (#750)
 - `b9b552f7` 2026-11-13 Sales: Visit / Meeting stage and the owner's stage names; ClickUp Important Bulk / Bulk leads to Potential Clients; Call back; popup left side redesigned (migration 20270710000000) (#749)
-- `54e54084` 2026-11-13 Docs: record 20270705000000 (Top 5 switch) as applied (no SQL) (#748)
-- `814f1e7f` 2026-11-13 Docs: stamp #746 (Day Close and Scoreboard team switch) as merged 22d9f772, migration 20270704000000 applied (no SQL) (#747)
-- `dcbe0c9f` 2026-11-13 Scoreboard: hide the Top 5 from staff, with the owner's switch (migration 20270705000000) (#744)
 
 ## Pages by top-level area
 
