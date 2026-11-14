@@ -5,12 +5,11 @@ import {
   ChevronDown, LogOut, Settings,
   Eye, X,
 } from 'lucide-react'
-import { useQuery } from '@tanstack/react-query'
 import { useRouter, usePathname } from 'next/navigation'
 import type { UserProfile } from '@/lib/types'
 import { initials } from '@/lib/ui'
 import { useViewAs } from '@/hooks/useViewAs'
-import { createClient } from '@/lib/supabase/client'
+import { useOwnRowExtras } from '@/hooks/queries/useOwnRowExtras'
 import { employeeSubtitle, designationLevelLabel } from '@/lib/users/designationLevels'
 
 // ─── ViewModeBanner ───────────────────────────────────────────────────────────
@@ -253,16 +252,10 @@ function UserMenu({
 
   // Designation only — the department is deliberately left off this line.
   // The shared profile query does not select these two columns (the permission
-  // code must never read designation_level), so the footer reads its own.
-  const { data: designation } = useQuery({
-    queryKey: ['sidebar-designation', profile.id],
-    queryFn: async () => {
-      const { data } = await createClient()
-        .from('users').select('position, designation_level').eq('id', profile.id).single()
-      return (data as { position: string | null; designation_level: string | null } | null) ?? null
-    },
-    staleTime: 5 * 60 * 1000,
-  })
+  // code must never read designation_level), so the footer reads them from the
+  // own-row extras, ONE read shared with the Modules page's attendance rule
+  // (useOwnRowExtras, 2026-11-14) instead of a request of its own.
+  const { data: designation } = useOwnRowExtras(profile.id, { staleTime: 5 * 60 * 1000 })
   const subtitle = designation?.position?.trim() || designationLevelLabel(designation?.designation_level) || ''
   const triggerRestBg = open ? 'rgba(0,0,0,0.05)' : onAccountPage ? '#FFFFFF' : 'transparent'
 

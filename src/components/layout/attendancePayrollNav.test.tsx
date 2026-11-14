@@ -424,8 +424,13 @@ describe('the "Attendance request" shortcut on the Modules page', () => {
     const cols = CONTEXT.match(/const PROFILE_COLUMNS = '([^']*)'/)
     assert.ok(cols, 'the shared profile column list exists')
     if (!cols[1].includes('payroll_active')) {
-      assert.match(LAUNCHER, /\.from\('users'\)\s*\.select\('payroll_active, is_deleted'\)\s*\.eq\('id', userId!\)/,
+      // Since 2026-11-14 the read is useOwnRowExtras: ONE primary-key read of the signed-in row that also
+      // carries the account menu's position and designation_level (it was two requests).
+      assert.match(LAUNCHER, /useOwnRowExtras\(userId, \{ enabled: !!userId && !viewMode \}\)/,
         'the launcher must read payroll_active for the signed-in row')
+      const HOOK = read('src/hooks/queries/useOwnRowExtras.ts')
+      assert.match(HOOK, /OWN_ROW_EXTRA_COLUMNS = 'payroll_active, is_deleted, position, designation_level'/)
+      assert.match(HOOK, /\.from\('users'\)\s*\.select\(OWN_ROW_EXTRA_COLUMNS\)\s*\.eq\('id', userId!\)/)
       assert.match(LAUNCHER, /participatesInPayroll\(participationRead\.data\)/)
     }
     assert.equal(/participatesInPayroll\(profile\)/.test(LAUNCHER), false,
