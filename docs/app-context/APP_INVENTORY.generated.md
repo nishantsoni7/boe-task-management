@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `e487b0c4` — Merge origin/main into fix/quotation-document-layout (third time)
-- Commits on this branch: 1351
+- Commit: `cd0d4e5f` — Docs: stamp the builder polish part A (#784) as merged 2750eb00, deployed 22:17 IST, verified live
+- Commits on this branch: 1352
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 210
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `cd0d4e5f` 2026-11-14 Docs: stamp the builder polish part A (#784) as merged 2750eb00, deployed 22:17 IST, verified live
 - `e487b0c4` 2026-11-14 Merge origin/main into fix/quotation-document-layout (third time)
 - `2750eb00` 2026-11-14 Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL) (#784)
 - `d4b28cda` 2026-11-14 Merge origin/main into fix/quotation-document-layout (second time)
@@ -38,7 +39,6 @@
 - `93db82c5` 2026-11-14 SEO Rankings: heading no longer says "20" money keywords (#769)
 - `b62262a2` 2026-11-14 Docs: stamp the lead popup, board cards and speed work (#761) as merged 8b64c4d3, deployed 06:04 IST, 20270716000000 applied, with the live measurements (no SQL) (#764)
 - `f0f4c23c` 2026-11-14 Sales: a page frame instead of the full-screen spinner while the permission check runs (no SQL) (#768)
-- `d7e49cdc` 2026-11-14 Orders: mark a Confirmed Order whose PI change is waiting for somebody (no SQL) (#767)
 
 ## Pages by top-level area
 
