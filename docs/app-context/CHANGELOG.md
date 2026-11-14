@@ -13,6 +13,11 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Not covered.** A page opened by code after a save (`router.push`); a first request whose HTML never arrives (the browser's own blank page).
 - **Rollback.** Revert the PR; nothing in the database changed.
 
+## 2026-11-14 — SEO Rankings: the money keywords are now one per category of the discussion brief (PR open, branch `fix/seo-rankings-heading`) · no migration
+- **Owner decision (14 Nov).** The Rankings page tracks the most-searched search (Ahrefs, India) in each of the brief’s 26 categories, plus Jodhpur beside Bangalore: 27 in place of the October list of 20.
+- **Changed here.** Only the Rankings heading, which said "The 20 money keywords"; the page already shows whatever the newest reading holds. The list, its notes and the reading live in the website folder; the sender sends the 13 dropped keywords once with no position, so the page stops showing them.
+- **Proof.** No logic changed; `seoScreens` and `pages` tests run unchanged. Page-1 counts before and after 14 Nov are not comparable (noted on the plan board as a proposal).
+
 ## 2026-11-14 — Sales: a page frame instead of the spinner while the permission check runs (PR #768, squash-merged 11:44 IST as `f0f4c23c`, deployed 11:46 IST) · no SQL
 - **Owner ask.** After the live load was traced (first paint 0.42 s, permission answer ~0.95 s, a full-screen spinner in between), the owner chose to show the page frame in that gap.
 - **Built.** `ModuleGuard` gets an optional `checking` prop (shown only while the check has not answered; default the spinner, so the 17 other guarded modules are unchanged); `src/app/sales/layout.tsx` passes `SalesCheckingFrame`: the Sales sidebar and header with the page's own title and grey blocks where the page will be (board columns for the board). Static: no query, no data, no action. Dossier rule 38.
