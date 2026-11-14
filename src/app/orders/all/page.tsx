@@ -47,9 +47,11 @@ import {
   buildPendencyOverviews,
   type CurrentApprovalRow, type OpenPendencyRow, type OrderPendencyOverview,
 } from '@/lib/orders/pendencyOverview'
+import { loadPiChangeMarkers, type PiChangeMarker } from '@/lib/orders/piChangeMarker'
 import { AdvanceCell } from './AdvanceCell'
 import { FactoryCell } from './FactoryCell'
 import { PendenciesPopup, PendencyCell } from './PendenciesPopup'
+import { PiChangePill } from './PiChangePill'
 import { SortHeader } from './SortHeader'
 import { PhoneChips, PhoneFilterSheet, PhoneSearchBox, showResultsLabel } from '@/components/ui/PhoneFilters'
 
@@ -340,6 +342,13 @@ export default function AllOrdersPage() {
    * line is drawn and nothing is claimed.
    */
   const [dispatch, setDispatch] = useState<Map<string, DispatchProgress>>(new Map())
+  /**
+   * WHICH ORDERS HAVE A PI CHANGE WAITING FOR SOMEBODY (Operations' request, 2026-11-14): the
+   * marker under Factory Status. It is state, the same for everybody who can open the Order, and it
+   * goes only when the person it waits on decides. Until the reads land, or if one fails, nothing is
+   * drawn. The rule is in lib/orders/piChangeMarker.ts.
+   */
+  const [piChanges, setPiChanges] = useState<Map<string, PiChangeMarker>>(new Map())
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -445,6 +454,10 @@ export default function AllOrdersPage() {
     setDispatch(error ? new Map() : parseDispatchProgress(data))
   }
 
+  const loadPiChanges = async () => {
+    setPiChanges(await loadPiChangeMarkers(supabase))
+  }
+
   const pendencyOverviews = useMemo(
     () => pendencyReads
       ? buildPendencyOverviews(orders.map(o => o.id), pendencyReads.approvals, pendencyReads.open)
@@ -476,6 +489,8 @@ export default function AllOrdersPage() {
         loadPendencies(),
         loadAdvance(),
         loadDispatch(),
+        // The PI-change marker: two small reads, beside the others, so no extra wait.
+        loadPiChanges(),
         // The operations queue, only when it was asked for. Beside the
         // others, so the filtered list costs no extra wait.
         opsFilter === 'awaiting' ? loadAwaitingOps() : Promise.resolve(),
@@ -626,7 +641,7 @@ export default function AllOrdersPage() {
       /* Refresh re-reads these: a reader who has just opened an Order in
          another tab expects its badge to be gone when they come back, and a
          payment verified meanwhile to count in its Advance. */
-      onRefresh={async () => { await Promise.all([loadOrders(), loadUnread(), loadAdvance(), loadDispatch()]) }}
+      onRefresh={async () => { await Promise.all([loadOrders(), loadUnread(), loadAdvance(), loadDispatch(), loadPiChanges()]) }}
     >
       {deletedBanner && (
         <div style={{
@@ -918,8 +933,9 @@ export default function AllOrdersPage() {
                   </li>
                 )
               }
+              const piChange = piChanges.get(o.id)
               return (
-                <li key={o.id} className={`orders-list-card${updateLabel ? ' has-update' : ''}`}>
+                <li key={o.id} className={`orders-list-card${updateLabel ? ' has-update' : ''}${piChange ? ` has-pi-change has-pi-change--${piChange.tone}` : ''}`}>
                   {/* THREE LINES (owner, 2026-11-04): code and value; client
                       and advance; where it is in the factory, when it is due,
                       what is pending. The code's link covers the whole card. */}
@@ -951,6 +967,7 @@ export default function AllOrdersPage() {
                       </span>
                     )}
                   </div>
+                  {piChange && <div className="orders-list-card-pichange"><PiChangePill marker={piChange} /></div>}
                 </li>
               )
             })}
@@ -1016,6 +1033,8 @@ export default function AllOrdersPage() {
                   const updates = unread.get(o.id) ?? 0
                   const updateNote = unreadUpdateNote(updates)
                   const cancelled = o.status === 'cancelled'
+                  // A cancelled Order is a gap in the sequence: nothing is waiting on it.
+                  const piChange = cancelled ? undefined : piChanges.get(o.id)
                   return (
                     <tr
                       key={o.id}
@@ -1025,7 +1044,7 @@ export default function AllOrdersPage() {
                          irritating in a list somebody reads all day, so the
                          animation is on the small dot in the note and nowhere
                          else. */
-                      className={[updateNote && 'has-update', cancelled && 'orders-gap-row'].filter(Boolean).join(' ') || undefined}
+                      className={[updateNote && 'has-update', piChange && `has-pi-change has-pi-change--${piChange.tone}`, cancelled && 'orders-gap-row'].filter(Boolean).join(' ') || undefined}
                     >
                       <td className="fin-ordno orders-code-cell" style={{ fontWeight: updateNote ? 800 : undefined }}>
                         <span className="orders-code-line">
@@ -1070,6 +1089,7 @@ export default function AllOrdersPage() {
                           </td>
                           <td className="orders-after-value">
                             <FactoryCell view={withSalesOrders.has(o.id) ? WITH_SALES_FACTORY_VIEW : factoryView(o, dispatch.get(o.id))} />
+                            {piChange && <PiChangePill marker={piChange} />}
                           </td>
                           <td>
                             <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />

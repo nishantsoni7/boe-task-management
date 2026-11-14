@@ -157,7 +157,7 @@ describe('the Advance column (owner, 2026-11-01)', () => {
     assert.ok(page.includes("supabase.rpc('orders_advance_percent')"))
     assert.ok(page.includes('setAdvance(new Map(error ? [] :'), 'a failed read draws no old figure')
     assert.match(page, /loadPendencies\(\),\s+loadAdvance\(\),/)
-    assert.ok(page.includes('await Promise.all([loadOrders(), loadUnread(), loadAdvance(), loadDispatch()])'))
+    assert.ok(page.includes('await Promise.all([loadOrders(), loadUnread(), loadAdvance(), loadDispatch(), loadPiChanges()])'))
   })
 
   test('the table and the phone card draw it, and a cancelled Order has none', () => {
