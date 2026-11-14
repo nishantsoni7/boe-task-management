@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `fe677095` — Docs: stamp the premium client quotation document (#777) as merged e0d4fe4c, deployed 20:08 IST, migration 20270717000000 applied (#781)
-- Commits on this branch: 1342
-- Pages (`page.tsx`): 199   API routes (`route.ts`): 209
+- Commit: `f46df4a0` — Docs: stamp page speed part 5 (#782) as merged 4c215ba9, deployed 20:56 IST, verified live (no SQL) (#783)
+- Commits on this branch: 1344
+- Pages (`page.tsx`): 199   API routes (`route.ts`): 210
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
-- Test files: 848   Next.js 16.2.6, React 19.2.4
+- Test files: 851   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `f46df4a0` 2026-11-14 Docs: stamp page speed part 5 (#782) as merged 4c215ba9, deployed 20:56 IST, verified live (no SQL) (#783)
+- `4c215ba9` 2026-11-14 Page speed, part 5: fewer requests at the start of every page; part 3 dropped, measured (no SQL) (#782)
 - `fe677095` 2026-11-14 Docs: stamp the premium client quotation document (#777) as merged e0d4fe4c, deployed 20:08 IST, migration 20270717000000 applied (#781)
 - `33813806` 2026-11-14 Backups: stop the pg_dump step's docker run after 5 minutes (#780)
 - `e0d4fe4c` 2026-11-14 Quotations: the premium client document, Download PDF, project type and lead time (migration 20270717000000) (#777)
@@ -37,8 +39,6 @@
 - `8b64c4d3` 2026-11-14 Sales: lead popup laid out again, board cards with no buttons, and the Lead Board and popup made fast (migration 20270716000000, additive) (#761)
 - `c7b6f6b2` 2026-11-14 Docs: stamp Draft Orders (ClickUp) #754 and #759 and both imports (521 of 521), and the quotation builder redesign #758 with its migration applied after the merge (no SQL) (#762)
 - `b399a22a` 2026-11-13 Draft Orders (ClickUp): the folder pick accepts the folder around the backup; search box height, loading title and step numbers fixed (#759)
-- `21126e0e` 2026-11-13 Quotations: the builder redesigned (one column, one dimensions unit, one GST rate, picture pop-up) - migration 20270714000000, apply before merge (#758)
-- `216256c8` 2026-11-13 Docs: stamp #756 (Import says to reload) as merged c9670dd0, deployed 19:58 IST (no SQL) (#757)
 
 ## Pages by top-level area
 
@@ -102,7 +102,7 @@
 - **create-user** (1): ` [POST]`
 - **customer-reviews** (9): `/custom-submissions [DELETE,PATCH,POST,PUT]`, `/draft [PATCH]`, `/generate [POST]`, `/image-groups [DELETE,POST]`, `/images [DELETE,POST]`, `/photos [DELETE,POST]`, `/revise [POST]`, `/test-cards/purge [POST]`, `/whatsapp [POST]`
 - **daily-log** (1): ` [GET,POST]`
-- **day-close** (6): `/evaluate [GET]`, `/me [GET,POST]`, `/members [GET,POST]`, `/prompt [GET]`, `/strikes/[id] [POST]`, `/team [GET]`
+- **day-close** (7): `/evaluate [GET]`, `/launcher [GET]`, `/me [GET,POST]`, `/members [GET,POST]`, `/prompt [GET]`, `/strikes/[id] [POST]`, `/team [GET]`
 - **delete-user** (1): ` [POST]`
 - **deleted-members** (1): ` [GET]`
 - **employee-list** (1): ` [GET]`
@@ -148,7 +148,7 @@
 - `src/lib/boeCredits` — 6 source, 9 test
 - `src/lib/controlCenter` — 2 source, 1 test
 - `src/lib/customerReviews` — 30 source, 41 test
-- `src/lib/dayClose` — 5 source, 4 test
+- `src/lib/dayClose` — 6 source, 5 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
 - `src/lib/finance` — 60 source, 75 test
