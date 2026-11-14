@@ -11577,6 +11577,24 @@ textarea.pi-form-input { height: auto; }
 .orders-search-note { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 14px; border-bottom: 1px solid #E4DED7; background: #EAF0F8; color: #335A86; font-size: 13px; }
 .orders-search-note button { font: inherit; font-weight: 600; color: #335A86; background: none; border: 0; text-decoration: underline; cursor: pointer; padding: 0; min-height: 32px; }
 
+/* A PI change is waiting for somebody (Operations' request, 2026-11-14). STATE, not an unread notice: it
+   stays until the person it waits on decides. An amber edge and a faint tint; red when Operations asked
+   Sales for changes. The pill's words carry the meaning, the colour only helps. Placed after .has-update
+   so a row with both shows this edge, and still says "New update" in words. */
+.fin-table tbody tr.has-pi-change td { background: #FFFBF1; }
+.fin-table tbody tr.has-pi-change:hover td { background: #FCF4E0; }
+.fin-table tbody tr.has-pi-change td:first-child { box-shadow: inset 3px 0 0 #C48A1A; }
+.fin-table tbody tr.has-pi-change--red td { background: #FEF5F5; }
+.fin-table tbody tr.has-pi-change--red:hover td { background: #FBEAEB; }
+.fin-table tbody tr.has-pi-change--red td:first-child { box-shadow: inset 3px 0 0 #B42332; }
+.orders-list-card.has-pi-change { background: #FFFBF1; box-shadow: inset 3px 0 0 #C48A1A; }
+.orders-list-card.has-pi-change--red { background: #FEF5F5; box-shadow: inset 3px 0 0 #B42332; }
+.orders-pichange { display: inline-block; margin-top: 4px; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; line-height: 1.35; white-space: normal; }
+.orders-pichange--amber { background: #FBEFD2; color: #6E4700; }
+.orders-pichange--red { background: #FBE4E6; color: #8E1F2C; }
+.orders-list-card-pichange { margin-top: 2px; }
+.orders-list-card .orders-pichange { margin-top: 0; }
+
 /* Advance: every value has the padding, and the table pulls it back, so the
    digits line up under the heading with or without the red below 40%. */
 .orders-advance { display: inline-block; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }

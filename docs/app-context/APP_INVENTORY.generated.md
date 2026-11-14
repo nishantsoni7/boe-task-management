@@ -5,18 +5,19 @@
 
 ## Snapshot
 
-- Commit: `e4f30e88` — Merge remote-tracking branch 'origin/main' into feat/pricing-learning-piece1
-- Commits on this branch: 1323
+- Commit: `ae4040b9` — Docs: stamp Price learning piece 1 (#760) as merged b273b165, deployed 06:33 IST, 20270715000000 applied (no SQL) (#763)
+- Commits on this branch: 1324
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 209
 - Migrations: 457 (first `20260530_create_positions.sql`, latest `20270716000000_sales_board_summary.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1032   Enums: 0
-- Test files: 838   Next.js 16.2.6, React 19.2.4
+- Test files: 839   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `e4f30e88` 2026-11-14 Merge remote-tracking branch 'origin/main' into feat/pricing-learning-piece1
+- `ae4040b9` 2026-11-14 Docs: stamp Price learning piece 1 (#760) as merged b273b165, deployed 06:33 IST, 20270715000000 applied (no SQL) (#763)
+- `b273b165` 2026-11-14 Quotations: Price learning, piece 1 (old PIs fed to the price model 25 at a time, blind-test score, feedback doorway) (#760)
+- `8b64c4d3` 2026-11-14 Sales: lead popup laid out again, board cards with no buttons, and the Lead Board and popup made fast (migration 20270716000000, additive) (#761)
 - `c7b6f6b2` 2026-11-14 Docs: stamp Draft Orders (ClickUp) #754 and #759 and both imports (521 of 521), and the quotation builder redesign #758 with its migration applied after the merge (no SQL) (#762)
-- `f0f79494` 2026-11-14 Quotations: Price learning, piece 1 (old PIs fed to the price model 25 at a time, blind-test score, feedback doorway)
 - `b399a22a` 2026-11-13 Draft Orders (ClickUp): the folder pick accepts the folder around the backup; search box height, loading title and step numbers fixed (#759)
 - `21126e0e` 2026-11-13 Quotations: the builder redesigned (one column, one dimensions unit, one GST rate, picture pop-up) - migration 20270714000000, apply before merge (#758)
 - `216256c8` 2026-11-13 Docs: stamp #756 (Import says to reload) as merged c9670dd0, deployed 19:58 IST (no SQL) (#757)
@@ -38,7 +39,6 @@
 - `48b0cd83` 2026-11-13 Bank Statements: a reversed card debit no longer stops the upload (no SQL) (#743)
 - `1ccd57e2` 2026-11-13 Docs: stamp #739 (review ranking switch) as merged a4750ab7, migration 20270702000000 applied (no SQL) (#740)
 - `a4750ab7` 2026-11-13 Reviews: the leaderboard gets an on/off switch in Control Center, starts hidden, and moves to the bottom (migration 20270702000000) (#739)
-- `7ba4b29b` 2026-11-13 Team Today and Monthly Review: redesign (attention first; guided review steps) (no SQL) (#738)
 
 ## Pages by top-level area
 
@@ -160,7 +160,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 4 source, 7 test
 - `src/lib/notifications` — 7 source, 23 test
-- `src/lib/orders` — 108 source, 168 test
+- `src/lib/orders` — 109 source, 169 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
