@@ -47,7 +47,7 @@ describe('the page', () => {
   test('draws the button on the Operations strip, for an administrator or an approver, never under View As', () => {
     assert.match(page, /const sendBackOffered = operationsReviewOpen && canSendBackToSales\(\{[\s\S]*?maySend: actingAsAdmin \|\| mayDecidePiAsAdmin,[\s\S]*?viewingAs: !!viewAsUserId,/)
     // After a send the same button says so and offers another (owner, 2026-11-12: four presses looked like nothing).
-    const label = '{operationsSent ? SEND_BACK_AGAIN_LABEL : SEND_BACK_BUTTON_LABEL}'
+    const label = "{operationsSent && chainHolder === 'sales' ? SEND_BACK_AGAIN_LABEL : SEND_BACK_BUTTON_LABEL}"
     assert.ok(body.indexOf('<OrderAttentionBar') < body.indexOf(label))
     assert.ok(body.indexOf(label) < body.indexOf('<OrderStatusStrip'))
     assert.match(body, /onClick=\{\(\) => \{ setHandoffError\(null\); setSendBackOpen\(true\) \}\}/)
@@ -61,7 +61,7 @@ describe('the page', () => {
 
   test('the comment reaches the strip from the history, so it works before and after a reload', () => {
     assert.match(page, /latestSentToSales\(activity, operationsSplit\.live\.id\)/)
-    assert.match(page, /sentBack: operationsSentLine,/)
+    assert.match(page, /sentBack: operationsChainBox,/)
     assert.match(page, /sentBackLine\(operationsSent, iso => \(iso \? fmtDateTime\(iso\) : '—'\), order\.assigned_to_name \?\? null\)/)
   })
 })

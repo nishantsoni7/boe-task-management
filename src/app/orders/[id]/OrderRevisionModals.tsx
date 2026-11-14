@@ -85,6 +85,15 @@ import {
   RESPOND_NOTE,
   RESPOND_REMARKS_LABEL,
   RESPOND_REMARKS_PLACEHOLDER,
+  FORWARD_CONFIRM_LABEL,
+  FORWARD_DIALOG_TITLE,
+  FORWARD_NOTE,
+  FORWARD_NOTE_LABEL,
+  FORWARD_NOTE_OPTIONAL_LABEL,
+  FORWARD_NOTE_PLACEHOLDER,
+  FORWARD_REPLY_DIALOG_TITLE,
+  FORWARD_REPLY_NOTE,
+  validateForwardNote,
   type OperationsHandoffStatus,
 } from '@/lib/orders/operationsHandoff'
 import { composeLineRemarks, RESPOND_GENERAL_LABEL, RESPOND_LINE_PLACEHOLDER } from '@/lib/orders/lineFlags'
@@ -529,6 +538,60 @@ export function SendBackToSalesModal({
         saving={saving}
         disabled={touched && !check.ok}
         saveLabel={SEND_BACK_CONFIRM_LABEL}
+      />
+    </OrderModal>
+  )
+}
+
+/**
+ * THE APPROVER PASSES THE PI ON TO OPERATIONS (20270718000000): the version goes back to the operations
+ * reviewer, with the salesperson's reply when there is one (the note is then optional) or with the approver's
+ * own note (then required). forward_order_handoff_to_operations() re-derives who may and that the version can
+ * still be passed on; this dialog only collects the words.
+ */
+export function ForwardToOperationsModal({
+  orderNumber, versionLabel, reply, replyBy, saving, failure, onClose, onConfirm,
+}: {
+  orderNumber: string
+  versionLabel: string
+  /** The salesperson's reply being passed on; null when the approver is returning it on their own. */
+  reply: string | null
+  replyBy: string | null
+  saving: boolean
+  failure: string | null
+  onClose: () => void
+  onConfirm: (note: string | null) => void
+}) {
+  const [text, setText] = useState('')
+  const [touched, setTouched] = useState(false)
+  const replyForwarded = reply !== null
+  const check = validateForwardNote(text, replyForwarded)
+  return (
+    <OrderModal title={replyForwarded ? FORWARD_REPLY_DIALOG_TITLE : FORWARD_DIALOG_TITLE} subtitle={`Order ${orderNumber} · ${versionLabel}`} onClose={onClose}>
+      <OrderModalNotice tone="info">{replyForwarded ? FORWARD_REPLY_NOTE : FORWARD_NOTE}</OrderModalNotice>
+      {reply && <OrderModalNotice tone="warning">{replyBy ?? 'The salesperson'} replied: “{reply}”</OrderModalNotice>}
+      <OrderField label={replyForwarded ? FORWARD_NOTE_OPTIONAL_LABEL : FORWARD_NOTE_LABEL} error={touched && !check.ok ? check.message : undefined}>
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          placeholder={FORWARD_NOTE_PLACEHOLDER}
+          maxLength={OPERATIONS_HANDOFF_REASON_MAX_LENGTH}
+          disabled={saving}
+          rows={4}
+          style={TEXTAREA}
+        />
+      </OrderField>
+      {failure && <OrderModalError message={failure} />}
+      <OrderModalActions
+        onClose={onClose}
+        onSave={() => {
+          setTouched(true)
+          if (!check.ok || saving) return
+          onConfirm(check.note)
+        }}
+        saving={saving}
+        disabled={touched && !check.ok}
+        saveLabel={FORWARD_CONFIRM_LABEL}
       />
     </OrderModal>
   )

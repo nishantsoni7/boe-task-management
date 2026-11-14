@@ -8,49 +8,29 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { SupabaseClient } from '@supabase/supabase-js'
-import { loadOrdersWithSales, type QueueHandoff } from './operationsHandoff'
+import { ordersWithSales, type QueueHandoff } from './operationsHandoff'
 import { NO_ORDER_DASHBOARD_COUNTS, orderDashboardCards } from './orderDashboard'
 import type { OrdersCapabilities } from '@/lib/permissions/orders'
 
-const FLAGGED = '2026-11-12T11:19:47Z'
 const h = (over: Partial<QueueHandoff> = {}): QueueHandoff => ({
-  id: 'h-547', order_id: 'o-547', status: 'clarification_needed', assigned_to: 'nitish',
-  clarification_at: FLAGGED, clarification_responded_at: null, ...over,
+  id: 'h-547', order_id: 'o-547', status: 'clarification_needed', assigned_to: 'nitish', chain_holder: 'sales', ...over,
 })
-const sendBack = (handoff: string, at: string, order = 'o-547') =>
-  ({ order_id: order, created_at: at, payload: { handoff_id: handoff, comment: 'Revise it.' }, actor: { full_name: 'Nishant Soni' } })
-
-/** A stand-in for the one history read (sentBackHistoryRead): records the Orders asked for. */
-function fakeSupabase(rows: unknown[] | null, asked: string[][] = []): SupabaseClient {
-  const chain = {
-    select: () => chain, eq: () => chain,
-    in: (_c: string, ids: string[]) => { asked.push(ids); return chain },
-    order: () => Promise.resolve(rows === null ? { data: null, error: { message: 'denied' } } : { data: rows, error: null }),
-  }
-  return { from: () => chain } as unknown as SupabaseClient
-}
 
 describe('which Orders are with Sales', () => {
-  test('sent back after the flag: with Sales; before it, or answered since: not', async () => {
-    assert.deepEqual([...await loadOrdersWithSales(fakeSupabase([sendBack('h-547', '2026-11-12T12:34:32Z')]), [h()])], ['o-547'])
-    assert.equal((await loadOrdersWithSales(fakeSupabase([sendBack('h-547', '2026-11-12T10:00:00Z')]), [h()])).size, 0)
-    assert.equal((await loadOrdersWithSales(fakeSupabase([sendBack('h-547', '2026-11-12T12:34:32Z')]),
-      [h({ status: 'awaiting', clarification_responded_at: '2026-11-12T13:00:00Z' })])).size, 0)
+  test('the Orders whose live handoff Sales holds (the stored holder), flagged or not yet decided', () => {
+    assert.deepEqual([...ordersWithSales([h()])], ['o-547'])
+    assert.deepEqual([...ordersWithSales([h({ status: 'awaiting' })])], ['o-547'], 'sent back before Operations decided')
   })
 
-  test('a send-back about another handoff does not count; a failed read or no handoffs means none, with no read', async () => {
-    assert.equal((await loadOrdersWithSales(fakeSupabase([sendBack('h-old', '2026-11-12T12:34:32Z')]), [h()])).size, 0)
-    assert.equal((await loadOrdersWithSales(fakeSupabase(null), [h()])).size, 0)
-    const asked: string[][] = []
-    assert.equal((await loadOrdersWithSales(fakeSupabase([], asked), [])).size, 0)
-    assert.equal(asked.length, 0)
+  test('not with Sales: the approver or Operations holds it, nobody does, or it is accepted', () => {
+    for (const over of [{ chain_holder: 'coordinator' as const }, { chain_holder: 'operations' as const }, { chain_holder: null }, { status: 'accepted' }]) {
+      assert.equal(ordersWithSales([h(over)]).size, 0, JSON.stringify(over))
+    }
   })
 
-  test('one read names each Order once', async () => {
-    const asked: string[][] = []
-    await loadOrdersWithSales(fakeSupabase([], asked), [h(), h({ id: 'h-2' }), h({ id: 'h-3', order_id: 'o-9' })])
-    assert.deepEqual(asked, [['o-547', 'o-9']])
+  test('each Order once; no handoffs, none', () => {
+    assert.deepEqual([...ordersWithSales([h(), h({ id: 'h-2' }), h({ id: 'h-3', order_id: 'o-9' })])], ['o-547', 'o-9'])
+    assert.equal(ordersWithSales([]).size, 0)
   })
 })
 

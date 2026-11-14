@@ -1286,6 +1286,8 @@ describe('the applied migrations are frozen', () => {
       '20270715000000_pricing_learning.sql',
       // Sales, the Lead Board's totals without the 480 lead rows nobody read: one new read-only function (sales_board_summary), nothing existing replaced.
       '20270716000000_sales_board_summary.sql',
+      // The PI review chain: three columns on order_operations_handoffs (who holds the PI), one trigger, one new door, three re-issued functions, one re-issued list function.
+      '20270718000000_order_handoff_review_chain.sql',
     ])
   })
 
@@ -1805,6 +1807,7 @@ describe('the applied migrations are frozen', () => {
       '20270714000000_quotation_builder_fields.sql',
       '20270715000000_pricing_learning.sql',
       '20270716000000_sales_board_summary.sql',
+      '20270718000000_order_handoff_review_chain.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

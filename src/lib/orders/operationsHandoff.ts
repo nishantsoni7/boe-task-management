@@ -35,11 +35,17 @@
 //   Not assigned     no active operations reviewer is configured. The handoff
 //                    is real and awaiting, and an administrator must act.
 
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { describeAdvanceRefusal } from './advanceReadiness'
-import { readSentBackComments, sentBackHistoryRead } from './flaggedPis'
 
 export type OperationsHandoffStatus = 'awaiting' | 'accepted' | 'clarification_needed'
+
+/**
+ * WHO HOLDS THE LIVE PI VERSION in the review chain (20270718000000): Operations while it reviews;
+ * the approver ("coordinator") when Operations flagged it or Sales replied; Sales once the approver sent it
+ * to them. Operations and Sales can only hand it to the approver, who hands it on. Stored on the handoff
+ * (chain_holder) and moved by the database; null once accepted or replaced.
+ */
+export type ChainHolder = 'operations' | 'coordinator' | 'sales'
 
 /**
  * WHY a handoff has nobody to review it. All three need an administrator:
@@ -497,7 +503,8 @@ export function describeOperationsHandoff(input: {
     unassignedReason: unassigned ? (live.unassigned_reason ?? 'no_reviewer') : null,
     unassignedHint: unassigned ? UNASSIGNED_REASON_HINT[live.unassigned_reason ?? 'no_reviewer'] : null,
     decision,
-    response: live.status === 'awaiting' && input.answer && answeredAfterObjection(live.clarification_at, input.answer.atIso)
+    // A reply stays visible while the approver holds it (still flagged) and after it is passed on (awaiting).
+    response: live.status !== 'accepted' && input.answer && answeredAfterObjection(live.clarification_at, input.answer.atIso)
       ? { by: input.answer.by, at: formatWhen(input.answer.atIso), text: input.answer.text }
       : null,
     withdrawn,
@@ -553,14 +560,16 @@ export type DecisionCheck =
 
 // ── Responding to an objection, remarks only (20270422000000) ────────────────
 
-export const RESPOND_DIALOG_TITLE = 'Respond to Operations'
-export const RESPOND_BUTTON_LABEL = 'Respond and resubmit'
-export const RESPOND_CONFIRM_LABEL = 'Resubmit to Operations'
+// Since 20270718000000 the reply goes to the APPROVER, never straight to Operations: the approver decides
+// whether to pass it on or to send it back to you.
+export const RESPOND_DIALOG_TITLE = 'Reply to the approver'
+export const RESPOND_BUTTON_LABEL = 'Reply to the approver'
+export const RESPOND_CONFIRM_LABEL = 'Send reply'
 export const RESPOND_NOTE =
-  'Your remarks go to the operations reviewer with this same PI version; nothing in the PI changes. If the PI itself must change, use Edit PI instead.'
-export const RESPOND_REMARKS_LABEL = 'Your remarks'
-export const RESPOND_REMARKS_PLACEHOLDER = 'What was settled, or what Operations should know'
-export const RESPOND_REMARKS_REQUIRED = 'Write your remarks for Operations before resubmitting.'
+  'Your reply goes to the approver first, who decides whether to pass it on to Operations or send it back to you. Nothing in the PI changes with a reply: if the PI itself must change, use Edit PI instead.'
+export const RESPOND_REMARKS_LABEL = 'Your reply'
+export const RESPOND_REMARKS_PLACEHOLDER = 'What was settled, or what the approver should know'
+export const RESPOND_REMARKS_REQUIRED = 'Write your reply before sending.'
 
 /** What the history says about an answer to Operations' objection. */
 export type HandoffAnswer = { by: string | null; atIso: string; text: string }
@@ -599,11 +608,14 @@ export function latestHandoffAnswer(
  */
 export function canRespondToHandoff(input: {
   handoff: { status: OperationsHandoffStatus; superseded_at: string | null } | null
+  /** Who holds the version (chainHolderOf): only Sales, once the approver has sent it to them, may reply. */
+  holder: ChainHolder | null
   orderStatus: string
   mayRespond: boolean
   viewingAs: boolean
 }): boolean {
   return !!input.handoff && input.handoff.status === 'clarification_needed' && input.handoff.superseded_at === null
+    && input.holder === 'sales'
     && input.orderStatus !== 'cancelled' && input.mayRespond && !input.viewingAs
 }
 
@@ -622,7 +634,7 @@ export const SEND_BACK_BUTTON_LABEL = 'Send back to salesperson'
 export const SEND_BACK_DIALOG_TITLE = 'Send back to the salesperson'
 export const SEND_BACK_CONFIRM_LABEL = 'Send to salesperson'
 export const SEND_BACK_NOTE =
-  'The salesperson is notified with your comment, and it stays on this Order. Nothing in the PI changes: they revise it with Edit PI, and the new version goes to Operations.'
+  'The salesperson is notified with your comment, and it stays on this Order. Nothing in the PI changes: they reply to you, or revise it with Edit PI, and nothing reaches Operations until you pass it on.'
 export const SEND_BACK_COMMENT_LABEL = 'Your comment for the salesperson'
 export const SEND_BACK_COMMENT_PLACEHOLDER = 'What should the salesperson change or explain?'
 export const SEND_BACK_COMMENT_REQUIRED = 'Write your comment for the salesperson before sending.'
@@ -698,26 +710,64 @@ export function sentBackLine(
 /** The button once a comment has gone: it says so, and offers another. */
 export const SEND_BACK_AGAIN_LABEL = 'Send another comment'
 
+// ── The review chain: who holds the version (20270718000000) ─────────────────
+
+type HistoryEntry = { event_type: string; payload: Record<string, unknown>; created_at: string }
+
+/**
+ * WHO HOLDS THE LIVE VERSION, from the handoff and the Order's history the page already holds. It is the
+ * same rule the database applies to the stored column (chain_holder), so the page needs no extra read:
+ * the NEWEST of {handoff created, Operations flagged it, approver sent it to Sales, Sales replied, approver
+ * passed it to Operations} decides. A flag or a reply puts it with the approver; a send puts it with Sales;
+ * a pass-on (or, on a version no longer flagged, an old-style reply) puts it with Operations. Null once the
+ * version is accepted or replaced.
+ */
+export function chainHolderOf(input: {
+  live: Pick<PersistedOperationsHandoff, 'id' | 'status' | 'superseded_at' | 'clarification_at' | 'created_at'> | null
+  history: readonly HistoryEntry[]
+}): ChainHolder | null {
+  const { live, history } = input
+  if (!live || live.superseded_at !== null || live.status === 'accepted') return null
+  const flagged = live.status === 'clarification_needed'
+  let holder: ChainHolder = 'operations'
+  let best = Date.parse(live.created_at)
+  const take = (iso: string | null, next: ChainHolder) => {
+    const t = iso ? Date.parse(iso) : Number.NaN
+    if (!Number.isNaN(t) && t >= best) { best = t; holder = next }
+  }
+  if (flagged) take(live.clarification_at, 'coordinator')
+  for (const e of history) {
+    if (e.payload?.handoff_id !== live.id) continue
+    if (e.event_type === 'operations_handoff_sent_to_sales') take(e.created_at, 'sales')
+    else if (e.event_type === 'operations_handoff_clarification_answered') take(e.created_at, flagged ? 'coordinator' : 'operations')
+    else if (e.event_type === 'operations_handoff_returned_to_operations') take(e.created_at, 'operations')
+  }
+  return holder
+}
+
+/** How many times Operations has flagged THIS version (a withdrawn acceptance counts): the database's chain_round. */
+export function chainRoundOf(history: readonly HistoryEntry[], handoffId: string | null): number {
+  if (!handoffId) return 0
+  return history.filter(e => e.payload?.handoff_id === handoffId
+    && (e.event_type === 'operations_handoff_clarification_needed' || e.event_type === 'operations_handoff_acceptance_withdrawn')).length
+}
+
 // ── "Returned to Sales": the status a send-back puts the PI in (owner, 2026-11-12) ──
 //
-// Derived, not stored: the newest send-back for the LIVE handoff, still standing. It ends by itself when
-// Operations flags the version anew or accepts it, when the PI's owner answers Operations with remarks
-// after it, or when a revised PI is approved (the handoff is superseded). While a revised PI the
-// salesperson resubmitted waits for approval, it reads "resubmitted".
+// While Sales holds the version (chainHolderOf / chain_holder). It ends by itself when Sales replies (the
+// approver then holds it), Operations flags the version anew, the approver passes it to Operations, or a
+// revised PI is approved (the handoff is superseded). While a revised PI the salesperson resubmitted waits
+// for approval, it reads "resubmitted".
 
 export type SalesReturnStage = 'with_sales' | 'resubmitted'
 
 export function salesReturnStage(input: {
-  live: Pick<PersistedOperationsHandoff, 'status' | 'superseded_at' | 'clarification_at'> | null
-  sent: Pick<HandoffSentBack, 'atIso'> | null
-  answer: Pick<HandoffAnswer, 'atIso'> | null
+  live: Pick<PersistedOperationsHandoff, 'status' | 'superseded_at'> | null
+  holder: ChainHolder | null
   pendingRevision: boolean
 }): SalesReturnStage | null {
-  const { live, sent, answer } = input
-  if (!live || !sent || live.superseded_at !== null || live.status === 'accepted') return null
-  const at = Date.parse(sent.atIso)
-  if (live.clarification_at && Date.parse(live.clarification_at) > at) return null
-  if (answer && Date.parse(answer.atIso) > at) return null
+  const { live } = input
+  if (!live || live.superseded_at !== null || live.status === 'accepted' || input.holder !== 'sales') return null
   return input.pendingRevision ? 'resubmitted' : 'with_sales'
 }
 
@@ -726,7 +776,7 @@ export const SALES_RETURN_TITLE: Record<SalesReturnStage, (v: number) => string>
   resubmitted: v => `PI V${v} returned to Sales: revised PI waiting for approval`,
 }
 export const SALES_RETURN_INSTRUCTION: Record<SalesReturnStage, string> = {
-  with_sales: 'The approved PI cannot be edited in place. The salesperson makes the requested changes with Edit PI and resubmits; the revised PI goes to Operations once it is approved.',
+  with_sales: 'The approved PI cannot be edited in place. The salesperson replies to the approver, or makes the requested changes with Edit PI and resubmits; nothing reaches Operations until the approver passes it on.',
   resubmitted: 'The salesperson has resubmitted a revised PI. Once it is approved it goes to Operations as a new version.',
 }
 /** What the operations reviewer sees in place of Accept / Cannot accept / Flag lines while the PI is with Sales. */
@@ -736,38 +786,78 @@ export const OPERATIONS_LOCKED_FOR_SALES = 'With Sales for changes. Operations r
 export const WITH_SALES_LABEL = 'With Sales'
 export const WITH_SALES_NOTE = 'Waiting for the revised PI'
 
-/** The live handoff columns the queue reads to tell "with Sales" (clarification_responded_at: 20270422000000). */
+/** The live handoff columns the queues read: the status, the reviewer, and who holds the version (chain_holder, 20270718000000). */
 export type QueueHandoff = {
   id: string; order_id: string; status: string; assigned_to: string | null
-  clarification_at: string | null; clarification_responded_at: string | null
+  chain_holder: ChainHolder | null
 }
-export const QUEUE_HANDOFF_COLUMNS = 'id, order_id, status, assigned_to, clarification_at, clarification_responded_at'
+export const QUEUE_HANDOFF_COLUMNS = 'id, order_id, status, assigned_to, chain_holder'
+
+/** The Orders whose live, undecided handoff the approver has sent to Sales: "Returned to Sales", from the stored holder. */
+export function ordersWithSales(handoffs: readonly Pick<QueueHandoff, 'order_id' | 'status' | 'chain_holder'>[]): Set<string> {
+  return new Set(handoffs.filter(h => h.chain_holder === 'sales' && h.status !== 'accepted').map(h => h.order_id))
+}
+
+// ── The approver passes it on to Operations (20270718000000) ──────────────────
+
+export const FORWARD_BUTTON_LABEL = 'Return to Operations'
+export const FORWARD_REPLY_BUTTON_LABEL = 'Forward reply to Operations'
+export const FORWARD_DIALOG_TITLE = 'Return this PI to Operations'
+export const FORWARD_REPLY_DIALOG_TITLE = 'Forward the reply to Operations'
+export const FORWARD_CONFIRM_LABEL = 'Send to Operations'
+export const FORWARD_NOTE =
+  'Operations is asked to review this PI version again and is notified with your note, which stays on this Order. Nothing in the PI changes.'
+export const FORWARD_REPLY_NOTE =
+  'Operations is asked to review this PI version again, with the salesperson’s reply. Add a note of your own if you want to.'
+export const FORWARD_NOTE_LABEL = 'Your note for Operations'
+export const FORWARD_NOTE_OPTIONAL_LABEL = 'Your note for Operations (optional)'
+export const FORWARD_NOTE_PLACEHOLDER = 'Why should Operations look at this again?'
+export const FORWARD_NOTE_REQUIRED = 'Say why Operations should look at this again.'
 
 /**
- * The Orders whose live, undecided handoff is "Returned to Sales" — the same rule as the Order page
- * (salesReturnStage), with the answer to Operations read from the handoff's own column. One read of the
- * send-back history for these Orders; a failed read means none (the queue is then as it was).
+ * Whether the page offers "Return / Forward to Operations": the live, undecided version held by the approver
+ * or by Sales, on an open Order, to an approver or administrator (the page's `mayForward`), never under View
+ * As. The database asks again (forward_order_handoff_to_operations).
  */
-export async function loadOrdersWithSales(supabase: SupabaseClient, handoffs: readonly QueueHandoff[]): Promise<Set<string>> {
-  const out = new Set<string>()
-  if (handoffs.length === 0) return out
-  try {
-    const { data, error } = await sentBackHistoryRead(supabase)([...new Set(handoffs.map(h => h.order_id))])
-    if (error) return out
-    const sent = readSentBackComments(data, handoffs.map(h => ({ handoffId: h.id })))
-    for (const h of handoffs) {
-      const stage = salesReturnStage({
-        live: { status: h.status as OperationsHandoffStatus, superseded_at: null, clarification_at: h.clarification_at },
-        sent: sent[h.id] ?? null,
-        answer: h.clarification_responded_at ? { atIso: h.clarification_responded_at } : null,
-        pendingRevision: false,
-      })
-      if (stage) out.add(h.order_id)
+export function canForwardToOperations(input: {
+  handoff: { status: OperationsHandoffStatus; superseded_at: string | null } | null
+  holder: ChainHolder | null
+  orderStatus: string
+  mayForward: boolean
+  viewingAs: boolean
+}): boolean {
+  return !!input.handoff && input.handoff.status !== 'accepted' && input.handoff.superseded_at === null
+    && (input.holder === 'coordinator' || input.holder === 'sales')
+    && input.orderStatus !== 'cancelled' && input.mayForward && !input.viewingAs
+}
+
+export type ForwardCheck = { ok: true; note: string | null } | { ok: false; message: string }
+
+/** A note is required unless the salesperson's reply is what is being passed on. */
+export function validateForwardNote(raw: string, replyForwarded: boolean): ForwardCheck {
+  const note = raw.trim()
+  if (note.length > OPERATIONS_HANDOFF_REASON_MAX_LENGTH) return { ok: false, message: OPERATIONS_HANDOFF_REASON_TOO_LONG }
+  if (note === '' && !replyForwarded) return { ok: false, message: FORWARD_NOTE_REQUIRED }
+  return { ok: true, note: note === '' ? null : note }
+}
+
+/** What the history says about a PI passed on to Operations. */
+export type HandoffForwarded = { by: string | null; atIso: string; note: string | null; replyForwarded: boolean }
+
+/** The newest "passed on to Operations" entry for THIS handoff, from the Order's history. */
+export function latestReturnedToOperations(entries: readonly (HistoryEntry & { actor_name?: string })[], handoffId: string): HandoffForwarded | null {
+  let best: HandoffForwarded | null = null
+  for (const e of entries) {
+    if (e.event_type !== 'operations_handoff_returned_to_operations' || e.payload?.handoff_id !== handoffId) continue
+    if (!best || Date.parse(e.created_at) > Date.parse(best.atIso)) {
+      best = {
+        by: e.actor_name ?? null, atIso: e.created_at,
+        note: typeof e.payload.note === 'string' && e.payload.note.trim() !== '' ? e.payload.note.trim() : null,
+        replyForwarded: e.payload.reply_forwarded === true,
+      }
     }
-  } catch {
-    return out
   }
-  return out
+  return best
 }
 
 /** The ERP card's one line while the PI is with Sales. */
@@ -823,6 +913,9 @@ export function describeHandoffFailure(error: { message?: string | null } | null
   if (m.includes('ORDER_OPERATIONS_HANDOFF_SEND_BACK_NO_SALESPERSON')) {
     return 'There is no other active salesperson on this Order to send it to.'
   }
+  if (m.includes('Only an administrator or a PI approver can pass a PI on')) {
+    return 'Only an administrator or a PI approver can pass a PI on to Operations.'
+  }
   if (m.includes('Only an administrator or a PI approver')) {
     return 'Only an administrator or a PI approver can send a PI back to the salesperson.'
   }
@@ -831,8 +924,16 @@ export function describeHandoffFailure(error: { message?: string | null } | null
   if (m.includes('ORDER_OPERATIONS_HANDOFF_NOT_FLAGGED')) {
     return 'Operations is not waiting for a response on this PI any more. Refresh the page.'
   }
+  if (m.includes('ORDER_OPERATIONS_HANDOFF_NOT_WITH_SALES')) {
+    return 'This PI is not with Sales: the approver sends it to the salesperson before they reply. Refresh the page.'
+  }
+  if (m.includes('ORDER_OPERATIONS_HANDOFF_ALREADY_WITH_OPERATIONS')) {
+    return 'This PI is already with Operations. Refresh the page.'
+  }
+  if (m.includes('ORDER_OPERATIONS_HANDOFF_FORWARD_NOTE_REQUIRED')) return FORWARD_NOTE_REQUIRED
+  if (m.includes('ORDER_OPERATIONS_HANDOFF_FORWARD_NOTE_TOO_LONG')) return OPERATIONS_HANDOFF_REASON_TOO_LONG
   if (m.includes('Only the person who owns this PI')) {
-    return 'Only the person who owns this PI, or an administrator, can respond to Operations.'
+    return 'Only the person who owns this PI, or an administrator, can reply on it.'
   }
   if (m.includes('ORDER_OPERATIONS_HANDOFF_STALE') || m.includes('ORDER_OPERATIONS_HANDOFF_SUPERSEDED')) {
     return 'A newer PI version has been approved since this page loaded. Refresh to review the current one.'
@@ -938,8 +1039,9 @@ export const OPERATIONS_HANDOFF_EVENT_LABEL: Record<string, string> = {
   operations_reviewer_unassigned:           'Operations reviewer unassigned',
   operations_handoff_accepted:              'Accepted for production by operations',
   operations_handoff_clarification_needed:  'Operations cannot accept: clarification needed',
-  operations_handoff_clarification_answered: 'Responded to Operations and resubmitted',
-  operations_handoff_sent_to_sales:         'Sent back to the salesperson',
+  operations_handoff_clarification_answered: 'The salesperson replied to the approver',
+  operations_handoff_sent_to_sales:         'The approver sent it to the salesperson',
+  operations_handoff_returned_to_operations: 'The approver passed it to Operations',
   operations_handoff_acceptance_withdrawn:  'Operations withdrew the acceptance',
   operations_handoff_realigned:             'Operations aligned production again',
   operations_handoff_realigned_by_admin:    'Administrator recovered the production alignment',
@@ -953,6 +1055,7 @@ export const OPERATIONS_HANDOFF_EVENT_TONE: Record<string, OperationsHandoffTone
   operations_handoff_clarification_needed:  'red',
   operations_handoff_clarification_answered: 'amber',
   operations_handoff_sent_to_sales:         'amber',
+  operations_handoff_returned_to_operations: 'amber',
   operations_handoff_acceptance_withdrawn:  'red',
   operations_handoff_realigned:             'green',
   operations_handoff_realigned_by_admin:    'amber',
@@ -987,6 +1090,10 @@ export function describeOperationsHandoffEvent(eventType: string, payload: Recor
       return [v, text(p.reason)].filter(Boolean).join(' · ') || null
     case 'operations_handoff_sent_to_sales':
       return [v, text(p.comment)].filter(Boolean).join(' · ') || null
+    case 'operations_handoff_clarification_answered':
+      return [v, text(p.response)].filter(Boolean).join(' · ') || null
+    case 'operations_handoff_returned_to_operations':
+      return [v, p.reply_forwarded === true ? 'with the salesperson’s reply' : null, text(p.note)].filter(Boolean).join(' · ') || null
     case 'operations_handoff_realigned':
       return [v, 'after a production hold', text(p.note)].filter(Boolean).join(' · ')
     case 'operations_handoff_realigned_by_admin':

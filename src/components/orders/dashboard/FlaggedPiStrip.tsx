@@ -24,6 +24,7 @@ import {
   commentLine,
   flaggedHref,
   flaggedTitle,
+  sentToYouTitle,
   loadFlaggedPis,
   isReturnedToSales,
   loadSentBackComments,
@@ -73,15 +74,18 @@ export function FlaggedPiStripView({ state }: { state: FlaggedStripState }) {
   if (state.kind === 'failed') {
     return <p className="od-note" role="alert">{FLAGGED_LOAD_FAILED}</p>
   }
-  if (state.rows.length === 0) return null
+  // Only what waits on THIS reader: an approver's watch rows (Sales holds them) are not asked of them here.
+  const rows = state.rows.filter(r => r.mine)
+  if (rows.length === 0) return null
+  const allSent = rows.every(r => r.holder === 'sales')
   return (
     <section className="spd-returned" aria-labelledby="flagged-pis-title" data-flagged-pis="true">
       <header className="spd-returned-head">
-        <h2 id="flagged-pis-title" className="spd-returned-title">{flaggedTitle(state.rows.length)}</h2>
+        <h2 id="flagged-pis-title" className="spd-returned-title">{allSent ? sentToYouTitle(rows.length) : flaggedTitle(rows.length)}</h2>
         <span className="spd-returned-hint">{FLAGGED_STRIP_HINT}</span>
       </header>
       <ul className="spd-returned-rows">
-        {state.rows.map(r => (
+        {rows.map(r => (
           <li key={r.handoffId}>
             <Link href={withReturnTo(flaggedHref(r.orderId), '/orders')} className="spd-returned-row" prefetch={false}>
               <span className="spd-who">
