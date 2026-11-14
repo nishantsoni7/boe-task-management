@@ -173,9 +173,9 @@ describe('the "Needs you" strip', () => {
 
 describe('the builder page', () => {
   const SCREEN = read('src/components/quotations/BuilderScreen.tsx')
-  test('the right-hand column is gone: client and status on top, products, totals, terms, then the cards', () => {
+  test('the right-hand column is gone: status on top, client beside share, products, totals, terms beside history, then the cards', () => {
     const at = (needle: string) => SCREEN.indexOf(needle)
-    const order = ['className={s.statusBar}', 'Advanced client details', 'id="q-products"', 'id="q-extra"', 'id="q-terms"', 'className={s.bottom}'].map(at)
+    const order = ['className={s.statusBar}', 'className={s.topRow}', 'Advanced client details', 'id="q-share"', 'id="q-products"', 'id="q-extra"', 'className={s.pair}', 'id="q-terms"', '<h2>History</h2>', 'className={s.bottom}'].map(at)
     assert.ok(order.every(i => i > 0), 'every section is on the page')
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
     assert.ok(!/\bs\.split\b|\bs\.sticky\b|Valid for \(days\)/.test(SCREEN), 'no side column, no Valid for box')
@@ -183,10 +183,10 @@ describe('the builder page', () => {
   test('the Advanced client details are closed until opened and hold the fields the owner named', () => {
     assert.match(SCREEN, /const \[advOpen, setAdvOpen\] = useState\(false\)/)
     const adv = SCREEN.slice(SCREEN.indexOf('id="q-advanced"'), SCREEN.indexOf('</section>', SCREEN.indexOf('id="q-advanced"')))
-    for (const id of ['q-company', 'q-type', 'q-project', 'q-role', 'q-gst"', 'q-gstin']) assert.ok(adv.includes(id), id)
+    for (const id of ['q-company', 'q-type', 'q-project', 'q-contact', 'q-role', 'q-email', 'q-gst"', 'q-gstin']) assert.ok(adv.includes(id), id)
     const basic = SCREEN.slice(SCREEN.indexOf('className={s.clientGrid}'), SCREEN.indexOf('className={s.advBtn}'))
-    for (const id of ['q-client-name', 'q-contact', 'q-phone', 'q-email', 'q-state']) assert.ok(basic.includes(id), id)
-    assert.ok(!/q-company|q-gstin|q-type|q-project|q-role/.test(basic), 'nothing from Advanced on top')
+    for (const id of ['q-client-name', 'q-phone', 'q-state']) assert.ok(basic.includes(id), id)
+    assert.ok(!/q-company|q-gstin|q-type|q-project|q-contact|q-role|q-email/.test(basic), 'nothing from Advanced on top: the contact person and the email moved down (13 Nov list, items 5 and 7)')
   })
   test('one GST rate for all products, picked in the totals; a quotation with mixed rates says so', () => {
     assert.match(SCREEN, /id="q-gst-rate"/)
