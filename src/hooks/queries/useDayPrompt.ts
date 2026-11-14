@@ -5,7 +5,7 @@
 // A failed read is no answer: the page draws nothing rather than a guess.
 
 import { useQuery } from '@tanstack/react-query'
-import { createClient } from '@/lib/supabase/client'
+import { batchedGet } from '@/components/dayClose/batchedGet'
 import type { DayPrompt } from '@/lib/dayClose/rules'
 
 export type DayPromptAnswer = { today: string; prompt: DayPrompt; counts?: { open: number } }
@@ -15,13 +15,10 @@ export function useDayPrompt(userId: string | null, enabled: boolean) {
     queryKey: ['day-close-prompt', userId],
     enabled: enabled && !!userId,
     queryFn: async () => {
-      const { data: { session } } = await createClient().auth.getSession()
-      const res = await fetch('/api/day-close/prompt', {
-        headers: { authorization: `Bearer ${session?.access_token ?? ''}` },
-        cache: 'no-store',
-      })
-      if (!res.ok) throw new Error(`day prompt ${res.status}`)
-      return res.json()
+      // Asked together with the score, vote and Star Seller cards as ONE request (batchedGet.ts).
+      const r = await batchedGet('/api/day-close/prompt')
+      if (r.status < 200 || r.status >= 300) throw new Error(`day prompt ${r.status}`)
+      return r.body as unknown as DayPromptAnswer
     },
     staleTime: 60_000,
     refetchInterval: 120_000,
