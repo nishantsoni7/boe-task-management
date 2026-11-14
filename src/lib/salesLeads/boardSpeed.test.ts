@@ -12,6 +12,7 @@ import { classifySalesError, fetchBoard } from './api'
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const board = read('src/components/salesLeads/BoardScreen.tsx')
 const panel = read('src/components/salesLeads/WorkPanel.tsx')
+const css = read('src/components/salesLeads/leadBoard.module.css')
 const work = read('src/components/salesLeads/useLeadWork.tsx')
 const hook = read('src/hooks/useListUrlState.ts')
 const sql = read('supabase/migrations/20270716000000_sales_board_summary.sql')
@@ -159,15 +160,15 @@ describe('the popup, as approved on the clickable preview (owner, 2026-11-14)', 
     assert.ok(panel.indexOf('onClick={() => setUpdatesOnly(true)}>Updates only</button>') < panel.indexOf('onClick={() => setUpdatesOnly(false)}>All</button>'))
   })
 
-  test('the left side is in the order who, where it stands, what they want, reference facts', () => {
+  test('the left side is in the order who, what to do next, where it stands, then the facts', () => {
     const at = (s: string) => panel.indexOf(s)
-    assert.ok(at('<Who ') < at('<StateBox ') && at('<StateBox ') < at('<Details '))
-    assert.ok(at('aria-label="Where this lead stands"') < at('aria-label="Requirement"') && at('aria-label="Requirement"') < at('aria-label="Client details"'))
+    assert.ok(at('<Who ') < at('<NextStep ') && at('<NextStep ') < at('<StateBox ') && at('<StateBox ') < at('<Details '))
+    for (const label of ['Next step', 'Where this lead stands', 'About this client']) assert.ok(panel.includes(`aria-label="${label}"`), label)
   })
 
   test('the number is beside the name with Copy, and the facts do not repeat it', () => {
     assert.ok(panel.includes('className={s.nPhoneLine}') && panel.includes('aria-label="Copy number"'))
-    const view = panel.slice(panel.indexOf('<section className={s.nSec} aria-label="Requirement">'))
+    const view = panel.slice(panel.indexOf('<section className={s.nSec} aria-label="About this client">'))
     assert.ok(!view.includes('<dt>Phone') && !view.includes('<dt>Type of client') && !view.includes('<dt>Quantity'), 'no Phone, Type of client or Quantity row')
     assert.ok(view.includes('<dt>Location</dt>') && view.includes('<dt>Source</dt>') && view.includes('<dt>Email</dt>'))
   })
@@ -176,12 +177,56 @@ describe('the popup, as approved on the clickable preview (owner, 2026-11-14)', 
     assert.ok(panel.includes('htmlFor="fact-type">Type of client') && panel.includes("text('quantity', 'Quantity')"))
   })
 
-  test('Board status, Hot / Warm / Cold and the follow-up are in one card, with overdue said in words', () => {
-    assert.ok(panel.includes('className={s.nState}') && panel.includes('className={s.nHeatSeg}') && panel.includes('className={s.nHeld}'))
-    assert.ok(panel.includes('{note && <span className={s.nDueNote}>{note}</span>}'))
+  test('Board status and Hot / Warm / Cold are one row; Held by is under the name and Stuck is in the status button', () => {
+    const part = (from: string, to: string) => panel.slice(panel.indexOf(from), panel.indexOf(to))
+    assert.ok(panel.includes('className={s.nState}') && panel.includes('className={s.nHeatSeg}'))
+    const who = part('function Who(', 'const HEAT_CLASS')
+    assert.ok(who.includes('className={s.nHeld}') && who.includes('Held by'), 'Held by is in Who')
+    const state = part('function StateBox(', 'function StatusMenu(')
+    assert.ok(!state.includes('Held by') && !state.includes('Next follow-up'), 'the follow-up and Held by left the status row')
+    const menu = part('function StatusMenu(', 'const plural')
+    assert.ok(menu.includes('{lead.stuck && <span className={s.mStuck}>Stuck</span>}'), 'Stuck is in the status button')
+    assert.ok(!who.includes('mStuck'))
   })
 
   test('the activity is read again in the background while it loads, and a failed load says so', () => {
     assert.ok(panel.includes('Loading the activity…') && panel.includes('The activity could not be loaded.'))
+  })
+})
+
+// "B + C" (owner, 2026-11-14): a next-step banner with Call, WhatsApp and Change date, and one list, "About this client".
+describe('the next-step banner and the list of facts (owner, 2026-11-14, "B + C")', () => {
+  const part = (from: string, to: string) => panel.slice(panel.indexOf(from), panel.indexOf(to))
+  const who = part('function Who(', 'const HEAT_CLASS')
+  const next = part('function NextStep(', 'function FollowUpMenu(')
+  const details = part('function Details(', '// ── Right:')
+
+  test('Call and WhatsApp left the name row and are in the banner, only for somebody who can work an open lead', () => {
+    assert.ok(!who.includes('telHref') && !who.includes('openWhatsApp') && !who.includes('mReach'))
+    assert.ok(next.includes('{canWork && (') && next.indexOf('{canWork && (') < next.indexOf('telHref(lead.phone)'))
+    assert.ok(next.includes('work.openWhatsApp(lead)'))
+    assert.ok(next.includes("if (step.kind === 'closed') return null"), 'a converted or dead lead has no banner')
+  })
+
+  test('a late follow-up is said in words and shown with an alert, not only in red', () => {
+    assert.ok(next.includes('`Follow-up was due ${dayShort(step.date)}`') && next.includes('`${plural(step.days)} late`'))
+    assert.ok(next.includes('<TriangleAlert />') && next.includes('s.nNextOver'))
+  })
+
+  test('Change date opens the follow-up menu, which opens from the right so it stays inside the popup', () => {
+    assert.ok(next.includes("setMenu(open ? null : 'due')") && next.includes('<FollowUpMenu '))
+    assert.ok(/\.nNextAct \.mPop \{ left: auto; right: 0; \}/.test(css))
+  })
+
+  test('the facts are one list with one Edit details button that counts what is not set', () => {
+    assert.equal(details.split('aria-label="About this client"').length - 1, 1)
+    assert.ok(!details.includes('aria-label="Requirement"') && !details.includes('aria-label="Client details"'))
+    assert.ok(details.includes('{notSet} not set') && details.includes('{canWork && ('), 'Edit details only for somebody who can work the lead')
+    for (const row of ['Requirement', 'Project value', 'Needed by', 'Location', 'Source', 'Email']) assert.ok(details.includes(`<dt>${row}</dt>`), row)
+    assert.ok(details.includes('href={`mailto:${lead.email}`}'))
+  })
+
+  test('a selected Hot / Warm / Cold is charcoal, so it never looks like the red of a late follow-up', () => {
+    assert.ok(/\.nHeatSeg button\[aria-pressed="true"\] \{ background: #303536; color: #fff;/.test(css))
   })
 })

@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1e80e23c` — Page speed, part 7: the launcher's badge counts in one call (no SQL) (#789)
-- Commits on this branch: 1349
+- Commit: `1a395cf4` — Orders: PI review thread inside the operations notice, replies keep their line breaks (no SQL) (#791)
+- Commits on this branch: 1350
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `1a395cf4` 2026-11-14 Orders: PI review thread inside the operations notice, replies keep their line breaks (no SQL) (#791)
 - `1e80e23c` 2026-11-14 Page speed, part 7: the launcher's badge counts in one call (no SQL) (#789)
 - `d06e6248` 2026-11-14 Orders: on a phone the Main PI Details popover stays inside the card and the pending buttons are 44px (#788)
 - `2750eb00` 2026-11-14 Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL) (#784)
@@ -38,7 +39,6 @@
 - `f0f4c23c` 2026-11-14 Sales: a page frame instead of the full-screen spinner while the permission check runs (no SQL) (#768)
 - `d7e49cdc` 2026-11-14 Orders: mark a Confirmed Order whose PI change is waiting for somebody (no SQL) (#767)
 - `ef6682f3` 2026-11-14 Docs: stamp the compact lead popup (#765) as merged 45a2182f, deployed 10:25 IST (no SQL) (#766)
-- `45a2182f` 2026-11-14 Sales: lead popup left side made compact so all of it shows with no scroll bar (#765)
 
 ## Pages by top-level area
 
