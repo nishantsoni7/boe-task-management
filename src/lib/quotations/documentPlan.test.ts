@@ -13,14 +13,16 @@ import { readFileSync } from 'node:fs'
 import {
   PROJECT_TYPES, cardUnits, compactAmount, countsRooms, countsSeats, documentFileName, groupsOf, leadTimeRule, numberInWords, planInvestmentPages,
   OPTIONAL_LISTED, planProductPages, planTermsPages, projectTypeLabel, roomsOf, rupeesInWords, summaryUnits, toProjectType, PRODUCT_PAGE_UNITS, TERMS_PAGE_CHARS,
+  NAME_LINE_CHARS, PICTURE_UNITS, isRoomUnit, nameLines,
 } from './documentPlan'
 import { EXPECTATIONS, TERMS } from './terms'
 import type { QuoteArea, QuoteLine } from './math'
 
-const area = (key: string, multiplier = 1, name = key): QuoteArea => ({ key, name, style: '', multiplier, unit_label: 'rooms' })
+const area = (key: string, multiplier = 1, name = key, unit_label = 'rooms'): QuoteArea => ({ key, name, style: '', multiplier, unit_label })
+// A product has a picture unless a test says otherwise: most do, and a card without one is deliberately shorter (see "a product with no picture").
 const line = (n: number, areaKey: string | null, over: Partial<QuoteLine> = {}): QuoteLine => ({
   key: `l${n}`, area_key: areaKey, name: `Product ${n}`, size_text: '20 x 30', spec: '', material: 'Ash wood', finish: '', category: '',
-  qty_mode: 'per_unit', qty: 1, unit_price: 1000, tax_rate: 18, image_path: null, is_optional: false, client_note: '', internal_note: '', ...over,
+  qty_mode: 'per_unit', qty: 1, unit_price: 1000, tax_rate: 18, image_path: 'u/p.jpg', is_optional: false, client_note: '', internal_note: '', ...over,
 })
 const lines = (n: number, areaKey: string | null, from = 0) => Array.from({ length: n }, (_, i) => line(from + i, areaKey))
 

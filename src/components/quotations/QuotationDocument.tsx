@@ -245,7 +245,8 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
               const inch = l.size_text ? inches(l.size_text, unit) : ''
               return (
                 <div key={l.key} className={`${d.prod} ${l.is_optional ? d.optional : ''}`}>
-                  <div className={d.ph}>{l.image_path ? <Pic src={pictureUrl(l.image_path)} alt={l.name} lazy /> : null}</div>
+                  {/* a product with no picture prints its text only: no empty frame (cardUnits leaves the picture out of its height) */}
+                  {l.image_path ? <div className={d.ph}><Pic src={pictureUrl(l.image_path)} alt={l.name} lazy /></div> : null}
                   <h4>{l.name}</h4>
                   <div className={d.spec}>
                     {size ? <div className={d.num}>{size}{inch ? <span> ({inch})</span> : null}</div> : null}

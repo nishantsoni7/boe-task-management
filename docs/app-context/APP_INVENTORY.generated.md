@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `f46df4a0` — Docs: stamp page speed part 5 (#782) as merged 4c215ba9, deployed 20:56 IST, verified live (no SQL) (#783)
-- Commits on this branch: 1344
+- Commit: `6a76e4bb` — Merge origin/main into fix/quotation-document-layout
+- Commits on this branch: 1347
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 210
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
-- Test files: 851   Next.js 16.2.6, React 19.2.4
+- Test files: 852   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `6a76e4bb` 2026-11-14 Merge origin/main into fix/quotation-document-layout
+- `dfa4297b` 2026-11-14 Quotations: three layout fixes in the premium document, found by rendering a sample of the live PDF (no SQL)
+- `e4ba4410` 2026-11-14 Page speed, part 6: the Modules launcher asks for less (no SQL) (#785)
 - `f46df4a0` 2026-11-14 Docs: stamp page speed part 5 (#782) as merged 4c215ba9, deployed 20:56 IST, verified live (no SQL) (#783)
 - `4c215ba9` 2026-11-14 Page speed, part 5: fewer requests at the start of every page; part 3 dropped, measured (no SQL) (#782)
 - `fe677095` 2026-11-14 Docs: stamp the premium client quotation document (#777) as merged e0d4fe4c, deployed 20:08 IST, migration 20270717000000 applied (#781)
@@ -36,9 +39,6 @@
 - `45a2182f` 2026-11-14 Sales: lead popup left side made compact so all of it shows with no scroll bar (#765)
 - `ae4040b9` 2026-11-14 Docs: stamp Price learning piece 1 (#760) as merged b273b165, deployed 06:33 IST, 20270715000000 applied (no SQL) (#763)
 - `b273b165` 2026-11-14 Quotations: Price learning, piece 1 (old PIs fed to the price model 25 at a time, blind-test score, feedback doorway) (#760)
-- `8b64c4d3` 2026-11-14 Sales: lead popup laid out again, board cards with no buttons, and the Lead Board and popup made fast (migration 20270716000000, additive) (#761)
-- `c7b6f6b2` 2026-11-14 Docs: stamp Draft Orders (ClickUp) #754 and #759 and both imports (521 of 521), and the quotation builder redesign #758 with its migration applied after the merge (no SQL) (#762)
-- `b399a22a` 2026-11-13 Draft Orders (ClickUp): the folder pick accepts the folder around the backup; search box height, loading title and step numbers fixed (#759)
 
 ## Pages by top-level area
 
@@ -167,7 +167,7 @@
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/pricing` — 9 source, 5 test
 - `src/lib/push` — 3 source, 1 test
-- `src/lib/quotations` — 15 source, 8 test
+- `src/lib/quotations` — 15 source, 9 test
 - `src/lib/salesLeads` — 15 source, 15 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
