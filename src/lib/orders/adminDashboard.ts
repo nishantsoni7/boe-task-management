@@ -14,8 +14,8 @@
 import { withReturnTo } from '@/lib/navigation/recordReturn'
 import { draftDetailHref } from '@/lib/orders/draftsView'
 import {
-  FLAGGED_KIND_LABEL, RETURNED_TO_SALES_LABEL, commentLine, flaggedHref, flaggedLabel, isReturnedToSales, reasonLine,
-  type FlaggedPi, type SentBack,
+  FLAGGED_KIND_LABEL, RETURNED_TO_SALES_LABEL, SALES_REPLIED_ROW_LABEL, commentLine, flaggedHref, flaggedLabel, isReturnedToSales, reasonLine,
+  roundLabel, type FlaggedPi, type SentBack,
 } from '@/lib/orders/flaggedPis'
 import {
   SUBMISSION_STATUS_LABEL,
@@ -146,17 +146,21 @@ export function revisionRow(r: RevisionSource, byName: string | null): DecisionR
  * The row opens the Order, where Respond and resubmit is; Operations' reason is the sub-line.
  */
 export function flaggedRow(r: FlaggedPi, sent?: SentBack): DecisionRow {
-  // Returned to Sales: still listed, but it no longer asks the approver for a decision.
+  // With Sales: still listed, but it no longer asks the approver for a decision. With the review chain
+  // (20270718000000) the row says who holds it; the round shows from the second flag on, so a loop is seen.
   const returned = isReturnedToSales(r, sent)
+  const round = roundLabel(r.round)
   return {
     key: `flag-${r.handoffId}`, kind: 'pi_flagged', kindLabel: FLAGGED_KIND_LABEL,
     href: withReturnTo(flaggedHref(r.orderId), '/orders'),
     client: r.clientName || 'Client not recorded',
-    ref: `Order ${r.orderNumber} · PI V${r.versionNumber}`,
+    ref: `Order ${r.orderNumber} · PI V${r.versionNumber}${round ? ` · ${round}` : ''}`,
     by: r.byName, sinceIso: r.since, waitSeconds: 0, value: null,
-    chip: returned && sent
-      ? { tone: 'info', label: RETURNED_TO_SALES_LABEL, sub: `${sent.by ?? 'You'}: “${commentLine(sent.text)}”` }
-      : { tone: 'danger', label: flaggedLabel(r), sub: `“${reasonLine(r.reason)}”` },
+    chip: returned
+      ? { tone: 'info', label: RETURNED_TO_SALES_LABEL, sub: sent ? `${sent.by ?? 'You'}: “${commentLine(sent.text)}”` : `“${reasonLine(r.reason)}”` }
+      : r.reply
+        ? { tone: 'warn', label: SALES_REPLIED_ROW_LABEL, sub: `${r.replyByName ?? 'Sales'}: “${commentLine(r.reply)}”` }
+        : { tone: 'danger', label: flaggedLabel(r), sub: `“${reasonLine(r.reason)}”` },
   }
 }
 

@@ -165,6 +165,7 @@ describe('a PI flagged by Operations', () => {
     handoffId: 'h9', orderId: 'o546', orderNumber: '546', clientName: 'Qavaali', versionNumber: 1,
     reason: 'As per mohit... client wanted a visit from our side before aligning the order', byName: 'Nitish Bansal',
     since: NOW, waitingSeconds: 0,
+    holder: null, mine: true, round: 0, holderSince: null, reply: null, replyByName: null, replyAt: null,
   }
 
   test('names the Order and client, says what Operations could not accept, and opens the Order to answer', () => {

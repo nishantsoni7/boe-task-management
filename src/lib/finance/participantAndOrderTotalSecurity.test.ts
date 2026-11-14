@@ -1288,6 +1288,8 @@ describe('the applied migrations are frozen', () => {
       '20270716000000_sales_board_summary.sql',
       // Quotations, the premium client document: project type, seats and lead time (four columns); quotation_save, quotation_client_doc, quotation_get and quotation_public re-issued (salesperson mobile and e-mail on the document).
       '20270717000000_quotation_document_fields.sql',
+      // The PI review chain: three columns on order_operations_handoffs (who holds the PI), one trigger, one new door, three re-issued functions, one re-issued list function.
+      '20270718000000_order_handoff_review_chain.sql',
     ])
   })
 
@@ -1808,6 +1810,7 @@ describe('the applied migrations are frozen', () => {
       '20270715000000_pricing_learning.sql',
       '20270716000000_sales_board_summary.sql',
       '20270717000000_quotation_document_fields.sql',
+      '20270718000000_order_handoff_review_chain.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

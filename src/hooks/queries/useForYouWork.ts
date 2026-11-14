@@ -179,7 +179,8 @@ export function useForYouWork(on: (key: ForYouItemKey) => boolean, access: ForYo
     },
     {
       item: 'pi_flagged_by_operations',
-      cards: (flagged.data?.rows ?? []).map(flaggedCard),
+      // Only what waits on this reader; an approver's watch rows (Sales holds them) are on the Orders dashboard.
+      cards: (flagged.data?.rows ?? []).filter(r => r.mine).map(flaggedCard),
       unread: 0,
       moreHref: '/orders',
       moreLabel: n => `${n} more flagged →`,

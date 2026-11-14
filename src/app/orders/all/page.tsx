@@ -25,7 +25,7 @@ import {
 } from '@/lib/orders/orderUnreadUpdates'
 import { enumParam, idParam, optionParam, textParam } from '@/lib/listState'
 import {
-  OPERATIONS_REVIEW_QUEUE_BANNER, QUEUE_HANDOFF_COLUMNS, WITH_SALES_LABEL, WITH_SALES_NOTE, loadOrdersWithSales, type QueueHandoff,
+  OPERATIONS_REVIEW_QUEUE_BANNER, QUEUE_HANDOFF_COLUMNS, WITH_SALES_LABEL, WITH_SALES_NOTE, ordersWithSales, type QueueHandoff,
 } from '@/lib/orders/operationsHandoff'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useListScrollRestore } from '@/hooks/useListScrollRestore'
@@ -364,7 +364,7 @@ export default function AllOrdersPage() {
     if (error) { setAwaitingOps(new Map()); setWithSalesOrders(new Set()); return }
     const rows = (data ?? []) as unknown as QueueHandoff[]
     setAwaitingOps(new Map(rows.map(r => [r.order_id, r.assigned_to])))
-    setWithSalesOrders(await loadOrdersWithSales(supabase, rows))
+    setWithSalesOrders(ordersWithSales(rows))
   }
 
   const loadOrders = async () => {

@@ -30,6 +30,21 @@ export type FlaggedPi = {
   /** When it was flagged (ISO); null only on data older than the column. */
   since: string | null
   waitingSeconds: number
+  /**
+   * WHO HOLDS IT (20270718000000): 'coordinator' = the approver (Operations flagged it, or Sales replied),
+   * 'sales' = the approver sent it to the salesperson. null on a database without the review chain.
+   */
+  holder: 'coordinator' | 'sales' | null
+  /** True when the READER holds it: it waits on them. An approver is also shown what Sales holds, to watch. */
+  mine: boolean
+  /** How many times Operations has flagged this version; 0 when unknown. */
+  round: number
+  /** When the current holder got it (ISO), else null. */
+  holderSince: string | null
+  /** The salesperson's reply to the approver's send-back, when there is one. */
+  reply: string | null
+  replyByName: string | null
+  replyAt: string | null
 }
 
 /** Turns the RPC's answer into rows; throws when the answer is not a list of readable rows. */
@@ -53,6 +68,13 @@ export function readFlaggedPis(raw: unknown): FlaggedPi[] {
       byName: typeof o.by_name === 'string' && o.by_name.trim() !== '' ? o.by_name.trim() : null,
       since: typeof o.since === 'string' ? o.since : null,
       waitingSeconds: Number.isFinite(seconds) ? Math.max(0, seconds) : 0,
+      holder: o.holder === 'coordinator' || o.holder === 'sales' ? o.holder : null,
+      mine: typeof o.mine === 'boolean' ? o.mine : true,
+      round: typeof o.round === 'number' && Number.isFinite(o.round) ? Math.max(0, o.round) : 0,
+      holderSince: typeof o.holder_since === 'string' ? o.holder_since : null,
+      reply: typeof o.reply === 'string' && o.reply.trim() !== '' ? o.reply.trim() : null,
+      replyByName: typeof o.reply_by_name === 'string' && o.reply_by_name.trim() !== '' ? o.reply_by_name.trim() : null,
+      replyAt: typeof o.reply_at === 'string' ? o.reply_at : null,
     }
   })
 }
@@ -119,10 +141,12 @@ export const sentBackHistoryRead = (supabase: SupabaseClient): HistoryRead => id
   .order('created_at', { ascending: false })
 
 /**
- * "Returned to Sales": the approver sent this flagged PI back AFTER Operations flagged it. A send-back
- * older than the flag (Operations flagged it again since) does not count.
+ * "Returned to Sales": Sales holds this flagged PI. With the review chain (20270718000000) that is the stored
+ * holder. On a database without it, the older rule: the approver sent it back AFTER Operations flagged it,
+ * and a send-back older than the flag (Operations flagged it again since) does not count.
  */
-export function isReturnedToSales(r: Pick<FlaggedPi, 'since'>, sent: Pick<SentBack, 'atIso'> | undefined): boolean {
+export function isReturnedToSales(r: Pick<FlaggedPi, 'since' | 'holder'>, sent: Pick<SentBack, 'atIso'> | undefined): boolean {
+  if (r.holder) return r.holder === 'sales'
   return !!sent && (!r.since || Date.parse(sent.atIso) >= Date.parse(r.since))
 }
 
@@ -152,14 +176,22 @@ export function commentLine(text: string): string {
 /** On the salesperson's card, for a PI returned to them. */
 export const returnedToYou = (r: Pick<FlaggedPi, 'versionNumber'>): string => `Returned to you: make the changes and resubmit PI V${r.versionNumber} with Edit PI`
 /** On the approver's row, for a PI they returned: no decision waits on them. */
-export const RETURNED_TO_SALES_LABEL = 'Returned to Sales: waiting for the revised PI'
+export const RETURNED_TO_SALES_LABEL = 'With Sales: waiting for their reply or a revised PI'
 
 export const FLAGGED_KIND_LABEL = 'Flagged by Operations'
 export const FLAGGED_LOAD_FAILED = 'PIs flagged by Operations could not be loaded, so one waiting for you may be missing. Refresh to try again.'
-export const FLAGGED_STRIP_HINT = 'Operations cannot accept these yet, and the Order waits. Open the Order and use Respond and resubmit.'
+export const FLAGGED_STRIP_HINT = 'The approver sent these back to you. Open the Order, reply to the approver, or revise the PI with Edit PI.'
 export const FLAGGED_OPEN = 'Respond'
 
 export const flaggedTitle = (n: number): string => `Operations flagged ${n} ${n === 1 ? 'PI' : 'PIs'}`
+/** The salesperson's strip lists only what the approver sent to them. */
+export const sentToYouTitle = (n: number): string => `${n} ${n === 1 ? 'PI' : 'PIs'} sent back to you`
+
+// ── The approver's rows, by who holds the PI (20270718000000) ──
+/** Chip when the salesperson replied: it waits on the approver again. */
+export const SALES_REPLIED_ROW_LABEL = 'Sales replied: waiting for you'
+/** The ordinal of the loop, said only from the second flag on. */
+export const roundLabel = (round: number): string | null => (round >= 2 ? `Round ${round}` : null)
 
 /** `Operations cannot accept PI V1`. */
 export const flaggedLabel = (r: Pick<FlaggedPi, 'versionNumber'>): string => `Operations cannot accept PI V${r.versionNumber}`

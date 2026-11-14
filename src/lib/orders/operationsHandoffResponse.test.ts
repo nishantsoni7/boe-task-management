@@ -1,6 +1,10 @@
 /**
  * RESPONDING TO OPERATIONS' OBJECTION WITH REMARKS ONLY (20270422000000).
  *
+ * The migration tests below pin that ORIGINAL file, which stays as it was applied. Since 20270718000000 the
+ * reply goes to the approver and not straight to Operations; that behaviour is pinned in
+ * operationsHandoffChain.test.ts.
+ *
  * The migration is read as text (it cannot be executed without a database
  * stack), and the pure rules the page uses are exercised directly.
  *
@@ -78,8 +82,11 @@ describe('the rules the page uses', () => {
   const flagged = { status: 'clarification_needed' as const, superseded_at: null }
 
   test('the response is offered only on a live flagged version, to someone who may, never under View As', () => {
-    const ok = { handoff: flagged, orderStatus: 'running', mayRespond: true, viewingAs: false }
+    const ok = { handoff: flagged, holder: 'sales' as const, orderStatus: 'running', mayRespond: true, viewingAs: false }
     assert.equal(canRespondToHandoff(ok), true)
+    assert.equal(canRespondToHandoff({ ...ok, holder: 'coordinator' }), false, 'only once the approver has sent it to Sales')
+    assert.equal(canRespondToHandoff({ ...ok, holder: 'operations' }), false)
+    assert.equal(canRespondToHandoff({ ...ok, holder: null }), false)
     assert.equal(canRespondToHandoff({ ...ok, mayRespond: false }), false)
     assert.equal(canRespondToHandoff({ ...ok, viewingAs: true }), false)
     assert.equal(canRespondToHandoff({ ...ok, orderStatus: 'cancelled' }), false)
@@ -118,7 +125,7 @@ describe('the rules the page uses', () => {
 
   test('the database refusals are said in words', () => {
     assert.match(describeHandoffFailure({ message: 'ORDER_OPERATIONS_HANDOFF_NOT_FLAGGED: PI V2' }), /not waiting for a response/)
-    assert.match(describeHandoffFailure({ message: 'ORDER_OPERATIONS_HANDOFF_RESPONSE_REQUIRED: x' }), /remarks/)
+    assert.match(describeHandoffFailure({ message: 'ORDER_OPERATIONS_HANDOFF_RESPONSE_REQUIRED: x' }), /reply/)
     assert.match(describeHandoffFailure({ message: 'Only the person who owns this PI, or an administrator, can respond to Operations' }), /owns this PI/)
   })
 })
