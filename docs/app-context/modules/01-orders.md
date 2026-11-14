@@ -681,7 +681,7 @@ Read first, in this order:
 - **Tests.** `lib/orders/piChangeMarker.test.ts` (precedence, the two reads' filters, a failed read, the page wiring); the two Refresh-line pins in `factoryStatusView.test.ts` and `orderListValue.test.ts` now include `loadPiChanges()`.
 - **Not proven.** Not seen on a screen (signed in or on a phone); no real revised PI exists in production to look at (see trap in section 9 on the Operations dashboard); the pill's wrapping in the 21%-wide Factory Status column is unmeasured.
 
-## 17. The PI review chain (2026-11-14, owner, Order 547; PR #776; migration `20270718000000` APPLIED 14 Nov 2026 about 19:27 IST, before the merge)
+## 17. The PI review chain (2026-11-14, owner, Order 547; PR #776 merged 19:42 IST as `73a9cc30`; migration `20270718000000` APPLIED 14 Nov 2026 about 19:27 IST, before the merge)
 
 **Rule.** Every hop between Operations and Sales on a PI version passes through the approver (a holder of `orders.approve_order`), who decides whether to pass it on or send it back. One holder at a time, stored on the live `order_operations_handoffs` row: `chain_holder` (`operations` | `coordinator` | `sales`; null when accepted or replaced), `chain_since`, `chain_round` (how many times Operations flagged this version; a withdrawn acceptance counts).
 
