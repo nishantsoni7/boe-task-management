@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-14 — Sales: a page frame instead of the spinner while the permission check runs (branch `feat/sales-checking-frame`) · no SQL
+- **Owner ask.** After the live load was traced (first paint 0.42 s, permission answer ~0.95 s, a full-screen spinner in between), the owner chose to show the page frame in that gap.
+- **Built.** `ModuleGuard` gets an optional `checking` prop (shown only while the check has not answered; default the spinner, so the 17 other guarded modules are unchanged); `src/app/sales/layout.tsx` passes `SalesCheckingFrame`: the Sales sidebar and header with the page's own title and grey blocks where the page will be (board columns for the board). Static: no query, no data, no action. Dossier rule 38.
+- **The rule it relaxes.** The guard's header said nothing renders before the access decision; this is the one, deliberate, Sales-only exception. A person without Sales access who opens a Sales address directly sees the empty frame for ~0.5 s before the redirect to Modules.
+- **Proof.** `salesCheckingFrame.test.tsx` (7: the guard shows it only while unresolved and never the children, only Sales passes it, no query or request or action in the frame, no Team or Lead Master, the titles, the board classes), `salesLeads.test.tsx` and `moduleParentGate.test.ts` unchanged in meaning; `tsc` and eslint clean. The real frame component rendered with the real stylesheet at 1440 and at phone width. Not proven yet: the time until the sidebar is on screen after the deploy.
+- **Rollback.** Revert the PR.
+
 ## 2026-11-14 — Sales: the lead popup's left side made compact so all of it shows with no scroll bar (branch `fix/lead-popup-left-compact`, PR not opened yet) · no SQL
 - **Owner ask (14 Nov, a screenshot of the live popup).** "The left side section is too big overall. Reduce font size, card sizes so that the complete details are shown without any vertical scroll bar."
 - **Measured first.** The real `WorkPanel` rendered with the real stylesheet at the owner's window (popup 592 px tall, left side 538 px): 847 px of content, so about 40% had to go.

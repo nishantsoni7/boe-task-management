@@ -39,16 +39,28 @@ import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 //   3. A failed profile read denies. An unidentified caller holding a stale
 //      permission row is exactly the case that must not be admitted, which is
 //      also why canAccessManagementModule fails closed on a null role.
+//
+// ONE DELIBERATE EXCEPTION (owner, 2026-11-14, Sales only): a module may pass
+// `checking`, a static frame that is shown INSTEAD of the spinner while the
+// check has not answered. It reads nothing, draws no data and no action, and is
+// never shown once the answer is no (a denial gets the spinner while the
+// redirect lands). `children` still render in no state but `allowed`, and no
+// other module passes `checking` (a test pins both).
 export default function ModuleGuard({
   moduleKey,
   children,
   deniedRoute = '/coming-soon',
+  checking,
 }: {
   moduleKey: string
   children: React.ReactNode
   /** Where an unauthorized employee lands. Every module uses the shared
    *  "not available" page, matching the Orders and Meetings guards. */
   deniedRoute?: string
+  /** What to show while the check is still running, and ONLY then: a static frame that reads nothing, draws no data and no
+   *  action (Sales passes its page frame, owner 2026-11-14). Omitted, it is the spinner, as for every other module. Once
+   *  the check has answered, a denial shows the spinner while the redirect lands, never this. */
+  checking?: React.ReactNode
 }) {
   const router = useRouter()
 
@@ -96,6 +108,9 @@ export default function ModuleGuard({
   // A child that fetches on mount cannot start early because it has not
   // mounted, and the protected screen never appears for a frame before the
   // redirect lands.
+  // The one other thing that may render before the decision: the module's own static `checking` frame, and only while the
+  // context has not resolved. It is never `children`, and it is not shown once the answer is no.
+  if (!ready && checking) return <>{checking}</>
   if (!allowed) return <LoadingScreen />
   return <>{children}</>
 }
