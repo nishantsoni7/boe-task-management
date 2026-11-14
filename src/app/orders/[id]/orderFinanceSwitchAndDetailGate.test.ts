@@ -148,7 +148,8 @@ describe('the page asks for the Finance record only on a press, and only then', 
     assert.ok(page.includes('const mayViewPaymentDetails = financeCaps.canAccessFinanceModule'))
     // The same resolver that answers every other Finance question on this page,
     // and no role check of its own.
-    assert.ok(page.includes(`getEffectivePermissions(supabase, session.user.id, 'finance')`))
+    // (callerModulePermissions answers from the guard's context when fresh and from that resolver otherwise.)
+    assert.ok(page.includes(`callerModulePermissions(qc, supabase, session.user.id, 'finance')`))
     assert.equal(/role === 'admin'|profile\?\.role/.test(
       page.slice(page.indexOf('const loadPaymentDetail'), page.indexOf('const viewEvidence'))), false,
       'the detail gate must not invent a role check')

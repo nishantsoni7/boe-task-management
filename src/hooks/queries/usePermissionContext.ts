@@ -1,9 +1,10 @@
 'use client'
 
 import { useQuery, useQueryClient, type QueryClient } from '@tanstack/react-query'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
-import { profileKey } from '@/hooks/queries/useProfile'
-import { getEffectivePermissionsForUser } from '@/lib/permissions/resolver'
+import { loadProfile, profileKey } from '@/hooks/queries/useProfile'
+import { getEffectivePermissions, getEffectivePermissionsForUser } from '@/lib/permissions/resolver'
 import type { UserProfile } from '@/lib/types'
 import type { EffectivePermission } from '@/lib/permissions/types'
 
@@ -143,10 +144,19 @@ export function usePermissionContext(): PermissionContext {
 
       const supabase = createClient()
       const cached = profileForFirstResolve(qc, userId)
+      // A widget or page that asked for the row a moment earlier is reading it now: wait for that read
+      // beside the permissions call rather than start a second one (2026-11-14).
+      const joined = cached ? null : profileReadInFlight(qc, userId)
+      const ownRead = () => supabase.from('users').select(PROFILE_COLUMNS).eq('id', userId).single()
+      const profileRead: PromiseLike<{ data: unknown; error: { message: string } | null }> = cached
+        ? Promise.resolve({ data: cached, error: null })
+        : joined
+          ? joined.then(row => (row ? { data: row as unknown, error: null } : ownRead()))
+          : ownRead()
 
       // Independent failure, per rule 2.
       const [profileResult, permissionsByModule] = await Promise.all([
-        cached ? { data: cached, error: null } : supabase.from('users').select(PROFILE_COLUMNS).eq('id', userId).single(),
+        profileRead,
         // A permissions failure must NOT take an admin's access away: they pass
         // on the role short-circuit alone, exactly as before. So this half
         // degrades to an empty map rather than failing the whole query.
@@ -232,6 +242,49 @@ export function profileForFirstResolve(qc: QueryClient, userId: string): UserPro
   const row = qc.getQueryState<UserProfile | null>(profileKey(userId))
   if (!row?.data || row.isInvalidated || Date.now() - row.dataUpdatedAt > PERMISSION_STALE_MS) return null
   return row.data
+}
+
+/**
+ * The profile read that is already on its way for this user (the shell widget or a page asked first),
+ * for the context to wait for instead of reading the same row again; null when none is running.
+ * Safe against waiting in a circle: a profile read that started BEFORE the context never waits for
+ * the context (loadProfile only joins a context read that is already running), and the context
+ * joins only reads that were already running when it started.
+ */
+export function profileReadInFlight(qc: QueryClient, userId: string): Promise<UserProfile | null> | null {
+  if (qc.getQueryState(profileKey(userId))?.fetchStatus !== 'fetching') return null
+  return qc.fetchQuery<UserProfile | null>({ queryKey: profileKey(userId), staleTime: Infinity }).catch(() => null)
+}
+
+/**
+ * The signed-in person's own profile row for a screen that loads in an effect: the row the shell
+ * resolved or published within the last PERMISSION_STALE_MS, otherwise one read shared with any read
+ * already running. Same freshness rule as cachedModulePermissions, so a role change still reaches an
+ * open page within 30 s. Null means the row could not be read, exactly as a read of its own would say.
+ */
+export async function callerProfile(
+  qc: QueryClient,
+  userId: string,
+  read?: (userId: string) => Promise<UserProfile | null>,
+): Promise<UserProfile | null> {
+  const row = qc.getQueryState<UserProfile | null>(profileKey(userId))
+  if (row?.data && !row.isInvalidated && Date.now() - row.dataUpdatedAt <= PERMISSION_STALE_MS) return row.data
+  return qc.fetchQuery({ queryKey: profileKey(userId), queryFn: () => loadProfile(qc, userId, read), staleTime: 0 })
+}
+
+/**
+ * One module's effective permissions for a screen that loads in an effect: the shell's answer when it
+ * is fresh (cachedModulePermissions), otherwise the database's. A failed read gives no permissions,
+ * which every caller already treated as "no capability".
+ */
+export async function callerModulePermissions(
+  qc: QueryClient,
+  supabase: SupabaseClient,
+  userId: string,
+  moduleKey: string,
+): Promise<EffectivePermission[]> {
+  return cachedModulePermissions(qc, userId, moduleKey)
+    ?? getEffectivePermissions(supabase, userId, moduleKey).catch(() => [])
 }
 
 /**

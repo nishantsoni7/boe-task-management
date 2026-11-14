@@ -1662,13 +1662,16 @@ describe('the record page draws controls from one rule, and from nothing else', 
   })
 
   test('capabilities are resolved for the signed-in account', () => {
-    assert.ok(source.includes('getEffectivePermissions(supabase, session.user.id, \'orders\')'))
+    // Through callerModulePermissions since 2026-11-14: the guard's answer when fresh, the same
+    // resolver (getEffectivePermissions) otherwise, and always for session.user.id.
+    assert.ok(source.includes('callerModulePermissions(qc, supabase, session.user.id, \'orders\')'))
     assert.ok(source.includes('setCanReview(caps.canApproveOrderSubmission)'))
     assert.ok(source.includes('setCanDecideAdvance(caps.canApproveAdvanceException)'),
       'the exception authority is resolved from its own capability, never from canReview')
     assert.ok(source.includes('setViewerId(session.user.id)'),
       'ownership compares the signed-in id, never a View As target')
-    assert.ok(source.includes('.catch(() => [])'),
+    // The deny-on-failure now lives in the one helper every caller shares (2026-11-14).
+    assert.ok(read('src/hooks/queries/usePermissionContext.ts').includes('.catch(() => [])'),
       'a failed permission read must deny rather than admit')
   })
 

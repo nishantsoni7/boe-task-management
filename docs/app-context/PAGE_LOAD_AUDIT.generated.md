@@ -6,30 +6,30 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 
 ## Summary
 
-- Pages: 199; source files read: 1610.
+- Pages: 199; source files read: 1615.
 - Served: 163 static, 35 prepared and cached, 1 by a server function on every open.
 - Client pages: 147; pages that read data without the shared query cache: 17 of 179.
-- Reads with no limit: 360 in 62 pages; fetch-all loops in 36 pages; select("*") in 10; polling in 37. (Pages import their module shell directly, so "own code" and these counts include the shell: compare pages of one module with each other, not across modules.)
+- Reads with no limit: 343 in 62 pages; fetch-all loops in 36 pages; select("*") in 10; polling in 37. (Pages import their module shell directly, so "own code" and these counts include the shell: compare pages of one module with each other, not across modules.)
 
 ## Heaviest pages by data calls
 
 | Route | Served | Page | Own code (source) | Data calls (db/rpc/api) | Query-cache hooks | Reads with no limit | Fetch-all loops | Polling | Heavy libs |
 |---|---|---|---|---|---|---|---|---|---|
-| `/orders/[id]` | prepared | client | 3015 KB / 221 | 147 (63/71/13) | 2 | 30 | 9 | 2 | fflate |
-| `/orders/drafts/[submissionId]` | prepared | client | 2672 KB / 198 | 134 (58/67/9) | 4 | 21 | 10 | 2 | - |
+| `/orders/[id]` | prepared | client | 3025 KB / 221 | 145 (61/71/13) | 2 | 29 | 9 | 2 | fflate |
+| `/orders/drafts/[submissionId]` | prepared | client | 2667 KB / 196 | 131 (56/66/9) | 4 | 20 | 10 | 2 | - |
 | `/finance` | static | client | 1257 KB / 134 | 100 (51/44/5) | 4 | 26 | 10 | 2 | - |
 | `/finance/payments-to-verify` | static | client | 1293 KB / 136 | 70 (29/36/5) | 4 | 17 | 9 | 2 | - |
 | `/finance/received` | static | client | 1292 KB / 136 | 70 (29/36/5) | 4 | 17 | 9 | 2 | - |
-| `/modules` | static | client | 1114 KB / 112 | 70 (23/39/8) | 5 | 7 | - | 9 | - |
+| `/modules` | static | client | 1126 KB / 112 | 70 (23/39/8) | 5 | 7 | - | 9 | - |
 | `/meetings/[id]` | prepared | client | 552 KB / 48 | 63 (35/23/5) | 1 | 11 | 20 | - | - |
 | `/tasks/[id]` | prepared | client | 653 KB / 64 | 53 (32/10/11) | 2 | 10 | 5 | - | - |
 | `/finance/bank` | static | client | 694 KB / 68 | 52 (18/32/2) | 4 | 5 | 8 | 2 | - |
 | `/finance/expenses` | static | client | 864 KB / 78 | 46 (26/19/1) | 4 | 11 | 5 | 2 | - |
 | `/assets-access` | static | client | 443 KB / 39 | 43 (20/20/3) | 1 | 9 | - | - | - |
-| `/orders/[id]/edit-pi` | prepared | client | 1386 KB / 93 | 43 (20/15/8) | 1 | 9 | 2 | - | - |
+| `/orders/[id]/edit-pi` | prepared | client | 1383 KB / 92 | 41 (19/14/8) | 1 | 8 | 2 | - | - |
 | `/sales/lead-master` | static | client | 229 KB / 38 | 39 (1/37/1) | 7 | - | - | - | - |
-| `/orders` | static | client | 1103 KB / 94 | 38 (11/25/2) | 4 | 4 | - | 2 | - |
-| `/account` | static | client | 554 KB / 55 | 35 (10/20/5) | 3 | 2 | - | 4 | - |
+| `/orders` | static | client | 1112 KB / 94 | 38 (11/25/2) | 4 | 4 | - | 2 | - |
+| `/assets-access/[id]` | prepared | client | 398 KB / 37 | 34 (18/13/3) | 1 | 9 | - | - | - |
 
 ## Pages that fetch everything (fetch-all loops)
 
@@ -38,10 +38,10 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/meetings/[id]` | prepared | client | 552 KB / 48 | 63 (35/23/5) | 1 | 11 | 20 | - | - |
 | `/meetings/inbox` | static | client | 151 KB / 19 | 14 (9/5/0) | 1 | 2 | 11 | - | - |
 | `/finance` | static | client | 1257 KB / 134 | 100 (51/44/5) | 4 | 26 | 10 | 2 | - |
-| `/orders/drafts/[submissionId]` | prepared | client | 2672 KB / 198 | 134 (58/67/9) | 4 | 21 | 10 | 2 | - |
+| `/orders/drafts/[submissionId]` | prepared | client | 2667 KB / 196 | 131 (56/66/9) | 4 | 20 | 10 | 2 | - |
 | `/finance/payments-to-verify` | static | client | 1293 KB / 136 | 70 (29/36/5) | 4 | 17 | 9 | 2 | - |
 | `/finance/received` | static | client | 1292 KB / 136 | 70 (29/36/5) | 4 | 17 | 9 | 2 | - |
-| `/orders/[id]` | prepared | client | 3015 KB / 221 | 147 (63/71/13) | 2 | 30 | 9 | 2 | fflate |
+| `/orders/[id]` | prepared | client | 3025 KB / 221 | 145 (61/71/13) | 2 | 29 | 9 | 2 | fflate |
 | `/finance/bank` | static | client | 694 KB / 68 | 52 (18/32/2) | 4 | 5 | 8 | 2 | - |
 | `/meetings/follow-ups` | static | client | 213 KB / 26 | 15 (9/6/0) | 1 | 3 | 8 | - | - |
 | `/marketing` | static | server | 82 KB / 18 | 9 (8/1/0) | 3 | - | 7 | 1 | - |
@@ -62,9 +62,9 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | Route | Served | Page | Own code (source) | Data calls (db/rpc/api) | Query-cache hooks | Reads with no limit | Fetch-all loops | Polling | Heavy libs |
 |---|---|---|---|---|---|---|---|---|---|
 | `/` | static | server | 0 KB / 1 | 0 (0/0/0) | - | - | - | - | - |
-| `/account` | static | client | 554 KB / 55 | 35 (10/20/5) | 3 | 2 | - | 4 | - |
-| `/admin/control-center` | static | client | 421 KB / 29 | 27 (9/12/6) | - | 7 | - | - | - |
-| `/admin/control-center/action-queue` | static | client | 243 KB / 18 | 7 (6/1/0) | - | 6 | - | - | - |
+| `/account` | static | client | 490 KB / 51 | 33 (9/19/5) | 3 | 1 | - | 4 | - |
+| `/admin/control-center` | static | client | 362 KB / 26 | 25 (8/11/6) | - | 6 | - | - | - |
+| `/admin/control-center/action-queue` | static | client | 176 KB / 14 | 5 (5/0/0) | - | 5 | - | - | - |
 | `/admin/control-center/announcements` | static | client | 47 KB / 7 | 3 (1/2/0) | - | 1 | - | - | - |
 | `/admin/control-center/data-management` | static | client | 52 KB / 5 | 1 (0/0/1) | - | - | - | - | - |
 | `/admin/control-center/day-close` | static | client | 20 KB / 6 | 0 (0/0/0) | - | - | - | - | - |
@@ -78,25 +78,25 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/admin/control-center/test-data-cleanup` | static | client | 38 KB / 5 | 5 (0/4/1) | - | - | - | - | - |
 | `/admin/control-center/whatsapp-connection` | static | client | 17 KB / 5 | 0 (0/0/0) | - | - | - | - | - |
 | `/admin/members` | static | client | 1 KB / 1 | 0 (0/0/0) | - | - | - | - | - |
-| `/announcements` | static | client | 173 KB / 29 | 10 (4/5/1) | 2 | - | - | 1 | - |
-| `/announcements/[id]` | prepared | client | 177 KB / 29 | 11 (5/5/1) | 4 | - | - | 2 | - |
+| `/announcements` | static | client | 176 KB / 29 | 10 (4/5/1) | 2 | - | - | 1 | - |
+| `/announcements/[id]` | prepared | client | 180 KB / 29 | 11 (5/5/1) | 4 | - | - | 2 | - |
 | `/assets-access` | static | client | 443 KB / 39 | 43 (20/20/3) | 1 | 9 | - | - | - |
 | `/assets-access/[id]` | prepared | client | 398 KB / 37 | 34 (18/13/3) | 1 | 9 | - | - | - |
-| `/assets-access/notifications` | static | client | 502 KB / 42 | 10 (8/1/1) | 1 | 4 | - | - | - |
-| `/attendance` | static | client | 187 KB / 34 | 17 (10/3/4) | 2 | 3 | - | - | - |
-| `/attendance/correction-log` | static | client | 200 KB / 34 | 11 (4/3/4) | 2 | - | - | - | - |
-| `/attendance/employees` | static | client | 168 KB / 30 | 13 (4/3/6) | 2 | - | - | - | - |
-| `/attendance/employees/[id]` | prepared | client | 171 KB / 32 | 11 (4/3/4) | 2 | - | - | - | - |
-| `/attendance/holidays` | static | client | 151 KB / 30 | 12 (4/3/5) | 2 | - | - | - | - |
-| `/attendance/minop` | static | client | 153 KB / 30 | 10 (4/3/3) | 2 | - | - | - | - |
-| `/attendance/minop/incoming` | static | client | 198 KB / 35 | 12 (4/3/5) | 2 | - | - | - | - |
-| `/attendance/monthly-review` | static | client | 402 KB / 48 | 12 (4/3/5) | 2 | - | - | - | - |
-| `/attendance/monthly-review/[userId]` | prepared | client | 204 KB / 36 | 11 (4/3/4) | 2 | - | - | - | - |
-| `/attendance/notifications` | static | client | 519 KB / 48 | 15 (9/4/2) | 2 | 4 | - | - | - |
-| `/attendance/records` | static | client | 169 KB / 32 | 12 (5/3/4) | 2 | 1 | - | - | - |
-| `/attendance/requests` | static | client | 213 KB / 39 | 12 (4/3/5) | 2 | - | - | - | - |
-| `/attendance/today` | static | client | 167 KB / 31 | 16 (10/3/3) | 2 | 3 | - | - | - |
-| `/attendance/upload` | static | client | 174 KB / 28 | 12 (4/3/5) | 2 | - | - | - | - |
+| `/assets-access/notifications` | static | client | 436 KB / 38 | 8 (7/0/1) | 1 | 3 | - | - | - |
+| `/attendance` | static | client | 190 KB / 34 | 17 (10/3/4) | 2 | 3 | - | - | - |
+| `/attendance/correction-log` | static | client | 203 KB / 34 | 11 (4/3/4) | 2 | - | - | - | - |
+| `/attendance/employees` | static | client | 171 KB / 30 | 13 (4/3/6) | 2 | - | - | - | - |
+| `/attendance/employees/[id]` | prepared | client | 174 KB / 32 | 11 (4/3/4) | 2 | - | - | - | - |
+| `/attendance/holidays` | static | client | 154 KB / 30 | 12 (4/3/5) | 2 | - | - | - | - |
+| `/attendance/minop` | static | client | 156 KB / 30 | 10 (4/3/3) | 2 | - | - | - | - |
+| `/attendance/minop/incoming` | static | client | 201 KB / 35 | 12 (4/3/5) | 2 | - | - | - | - |
+| `/attendance/monthly-review` | static | client | 405 KB / 48 | 12 (4/3/5) | 2 | - | - | - | - |
+| `/attendance/monthly-review/[userId]` | prepared | client | 207 KB / 36 | 11 (4/3/4) | 2 | - | - | - | - |
+| `/attendance/notifications` | static | client | 456 KB / 44 | 13 (8/3/2) | 2 | 3 | - | - | - |
+| `/attendance/records` | static | client | 172 KB / 32 | 12 (5/3/4) | 2 | 1 | - | - | - |
+| `/attendance/requests` | static | client | 215 KB / 39 | 12 (4/3/5) | 2 | - | - | - | - |
+| `/attendance/today` | static | client | 170 KB / 31 | 16 (10/3/3) | 2 | 3 | - | - | - |
+| `/attendance/upload` | static | client | 177 KB / 28 | 12 (4/3/5) | 2 | - | - | - | - |
 | `/coming-soon` | static | client | 6 KB / 2 | 0 (0/0/0) | - | - | - | - | - |
 | `/customer-reviews` | static | client | 332 KB / 40 | 17 (9/2/6) | 3 | 2 | - | - | - |
 | `/customer-reviews/[id]` | function | server | 0 KB / 1 | 0 (0/0/0) | - | - | - | - | - |
@@ -105,7 +105,7 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/customer-reviews/history` | static | client | 145 KB / 22 | 6 (4/0/2) | 2 | 1 | 4 | - | - |
 | `/customer-reviews/images` | static | server | 0 KB / 1 | 0 (0/0/0) | - | - | - | - | - |
 | `/customer-reviews/mine` | static | server | 0 KB / 1 | 0 (0/0/0) | - | - | - | - | - |
-| `/customer-reviews/notifications` | static | client | 502 KB / 44 | 11 (8/1/2) | 2 | 4 | - | - | - |
+| `/customer-reviews/notifications` | static | client | 435 KB / 40 | 9 (7/0/2) | 2 | 3 | - | - | - |
 | `/customer-reviews/progress` | static | server | 0 KB / 1 | 0 (0/0/0) | - | - | - | - | - |
 | `/customer-reviews/reports` | static | client | 251 KB / 30 | 6 (2/2/2) | 4 | - | - | - | - |
 | `/customer-reviews/reviews` | static | server | 0 KB / 1 | 0 (0/0/0) | - | - | - | - | - |
@@ -122,23 +122,23 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/finance/expenses/new` | static | client | 721 KB / 67 | 29 (12/16/1) | 4 | 4 | - | 2 | - |
 | `/finance/founders` | static | client | 535 KB / 63 | 22 (2/19/1) | 4 | - | - | 2 | - |
 | `/finance/handovers` | static | client | 370 KB / 46 | 17 (2/14/1) | 4 | - | - | 2 | - |
-| `/finance/notifications` | static | client | 735 KB / 67 | 23 (8/14/1) | 4 | 4 | - | 2 | - |
+| `/finance/notifications` | static | client | 669 KB / 63 | 21 (7/13/1) | 4 | 3 | - | 2 | - |
 | `/finance/payments-to-verify` | static | client | 1293 KB / 136 | 70 (29/36/5) | 4 | 17 | 9 | 2 | - |
 | `/finance/received` | static | client | 1292 KB / 136 | 70 (29/36/5) | 4 | 17 | 9 | 2 | - |
 | `/finance/received/linked` | static | client | 364 KB / 48 | 16 (2/13/1) | 4 | - | - | 2 | - |
 | `/finance/received/unlinked` | static | client | 364 KB / 48 | 16 (2/13/1) | 4 | - | - | 2 | - |
 | `/finance/reimbursements` | static | client | 639 KB / 67 | 31 (13/17/1) | 4 | 7 | 5 | 2 | - |
 | `/forgot-password` | static | client | 29 KB / 8 | 0 (0/0/0) | - | - | - | - | - |
-| `/handover/[id]` | prepared | client | 149 KB / 22 | 12 (2/9/1) | 2 | - | - | 1 | - |
+| `/handover/[id]` | prepared | client | 152 KB / 22 | 12 (2/9/1) | 2 | - | - | 1 | - |
 | `/image-editor` | static | client | 98 KB / 14 | 7 (1/0/6) | 1 | - | - | - | - |
 | `/inventory` | static | server | 110 KB / 23 | 13 (4/8/1) | 4 | - | - | - | - |
 | `/inventory/[id]` | prepared | server | 124 KB / 24 | 13 (4/8/1) | 6 | - | - | - | - |
 | `/inventory/[id]/edit` | prepared | server | 125 KB / 23 | 13 (4/8/1) | 5 | - | - | - | - |
 | `/inventory/new` | static | server | 125 KB / 23 | 13 (4/8/1) | 5 | - | - | - | - |
-| `/inventory/notifications` | static | client | 485 KB / 42 | 20 (10/9/1) | 3 | 4 | - | - | - |
+| `/inventory/notifications` | static | client | 419 KB / 38 | 18 (9/8/1) | 3 | 3 | - | - | - |
 | `/inventory/requests` | static | server | 112 KB / 23 | 13 (4/8/1) | 4 | - | - | - | - |
 | `/login` | static | client | 30 KB / 9 | 0 (0/0/0) | - | - | - | - | - |
-| `/manager` | static | client | 196 KB / 31 | 15 (9/3/3) | 3 | 2 | - | - | - |
+| `/manager` | static | client | 199 KB / 31 | 15 (9/3/3) | 3 | 2 | - | - | - |
 | `/marketing` | static | server | 82 KB / 18 | 9 (8/1/0) | 3 | - | 7 | 1 | - |
 | `/marketing/campaigns` | static | server | 76 KB / 16 | 9 (8/1/0) | 3 | - | 7 | 1 | - |
 | `/marketing/settings` | static | server | 77 KB / 17 | 9 (8/1/0) | 3 | - | 7 | 1 | - |
@@ -148,53 +148,53 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/meetings/follow-ups` | static | client | 213 KB / 26 | 15 (9/6/0) | 1 | 3 | 8 | - | - |
 | `/meetings/guide` | static | client | 123 KB / 14 | 1 (1/0/0) | 1 | - | - | - | - |
 | `/meetings/inbox` | static | client | 151 KB / 19 | 14 (9/5/0) | 1 | 2 | 11 | - | - |
-| `/modules` | static | client | 1114 KB / 112 | 70 (23/39/8) | 5 | 7 | - | 9 | - |
-| `/my-attendance` | static | client | 295 KB / 46 | 14 (3/3/8) | 2 | - | - | 2 | - |
-| `/my-credits` | static | client | 182 KB / 32 | 12 (4/4/4) | 2 | - | - | - | - |
-| `/my-credits/how-it-works` | static | client | 175 KB / 28 | 9 (3/3/3) | 2 | - | - | - | - |
-| `/my-credits/leaderboard` | static | client | 166 KB / 31 | 12 (5/5/2) | 3 | - | - | - | - |
-| `/my-issues` | static | client | 194 KB / 34 | 12 (4/3/5) | 2 | - | - | - | - |
-| `/my-issues/notifications` | static | client | 534 KB / 51 | 15 (9/4/2) | 2 | 4 | - | - | - |
-| `/my-payroll` | static | client | 227 KB / 40 | 12 (3/3/6) | 2 | - | - | - | - |
-| `/my-payroll/[periodId]` | prepared | client | 384 KB / 46 | 15 (3/3/9) | 2 | - | - | - | - |
-| `/notifications` | static | client | 578 KB / 55 | 19 (12/4/3) | 3 | 4 | - | - | - |
-| `/orders` | static | client | 1103 KB / 94 | 38 (11/25/2) | 4 | 4 | - | 2 | - |
-| `/orders/[id]` | prepared | client | 3015 KB / 221 | 147 (63/71/13) | 2 | 30 | 9 | 2 | fflate |
+| `/modules` | static | client | 1126 KB / 112 | 70 (23/39/8) | 5 | 7 | - | 9 | - |
+| `/my-attendance` | static | client | 298 KB / 46 | 14 (3/3/8) | 2 | - | - | 2 | - |
+| `/my-credits` | static | client | 185 KB / 32 | 12 (4/4/4) | 2 | - | - | - | - |
+| `/my-credits/how-it-works` | static | client | 177 KB / 28 | 9 (3/3/3) | 2 | - | - | - | - |
+| `/my-credits/leaderboard` | static | client | 169 KB / 31 | 12 (5/5/2) | 3 | - | - | - | - |
+| `/my-issues` | static | client | 197 KB / 34 | 12 (4/3/5) | 2 | - | - | - | - |
+| `/my-issues/notifications` | static | client | 470 KB / 47 | 13 (8/3/2) | 2 | 3 | - | - | - |
+| `/my-payroll` | static | client | 229 KB / 40 | 12 (3/3/6) | 2 | - | - | - | - |
+| `/my-payroll/[periodId]` | prepared | client | 387 KB / 46 | 15 (3/3/9) | 2 | - | - | - | - |
+| `/notifications` | static | client | 514 KB / 51 | 17 (11/3/3) | 3 | 3 | - | - | - |
+| `/orders` | static | client | 1112 KB / 94 | 38 (11/25/2) | 4 | 4 | - | 2 | - |
+| `/orders/[id]` | prepared | client | 3025 KB / 221 | 145 (61/71/13) | 2 | 29 | 9 | 2 | fflate |
 | `/orders/[id]/dispatch/[lotId]` | prepared | client | 511 KB / 44 | 9 (3/3/3) | 1 | - | - | - | - |
-| `/orders/[id]/edit-pi` | prepared | client | 1386 KB / 93 | 43 (20/15/8) | 1 | 9 | 2 | - | - |
+| `/orders/[id]/edit-pi` | prepared | client | 1383 KB / 92 | 41 (19/14/8) | 1 | 8 | 2 | - | - |
 | `/orders/[id]/payment-plan` | prepared | client | 531 KB / 44 | 13 (5/5/3) | 1 | 2 | - | - | - |
-| `/orders/all` | static | client | 1043 KB / 93 | 29 (11/16/2) | 4 | 8 | - | 2 | - |
+| `/orders/all` | static | client | 984 KB / 90 | 27 (10/15/2) | 4 | 7 | - | 2 | - |
 | `/orders/bdpi` | static | client | 479 KB / 39 | 6 (2/1/3) | 1 | - | - | - | - |
 | `/orders/bdpi/[id]` | prepared | client | 524 KB / 43 | 14 (4/6/4) | 1 | 2 | - | - | - |
 | `/orders/clickup` | static | client | 203 KB / 31 | 3 (1/0/2) | 1 | - | - | - | - |
 | `/orders/clickup/[id]` | prepared | client | 144 KB / 27 | 3 (1/0/2) | 1 | - | - | - | - |
 | `/orders/clickup/import` | static | client | 148 KB / 26 | 3 (1/0/2) | 1 | - | - | - | - |
 | `/orders/customize-learning` | static | client | 156 KB / 25 | 3 (1/0/2) | 1 | - | - | - | - |
-| `/orders/drafts` | static | client | 1179 KB / 87 | 24 (4/17/3) | 4 | - | - | 2 | - |
-| `/orders/drafts/[submissionId]` | prepared | client | 2672 KB / 198 | 134 (58/67/9) | 4 | 21 | 10 | 2 | - |
+| `/orders/drafts` | static | client | 1176 KB / 86 | 23 (3/17/3) | 4 | - | - | 2 | - |
+| `/orders/drafts/[submissionId]` | prepared | client | 2667 KB / 196 | 131 (56/66/9) | 4 | 20 | 10 | 2 | - |
 | `/orders/drafts/[submissionId]/edit-pi` | prepared | client | 414 KB / 42 | 19 (12/3/4) | 1 | 2 | - | - | - |
 | `/orders/import` | static | client | 846 KB / 69 | 25 (7/15/3) | 4 | - | - | 2 | - |
-| `/orders/notifications` | static | client | 541 KB / 51 | 10 (7/1/2) | 1 | 4 | - | - | - |
+| `/orders/notifications` | static | client | 475 KB / 47 | 8 (6/0/2) | 1 | 3 | - | - | - |
 | `/orders/requests` | static | client | 393 KB / 53 | 20 (5/13/2) | 4 | - | - | 2 | - |
 | `/orders/requests/[id]` | prepared | client | 394 KB / 53 | 20 (5/13/2) | 4 | - | - | 2 | - |
-| `/payroll` | static | client | 286 KB / 44 | 17 (2/3/12) | 2 | - | - | - | - |
-| `/payroll/credits` | static | client | 241 KB / 36 | 15 (2/3/10) | 2 | - | - | - | - |
-| `/payroll/how-it-works` | static | client | 270 KB / 30 | 8 (2/3/3) | 2 | - | - | - | - |
-| `/payroll/monthly-review` | static | client | 211 KB / 32 | 10 (2/3/5) | 2 | - | - | - | - |
-| `/payroll/monthly-review/[userId]` | prepared | client | 341 KB / 37 | 10 (2/3/5) | 2 | - | - | - | - |
-| `/payroll/notifications` | static | client | 516 KB / 46 | 14 (8/4/2) | 2 | 4 | - | - | - |
-| `/payroll/results/[periodId]` | prepared | client | 215 KB / 36 | 11 (2/3/6) | 2 | - | - | - | - |
-| `/payroll/results/[periodId]/[employeeId]` | prepared | client | 395 KB / 45 | 12 (2/3/7) | 2 | - | - | - | - |
-| `/payroll/results/[periodId]/salary-report` | prepared | client | 160 KB / 23 | 8 (2/3/3) | 2 | - | - | - | - |
-| `/payroll/settings` | static | client | 217 KB / 29 | 9 (2/3/4) | 2 | - | - | - | - |
+| `/payroll` | static | client | 289 KB / 44 | 17 (2/3/12) | 2 | - | - | - | - |
+| `/payroll/credits` | static | client | 243 KB / 36 | 15 (2/3/10) | 2 | - | - | - | - |
+| `/payroll/how-it-works` | static | client | 273 KB / 30 | 8 (2/3/3) | 2 | - | - | - | - |
+| `/payroll/monthly-review` | static | client | 214 KB / 32 | 10 (2/3/5) | 2 | - | - | - | - |
+| `/payroll/monthly-review/[userId]` | prepared | client | 344 KB / 37 | 10 (2/3/5) | 2 | - | - | - | - |
+| `/payroll/notifications` | static | client | 452 KB / 42 | 12 (7/3/2) | 2 | 3 | - | - | - |
+| `/payroll/results/[periodId]` | prepared | client | 218 KB / 36 | 11 (2/3/6) | 2 | - | - | - | - |
+| `/payroll/results/[periodId]/[employeeId]` | prepared | client | 398 KB / 45 | 12 (2/3/7) | 2 | - | - | - | - |
+| `/payroll/results/[periodId]/salary-report` | prepared | client | 163 KB / 23 | 8 (2/3/3) | 2 | - | - | - | - |
+| `/payroll/settings` | static | client | 219 KB / 29 | 9 (2/3/4) | 2 | - | - | - | - |
 | `/performance` | static | client | 123 KB / 10 | 10 (4/0/6) | 1 | - | - | 1 | - |
 | `/performance/team` | static | client | 243 KB / 14 | 4 (3/0/1) | 1 | - | - | 1 | - |
-| `/pricing` | static | server | 137 KB / 24 | 18 (1/17/0) | 3 | - | - | - | - |
-| `/q/[token]` | prepared | server | 89 KB / 19 | 15 (1/14/0) | 3 | - | - | - | - |
+| `/pricing` | static | server | 138 KB / 24 | 18 (1/17/0) | 3 | - | - | - | - |
+| `/q/[token]` | prepared | server | 122 KB / 21 | 15 (1/14/0) | 3 | - | - | - | - |
 | `/quick-start-guide` | static | client | 22 KB / 2 | 0 (0/0/0) | - | - | - | - | - |
 | `/quotations` | static | server | 82 KB / 17 | 9 (1/8/0) | 5 | - | - | - | - |
-| `/quotations/[id]` | prepared | server | 659 KB / 63 | 31 (10/16/5) | 10 | 2 | - | - | - |
-| `/quotations/[id]/print` | prepared | server | 39 KB / 10 | 0 (0/0/0) | 3 | - | - | - | - |
+| `/quotations/[id]` | prepared | server | 678 KB / 65 | 31 (10/16/5) | 10 | 2 | - | - | - |
+| `/quotations/[id]/print` | prepared | server | 71 KB / 12 | 0 (0/0/0) | 3 | - | - | - | - |
 | `/quotations/learning` | static | server | 72 KB / 16 | 9 (1/8/0) | 4 | - | - | - | - |
 | `/quotations/learning/[id]` | prepared | server | 55 KB / 14 | 9 (1/8/0) | 3 | - | - | - | - |
 | `/quotations/learning/new` | static | server | 153 KB / 27 | 10 (1/9/0) | 3 | - | - | - | - |
@@ -207,7 +207,7 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/sales/lead-master/filtered-chats` | static | server | 98 KB / 19 | 33 (1/31/1) | 2 | - | - | - | - |
 | `/sales/lead-master/new` | static | server | 112 KB / 20 | 33 (1/31/1) | 2 | - | - | - | - |
 | `/sales/my-day` | static | client | 186 KB / 25 | 33 (1/31/1) | 3 | - | - | 1 | - |
-| `/sales/notifications` | static | client | 474 KB / 38 | 9 (7/1/1) | 1 | 4 | - | - | - |
+| `/sales/notifications` | static | client | 407 KB / 34 | 7 (6/0/1) | 1 | 3 | - | - | - |
 | `/sales/team` | static | server | 204 KB / 26 | 33 (1/31/1) | 5 | - | - | - | - |
 | `/samples` | static | client | 128 KB / 11 | 19 (13/0/6) | 1 | - | 1 | - | qrcode.react |
 | `/samples/dispatch/[id]` | prepared | client | 17 KB / 1 | 3 (3/0/0) | - | - | - | - | - |
@@ -221,9 +221,9 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/seo/reviews` | static | server | 111 KB / 20 | 11 (9/2/0) | 2 | - | 4 | - | - |
 | `/seo/tasks` | static | server | 104 KB / 18 | 11 (9/2/0) | 2 | - | 4 | - | - |
 | `/seo/year` | static | server | 75 KB / 15 | 11 (9/2/0) | 2 | - | 4 | - | - |
-| `/settings` | static | client | 173 KB / 29 | 13 (7/3/3) | 3 | - | - | - | - |
-| `/settings/positions` | static | client | 178 KB / 32 | 17 (11/3/3) | 3 | 1 | - | - | - |
-| `/settings/roles` | static | client | 169 KB / 29 | 13 (7/3/3) | 3 | - | - | - | - |
+| `/settings` | static | client | 176 KB / 29 | 13 (7/3/3) | 3 | - | - | - | - |
+| `/settings/positions` | static | client | 181 KB / 32 | 17 (11/3/3) | 3 | 1 | - | - | - |
+| `/settings/roles` | static | client | 172 KB / 29 | 13 (7/3/3) | 3 | - | - | - | - |
 | `/showroom-admin` | static | client | 103 KB / 14 | 3 (2/0/1) | 2 | - | - | - | - |
 | `/showroom-admin/categories` | static | client | 94 KB / 13 | 8 (2/0/6) | 2 | - | - | - | - |
 | `/showroom-admin/inquiry/[inquiryId]` | prepared | client | 155 KB / 16 | 12 (2/0/10) | 2 | - | - | - | - |
@@ -237,8 +237,8 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/showroom/project-list` | static | client | 35 KB / 6 | 1 (0/0/1) | - | - | - | - | - |
 | `/showroom/scan` | static | client | 21 KB / 5 | 1 (0/0/1) | - | - | - | - | - |
 | `/showroom/share/[token]` | prepared | client | 15 KB / 3 | 1 (0/0/1) | - | - | - | - | - |
-| `/super-admin` | static | client | 180 KB / 29 | 17 (8/3/6) | 3 | 1 | - | - | - |
-| `/super-admin/view-user/[userId]` | prepared | client | 226 KB / 33 | 20 (14/3/3) | 3 | 3 | - | - | - |
+| `/super-admin` | static | client | 183 KB / 29 | 17 (8/3/6) | 3 | 1 | - | - | - |
+| `/super-admin/view-user/[userId]` | prepared | client | 229 KB / 33 | 20 (14/3/3) | 3 | 3 | - | - | - |
 | `/tasks/[id]` | prepared | client | 653 KB / 64 | 53 (32/10/11) | 2 | 10 | 5 | - | - |
 | `/tasks/all` | static | client | 187 KB / 30 | 13 (10/0/3) | 2 | 4 | - | - | - |
 | `/tasks/assigned-by-me` | static | client | 477 KB / 53 | 29 (24/1/4) | 2 | 9 | 5 | - | - |

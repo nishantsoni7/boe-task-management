@@ -3953,11 +3953,13 @@ describe('the redesign added no route, no query, no RPC and no permission', () =
   })
 
   test('capability derivation is untouched, and still the signed-in account’s', () => {
-    assert.ok(page.includes("getEffectivePermissions(supabase, session.user.id, 'orders')"))
+    // callerModulePermissions: the guard's answer when fresh, the same resolver otherwise (2026-11-14).
+    assert.ok(page.includes("callerModulePermissions(qc, supabase, session.user.id, 'orders')"))
     assert.ok(page.includes('setCanReview(caps.canApproveOrderSubmission)'))
     assert.ok(page.includes('setCanDecideAdvance(caps.canApproveAdvanceException)'))
     assert.ok(page.includes('setViewerId(session.user.id)'))
-    assert.ok(page.includes('.catch(() => [])'), 'a failed permission read must deny')
+    // The deny-on-failure now lives in the one helper every caller shares (2026-11-14).
+    assert.ok(read('src/hooks/queries/usePermissionContext.ts').includes('.catch(() => [])'), 'a failed permission read must deny')
   })
 
   test('the screen is still the only route under this folder', () => {
