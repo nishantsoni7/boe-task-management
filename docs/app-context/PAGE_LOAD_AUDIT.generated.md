@@ -15,7 +15,7 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 
 | Route | Served | Page | Own code (source) | Data calls (db/rpc/api) | Query-cache hooks | Reads with no limit | Fetch-all loops | Polling | Heavy libs |
 |---|---|---|---|---|---|---|---|---|---|
-| `/orders/[id]` | prepared | client | 3033 KB / 223 | 144 (61/71/12) | 1 | 29 | 9 | 2 | fflate |
+| `/orders/[id]` | prepared | client | 3034 KB / 223 | 144 (61/71/12) | 1 | 29 | 9 | 2 | fflate |
 | `/orders/drafts/[submissionId]` | prepared | client | 2675 KB / 198 | 130 (56/66/8) | 3 | 20 | 10 | 2 | - |
 | `/finance` | static | client | 1265 KB / 136 | 99 (51/44/4) | 3 | 26 | 10 | 2 | - |
 | `/finance/payments-to-verify` | static | client | 1301 KB / 138 | 69 (29/36/4) | 3 | 17 | 9 | 2 | - |
@@ -41,7 +41,7 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/orders/drafts/[submissionId]` | prepared | client | 2675 KB / 198 | 130 (56/66/8) | 3 | 20 | 10 | 2 | - |
 | `/finance/payments-to-verify` | static | client | 1301 KB / 138 | 69 (29/36/4) | 3 | 17 | 9 | 2 | - |
 | `/finance/received` | static | client | 1300 KB / 138 | 69 (29/36/4) | 3 | 17 | 9 | 2 | - |
-| `/orders/[id]` | prepared | client | 3033 KB / 223 | 144 (61/71/12) | 1 | 29 | 9 | 2 | fflate |
+| `/orders/[id]` | prepared | client | 3034 KB / 223 | 144 (61/71/12) | 1 | 29 | 9 | 2 | fflate |
 | `/finance/bank` | static | client | 702 KB / 70 | 51 (18/32/1) | 3 | 5 | 8 | 2 | - |
 | `/meetings/follow-ups` | static | client | 216 KB / 27 | 15 (9/6/0) | - | 3 | 8 | - | - |
 | `/marketing` | static | server | 84 KB / 19 | 9 (8/1/0) | 2 | - | 7 | 1 | - |
@@ -159,7 +159,7 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/my-payroll/[periodId]` | prepared | client | 395 KB / 48 | 14 (3/3/8) | 1 | - | - | - | - |
 | `/notifications` | static | client | 522 KB / 53 | 16 (11/3/2) | 2 | 3 | - | - | - |
 | `/orders` | static | client | 1120 KB / 96 | 37 (11/25/1) | 3 | 4 | - | 2 | - |
-| `/orders/[id]` | prepared | client | 3033 KB / 223 | 144 (61/71/12) | 1 | 29 | 9 | 2 | fflate |
+| `/orders/[id]` | prepared | client | 3034 KB / 223 | 144 (61/71/12) | 1 | 29 | 9 | 2 | fflate |
 | `/orders/[id]/dispatch/[lotId]` | prepared | client | 519 KB / 46 | 8 (3/3/2) | - | - | - | - | - |
 | `/orders/[id]/edit-pi` | prepared | client | 1391 KB / 94 | 40 (19/14/7) | - | 8 | 2 | - | - |
 | `/orders/[id]/payment-plan` | prepared | client | 539 KB / 46 | 12 (5/5/2) | - | 2 | - | - | - |

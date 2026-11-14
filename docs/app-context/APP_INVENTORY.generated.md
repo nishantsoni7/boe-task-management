@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1a395cf4` — Orders: PI review thread inside the operations notice, replies keep their line breaks (no SQL) (#791)
-- Commits on this branch: 1350
+- Commit: `80214cb4` — Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL)
+- Commits on this branch: 1353
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `80214cb4` 2026-11-14 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL)
+- `1ff42c1e` 2026-11-14 Docs: stamp #791 (merged 1a395cf4, deployed 22:50 IST) and #780 (merged 33813806, tools installed 20:18 IST) (#794)
+- `b54f6989` 2026-11-14 Docs: stamp #788 (phone popover and pending buttons) as merged d06e6248, deployed 22:33 IST (no SQL) (#790)
 - `1a395cf4` 2026-11-14 Orders: PI review thread inside the operations notice, replies keep their line breaks (no SQL) (#791)
 - `1e80e23c` 2026-11-14 Page speed, part 7: the launcher's badge counts in one call (no SQL) (#789)
 - `d06e6248` 2026-11-14 Orders: on a phone the Main PI Details popover stays inside the card and the pending buttons are 44px (#788)
@@ -36,9 +39,6 @@
 - `c705b65e` 2026-11-14 Docs: SEO Rankings heading merged as 93db82c5 (#769) (#771)
 - `93db82c5` 2026-11-14 SEO Rankings: heading no longer says "20" money keywords (#769)
 - `b62262a2` 2026-11-14 Docs: stamp the lead popup, board cards and speed work (#761) as merged 8b64c4d3, deployed 06:04 IST, 20270716000000 applied, with the live measurements (no SQL) (#764)
-- `f0f4c23c` 2026-11-14 Sales: a page frame instead of the full-screen spinner while the permission check runs (no SQL) (#768)
-- `d7e49cdc` 2026-11-14 Orders: mark a Confirmed Order whose PI change is waiting for somebody (no SQL) (#767)
-- `ef6682f3` 2026-11-14 Docs: stamp the compact lead popup (#765) as merged 45a2182f, deployed 10:25 IST (no SQL) (#766)
 
 ## Pages by top-level area
 
