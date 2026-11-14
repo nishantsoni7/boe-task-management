@@ -35,6 +35,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { ClipboardCheck, Eye, Trash2, Upload } from 'lucide-react'
 import { PiFormatButton } from '@/components/orders/PiFormatLink'
 import { createClient } from '@/lib/supabase/client'
@@ -50,8 +51,7 @@ import { enumParam, textParam } from '@/lib/listState'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { colors } from '@/lib/tokens'
 import type { UserProfile } from '@/lib/types'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { callerModulePermissions, callerProfile } from '@/hooks/queries/usePermissionContext'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { isAdminRole } from '@/lib/permissions/moduleVisibility'
 import { formatInr } from '@/lib/pi/previewView'
@@ -185,6 +185,7 @@ export default function PiDraftsPage() {
 
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   // The status card and the search, both in the URL (see DRAFTS_LIST_PARAMS).
   // The box shows what is being typed and commits after the shared pause.
@@ -293,28 +294,29 @@ export default function PiDraftsPage() {
       // gets back are RLS's answer — so waiting for the permissions to resolve
       // bought nothing and cost a whole round trip. The advance percentages
       // depend only on the rows, so that one call follows in load().
-      const [{ data: me }, permissions, drafts] = await Promise.all([
-        supabase
-          .from('users')
-          .select(USER_PROFILE_COLUMNS)
-          .eq('id', session.user.id)
-          .single(),
+      //
+      // THE PROFILE AND THE PERMISSIONS COME FROM WHAT THE ORDERS GUARD JUST READ (2026-11-14) when it
+      // is under 30 s old: the guard above this page already resolved both, so asking again put two
+      // more requests beside the drafts read, and a request waiting beside others finishes later. A
+      // page opened after more than 30 s asks the database, exactly as before.
+      const [me, permissions, drafts] = await Promise.all([
+        callerProfile(qc, session.user.id),
         // Module entry is enforced by the Orders layout above this page, and row
         // visibility by RLS below it. What is resolved here is only whether to
         // offer the "New Order" button — an entry point, not an authority.
-        getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
+        callerModulePermissions(qc, supabase, session.user.id, 'orders'),
         draftsQuery(),
       ])
-      const caps = deriveOrdersCapabilities((me as UserProfile | null)?.role, permissions)
+      const caps = deriveOrdersCapabilities(me?.role, permissions)
 
       if (!active) return
-      setProfile((me as UserProfile) ?? null)
+      setProfile(me)
       setActor({
         userId: session.user.id,
         // The project's established Admin check, read through the module that
         // owns it rather than compared to a literal here — and deliberately not
         // a permission: see submissionDeletion.ts and the migration header.
-        isAdmin: isAdminRole((me as UserProfile | null)?.role),
+        isAdmin: isAdminRole(me?.role),
       })
       setCanCreate(caps.canCreateOrder)
       setCanReview(caps.canApproveOrderSubmission)

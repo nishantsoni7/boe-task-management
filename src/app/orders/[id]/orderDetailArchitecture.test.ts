@@ -740,7 +740,8 @@ describe('the business rules this pass must not touch', () => {
     // resolver whether this reader may record a payment — which is the one
     // Finance authority this screen ever acted on.
     assert.ok(page.includes('useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)'))
-    assert.ok(page.includes(`getEffectivePermissions(supabase, session.user.id, 'finance')`))
+    // callerModulePermissions: the guard's answer when fresh, Finance's own resolver otherwise (2026-11-14).
+    assert.ok(page.includes(`callerModulePermissions(qc, supabase, session.user.id, 'finance')`))
     assert.ok(page.includes('canAllocatePayment: financeCaps.canAllocatePayment'))
   })
 

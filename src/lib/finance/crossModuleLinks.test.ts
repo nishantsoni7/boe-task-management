@@ -168,8 +168,8 @@ describe('the Order screen links into Finance, and gates it', () => {
   test('the capability starts empty and is resolved, not assumed from the role', () => {
     assert.ok(page.includes('useState<FinanceCapabilities>(NO_FINANCE_CAPABILITIES)'),
       'no Finance authority is assumed before the resolver answers')
-    assert.ok(page.includes(`getEffectivePermissions(supabase, session.user.id, 'finance')`),
-      'Finance authority comes from resolve_effective_permissions')
+    assert.ok(page.includes(`callerModulePermissions(qc, supabase, session.user.id, 'finance')`),
+      'Finance authority comes from resolve_effective_permissions (through callerModulePermissions)')
   })
 
   test('resolving it costs no extra wait — it joins the existing parallel group', () => {

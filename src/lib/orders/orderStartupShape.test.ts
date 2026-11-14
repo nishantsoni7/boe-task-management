@@ -412,7 +412,13 @@ describe('no Order screen waits more than it must', () => {
       // resolve_effective_permissions, were the same answers the Orders frame's permission context
       // fetched again. All three now read that one context (resolve_effective_permissions_for_user),
       // so these four reads are gone, not moved; the dashboard's own data reads are unchanged.
-      [GUARD]: 0, [DASHBOARD]: 5, [ALL]: 8, [DETAIL]: 48,
+      // DETAIL 48 -> 45, DRAFTS 4 -> 2 and PI_DETAIL 31 -> 28 (2026-11-14, page speed part 5): each page
+      // read the caller's profile row and its Orders (and Finance) permissions AGAIN, beside its own
+      // data, although the guard above had just resolved both. They now come from the guard's answer
+      // (callerProfile / callerModulePermissions, src/hooks/queries/usePermissionContext.ts) when it is
+      // under 30 s old and are read from the database otherwise, so the reads are not dropped: they
+      // are shared, and one request fewer waits beside the page's data. The data reads are unchanged.
+      [GUARD]: 0, [DASHBOARD]: 5, [ALL]: 8, [DETAIL]: 45,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
@@ -493,7 +499,7 @@ describe('no Order screen waits more than it must', () => {
       // succeeds, one orders.select('id') under the approver's RLS decides
       // whether the page may open the new Order. A press, never at load; the
       // startup path is unchanged.
-      [DRAFTS]: 4, [PI_DETAIL]: 31, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
+      [DRAFTS]: 2, [PI_DETAIL]: 28, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)
@@ -569,7 +575,9 @@ describe('what did NOT change', () => {
   test('every capability is still resolved by the database, never inferred', () => {
     for (const path of [DETAIL, DRAFTS, PI_DETAIL, IMPORT]) {
       const source = stripComments(read(path))
-      assert.ok(source.includes('getEffectivePermissions('), path)
+      // The record pages and the drafts list ask through callerModulePermissions, which answers from
+      // the guard's resolve_effective_permissions_for_user or calls getEffectivePermissions itself.
+      assert.ok(source.includes('getEffectivePermissions(') || source.includes('callerModulePermissions('), path)
       // Never a role literal standing in for a permission.
       assert.ok(!/canApprove\w*\s*=\s*.*role === 'admin'/.test(source), path)
     }

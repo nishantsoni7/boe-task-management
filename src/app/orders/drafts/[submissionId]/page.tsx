@@ -186,7 +186,6 @@ import type {
 } from '@/components/orders/piReviewModals'
 import { piReadiness, piReadinessIsEditable } from '@/lib/orders/piReadiness'
 import type { UserProfile } from '@/lib/types'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   describeConfirmationFailure,
   matchWorkbookSalesperson,
@@ -196,7 +195,8 @@ import {
   type OrderConfirmationDraft,
   type OrderConfirmationField,
 } from '@/lib/orders/orderConfirmation'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { useQueryClient } from '@tanstack/react-query'
+import { callerModulePermissions, callerProfile } from '@/hooks/queries/usePermissionContext'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { AddPiPaymentModal, PiPaymentDetailsModal } from '@/components/orders/PiPaymentCard'
@@ -426,6 +426,7 @@ function PiDraftDetailPageInner() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   const submissionId = params.submissionId as string
   // Design Files and Client PO offered where the PI is sent (20270112000000 §11).
@@ -951,14 +952,14 @@ function PiDraftDetailPageInner() {
       // must not imply one another. A failure on either resolves to no
       // capabilities for that module alone, so a Finance outage cannot cost
       // somebody their PI review controls and vice versa.
-      const [{ data: me }, ordersPermissions, financePermissions, { data: people }] = await Promise.all([
-        supabase
-          .from('users')
-          .select(USER_PROFILE_COLUMNS)
-          .eq('id', session.user.id)
-          .single(),
-        getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
-        getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
+      //
+      // THE PROFILE AND BOTH PERMISSION SETS COME FROM WHAT THE ORDERS GUARD JUST READ (2026-11-14) when
+      // it is under 30 s old, so only the salespeople list is a request here and the draft below starts
+      // after one request instead of the slowest of four. After 30 s the page asks the database, as before.
+      const [me, ordersPermissions, financePermissions, { data: people }] = await Promise.all([
+        callerProfile(qc, session.user.id),
+        callerModulePermissions(qc, supabase, session.user.id, 'orders'),
+        callerModulePermissions(qc, supabase, session.user.id, 'finance'),
         // WHO MAY BE NAMED AS THE SALESPERSON on the Order this PI becomes.
         // Two safe columns, named explicitly — `select('*')` on public.users is
         // a permission error — and issued INSIDE the group the page already

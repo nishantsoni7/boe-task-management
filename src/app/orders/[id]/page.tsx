@@ -5,7 +5,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { OrderHighlightRemark } from '@/components/orders/PiHighlightRemark'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
+import { useQueryClient } from '@tanstack/react-query'
+import { callerModulePermissions, callerProfile } from '@/hooks/queries/usePermissionContext'
 import {
   deriveOrdersCapabilities,
   NO_ORDERS_CAPABILITIES,
@@ -88,7 +89,6 @@ import { canRecordPaymentAgainstOrder } from '@/lib/finance/crossModuleLinks'
 import { useViewAs } from '@/hooks/useViewAs'
 import type { UserProfile } from '@/lib/types'
 import { ChevronDown } from 'lucide-react'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   AmendOrderModal,
   RequestOrderChangeModal,
@@ -1026,6 +1026,7 @@ export default function OrderDetailPage() {
   const params     = useParams()
   const id         = params.id as string
   const supabase   = useMemo(() => createClient(), [])
+  const qc         = useQueryClient()
   const { viewAsUserId } = useViewAs()
   // The sheet behind the product list's tabs. Nothing of it runs at startup:
   // the one read is taken when a tab is first opened.
@@ -1754,14 +1755,13 @@ export default function OrderDetailPage() {
       // Order read itself threw, so the gate can never hang.
       const shell = new Promise<void>(resolve => { shellSignal.current = resolve })
 
-      const [{ data: me }, ordersPerms, financePerms] = await Promise.all([
-        supabase
-          .from('users')
-          .select(USER_PROFILE_COLUMNS)
-          .eq('id', session.user.id)
-          .single(),
-        getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
-        getEffectivePermissions(supabase, session.user.id, 'finance').catch(() => []),
+      // THE PROFILE AND BOTH PERMISSION SETS COME FROM WHAT THE ORDERS GUARD JUST READ (2026-11-14) when
+      // it is under 30 s old, instead of three requests of this page's own beside the Order read: a
+      // request waiting beside others finishes later. After 30 s the page asks the database, as before.
+      const [me, ordersPerms, financePerms] = await Promise.all([
+        callerProfile(qc, session.user.id),
+        callerModulePermissions(qc, supabase, session.user.id, 'orders'),
+        callerModulePermissions(qc, supabase, session.user.id, 'finance'),
         // loadOrder() starts HERE, beside the resolves, and runs to completion
         // on its own. The group settles on whichever comes first: the shell
         // (the Order row is in hand) or the whole load (it ended early — no

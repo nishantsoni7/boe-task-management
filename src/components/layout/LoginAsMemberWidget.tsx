@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Eye, LogOut, Search, UserCog, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
 import { createClient as createIsolatedClient } from '@supabase/supabase-js'
 import { initials } from '@/lib/ui'
 import {
@@ -58,6 +60,7 @@ function subtitleOf(m: ImpersonationMember): string {
 export default function LoginAsMemberWidget() {
   const pathname = usePathname() ?? ''
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   const [stash, setStash] = useState<ImpersonationStash | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
@@ -92,10 +95,12 @@ export default function LoginAsMemberWidget() {
       const userId = session.user.id
       let entry = roleRead.current
       if (!entry || entry.userId !== userId) {
-        const read = Promise.resolve(supabase.from('users').select('role').eq('id', userId).maybeSingle())
-        const fresh = { userId, isAdmin: read.then(({ data }) => data?.role === 'admin') }
-        // A failed read is not remembered, so the next auth event asks again.
-        void read.then(({ error }) => { if (error && roleRead.current === fresh) roleRead.current = null })
+        // The role comes from the profile row every page's shell reads anyway, not from a read of this
+        // widget's own: that was a third request in the first wave of EVERY page (2026-11-14).
+        const read = callerProfile(qc, userId).catch(() => null)
+        const fresh = { userId, isAdmin: read.then(profile => profile?.role === 'admin') }
+        // A failed read (no row came back) is not remembered, so the next auth event asks again.
+        void read.then(profile => { if (!profile && roleRead.current === fresh) roleRead.current = null })
         roleRead.current = entry = fresh
       }
       const admin = await entry.isAdmin
@@ -106,7 +111,7 @@ export default function LoginAsMemberWidget() {
     const onStorage = (e: StorageEvent) => { if (e.key === IMPERSONATION_STASH_KEY) void sync() }
     window.addEventListener('storage', onStorage)
     return () => { cancelled = true; sub.subscription.unsubscribe(); window.removeEventListener('storage', onStorage) }
-  }, [supabase])
+  }, [supabase, qc])
 
   const impersonating = !!stash
 
