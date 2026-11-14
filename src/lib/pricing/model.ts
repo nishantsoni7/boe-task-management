@@ -146,13 +146,14 @@ export function explainFit(fit: Fit): Effect[] {
   return out
 }
 
-export function predict(fit: Fit, f: LineFeatures): ModelSuggestion {
+/** `yearsAgo` prices the line as of an earlier date (the blind test of an old PI); a quotation line is priced for today (0). */
+export function predict(fit: Fit, f: LineFeatures, yearsAgo = 0): ModelSuggestion {
   const unseen: string[] = []
   const g: LineFeatures = { ...f }
   for (const k of ['material', 'finish', 'clientType'] as const) {
     if (!fit.seen[k].has(g[k])) { if (g[k] !== 'unknown') unseen.push(`${cap(g[k])} ${k === 'clientType' ? 'client type' : k}`); g[k] = fit.ref[k] }
   }
-  const x = design(g, 0, fit)
+  const x = design(g, Math.max(0, yearsAgo), fit)
   const yhat = x.reduce((s, v, i) => s + v * fit.coef[i], 0)
   // Reasons: the biggest effects of THIS line against the typical product of the type.
   const parts: Effect[] = []

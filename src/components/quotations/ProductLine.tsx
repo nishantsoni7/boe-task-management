@@ -14,10 +14,12 @@ import s from './quotations.module.css'
  * One product on the builder (layout B, owner-approved 13 Nov 2026): its picture (click to see it large), the boxes, and the
  * numbers. GST is not here: a quotation has one GST rate, in the totals (each product still stores it).
  */
-export function LineRow({ l, area, unit, editable, qty, total, first, last, url, onChange, onUpload, onImprove, onView, hint, model, onRemove, onMove, onDuplicate }: {
+export function LineRow({ l, area, unit, editable, qty, total, first, last, url, onChange, onUpload, onImprove, onView, hint, model, feedbackCtx, onRemove, onMove, onDuplicate }: {
   l: QuoteLine; area: QuoteArea | null; unit: DimensionUnit; editable: boolean; qty: number; total: number; first: boolean; last: boolean
   url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onImprove: () => void; onView: () => void
   hint?: PriceHint; model?: ModelSuggestion | null
+  /** Who and what the price feedback is about; given by the builder, which knows the quotation. */
+  feedbackCtx?: { clientType: string | null; quotationId: string | null; isDesk: boolean }
   onRemove: () => void; onMove: (d: -1 | 1) => void; onDuplicate: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -70,7 +72,8 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
           </div>
         </div>
         <label className={s.field}><span>Price ₹ before GST</span><input aria-label="Unit price (₹, before GST)" className={`${s.input} ${s.money}`} type="number" min={0} placeholder="Price ₹" value={l.unit_price ?? ''} onChange={e => onChange({ unit_price: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value))) })} disabled={!editable} /></label>
-        <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p) })} />
+        <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p) })}
+          feedback={feedbackCtx && { line: { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }, ...feedbackCtx }} />
         <div className={s.row} style={{ justifyContent: 'space-between' }}>
           <label className={s.optLab}><input type="checkbox" checked={l.is_optional} onChange={e => onChange({ is_optional: e.target.checked })} disabled={!editable} /> Optional</label>
           <div className={s.plTotal}>{l.unit_price === null ? <span className={s.muted}>No price</span> : formatINR(total)}<div className={`${s.small} ${s.muted}`} style={{ fontWeight: 400 }}>{l.is_optional ? 'not in the total' : `${qty.toLocaleString('en-IN')} ${qty === 1 ? 'piece' : 'pieces'}`}</div></div>
