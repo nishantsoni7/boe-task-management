@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-14 — SEO Rankings: the money keywords are now one per category of the discussion brief (PR open, branch `fix/seo-rankings-heading`) · no migration
+## 2026-11-14 — SEO Rankings: the money keywords are now one per category of the discussion brief (PR #769, merged 2026-11-14 12:19 IST as `93db82c5`) · no migration
 - **Owner decision (14 Nov).** The Rankings page tracks the most-searched search (Ahrefs, India) in each of the brief’s 26 categories, plus Jodhpur beside Bangalore: 27 in place of the October list of 20.
 - **Changed here.** Only the Rankings heading, which said "The 20 money keywords"; the page already shows whatever the newest reading holds. The list, its notes and the reading live in the website folder; the sender sends the 13 dropped keywords once with no position, so the page stops showing them.
 - **Proof.** No logic changed; `seoScreens` and `pages` tests run unchanged. Page-1 counts before and after 14 Nov are not comparable (noted on the plan board as a proposal).
