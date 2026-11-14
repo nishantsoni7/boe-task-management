@@ -16,6 +16,7 @@ import {
   PERMISSION_GC_MS,
 } from '@/hooks/queries/usePermissionContext'
 import { useUnreadCountState } from '@/hooks/queries/useUnreadNotifications'
+import { useOwnRowExtras } from '@/hooks/queries/useOwnRowExtras'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 import { deriveCustomerReviewCapabilities } from '@/lib/permissions/customerReviewOutreach'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
@@ -338,21 +339,11 @@ export default function BoeOsHomePage() {
   // `authenticated` may select (20260813000000). Until it lands the button is
   // held back rather than flashed; if it fails the button is offered, as it was
   // before this rule existed.
-  const participationRead = useQuery({
-    queryKey: ['payroll-participation', userId],
-    enabled: !!userId && !viewMode,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('users')
-        .select('payroll_active, is_deleted')
-        .eq('id', userId!)
-        .single()
-      if (error) throw error
-      return data as { payroll_active: boolean | null; is_deleted: boolean | null }
-    },
-    staleTime: PERMISSION_STALE_MS,
-    gcTime: PERMISSION_GC_MS,
-  })
+  //
+  // ONE READ WITH THE ACCOUNT MENU'S (2026-11-14): payroll_active and is_deleted ride in the same
+  // primary-key read as position and designation_level (useOwnRowExtras), which the account menu used
+  // to make as a second request in the page's second step.
+  const participationRead = useOwnRowExtras(userId, { enabled: !!userId && !viewMode })
   const takesPartInPayroll = participationRead.data
     ? participatesInPayroll(participationRead.data)
     : participationRead.isError

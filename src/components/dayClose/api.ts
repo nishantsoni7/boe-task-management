@@ -3,12 +3,21 @@
 // The browser's side of /api/day-close/*: the bearer token on every call, and a failure turned into words.
 
 import { createClient } from '@/lib/supabase/client'
+import { batchedGet, isBatchable } from './batchedGet'
 
 export async function dayCloseFetch<T = Record<string, unknown>>(
   path: string,
   init: { method?: 'GET' | 'POST'; body?: unknown; raw?: Blob } = {},
 ): Promise<{ ok: true; data: T } | { ok: false; error: string }> {
   try {
+    // The launcher's four GETs travel as one request (src/components/dayClose/batchedGet.ts); the caller
+    // still gets what its own route would have answered, and a failed batch falls back to that route.
+    if (!init.method && init.body === undefined && !init.raw && isBatchable(path)) {
+      const r = await batchedGet(path)
+      if (r.status >= 200 && r.status < 300) return { ok: true, data: r.body as T }
+      if (r.status === 0) return { ok: false, error: 'Could not reach BOE. Check your connection and try again.' }
+      return { ok: false, error: typeof r.body.error === 'string' ? r.body.error : 'Something went wrong. Try again.' }
+    }
     const { data: { session } } = await createClient().auth.getSession()
     if (!session) return { ok: false, error: 'Your session has expired. Sign in again.' }
     const headers: Record<string, string> = { authorization: `Bearer ${session.access_token}` }
