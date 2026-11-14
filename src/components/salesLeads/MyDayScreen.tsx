@@ -143,7 +143,7 @@ export function MyDayScreen() {
   return (
     <SalesFrame title="My day" subtitle={`${dayLabelLong(today).slice(0, -5)}, most important first`}>
       {body}
-      {open && <WorkPanel leadId={open.id} work={work} nav={{ ids: shown.map(l => l.id), label: 'on My day' }} onNavigate={id => setOpen({ id, log: false })} focusLog={open.log} closeAfterPost onClose={() => setOpen(null)} />}
+      {open && <WorkPanel leadId={open.id} work={work} nav={{ ids: shown.map(l => l.id), label: 'on My day', peek: id => { const lead = shown.find(l => l.id === id); return lead ? { lead, canWork: !readOnly } : undefined } }} onNavigate={id => setOpen({ id, log: false })} focusLog={open.log} closeAfterPost onClose={() => setOpen(null)} />}
       {work.node}
     </SalesFrame>
   )

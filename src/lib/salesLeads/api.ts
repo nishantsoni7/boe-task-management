@@ -269,7 +269,6 @@ export type BoardData = {
   stats: { open: number; value_paise: number; overdue: number; due_today: number; stuck: number }
   /** The real count and value of each stage, whatever is loaded. Closed stages cover the last 30 days. */
   stages: Partial<Record<Stage, { n: number; value_paise: number }>>
-  rows: WorkLead[]
   holders: { id: string; name: string; n: number }[]
   /** Null unless this person can do something about the queue. */
   waiting_allotment: number | null
@@ -289,11 +288,31 @@ export type LeadFacts = Partial<{
 
 export const fetchMyDay = (s: Supabase) => call<MyDay>(() => s.rpc('sales_my_day'))
 
-export const fetchBoard = (s: Supabase, f: BoardFilter) =>
-  call<BoardData>(() => s.rpc('sales_board', {
+// The board's totals (the open, overdue, due today and stuck counts, each stage's count and value, who holds leads, the queue).
+// sales_board_summary (20270716000000) answers exactly these. sales_board answered them too, and built 480 lead rows nobody read
+// (1.2 s on the live board, 2026-11-14), so it is only asked when the summary is not in the database yet: the code and the
+// migration can go out in either order, and nobody has to remember which came first.
+let summaryInDatabase = true
+const missingFunction = (e: Raw) => e?.code === 'PGRST202' || /could not find the function/i.test(e?.message ?? '')
+
+export async function fetchBoard(s: Supabase, f: BoardFilter): Promise<BoardData> {
+  const args = {
     p_holder: f.holder || 'all', p_market: f.market || null, p_segment: f.segment || null,
     p_temperature: f.temperature || null, p_source: f.source || null, p_q: f.q || null,
-  }))
+  }
+  if (summaryInDatabase) {
+    let res: RpcResult<BoardData>
+    try {
+      res = await s.rpc('sales_board_summary', args)
+    } catch (e) {
+      throw classifySalesError({ message: e instanceof Error ? e.message : 'Failed to fetch', status: 0 })
+    }
+    if (!res.error) return res.data as BoardData
+    if (!missingFunction(res.error)) throw classifySalesError(res.error)
+    summaryInDatabase = false
+  }
+  return call<BoardData>(() => s.rpc('sales_board', args))
+}
 
 /** One page of one column: the leads in the board's own order, and what the whole column holds. */
 export type BoardPage = { n: number; overdue: number; due_today: number; rows: WorkLead[] }

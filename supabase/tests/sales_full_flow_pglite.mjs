@@ -91,7 +91,7 @@ for (const f of ['20270515000000_register_sales_marketing_pricing_modules.sql', 
   '20270527000000_sales_review_fixes.sql', '20270529000000_sales_can_be_given_leads.sql', '20270530000000_sales_sheet_import.sql',
   '20270531000000_sales_lead_waiting_type.sql', '20270531000100_sales_website_capture.sql', '20270601000000_sales_board_page.sql', '20270602000000_sales_auto_allot.sql',
   '20270606000000_sales_lead_master_date_range.sql', '20270609000000_sales_whatsapp_capture.sql', '20270613000000_sales_whatsapp_classify.sql',
-  '20270703000000_sales_admin_can_be_given_leads.sql']) {
+  '20270703000000_sales_admin_can_be_given_leads.sql', '20270716000000_sales_board_summary.sql']) {
   await db.exec(mig(f))
 }
 // Off until its own checks at the end, so everything before reads exactly as it did before 20270602000000.
@@ -649,6 +649,32 @@ await step('Browser users cannot fire the alert job', () =>
         must(JSON.stringify(want) === JSON.stringify(got), `${name}/${stage}: board ${want.length} rows, page ${got.length}`)
       }
     }
+  })
+  // ── The board's totals without the leads (20270716000000) ───────────────────
+  await step('Summary: the same totals as sales_board, key by key, for every role and several filters', async () => {
+    // Some leads stuck (a New lead untouched for days), so the stuck count is not just zero on both sides.
+    await db.query(`update public.sales_leads set assigned_at = now() - interval '5 days', stage_changed_at = now() - interval '5 days'
+      where phone_e164 like '+919822%' and lead_no % 5 = 0`)
+    const summary = (uid, f = {}) =>
+      one(uid, `select public.sales_board_summary($1, $2, $3, $4, $5, $6)`, [f.holder ?? 'all', f.market ?? null, f.segment ?? null, f.temperature ?? null, f.source ?? null, f.q ?? null])
+    const filters = [{}, { temperature: 'hot' }, { temperature: 'cold' }, { market: 'export' }, { source: 'website' }, { q: 'Paging 1' }, { holder: U.ashok }, { segment: 'bulk' }]
+    let pairs = 0, stuck = 0
+    for (const [name, uid] of [['ashok', U.ashok], ['mohit', U.mohit], ['senior', U.senior], ['manager', U.manager], ['leadmgr', U.leadmgr], ['admin', U.admin]]) {
+      for (const f of filters) {
+        const was = await board(uid, f), now = await summary(uid, f)
+        for (const key of ['stats', 'stages', 'holders', 'waiting_allotment']) {
+          must(JSON.stringify(was[key]) === JSON.stringify(now[key]), `${name} ${JSON.stringify(f)} ${key}: sales_board ${JSON.stringify(was[key])}, summary ${JSON.stringify(now[key])}`)
+        }
+        must(!('rows' in now), 'the summary carries no lead rows')
+        stuck += Number(was.stats.stuck); pairs++
+      }
+    }
+    must(stuck > 0, 'no stuck lead was in play, so the stuck count was not tested')
+    return `${pairs} role / filter pairs, ${stuck} stuck counted`
+  })
+  await step('Summary: a person who is not signed in is refused, and it is not open to anon', async () => {
+    await expectErr(null, `select public.sales_board_summary()`, /SALES_FORBIDDEN|not authenticated|permission denied/i)
+    must(!(await scalar(`select has_function_privilege('anon', 'public.sales_board_summary(text, text, text, text, text, text)', 'EXECUTE')`)), 'open to anon')
   })
   await step('Paging: the pages cover the whole column once, in the board order', async () => {
     const b = await board(U.ashok), total = b.stages.new.n

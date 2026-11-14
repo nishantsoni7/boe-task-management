@@ -282,18 +282,22 @@ describe('Phase 4: the public showroom', () => {
 describe('Phase 4: Sales', () => {
   const board = read('src/components/salesLeads/BoardScreen.tsx')
   const boardCss = read('src/components/salesLeads/leadBoard.module.css')
-  // Owner, 2026-11-13: Call, WhatsApp and No answer on every card on a phone (Call came back the same day, after a
-  // morning without it); Move is a button on the card itself, always visible, on a desktop too.
-  test('the board: phone at 767px in the CSS and the JS, Call, WhatsApp and No answer on a phone card, Move always shown, the queue a chip', () => {
+  // Owner, 2026-11-14: a card has no buttons at all (it shows the name, the number, Hot / Warm / Cold and the follow-up);
+  // Call, WhatsApp and the Board status menu are in the lead popup. (2026-11-13 had Call, WhatsApp and No answer on every
+  // card on a phone, after a
+  // morning without it, and a Move button on every card.)
+  test('the board: phone at 767px in the CSS and the JS, no buttons on a card, the queue a chip', () => {
     assert.equal(boardCss.includes('max-width: 700px'), false)
     assert.ok(board.includes("matchMedia('(max-width: 767px)')"))
     assert.equal(board.includes('700px'), false)
-    assert.ok(board.includes('href={telHref(lead.phone)}') && board.includes('s.actCall'))
+    const card = board.slice(board.indexOf('const Card = memo('))
+    assert.equal(card.includes('<button') || card.includes('<a '), false, 'a card is one clickable block with no buttons or links in it')
+    assert.equal(board.includes('telHref') || board.includes('openWhatsApp') || board.includes('noAnswer'), false)
     assert.equal(board.includes('s.actMore'), false)
-    assert.ok(board.includes('className={s.moveBtn}'))
+    assert.equal(board.includes('s.moveBtn') || board.includes('openMove'), false)
     assert.ok(board.includes('s.queueChip'))
     const phone = phoneBlock(boardCss, '/* ── Narrower')
-    assert.ok(phone.includes('.acts, .card:hover .acts, .card:focus-within .acts { position: static; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));'))
+    assert.equal(boardCss.includes('.acts') || boardCss.includes('.moveBtn'), false, 'the card button styles are gone')
     assert.ok(phone.includes('.menuField select { height: 44px; font-size: 16px; }'))
     assert.ok(phone.includes('.menuItem { min-height: 44px; }'))
     assert.ok(phone.includes('.queueChip { display: inline-flex; flex: 0 0 auto; height: 40px;'))
