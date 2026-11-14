@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `a46f2e43` — WIP notification counts batch (local)
+- Commit: `1e80e23c` — Page speed, part 7: the launcher's badge counts in one call (no SQL) (#789)
 - Commits on this branch: 1349
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `a46f2e43` 2026-11-14 WIP notification counts batch (local)
+- `1e80e23c` 2026-11-14 Page speed, part 7: the launcher's badge counts in one call (no SQL) (#789)
 - `d06e6248` 2026-11-14 Orders: on a phone the Main PI Details popover stays inside the card and the pending buttons are 44px (#788)
 - `2750eb00` 2026-11-14 Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL) (#784)
 - `59a8d9e2` 2026-11-14 Docs: stamp page speed part 6 (#785) as merged e4ba4410, deployed 21:39 IST, verified live (no SQL) (#786)

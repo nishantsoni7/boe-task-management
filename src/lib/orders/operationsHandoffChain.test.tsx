@@ -30,6 +30,8 @@ import { flaggedRow } from './adminDashboard'
 import { SALES_REPLIED_ROW_LABEL, readFlaggedPis, type FlaggedPi } from './flaggedPis'
 import { orderAttentionItems } from './orderWorkspace'
 import { buildReviewThread } from './piReviewThread'
+import { OrderAttentionBar } from '@/app/orders/[id]/OrderWorkspace'
+import { PiReviewThreadLink } from '@/app/orders/[id]/PiReviewThread'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
 const SQL = read('supabase/migrations/20270718000000_order_handoff_review_chain.sql')
@@ -144,6 +146,14 @@ describe('who holds the version (the page derives it by the rule the database st
   test('Order 547\'s state (answered under the old door, back to awaiting): Operations', () => {
     const history = [ev('operations_handoff_sent_to_sales', SENT), ev('operations_handoff_clarification_answered', '2026-11-14T07:14:00Z')]
     assert.equal(chainHolderOf({ live: live({ clarification_at: FLAG }), history }), 'operations')
+  })
+
+  test('Order 547 after the owner\'s fix (14 Nov, flagged again and held by the approver): the page says the approver too', () => {
+    // The database row was set to clarification_needed / coordinator / round 1. The page reads the same history and
+    // must agree, or the Order page and Needs your decision would disagree again.
+    const history = [ev('operations_handoff_clarification_needed', FLAG), ev('operations_handoff_sent_to_sales', SENT), ev('operations_handoff_clarification_answered', '2026-11-14T07:14:00Z')]
+    assert.equal(chainHolderOf({ live: flagged(), history }), 'coordinator')
+    assert.equal(chainRoundOf(history, H), 1)
   })
 
   test('nobody holds an accepted or replaced version; another handoff\'s events do not count', () => {
@@ -324,12 +334,50 @@ describe('where the Order page uses it', () => {
     assert.match(page, /const forwardOffered = operationsReviewOpen && canForwardToOperations\(\{[\s\S]*?mayForward: actingAsAdmin \|\| mayDecidePiAsAdmin,/)
     assert.match(page, /supabase\.rpc\('forward_order_handoff_to_operations', \{\s+p_handoff_id: live\.id,\s+p_note: note,/)
     assert.match(page, /<ForwardToOperationsModal[\s\S]*?onConfirm=\{note => forwardToOperations\(note\)\}/)
-    assert.match(page, /<PiReviewThread\s+entries=\{reviewThread\.entries\}/)
+    assert.match(page, /reviewThread=\{\s+<PiReviewThreadLink\s+entries=\{reviewThread\.entries\}/)
+    assert.equal(/<PiReviewThread\s/.test(page), false, 'no separate thread card above the status strip')
     assert.match(page, /const salesReturn = salesReturnStage\(\{\s+live: operationsSplit\.live,\s+holder: chainHolder,/)
   })
 
   test('the queues read the stored holder, not the history', () => {
     assert.match(read('src/lib/orders/operationsHandoff.ts'), /export const QUEUE_HANDOFF_COLUMNS = 'id, order_id, status, assigned_to, chain_holder'/)
     assert.match(read('src/app/orders/all/page.tsx'), /setWithSalesOrders\(ordersWithSales\(rows\)\)/)
+  })
+})
+
+describe('the operations notice (owner, 14 Nov: keep the formatting, the thread inside the box)', () => {
+  const thread = buildReviewThread([
+    ev('operations_handoff_clarification_needed', '2026-11-12T11:19:00Z', { version_number: 1, reason: 'Price too low' }),
+    ev('operations_handoff_sent_to_sales', '2026-11-12T16:27:00Z', { version_number: 1, comment: 'Check and resubmit' }),
+    ev('operations_handoff_clarification_answered', '2026-11-14T07:14:00Z', { version_number: 1, response: 'Line one\nLine two' }),
+  ])
+  const bar = (withThread: boolean) => renderToStaticMarkup(createElement(OrderAttentionBar, {
+    items: [
+      { key: 'operations_review', label: 'PI V1', title: 'PI V1 flagged by operations', tone: 'red', detail: 'Ashok replied: “Line one\nLine two”',
+        sent: { head: 'Sent back to Ashok', comment: 'First\nSecond' } },
+      { key: 'overdue', label: 'Overdue', tone: 'red' },
+    ],
+    reviewThread: withThread ? createElement(PiReviewThreadLink, {
+      entries: thread.entries, rounds: thread.rounds, holder: 'coordinator', holderSince: '14 Nov 2026, 12:44 pm',
+      formatWhen: (iso: string) => iso, orderNumber: '0547',
+    }) : undefined,
+  }))
+
+  test('the reply and the comment keep their line breaks', () => {
+    const html = bar(false)
+    assert.match(html, /class="order-notice-detail">Ashok replied: “Line one\nLine two”/)
+    assert.match(html, /class="order-notice-sent-comment">“First\nSecond”/)
+    const css = read('src/app/globals.css')
+    assert.match(css, /\.order-notice-detail \{[^}]*white-space: pre-line;/)
+    assert.match(css, /\.order-notice-sent-comment \{[^}]*white-space: pre-line;/)
+  })
+
+  test('the thread is one link inside the operations notice, never in another notice, and says who holds it', () => {
+    const html = bar(true)
+    const notices = html.split('class="order-notice order-notice--')
+    assert.equal(notices.filter(s => s.includes('data-review-thread')).length, 1)
+    assert.match(notices[1], /data-review-thread="true"/, 'inside the operations notice')
+    assert.match(html, /PI review thread<\/span><span[^>]*> · With the approver since 14 Nov 2026, 12:44 pm · 3 steps/)
+    assert.equal(/<ol/.test(html), false, 'the steps are in the popup, not on the page')
   })
 })
