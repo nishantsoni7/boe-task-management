@@ -3,7 +3,7 @@
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addToQuote, gridFromText, parseBoqReading, qtyOf, readGrid, roomsOf, type Cell } from './importBoq'
+import { addToQuote, gridFromText, parseBoqReading, priceOf, qtyOf, readGrid, roomsOf, type Cell } from './importBoq'
 import { ImportError, readFailure, readPastedText, readSpreadsheet } from './importFile'
 
 const BOQ: Cell[][] = [
@@ -84,7 +84,7 @@ describe('the AI reader\'s answer', () => {
     const rows = parseBoqReading({
       rooms: [{ name: 'Boho room', count: 56 }, { name: 'Bad', count: -3 }],
       rows: [
-        { room: 'Boho room', name: 'King bed', size: `6'0" x 6'6"`, qty: 56, qty_basis: 'total', page: 2 },
+        { room: 'Boho room', name: 'King bed', size: `6'0" x 6'6"`, qty: 56, qty_basis: 'total', page: 2, price: 5000 },
         { room: 'Boho room', name: 'Bedside table', qty: 2, qty_basis: 'per_room', doubtful: ['size', 'evil'] },
         { room: '', name: 'Lobby sofa', qty: '3 nos', qty_basis: 'total' },
         { name: '' }, 'junk', { name: 'x'.repeat(500), qty: 1 },
@@ -96,12 +96,97 @@ describe('the AI reader\'s answer', () => {
     assert.deepEqual([rows[1].qty, rows[1].doubtful], [2, ['size']])
     assert.deepEqual([rows[2].qty, rows[2].qtyMode], [3, 'fixed'])
     assert.equal(rows[3].name.length, 160)
+    assert.ok(rows.every(r => r.price === null), 'a PDF or photo never brings a price, even if the reader sends one')
     assert.deepEqual(parseBoqReading(null), [])
   })
 })
 
+// Shaped after the owner's real PIs (the headings as BOE writes them; the products invented).
+const PI: Cell[][] = [
+  ['PI from quotation QT-1'], [], ['Order no:-'],
+  ['Code', 'Name', 'Quantity', 'Dimension in inches\n& Shape', 'Representative Image', null, 'Material', 'Cost per piece (INR)', 'Total Cost (INR)', null, 'Customization', 'Price in White Ash', 'Cost per piece (USD)'],
+  ['AB001-B001', 'Chair', 40, 'Standard Dimension seating height 18"', null, null, 'Acacia wood and upholstery', 4800, 192000, 'B001', 'With arms', 5100, 60],
+  ['AB001-B002', 'Bed Option -01', 12, 'king size', null, null, 'Acacia wood', '₹ 25,500', 306000, 'B002', null, null, null],
+  ['AB001-B003', 'Booth sofa', 0, 'Length -60"', null, null, 'Acacia wood', 25100, 0, 'B003', '', null, null],
+  [null, null, null, null, null, null, 'Discount', null, 1000],
+  [null, null, null, null, null, null, 'Sub Total', null, 497000],
+]
+
+describe('a BOE PI', () => {
+  test('brings the price, the material, the size and the customization of every product, and not the footer or the other price columns', () => {
+    const { rows } = readGrid(PI)
+    assert.deepEqual(rows.map(r => [r.name, r.qty, r.size, r.material, r.price, r.spec]), [
+      ['Chair', 40, 'Standard Dimension seating height 18"', 'Acacia wood and upholstery', 4800, 'With arms'],
+      ['Bed Option -01', 12, 'king size', 'Acacia wood', 25500, ''],
+      ['Booth sofa', null, 'Length -60"', 'Acacia wood', 25100, ''], // quantity 0 (an option): kept, marked
+    ])
+    assert.ok(rows[2].doubtful.includes('qty'))
+    assert.ok(rows.every(r => !r.doubtful.includes('price')))
+  })
+
+  test('"Original Price" and a bare "Cost" are the price too; a price missing on one product is marked', () => {
+    const old = readGrid([['Code', 'Name', 'Quantity', 'Dimensions / Shape', 'Original Price (INR)', 'Total Cost (INR)'], ['A', 'Table', 4, '54 x 30', 30500, 122000], ['B', 'Stool', 2, '18 x 18', null, null]])
+    assert.deepEqual(old.rows.map(r => [r.price, r.doubtful.includes('price')]), [[30500, false], [null, true]])
+    const bare = readGrid([['CODE', 'DESCRIPTION', 'QUANTITY', 'MATERIAL', 'Cost', 'Amount'], ['A', 'Console', 3, 'Teak', 9000, 27000]])
+    assert.deepEqual(bare.rows.map(r => r.price), [9000])
+  })
+
+  test('a column headed only "Price" or "Rate" is read but shaded, and a template heading in the same sheet always wins', () => {
+    for (const head of ['Rate', 'Price', 'BOE - Price', 'Net Rate', 'Pricing (Ex-Factory)', 'Amount per pc.']) {
+      const g = readGrid([['Description', 'Qty', head], ['Bed', 5, 800]])
+      assert.deepEqual([head, g.rows[0].price, g.rows[0].doubtful.includes('price')], [head, 800, true])
+    }
+    const both = readGrid([['Name', 'Quantity', 'Rate', 'Cost per piece (INR)'], ['Bed', 5, 800, 900]])
+    assert.deepEqual([both.rows[0].price, both.rows[0].doubtful.includes('price')], [900, false])
+  })
+
+  test('a dollar column and a second price column are not the price', () => {
+    const dollars = readGrid([['Name', 'Quantity', 'Cost per piece (USD)'], ['Bed', 5, 80]])
+    assert.equal(dollars.rows[0].price, null)
+    const second = readGrid([['Name', 'Quantity', 'Cost per piece (INR) - additional PU cost', 'Total'], ['Bed', 5, 700, 3500]])
+    assert.equal(second.rows[0].price, null)
+    const alternative = readGrid([['Name', 'Quantity', 'Cost per piece (INR)', 'Price in White Ash'], ['Bed', 5, 700, 800]])
+    assert.equal(alternative.rows[0].price, 700) // the template heading beats the alternative offer to its right
+  })
+
+  test('a price is whole rupees, from the usual ways of writing it, and never a figure the database refuses', () => {
+    assert.equal(priceOf('₹ 24,000'), 24000)
+    assert.equal(priceOf(24000.6), 24001)
+    assert.equal(priceOf(0), null)
+    assert.equal(priceOf('As per actual'), null)
+    assert.equal(priceOf(null), null)
+    assert.equal(priceOf(1e12), null)
+  })
+
+  test('goes onto the quotation line as its price, and a pasted PI table reads the same way', () => {
+    const out = addToQuote(readGrid(PI).rows, [])
+    assert.deepEqual(out.lines.map(l => l.unit_price), [4800, 25500, 25100])
+    assert.equal(out.lines[0].spec, 'With arms')
+    const pasted = readPastedText('Name\tQuantity\tCost per piece (INR)\nChair\t40\t4800')
+    assert.deepEqual(pasted.rows.map(r => [r.name, r.qty, r.price]), [['Chair', 40, 4800]])
+  })
+
+  test('an .xlsx PI comes through whole: price, customization and the picture on its row', async () => {
+    const mod = await import('exceljs')
+    const ExcelJS = ((mod as unknown as { default?: typeof mod }).default ?? mod) as typeof mod
+    const wb = new ExcelJS.Workbook()
+    const ws = wb.addWorksheet('Master')
+    ws.addRow(['Code', 'Name', 'Quantity', 'Dimension in inches & Shape', 'Representative Image', '', 'Material', 'Cost per piece (INR)', 'Total Cost (INR)', '', 'Customization'])
+    ws.addRow(['AB001-B001', 'Chair', 40, 'Standard Dimension', null, null, 'Acacia wood', 4800, 192000, 'B001', 'With arms'])
+    const png = Buffer.from('89504e470d0a1a0a0000000d4948445200000001000000010806000000', 'hex')
+    // A customization picture further right is added FIRST: the representative image (column E, the leftmost) must still win.
+    const custom = Buffer.concat([png, Buffer.from('0000', 'hex')])
+    ws.addImage(wb.addImage({ base64: custom.toString('base64'), extension: 'png' }), { tl: { col: 10, row: 1 }, ext: { width: 40, height: 40 } })
+    ws.addImage(wb.addImage({ base64: png.toString('base64'), extension: 'png' }), { tl: { col: 4, row: 1 }, ext: { width: 40, height: 40 } })
+    const res = await readSpreadsheet(new File([await wb.xlsx.writeBuffer() as ArrayBuffer], 'pi.xlsx'))
+    assert.deepEqual(res.rows.map(r => [r.name, r.qty, r.material, r.price, r.spec]), [['Chair', 40, 'Acacia wood', 4800, 'With arms']])
+    assert.equal(res.pictures.length, 2)
+    assert.equal(res.pictures[res.rows[0].picture!].size, png.length) // the column E picture, not the longer one in column K
+  })
+})
+
 describe('adding to the quotation', () => {
-  test('one room type per room (an existing one reused), unticked rows left out, no prices, limits kept', () => {
+  test('one room type per room (an existing one reused), unticked rows left out, a client BOQ brings no prices, limits kept', () => {
     const { rows } = readGrid(BOQ)
     rows[2].include = false
     rows[0].size = 'y'.repeat(200)

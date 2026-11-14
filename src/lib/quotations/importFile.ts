@@ -86,9 +86,11 @@ async function picturesBySheet(bytes: Uint8Array): Promise<Map<string, { row: nu
         const media = wb.getImage(Number(img.imageId)) as { buffer?: ArrayBuffer | Uint8Array; extension?: string } | undefined
         if (!media?.buffer || !/^(jpe?g|png|webp)$/i.test(media.extension ?? '')) return []
         const ext = (media.extension ?? 'png').toLowerCase().replace('jpg', 'jpeg')
-        return [{ row: Math.floor(img.range.tl.nativeRow) + 1, blob: new Blob([media.buffer as BlobPart], { type: `image/${ext}` }) }]
+        return [{ row: Math.floor(img.range.tl.nativeRow) + 1, col: Math.floor(img.range.tl.nativeCol), blob: new Blob([media.buffer as BlobPart], { type: `image/${ext}` }) }]
       })
-      list.sort((a, b) => a.row - b.row)
+      // A PI row can hold several pictures (the representative image in column E, customization pictures further right):
+      // the one a row keeps is the leftmost, whatever order the file lists them in.
+      list.sort((a, b) => a.row - b.row || a.col - b.col)
       out.set(ws.name, list)
     }
   } catch { /* pictures are a bonus: the rows still import */ }

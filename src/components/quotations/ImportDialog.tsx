@@ -1,14 +1,14 @@
 'use client'
 
-// Import a client's BOQ into the quotation: choose a file (Excel, CSV, PDF, photo) or paste rows, check every row in
-// the review table (marked cells are the ones the reader was unsure of), then add the kept rows. Nothing is saved
-// until the builder's own Save; prices stay blank for the salesperson.
+// Import a client's BOQ or a BOE PI into the quotation: choose a file (Excel, CSV, PDF, photo) or paste rows, check
+// every row in the review table (marked cells are the ones the reader was unsure of), then add the kept rows. Nothing
+// is saved until the builder's own Save. A PI's prices come across; a client's own file and a PDF or photo bring none.
 
 import { useEffect, useMemo, useState } from 'react'
 import { FileUp } from 'lucide-react'
 import type { createClient } from '@/lib/supabase/client'
 import { uploadPicture } from '@/lib/quotations/api'
-import { addToQuote, type ImportField, type ImportRow } from '@/lib/quotations/importBoq'
+import { addToQuote, priceOf, type ImportField, type ImportRow } from '@/lib/quotations/importBoq'
 import { IMPORT_ACCEPT, readFailure, readImportFile, readPastedText } from '@/lib/quotations/importFile'
 import type { QuoteArea, QuoteLine } from '@/lib/quotations/math'
 import { Pic } from './Pic'
@@ -31,7 +31,9 @@ export function ImportDialog({ supabase, userId, areas, onClose, onAdd }: {
   const urls = useMemo(() => pictures.map(p => URL.createObjectURL(p)), [pictures])
   useEffect(() => () => urls.forEach(u => URL.revokeObjectURL(u)), [urls])
 
-  const take = (r: { rows: ImportRow[]; pictures: Blob[]; note: string }) => { setRows(r.rows); setPictures(r.pictures); setNote(r.note) }
+  // The Price column belongs to the file (it had prices), not to what is typed later, so clearing every price keeps the column.
+  const [hasPrices, setHasPrices] = useState(false)
+  const take = (r: { rows: ImportRow[]; pictures: Blob[]; note: string }) => { setRows(r.rows); setPictures(r.pictures); setNote(r.note); setHasPrices(r.rows.some(x => x.price !== null)) }
   const readFile = async (file: File | undefined) => {
     if (!file) return
     setBusy('reading'); setErr(''); setReload(false)
@@ -59,7 +61,7 @@ export function ImportDialog({ supabase, userId, areas, onClose, onAdd }: {
         <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>
           {!rows && (
             <>
-              <div className={s.small}>Excel or CSV is read on this device. A PDF or photo is read by the AI reader and not kept. Prices are not imported.</div>
+              <div className={s.small}>Excel or CSV is read on this device. A PDF or photo is read by the AI reader and not kept. A BOE PI&apos;s prices (Cost per piece, Original price) and customization come across from Excel, CSV or pasted rows; a PDF or photo brings no prices.</div>
               <label className={`${s.btn} ${s.btnPrimary}`} style={{ justifySelf: 'start', cursor: busy ? 'wait' : 'pointer' }}>
                 <FileUp size={15} aria-hidden /> {busy === 'reading' ? 'Reading… (a PDF can take up to a minute)' : 'Choose a file (Excel, CSV, PDF, photo)'}
                 <input type="file" accept={IMPORT_ACCEPT} hidden disabled={!!busy} onChange={e => { void readFile(e.target.files?.[0]); e.target.value = '' }} />
@@ -76,7 +78,7 @@ export function ImportDialog({ supabase, userId, areas, onClose, onAdd }: {
                 <div className={s.tableWrap} style={{ maxHeight: '58vh', overflow: 'auto' }}>
                   <table className={`${s.table} ${s.importTable}`}>
                     <thead><tr><th><input type="checkbox" aria-label="Keep all" checked={rows.every(r => r.include)} onChange={e => setRows(rows.map(r => ({ ...r, include: e.target.checked })))} /></th>
-                      <th>Room type</th><th>Rooms</th><th>Product</th><th>Size</th><th>Material</th><th>Qty</th><th></th><th>Picture</th><th>From</th></tr></thead>
+                      <th>Room type</th><th>Rooms</th><th>Product</th><th>Size</th><th>Material</th><th>Qty</th><th></th>{hasPrices && <th>Price ₹</th>}<th>Picture</th><th>From</th></tr></thead>
                     <tbody>
                       {rows.map(r => (
                         <tr key={r.id} style={{ opacity: r.include ? 1 : 0.45, cursor: 'default' }}>
@@ -88,6 +90,7 @@ export function ImportDialog({ supabase, userId, areas, onClose, onAdd }: {
                           <td><input className={`${s.input} ${doubt(r, 'material')}`} value={r.material} onChange={e => upd(r.id, { material: e.target.value })} aria-label="Material" /></td>
                           <td><input className={`${s.input} ${doubt(r, 'qty')}`} style={{ width: 70 }} inputMode="decimal" value={r.qty ?? ''} onChange={e => upd(r.id, { qty: Number(e.target.value) || null })} aria-label="Quantity" /></td>
                           <td><select className={s.input} value={r.qtyMode} onChange={e => upd(r.id, { qtyMode: e.target.value as ImportRow['qtyMode'], doubtful: r.doubtful })} aria-label="Quantity is"><option value="per_unit">per room</option><option value="fixed">in total</option></select></td>
+                          {hasPrices && <td><input className={`${s.input} ${doubt(r, 'price')}`} title={r.doubtful.includes('price') ? (r.price === null ? 'No price in the file for this product' : 'Read from a column headed only "Price" or "Rate": check it is BOE\'s price, not the client\'s') : undefined} style={{ width: 96 }} inputMode="numeric" value={r.price ?? ''} onChange={e => upd(r.id, { price: priceOf(e.target.value) })} aria-label="Price, rupees before GST" /></td>}
                           <td>{r.picture !== null && urls[r.picture] ? <Pic src={urls[r.picture]} alt="" className={s.thumb} /> : <span className={s.muted}>–</span>}</td>
                           <td className={s.muted} style={{ whiteSpace: 'nowrap' }}>{r.source}</td>
                         </tr>
