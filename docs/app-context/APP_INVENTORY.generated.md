@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `02af0fd5` — Merge origin/main into fix/clickup-draft-orders-polish (docs only conflict: both changelog entries kept, inventory regenerated)
+- Commit: `b399a22a` — Draft Orders (ClickUp): the folder pick accepts the folder around the backup; search box height, loading title and step numbers fixed (#759)
 - Commits on this branch: 1320
 - Pages (`page.tsx`): 196   API routes (`route.ts`): 209
 - Migrations: 455 (first `20260530_create_positions.sql`, latest `20270714000000_quotation_builder_fields.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `02af0fd5` 2026-11-13 Merge origin/main into fix/clickup-draft-orders-polish (docs only conflict: both changelog entries kept, inventory regenerated)
-- `90e2d98c` 2026-11-13 Draft Orders (ClickUp): the folder pick accepts the folder around the backup; search box height, loading title and step numbers fixed
+- `b399a22a` 2026-11-13 Draft Orders (ClickUp): the folder pick accepts the folder around the backup; search box height, loading title and step numbers fixed (#759)
+- `21126e0e` 2026-11-13 Quotations: the builder redesigned (one column, one dimensions unit, one GST rate, picture pop-up) - migration 20270714000000, apply before merge (#758)
 - `216256c8` 2026-11-13 Docs: stamp #756 (Import says to reload) as merged c9670dd0, deployed 19:58 IST (no SQL) (#757)
 - `c9670dd0` 2026-11-13 Quotations: Import says to reload when its code could not be downloaded (#756)
 - `df8ef1f7` 2026-11-13 Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (migration 20270713000000) (#754)
