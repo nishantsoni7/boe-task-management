@@ -300,17 +300,20 @@ function StateBox({ lead, since, work, canWork, closed, menu, setMenu }: {
           </span>
         </div>
       </div>
-      {!closed && (
-        <div className={s.nCell}>
-          <div className={s.nKey}>Next follow-up</div>
-          <DueChip lead={lead} work={work} canWork={canWork} open={menu === 'due'} setOpen={open => setMenu(open ? 'due' : null)} />
+      {/* One row on a screen (the follow-up, then who holds it); two stacked rows on a phone (see .nRow). */}
+      <div className={s.nRow}>
+        {!closed && (
+          <div className={s.nCell}>
+            <div className={s.nKey}>Next follow-up</div>
+            <DueChip lead={lead} work={work} canWork={canWork} open={menu === 'due'} setOpen={open => setMenu(open ? 'due' : null)} />
+          </div>
+        )}
+        <div className={s.nHeld}>
+          Held by{' '}
+          {lead.holder_name
+            ? <span className={s.mPerson}><i className={s.mAvSm} aria-hidden="true">{initialsOf(lead.holder_name)}</i><b>{lead.holder_name}</b></span>
+            : <span className={s.mNone}>nobody yet</span>}
         </div>
-      )}
-      <div className={s.nHeld}>
-        Held by{' '}
-        {lead.holder_name
-          ? <span className={s.mPerson}><i className={s.mAvSm} aria-hidden="true">{initialsOf(lead.holder_name)}</i><b>{lead.holder_name}</b></span>
-          : <span className={s.mNone}>nobody yet</span>}
       </div>
     </section>
   )
