@@ -17,6 +17,7 @@ import {
 } from '@/hooks/queries/usePermissionContext'
 import { useUnreadCountState } from '@/hooks/queries/useUnreadNotifications'
 import { useOwnRowExtras } from '@/hooks/queries/useOwnRowExtras'
+import { batchedCountGet } from '@/lib/notifications/batchedCounts'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 import { deriveCustomerReviewCapabilities } from '@/lib/permissions/customerReviewOutreach'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
@@ -792,8 +793,9 @@ export default function BoeOsHomePage() {
     // line for a value to appear on.
     const load = (allowed: boolean, url: string, field: keyof ModuleCounts) => {
       if (!allowed) return
-      fetch(url)
-        .then(r => (r.ok ? r.json() : null))
+      // Asked beside the Task, Finance and Orders counts as ONE request (batchedCounts.ts).
+      batchedCountGet(url)
+        .then(r => (r.status >= 200 && r.status < 300 ? r.body : null))
         .then((json: { unreadCount?: number } | null) =>
           store(field, json != null ? (json.unreadCount ?? 0) : null))
         .catch(() => store(field, null))

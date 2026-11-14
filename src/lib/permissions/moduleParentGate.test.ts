@@ -542,14 +542,20 @@ describe('a disabled module never starts its count request', () => {
     //
     // `router.prefetch(` also ends in "fetch(" and is route warming, not a data
     // request, so it is excluded rather than counted.
+    //
+    // Since 2026-11-14 the one request goes through batchedCountGet (src/lib/notifications/batchedCounts.ts),
+    // which shares it with the Task, Finance and Orders counts of a cold launcher: there is still no bare
+    // fetch() on this page and exactly one place that asks for a count.
     const fetchSites = launcher.match(/(?<!pre)fetch\(/g) ?? []
-    assert.equal(fetchSites.length, 1, 'the launcher must have a single fetch call site')
+    assert.equal(fetchSites.length, 0, 'the launcher must make no bare fetch of its own')
+    const countSites = launcher.match(/batchedCountGet\(/g) ?? []
+    assert.equal(countSites.length, 1, 'the launcher must have a single count call site')
 
     const gate = launcher.slice(
       launcher.indexOf('const load ='),
       launcher.indexOf('load(mayOpenSample'),
     )
-    assert.ok(gate.includes('fetch(url)'), 'the one fetch must live inside the load gate')
+    assert.ok(gate.includes('batchedCountGet(url)'), 'the one request must live inside the load gate')
     assert.ok(
       gate.includes('if (!allowed) return'),
       'a disallowed module must short-circuit before issuing a request',
