@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { notificationKeys, type UnreadCountShape } from '@/lib/notificationCache'
 import type { NotificationCategory } from '@/lib/notifications'
+import { batchedCountGet } from '@/lib/notifications/batchedCounts'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import {
   readPersistedUnreadCount,
@@ -90,15 +91,17 @@ export function useUnreadCountState(
     // session, never from this value.
     enabled: enabled && !!userId,
     queryFn: async () => {
-      const res = await fetch(
+      // Asked beside the other module counts of a cold Modules page as ONE request (batchedCounts.ts);
+      // anywhere else it is this one URL, fetched as it always was.
+      const res = await batchedCountGet(
         `/api/notifications?count=1&category=${category}`
         + (viewMode && userId ? `&subjectUserId=${encodeURIComponent(userId)}` : ''),
       )
       // A failed count keeps the badge at its last known value rather than
       // flashing 0 — a badge is ambient decoration, and showing "nothing to
       // see" because of a network blip is worse than showing a stale number.
-      if (!res.ok) throw new Error(`Unread count request failed (HTTP ${res.status})`)
-      return res.json() as Promise<UnreadCountShape>
+      if (res.status < 200 || res.status >= 300) throw new Error(`Unread count request failed (HTTP ${res.status})`)
+      return res.body as unknown as UnreadCountShape
     },
     staleTime: 30 * 1000,
     ...(seed ? { initialData: { unreadCount: seed.count }, initialDataUpdatedAt: seed.at } : {}),

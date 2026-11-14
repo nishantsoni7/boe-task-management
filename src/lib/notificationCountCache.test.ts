@@ -101,7 +101,8 @@ describe('revalidation replaces, failure retains', () => {
   test('4. a failed request leaves the displayed value alone', () => {
     // The query function THROWS on a non-2xx rather than returning 0, and
     // TanStack keeps the last good `data` through an error.
-    assert.ok(HOOK.includes('if (!res.ok) throw new Error('))
+    // (Since 2026-11-14 the request goes through batchedCountGet, which answers { status, body }.)
+    assert.ok(HOOK.includes('if (res.status < 200 || res.status >= 300) throw new Error('))
     assert.ok(HOOK.includes('keeps the badge at its last known value'))
   })
 

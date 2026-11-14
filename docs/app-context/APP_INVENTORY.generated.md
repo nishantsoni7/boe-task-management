@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `2750eb00` — Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL) (#784)
-- Commits on this branch: 1347
-- Pages (`page.tsx`): 199   API routes (`route.ts`): 210
+- Commit: `a46f2e43` — WIP notification counts batch (local)
+- Commits on this branch: 1349
+- Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
-- Test files: 853   Next.js 16.2.6, React 19.2.4
+- Test files: 855   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `a46f2e43` 2026-11-14 WIP notification counts batch (local)
+- `d06e6248` 2026-11-14 Orders: on a phone the Main PI Details popover stays inside the card and the pending buttons are 44px (#788)
 - `2750eb00` 2026-11-14 Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL) (#784)
 - `59a8d9e2` 2026-11-14 Docs: stamp page speed part 6 (#785) as merged e4ba4410, deployed 21:39 IST, verified live (no SQL) (#786)
 - `e4ba4410` 2026-11-14 Page speed, part 6: the Modules launcher asks for less (no SQL) (#785)
@@ -37,8 +39,6 @@
 - `d7e49cdc` 2026-11-14 Orders: mark a Confirmed Order whose PI change is waiting for somebody (no SQL) (#767)
 - `ef6682f3` 2026-11-14 Docs: stamp the compact lead popup (#765) as merged 45a2182f, deployed 10:25 IST (no SQL) (#766)
 - `45a2182f` 2026-11-14 Sales: lead popup left side made compact so all of it shows with no scroll bar (#765)
-- `ae4040b9` 2026-11-14 Docs: stamp Price learning piece 1 (#760) as merged b273b165, deployed 06:33 IST, 20270715000000 applied (no SQL) (#763)
-- `b273b165` 2026-11-14 Quotations: Price learning, piece 1 (old PIs fed to the price model 25 at a time, blind-test score, feedback doorway) (#760)
 
 ## Pages by top-level area
 
@@ -113,7 +113,7 @@
 - **impersonation** (3): `/end [POST]`, `/members [GET]`, `/start [POST]`
 - **integrations** (7): `/meta/review [GET]`, `/meta/sync [GET]`, `/minop/partner/punches [GET]`, `/minop/webhook [POST]`, `/minop/webhook/[token] [POST]`, `/seo/decisions [GET]`, `/seo/ingest [POST]`
 - **meetings** (5): `/delete [POST]`, `/import [POST]`, `/import-pi [POST]`, `/import-pi/confirm [POST]`, `/template [GET]`
-- **notifications** (4): ` [DELETE,GET]`, `/[id] [DELETE]`, `/delete-selected [POST]`, `/mark-read [POST]`
+- **notifications** (5): ` [DELETE,GET]`, `/[id] [DELETE]`, `/counts [GET]`, `/delete-selected [POST]`, `/mark-read [POST]`
 - **notify-status-update** (1): ` [POST]`
 - **objections** (2): ` [GET,POST]`, `/review [POST]`
 - **orders** (33): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/dispatch/read-paper [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/number [POST]`, `/[id]/payment-plan/pdf [GET]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/bdpi/[id]/delete [POST]`, `/bdpi/[id]/pdf [GET]`, `/bdpi/[id]/pictures [GET]`, `/bdpi/import [POST]`, `/clickup-drafts [GET]`, `/clickup-drafts/[id] [GET]`, `/clickup-drafts/[id]/files/[fileId] [GET]`, `/clickup-drafts/import [POST]`, `/customize-learning/attempts [GET,PATCH]`, `/customize-learning/examples [GET,PATCH,POST]`, `/customize-learning/rules [GET,PATCH,POST]`, `/fabric-finish/image [POST]`, `/fabric-finish/refresh [POST]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/customization-feedback [POST]`, `/pi-edits/interpret-customization [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
@@ -159,7 +159,7 @@
 - `src/lib/minop` — 13 source, 11 test
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 5 source, 8 test
-- `src/lib/notifications` — 7 source, 23 test
+- `src/lib/notifications` — 9 source, 25 test
 - `src/lib/orders` — 110 source, 170 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/performance` — 0 source, 1 test
