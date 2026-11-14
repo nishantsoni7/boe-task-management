@@ -10,6 +10,7 @@ This folder is the **living memory of the application**. It exists so that every
 | 2 | `01_APP_CONTEXT.md` | System map: stack, architecture, conventions, roles, every module's status |
 | 3 | `modules/NN-*.md` | Per-module dossier — read the module(s) you touch **and** their neighbours |
 | 4 | `APP_INVENTORY.generated.md` | Machine-read facts (routes, tables, functions, migrations, env names). Regenerate, never hand-edit |
+| 4b | `PAGE_LOAD_AUDIT.generated.md` | A row per page: how it is served, data calls, reads with no limit, fetch-all loops, polling. Read it before changing how a page loads (`node scripts/audit-page-load.mjs`; never hand-edit) |
 | 5 | `04_NEW_MODULE_CHECKLIST.md` | Tick-list when adding a module or a cross-cutting feature |
 | 6 | `03_BACKUP_AND_RECOVERY.md` | Backup layers, commands, and the restore runbooks |
 | 7 | `CHANGELOG.md` | What changed, when, and the apply state of each migration |
