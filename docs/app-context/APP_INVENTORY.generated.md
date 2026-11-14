@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `4c215ba9` — Page speed, part 5: fewer requests at the start of every page; part 3 dropped, measured (no SQL) (#782)
-- Commits on this branch: 1343
+- Commit: `d85fa8b3` — Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL)
+- Commits on this branch: 1344
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 209
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `d85fa8b3` 2026-11-14 Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL)
 - `4c215ba9` 2026-11-14 Page speed, part 5: fewer requests at the start of every page; part 3 dropped, measured (no SQL) (#782)
 - `fe677095` 2026-11-14 Docs: stamp the premium client quotation document (#777) as merged e0d4fe4c, deployed 20:08 IST, migration 20270717000000 applied (#781)
 - `33813806` 2026-11-14 Backups: stop the pg_dump step's docker run after 5 minutes (#780)
@@ -38,7 +39,6 @@
 - `8b64c4d3` 2026-11-14 Sales: lead popup laid out again, board cards with no buttons, and the Lead Board and popup made fast (migration 20270716000000, additive) (#761)
 - `c7b6f6b2` 2026-11-14 Docs: stamp Draft Orders (ClickUp) #754 and #759 and both imports (521 of 521), and the quotation builder redesign #758 with its migration applied after the merge (no SQL) (#762)
 - `b399a22a` 2026-11-13 Draft Orders (ClickUp): the folder pick accepts the folder around the backup; search box height, loading title and step numbers fixed (#759)
-- `21126e0e` 2026-11-13 Quotations: the builder redesigned (one column, one dimensions unit, one GST rate, picture pop-up) - migration 20270714000000, apply before merge (#758)
 
 ## Pages by top-level area
 
