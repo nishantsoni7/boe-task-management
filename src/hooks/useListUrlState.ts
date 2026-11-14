@@ -30,17 +30,23 @@ import {
  * setState({ tab: 'overdue' })
  * ```
  *
+ * `router.replace` / `router.push` ask the server for the page again on every change, even when only the query string
+ * changed (measured on the Lead Board: 0.1 to 3.4 seconds before a filter or the open lead took effect, and the page
+ * frozen for ~0.7 s while it applied). A screen that reads its own data in the browser and has nothing to learn from the
+ * server passes `{ shallow: true }`: the address is changed with `window.history`, which Next.js follows
+ * (https://nextjs.org/docs/app/getting-started/linking-and-navigating#native-history-api), and the change is instant.
+ *
  * Any component calling this must sit inside a `<Suspense>` boundary —
  * `useSearchParams` requires one.
  */
 export function useListUrlState<M extends CodecMap>(
   specs: M,
-  options: { pageKey?: Extract<keyof M, string> } = {},
+  options: { pageKey?: Extract<keyof M, string>; shallow?: boolean } = {},
 ) {
   const router       = useRouter()
   const pathname     = usePathname()
   const searchParams = useSearchParams()
-  const { pageKey }  = options
+  const { pageKey, shallow = false } = options
 
   const search = searchParams.toString()
 
@@ -51,10 +57,16 @@ export function useListUrlState<M extends CodecMap>(
 
   const navigate = useCallback((nextSearch: string, history: 'replace' | 'push') => {
     const href = nextSearch ? `${pathname}?${nextSearch}` : pathname
+    // shallow: the browser's own history call, which the Next.js router follows (useSearchParams and
+    // usePathname update) without asking the server for the page again.
+    if (shallow) {
+      window.history[history === 'push' ? 'pushState' : 'replaceState'](null, '', href)
+      return
+    }
     // scroll:false — changing a filter must not throw the reader back to the
     // top of the page.
     router[history](href, { scroll: false })
-  }, [router, pathname])
+  }, [router, pathname, shallow])
 
   const setState = useCallback((
     patch: Partial<ListState<M>>,

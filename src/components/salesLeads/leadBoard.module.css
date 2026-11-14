@@ -115,21 +115,10 @@
 .heatHot { background: #E5622B; }
 .heatWarm { background: #E6B23E; }
 .heatCold { background: #7AA2CF; }
-.cardMid { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 20px; }
-.cardMid .step { flex: 1 1 auto; font-weight: 400; color: #4C5352; }
-.cardMid .stepText { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cardNote { display: flex; align-items: center; justify-content: space-between; gap: 6px; flex-wrap: wrap; }
-.acts { position: absolute; right: 8px; bottom: 6px; display: none; gap: 4px; background: #fff; padding-left: 8px; }
-.card:hover .acts, .card:focus-within .acts { display: flex; }
-.act { width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #E4DED7; border-radius: 7px; background: #fff; color: #4C5352; font: 500 12px var(--boe-font-body); cursor: pointer; text-decoration: none; padding: 0; }
-.act:hover { background: #FAF8F5; }
-.act svg { width: 14px; height: 14px; }
-.actLabel { display: none; }
-.actCall { color: #963B27; }
-/* Always on a card: one click opens Move to (owner, 2026-11-13). Dragging still works on a desktop. */
-.moveBtn { flex: 0 0 auto; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid #E4DED7; border-radius: 7px; background: #fff; color: #686D6C; cursor: pointer; padding: 0; }
-.moveBtn:hover { background: #F8EAE4; border-color: #E8C4B8; color: #963B27; }
-.moveBtn svg { width: 14px; height: 14px; }
+.cardMid { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 8px; min-height: 22px; }
+.cardPhone { font-size: 12.5px; font-variant-numeric: tabular-nums; color: #4C5352; }
+.cardDue { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+.cardDue svg { width: 13px; height: 13px; color: #686D6C; flex-shrink: 0; }
 /* Phone-only piece of the board (Phase 4): the queue chip in the stage row. */
 .queueChip { display: none; }
 
@@ -176,7 +165,7 @@
 .mH3 { margin: 0; font: 600 14px var(--boe-font-heading); color: #303536; }
 
 /* Left: who, where it stands, what they want */
-.mLeft { min-height: 0; overflow-y: auto; padding: 22px 24px 28px; display: flex; flex-direction: column; gap: 18px; scrollbar-width: thin; }
+.mLeft { min-height: 0; overflow-y: auto; padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 20px; scrollbar-width: thin; }
 .mWho { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .mWhoText { min-width: 0; }
 .mName { margin: 0; font: 700 24px/1.2 var(--boe-font-heading); letter-spacing: -0.015em; color: #303536; overflow-wrap: anywhere; }
@@ -184,22 +173,10 @@
 .mWa { flex: 0 0 auto; height: 38px; padding: 0 13px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; font: 600 13px var(--boe-font-body); color: #303536; cursor: pointer; }
 .mWa:hover { background: #FAF8F5; }
 .mWa svg { width: 16px; height: 16px; color: #2F7D4F; }
-.mDue { height: 36px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px 0 11px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; cursor: pointer; color: #303536; font: 400 13px var(--boe-font-body); }
-.mDue:hover:not(:disabled) { background: #FAF8F5; }
-.mDue svg { width: 15px; height: 15px; color: #686D6C; }
-.mDue b { font-weight: 600; }
-.mDueOver { border-color: #F0CDD1; background: #FDF5F6; }
-.mDueNote { font-size: 12px; color: #686D6C; }
-.mDueOver .mDueNote { color: #A12438; font-weight: 600; }
-.mChange { color: #B9472E; font-weight: 600; font-size: 12.5px; margin-left: 4px; }
 .mPerson { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; }
 .mAvSm { width: 24px; height: 24px; border-radius: 50%; background: #F8EAE4; color: #963B27; display: inline-flex; align-items: center; justify-content: center; font: normal 700 10px var(--boe-font-body); }
-.mCopy { margin-left: 6px; border: 1px solid #E4DED7; background: #fff; border-radius: 6px; font: 600 11.5px var(--boe-font-body); color: #4C5352; padding: 1px 7px; cursor: pointer; }
-.mCopy:hover { background: #FAF8F5; }
-.mBig { font: 700 22px var(--boe-font-heading); font-variant-numeric: tabular-nums; }
 
 /* Round 3 (owner, 2026-11-13: "clumsy"): the name and how to reach them, one stage bar, then plain rows. */
-.mMeta { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; color: #686D6C; }
 .mPhone { color: #303536; font-weight: 600; font-variant-numeric: tabular-nums; }
 .mDot { color: #CFC8BF; }
 .mStuck { margin-left: 2px; height: 20px; padding: 0 8px; border-radius: 999px; background: #FCEEEF; color: #A12438; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; }
@@ -207,10 +184,6 @@
 .mCall { height: 38px; padding: 0 14px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #B9472E; border-radius: 10px; background: #B9472E; color: #fff; font: 600 13px var(--boe-font-body); text-decoration: none; }
 .mCall:hover { background: #A33E27; }
 .mCall svg { width: 15px; height: 15px; }
-.mStage { border: 1px solid #ECE7E0; border-radius: 14px; padding: 14px 16px 12px; background: #fff; }
-.mStageHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-.mStageKey { font-size: 12px; font-weight: 600; color: #686D6C; text-transform: uppercase; letter-spacing: .05em; }
-.mSince { font-size: 12px; color: #686D6C; }
 /* The Board status: one dropdown (owner, 2026-11-13, option B). */
 .mStatusBtn { width: 100%; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; cursor: pointer; font: 600 14px var(--boe-font-body); color: #303536; text-align: left; }
 .mStatusBtn:hover:not(:disabled) { background: #FAF8F5; border-color: #B9472E; }
@@ -224,21 +197,66 @@
 .mStatusItem[aria-checked="true"] { background: #F8EAE4; color: #963B27; font-weight: 600; }
 .mStatusNow { margin-left: auto; font-size: 11.5px; font-weight: 500; color: #686D6C; }
 .mDeadNote { margin: 8px 0 0; font-size: 12.5px; color: #686D6C; }
-.mRows { margin: 0; display: flex; flex-direction: column; }
-.mRows > div { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 12px; align-items: center; min-height: 40px; padding: 4px 0; border-bottom: 1px solid #F4F1EC; }
-.mRows > div:last-child { border-bottom: 0; }
-.mRows dt { font-size: 12.5px; color: #686D6C; }
-.mRows dd { margin: 0; font-size: 13.5px; font-weight: 500; color: #303536; overflow-wrap: anywhere; }
-.mHeat { display: inline-flex; gap: 6px; flex-wrap: wrap; }
-.mHeat button { height: 30px; padding: 0 11px; border: 1px solid #E4DED7; border-radius: 999px; background: #fff; display: inline-flex; align-items: center; gap: 6px; font: 500 12.5px var(--boe-font-body); color: #4C5352; cursor: pointer; }
-.mHeat button:hover:not(:disabled) { background: #FAF8F5; }
-.mHeat button[aria-pressed="true"] { border-color: #E8C4B8; background: #F8EAE4; color: #963B27; font-weight: 600; }
 .mSec { display: flex; flex-direction: column; gap: 6px; }
-.mSecHead { display: flex; align-items: center; justify-content: space-between; padding-bottom: 6px; border-bottom: 1px solid #ECE7E0; }
-.mReq { margin: 4px 0 2px; font-size: 13.5px; line-height: 1.55; color: #303536; white-space: pre-wrap; overflow-wrap: anywhere; }
-.mValue { display: flex; align-items: center; gap: 10px; padding: 4px 0; }
 .mForm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; }
 .mFull { grid-column: 1 / -1; }
+/* The left side, in the order a salesperson uses it (owner, 2026-11-14, after a clickable preview): who and how to reach them;
+   where the lead stands, in one card; what they want and what it is worth; the reference facts. Two text tiers: a 14px / 600
+   section heading and a 12px / 600 capitals field label; values are 14px. */
+.nMeta { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
+.nPhoneLine { display: flex; align-items: center; gap: 2px; min-height: 28px; }
+.nPhoneLine .mPhone { font-size: 14.5px; }
+.nSub { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; font-size: 12.5px; color: #686D6C; }
+.nCopy { height: 28px; margin-left: -2px; padding: 0 6px; border: 0; background: none; border-radius: 8px; color: #686D6C; display: inline-flex; align-items: center; gap: 5px; font: 600 12px var(--boe-font-body); cursor: pointer; }
+.nCopy:hover { background: #F1EEE9; color: #303536; }
+.nCopy svg { width: 15px; height: 15px; }
+.nCopy[data-done="1"] { color: #276247; }
+
+.nState { border: 1px solid #ECE7E0; border-radius: 14px; background: #FBFAF8; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.nPair { display: flex; flex-wrap: wrap; gap: 14px 12px; align-items: flex-end; }
+.nPair > .nCell:first-child { flex: 1 1 210px; }
+.nCell { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.nKey { margin: 0; display: flex; align-items: baseline; gap: 8px; font: 600 12px var(--boe-font-body); color: #686D6C; text-transform: uppercase; letter-spacing: .05em; }
+.nKey small { font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.nHeatSeg { display: inline-flex; height: 44px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; overflow: hidden; }
+.nHeatSeg button { min-width: 66px; padding: 0 12px; border: 0; background: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font: 500 13px var(--boe-font-body); color: #4C5352; cursor: pointer; }
+.nHeatSeg button + button { border-left: 1px solid #E4DED7; }
+.nHeatSeg button:hover:not(:disabled) { background: #FAF8F5; }
+.nHeatSeg button:disabled { cursor: default; }
+.nHeatSeg button[aria-pressed="true"] { background: #F8EAE4; color: #963B27; font-weight: 700; box-shadow: inset 0 0 0 1px #E8C4B8; }
+.nDue { width: 100%; height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 12px 0 13px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; color: #303536; font: 400 14px var(--boe-font-body); text-align: left; cursor: pointer; }
+.nDue:hover:not(:disabled) { background: #FAF8F5; border-color: #B9472E; }
+.nDue:disabled { cursor: default; }
+.nDue > svg { width: 16px; height: 16px; color: #686D6C; flex: 0 0 auto; }
+.nDue b { font-weight: 600; }
+.nDueNote { font-size: 12.5px; color: #686D6C; }
+.nDueOver { border-color: #F0CDD1; background: #FDF5F6; }
+.nDueOver:hover:not(:disabled) { background: #FCEEEF; border-color: #A12438; }
+.nDueOver .nDueNote { color: #A12438; font-weight: 600; }
+.nGo { margin-left: auto; color: #B9472E; font-weight: 600; font-size: 12.5px; }
+.nHeld { display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid #ECE7E0; font-size: 12.5px; color: #686D6C; }
+.nHeld b { color: #303536; font-weight: 600; }
+
+.nSec { display: flex; flex-direction: column; gap: 10px; }
+.nHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; }
+.nH { margin: 0; font: 600 14px var(--boe-font-heading); color: #303536; }
+.nEdit { margin-right: -7px; }
+.nReq { margin: 0; padding: 12px 14px; border-radius: 12px; background: #FAF8F5; font-size: 14.5px; line-height: 1.55; color: #303536; white-space: pre-wrap; overflow-wrap: anywhere; }
+.nReq.nNone { background: none; border: 1px dashed #CFC8BF; font-size: 13px; color: #686D6C; }
+.nTiles { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 10px; }
+.nTile { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 10px 14px 11px; border: 1px solid #ECE7E0; border-radius: 12px; background: #fff; }
+.nVal { font-size: 14px; font-weight: 500; color: #303536; overflow-wrap: anywhere; }
+.nBig { font: 700 22px/1.2 var(--boe-font-heading); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.nAsk { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nAsk span { font-size: 14px; color: #686D6C; }
+.nHelp { margin: 0; font-size: 12px; line-height: 1.35; color: #686D6C; }
+.nFacts { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 16px; }
+.nFacts > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.nFacts dt { font: 600 12px var(--boe-font-body); color: #686D6C; text-transform: uppercase; letter-spacing: .05em; }
+.nFacts dd { margin: 0; font-size: 14px; font-weight: 500; color: #303536; overflow-wrap: anywhere; }
+.nFacts .nWide { grid-column: 1 / -1; }
+.nFacts dd.nNone, .nVal.nNone { color: #686D6C; font-weight: 400; font-size: 13px; }
+.nFactsSec { padding-top: 16px; border-top: 1px solid #ECE7E0; }
 
 /* The date menu, shared by the follow-up chip and the update box */
 .mPop { position: absolute; left: 0; top: calc(100% + 8px); z-index: 5; width: 280px; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; box-shadow: var(--boe-shadow-float); padding: 6px; }
@@ -431,12 +449,6 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .card { padding: 12px; cursor: default; }
   .cardStuck { padding-left: 10px; }
   .card .name { font-size: 14.5px; }
-  /* Call, WhatsApp and No answer on every card (Call back, owner 2026-11-13); Move is the button beside the name. */
-  .acts, .card:hover .acts, .card:focus-within .acts { position: static; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0; background: none; }
-  .act { width: auto; height: 44px; flex-direction: row; gap: 6px; font-size: 13px; }
-  .actLabel { display: block; }
-  .act svg { width: 15px; height: 15px; }
-  .moveBtn { width: 40px; height: 40px; }
 
   /* Phase 4: the queue is a 40px chip at the start of the stage row; the totals are always one row of chips. */
   .queueBar { display: none; }
@@ -481,15 +493,13 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .modal[data-tab="details"] .mRight, .modal[data-tab="activity"] .mLeft { display: none; }
   .mRight { border-left: 0; }
   .mLeft { padding: 16px 14px 28px; }
-  .mRows > div, .mForm { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px 0; }
+  .mForm { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px 0; }
   .mWho { flex-direction: column; }
   .mStatusBtn { height: 48px; }
   .mStatusItem { min-height: 44px; }
   .mReach { width: 100%; }
   .mCall, .mWa { flex: 1; justify-content: center; height: 46px; }
   .mChip { height: 40px; }
-  .mHeat button { height: 40px; }
-  .mDue { height: 44px; }
   .mCompose { margin: 0 12px 10px; }
   .mCompose textarea { font-size: 16px; }
   .mRHead, .mSearch { padding-left: 12px; padding-right: 12px; }
@@ -503,4 +513,16 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .reason { min-height: 44px; }
   .dialogFoot :global(.boe-btn) { flex: 1 1 auto; height: 44px; }
   .detailsFoot :global(.boe-btn), .linkBtn { height: 44px; }
+}
+
+/* The left side on a phone: full-width controls, 44px and larger touch targets, the two tiles stacked. */
+@media (max-width: 767px) {
+  .nState { padding: 14px; }
+  .nPair > .nCell { flex: 1 1 100%; }
+  .nHeatSeg { width: 100%; height: 48px; }
+  .nHeatSeg button { flex: 1; }
+  .nDue { height: 48px; }
+  .nCopy { height: 44px; padding: 0 10px; }
+  .nTiles { grid-template-columns: minmax(0, 1fr); }
+  .nEdit { height: 44px; }
 }

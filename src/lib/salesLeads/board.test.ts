@@ -259,6 +259,9 @@ describe('the rules that must not be undone', () => {
   test('nothing on the board depends on dragging alone', () => {
     const board = read('src/components/salesLeads/BoardScreen.tsx')
     assert.match(board, /draggable=/)
-    assert.match(board, /work\.openMove\(lead\)/)
+    // A card has no Move button (owner, 2026-11-14): the way to move a lead without dragging is the popup's Board status menu.
+    const panel = read('src/components/salesLeads/WorkPanel.tsx')
+    assert.match(panel, /work\.moveTo\(lead, stage\)/)
+    assert.match(panel, /aria-haspopup="menu"/)
   })
 })
