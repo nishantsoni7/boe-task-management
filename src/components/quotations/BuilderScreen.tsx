@@ -30,6 +30,7 @@ import { VersionsCard } from './VersionsCard'
 import { RequestCard } from './RequestCard'
 import { PriceCard } from './PricingDesk'
 import { LineRow } from './ProductLine'
+import { LeadTime, effectiveLeadTime } from './LeadTime'
 import { PictureViewer, viewerItemsOf } from './PictureViewer'
 import { productType } from '@/lib/pricing/features'
 import { priceLine, type ModelSuggestion } from '@/lib/pricing/model'
@@ -121,7 +122,7 @@ export default function BuilderScreen() {
     if (problem) { setMsg({ tone: 'bad', text: problem }); return }
     setSaving(true)
     try {
-      const r = await saveQuotation(supabase, base.id, saveDoc(h, areas, lines, base.updated_at))
+      const r = await saveQuotation(supabase, base.id, saveDoc({ ...h, lead_time_weeks: effectiveLeadTime(h, areas) }, areas, lines, base.updated_at))
       setBase(b => (b ? { ...b, updated_at: r.updated_at } : b))
       setDirty(false); dirtyRef.current = false
       setMsg({ tone: 'ok', text: 'Saved.' })
@@ -293,6 +294,7 @@ export default function BuilderScreen() {
               <span className={s.taxChip}>Tax: {h.gst_mode === 'igst' ? 'IGST (outside Rajasthan)' : 'CGST + SGST (within Rajasthan)'}</span></label>
           </div>
           {h.supply_state && gstModeForState(h.supply_state) !== h.gst_mode && <div className={`${s.notice} ${s.noticeWarn}`} style={{ marginTop: 12 }}>Delivery to {h.supply_state} is normally {gstModeForState(h.supply_state) === 'igst' ? 'IGST' : 'CGST + SGST'}: BOE is registered in Rajasthan. Check before sending (GST type is under Advanced client details).</div>}
+          <LeadTime h={h} areas={areas} editable={editable} onChange={patch => { setH(p => (p ? { ...p, ...patch } : p)); touch() }} />
           <button type="button" className={s.advBtn} aria-expanded={advOpen} aria-controls="q-advanced" onClick={() => setAdvOpen(o => !o)}>
             {advOpen ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />} Advanced client details <span className={s.hintTxt}>Company, client type, project, their role, GST, GSTIN</span>
           </button>
