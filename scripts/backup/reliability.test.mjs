@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { describeError, git, mirrorGit, readWithShrink, restrictedTablesLayer, waitForDocker } from './lib.mjs'
+import { describeError, git, mirrorGit, PG_DUMP_TIMEOUT_MS, pgDumpFailure, readWithShrink, restrictedTablesLayer, waitForDocker } from './lib.mjs'
 
 // Found on the hand run of 2026-11-05: the Terminal panel of the desktop app forces safe.bareRepository=explicit, a nightly
 // database export died on "terminated" two nights running, and pg_dump needed a Docker Desktop that nobody had started.
@@ -131,6 +131,21 @@ test('docker that cannot be started is not waited for', async () => {
   d.opts.start = () => false
   assert.equal(await waitForDocker(d.opts), false)
   assert.equal(d.s.polls, 0)
+})
+
+test('a hung pg_dump run is stopped by its time limit and says Docker is probably hung', () => {
+  // The real shape of a timed-out spawnSync: a child that never finishes, cut off the way backup-database cuts docker run.
+  const r = spawnSync(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { timeout: 500, killSignal: 'SIGKILL' })
+  assert.equal(r.error?.code, 'ETIMEDOUT')
+  assert.match(pgDumpFailure(r, 'postgres://secret', ['t1']), /did not finish within 5 minutes.*restart it/)
+  assert.equal(PG_DUMP_TIMEOUT_MS, 5 * 60 * 1000)
+  assert.match(fs.readFileSync(path.join(here, 'backup-database.mjs'), 'utf8'), /spawnSync\('docker', args, .*timeout: PG_DUMP_TIMEOUT_MS/)
+})
+
+test('a failed pg_dump keeps its own error and never prints the database URL', () => {
+  const r = { status: 1, stderr: Buffer.from('connecting to postgres://secret\nFATAL: password authentication failed\n') }
+  assert.equal(pgDumpFailure(r, 'postgres://secret', ['t1']), 'connecting to <url> | FATAL: password authentication failed')
+  assert.equal(pgDumpFailure({ status: 0, stderr: Buffer.alloc(0) }, 'u', ['t1', 't2']), 'missing t1, t2')
 })
 
 test('verify-backups fails the finance-tables layer when pg_dump did not cover them', () => {

@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `39a2554c` — Merge origin/main into feat/quotation-client-document
-- Commits on this branch: 1339
+- Commit: `e0d4fe4c` — Quotations: the premium client document, Download PDF, project type and lead time (migration 20270717000000) (#777)
+- Commits on this branch: 1340
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 209
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
@@ -14,10 +14,11 @@
 
 ## Latest 25 commits
 
-- `39a2554c` 2026-11-14 Merge origin/main into feat/quotation-client-document
+- `e0d4fe4c` 2026-11-14 Quotations: the premium client document, Download PDF, project type and lead time (migration 20270717000000) (#777)
+- `1651449f` 2026-11-14 Docs: stamp the PI review chain (#776) as merged 73a9cc30, deployed 19:44 IST (migration 20270718000000 applied 19:27 IST) (#779)
+- `73a9cc30` 2026-11-14 Orders: every hop between Operations and Sales on a PI passes through the approver (migration 20270718000000, applied) (#776)
 - `61dd1c91` 2026-11-14 Docs: stamp page speed part 1 (#775) as merged 39fadbcf, deployed 19:07 IST, verified live (no SQL) (#778)
 - `39fadbcf` 2026-11-14 Page speed, part 1: every record page prepared and cached, static files kept for a day, page-load audit (no SQL) (#775)
-- `fe03a3b1` 2026-11-14 Quotations: the premium client document, Download PDF, project type and lead time (migration 20270717000000)
 - `4891ae98` 2026-11-14 Docs: stamp Quotations Import of a PI (#773) as merged 111f4ef6, deployed 13:28 IST (no SQL) (#774)
 - `111f4ef6` 2026-11-14 Quotations: Import brings a BOE PI's price, customization and representative picture (no SQL) (#773)
 - `2adad5f7` 2026-11-14 Docs: stamp the BOE One loader (#770) as merged 3dd0cc93, deployed 12:38 IST (no SQL) (#772)
@@ -38,7 +39,6 @@
 - `216256c8` 2026-11-13 Docs: stamp #756 (Import says to reload) as merged c9670dd0, deployed 19:58 IST (no SQL) (#757)
 - `c9670dd0` 2026-11-13 Quotations: Import says to reload when its code could not be downloaded (#756)
 - `df8ef1f7` 2026-11-13 Orders: Draft Orders (ClickUp), the Running Orders list copied out of ClickUp before its subscription ends (migration 20270713000000) (#754)
-- `a203fcef` 2026-11-13 Docs: stamp #753 (Pendencies card on a phone) as merged e9a5f6bd, deployed 19:05 IST (no SQL) (#755)
 
 ## Pages by top-level area
 

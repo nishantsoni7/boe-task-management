@@ -91,6 +91,15 @@ export function restrictedTablesLayer(db) {
   return { ok: true, note: db.viaPgDump?.length ? `pg_dump: ${db.viaPgDump.join(' ')}` : 'none unreadable' }
 }
 
+// 14 Nov 2026: Docker Desktop hung on `docker run` while `docker info` still answered, and the pg_dump step sat for 20 minutes.
+// The run is given PG_DUMP_TIMEOUT_MS; this turns a spawnSync result into the reason the tables stay NOT COVERED.
+export const PG_DUMP_TIMEOUT_MS = 5 * 60 * 1000
+export function pgDumpFailure(r, dbUrl, missing) {
+  if (r.error?.code === 'ETIMEDOUT') return `docker run did not finish within ${PG_DUMP_TIMEOUT_MS / 60000} minutes and was stopped (Docker Desktop is probably hung: restart it and run backup-all again)`
+  const err = (r.stderr || '').toString().split(dbUrl).join('<url>').trim().split('\n').slice(-2).join(' | ')
+  return err || (r.error ? r.error.message : 'missing ' + missing.join(', '))
+}
+
 export function sha256File(p) {
   const h = crypto.createHash('sha256'); const fd = fs.openSync(p, 'r'); const buf = Buffer.alloc(1 << 20)
   try { let n; while ((n = fs.readSync(fd, buf, 0, buf.length, null)) > 0) h.update(buf.subarray(0, n)) } finally { fs.closeSync(fd) }

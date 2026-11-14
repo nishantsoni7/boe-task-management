@@ -11,7 +11,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
 import zlib from 'node:zlib'
-import { BACKUP_ROOT, MAIN_REPO, countCopyRows, encryptFile, ensureDir, loadEnvFile, log, prune, readWithShrink, sha256File, stamp, waitForDocker, writeStatus } from './lib.mjs'
+import { BACKUP_ROOT, MAIN_REPO, countCopyRows, encryptFile, ensureDir, loadEnvFile, log, pgDumpFailure, PG_DUMP_TIMEOUT_MS, prune, readWithShrink, sha256File, stamp, waitForDocker, writeStatus } from './lib.mjs'
 
 const noStorage = process.argv.includes('--no-storage')
 const plain = process.argv.includes('--plain')
@@ -141,12 +141,12 @@ if (toDump.length) {
     const image = env.BACKUP_PG_IMAGE || 'postgres:17'
     const args = ['run', '--rm', '-e', 'BACKUP_DATABASE_URL', '--entrypoint', 'sh', image, '-c',
       `pg_dump --no-owner --no-privileges ${toDump.map((t) => `-t public.${t}`).join(' ')} "$BACKUP_DATABASE_URL"`]
-    const r = spawnSync('docker', args, { env: { ...process.env, BACKUP_DATABASE_URL: dbUrl }, maxBuffer: 1024 * 1024 * 1024 })
+    const r = spawnSync('docker', args, { env: { ...process.env, BACKUP_DATABASE_URL: dbUrl }, maxBuffer: 1024 * 1024 * 1024, timeout: PG_DUMP_TIMEOUT_MS, killSignal: 'SIGKILL' })
     const sql = r.stdout || Buffer.alloc(0)
     const text = sql.toString('utf8')
     const missing = toDump.filter((t) => !text.includes(`CREATE TABLE public.${t} `))
     if (r.status !== 0 || missing.length) {
-      log(`pg_dump FAILED, tables stay NOT COVERED: ${(r.stderr || '').toString().replace(dbUrl, '<url>').trim().split('\n').slice(-2).join(' | ') || 'missing ' + missing.join(', ')}`)
+      log(`pg_dump FAILED, tables stay NOT COVERED: ${pgDumpFailure(r, dbUrl, missing)}`)
     } else {
       // Row counts from the COPY blocks, so the manifest records what was captured.
       const rows = Object.fromEntries(toDump.map((t) => [t, countCopyRows(text, t) ?? 0]))
