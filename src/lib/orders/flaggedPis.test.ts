@@ -29,6 +29,7 @@ describe('reading the database answer', () => {
       handoffId: 'h-1', orderId: 'o-546', orderNumber: '546', clientName: 'Qavaali', versionNumber: 1,
       reason: 'As per mohit...\nclient wanted a visit', byName: 'Nitish Bansal', since: '2026-11-08T09:00:00+00:00',
       waitingSeconds: 259200.5,
+      holder: null, mine: true, round: 0, holderSince: null, reply: null, replyByName: null, replyAt: null,
     })
   })
 

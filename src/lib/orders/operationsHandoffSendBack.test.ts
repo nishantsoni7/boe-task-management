@@ -140,7 +140,7 @@ describe('the rules the page uses', () => {
   })
 
   test('the history says it in words', () => {
-    assert.equal(OPERATIONS_HANDOFF_EVENT_LABEL.operations_handoff_sent_to_sales, 'Sent back to the salesperson')
+    assert.equal(OPERATIONS_HANDOFF_EVENT_LABEL.operations_handoff_sent_to_sales, 'The approver sent it to the salesperson')
     assert.equal(OPERATIONS_HANDOFF_EVENT_TONE.operations_handoff_sent_to_sales, 'amber')
     assert.equal(describeOperationsHandoffEvent('operations_handoff_sent_to_sales', { version_number: 1, comment: 'Revise the price.' }), 'PI V1 · Revise the price.')
   })

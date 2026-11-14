@@ -196,12 +196,17 @@ export function operationsCard(r: OperationsRow): WorkCard {
 
 /** A PI Operations flagged that this reader must answer: the Order is On Hold until they do, so it is drawn urgent. */
 export function flaggedCard(r: FlaggedPi): WorkCard {
+  // Review chain (20270718000000): the card is the approver's own work when Sales replied, or the salesperson's
+  // when the approver sent it to them; its words say which.
+  const replied = r.holder === 'coordinator' && r.reply !== null
   return {
     key: itemKeys.work('pi-flagged', r.handoffId, r.since),
-    label: `PI flagged by Operations · ${r.since ? timeAgo(r.since) : 'waiting'}`,
+    label: `${replied ? 'Sales replied on a flagged PI' : 'PI flagged by Operations'} · ${r.since ? timeAgo(r.since) : 'waiting'}`,
     brief: flaggedBrief(r),
-    detail: `${flaggedLabel(r)} · “${reasonLine(r.reason)}”`,
-    action: 'Respond',
+    detail: replied
+      ? `${r.replyByName ?? 'Sales'}: “${reasonLine(r.reply ?? '')}”`
+      : `${flaggedLabel(r)} · “${reasonLine(r.reason)}”`,
+    action: r.holder === 'sales' ? 'Reply' : r.holder === 'coordinator' ? (replied ? 'Forward' : 'Decide') : 'Respond',
     href: flaggedHref(r.orderId),
     urgent: true,
   }

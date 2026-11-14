@@ -203,11 +203,14 @@ import {
   evidenceObjectPath,
   type PersistedApprovalEvent,
 } from '@/lib/orders/orderApprovals'
+import { PiReviewThread } from './PiReviewThread'
+import { buildReviewThread } from '@/lib/orders/piReviewThread'
 import {
   ApproveRevisionModal,
   OperationsHandoffDecisionModal,
   RespondToOperationsModal,
   SendBackToSalesModal,
+  ForwardToOperationsModal,
   ProductionRecoveryModal,
   ProductionAlignmentModal,
   ProposeRevisionModal,
@@ -221,9 +224,15 @@ import {
   describeHandoffFailure,
   canRespondToHandoff,
   canSendBackToSales,
+  canForwardToOperations,
+  chainHolderOf,
+  chainRoundOf,
   latestHandoffAnswer,
+  latestReturnedToOperations,
   latestSentToSales,
   sentBackLine,
+  FORWARD_BUTTON_LABEL,
+  FORWARD_REPLY_BUTTON_LABEL,
   RESPOND_BUTTON_LABEL,
   SEND_BACK_AGAIN_LABEL,
   SALES_RETURN_SUMMARY,
@@ -1001,6 +1010,8 @@ export default function OrderDetailPage() {
   const [respondOpen, setRespondOpen] = useState(false)
   // The approver's comment to the salesperson (20270619000000).
   const [sendBackOpen, setSendBackOpen] = useState(false)
+  // The approver passes the PI on to Operations (20270718000000).
+  const [forwardOpen, setForwardOpen] = useState(false)
   // An administrator's recovery of a held Order no reviewer can realign (review R1).
   const [recoverOpen, setRecoverOpen] = useState(false)
   const [handoffBusy,   setHandoffBusy]   = useState(false)
@@ -1906,6 +1917,32 @@ export default function OrderDetailPage() {
         setPiNames(prev => { const next = new Map(prev); next.set(profile.id, profile.full_name); return next })
       }
       await Promise.all([reloadHandoffs(), reloadActivity()])
+    } finally {
+      setHandoffBusy(false)
+    }
+  }
+
+  /**
+   * Pass the PI version on to Operations (20270718000000), with the salesperson's reply or the approver's own
+   * note. The RPC re-derives who may and that the version can still be passed on; the handoff goes back to
+   * awaiting and the history gets the hop, so both are re-read.
+   */
+  const forwardToOperations = async (note: string | null) => {
+    const live = splitOperationsHandoffs(handoffs).live
+    if (!order || handoffBusy || !live) return
+    setHandoffBusy(true)
+    setHandoffError(null)
+    try {
+      const { error } = await supabase.rpc('forward_order_handoff_to_operations', {
+        p_handoff_id: live.id,
+        p_note: note,
+      })
+      if (error) { setHandoffError(describeHandoffFailure(error)); return }
+      setForwardOpen(false)
+      if (profile?.id && profile.full_name) {
+        setPiNames(prev => { const next = new Map(prev); next.set(profile.id, profile.full_name); return next })
+      }
+      await Promise.all([reloadHandoffs(), reloadActivity(), reloadOrderRow()])
     } finally {
       setHandoffBusy(false)
     }
@@ -2916,14 +2953,37 @@ export default function OrderDetailPage() {
   // THE APPROVER'S COMMENT TO THE SALESPERSON (20270619000000), from the history already loaded.
   const operationsSent = operationsSplit.live ? latestSentToSales(activity, operationsSplit.live.id) : null
   const operationsSentLine = sentBackLine(operationsSent, iso => (iso ? fmtDateTime(iso) : '—'), order.assigned_to_name ?? null)
-  // RETURNED TO SALES (owner, 2026-11-12): the status a send-back puts the PI in, until it is answered,
-  // decided again by Operations, or replaced by an approved revision.
+  // THE REVIEW CHAIN (20270718000000): who holds the version, derived from the history already loaded by the
+  // same rule the database applies to chain_holder. Operations and Sales hand it only to the approver.
+  const chainHolder = chainHolderOf({ live: operationsSplit.live, history: activity })
+  const chainRound = chainRoundOf(activity, operationsSplit.live?.id ?? null)
+  const operationsForwarded = operationsSplit.live ? latestReturnedToOperations(activity, operationsSplit.live.id) : null
+  const reviewThread = buildReviewThread(activity)
+  // RETURNED TO SALES (owner, 2026-11-12): while Sales holds the version — until they reply, Operations flags
+  // it again, the approver passes it on, or an approved revision replaces it.
   const salesReturn = salesReturnStage({
     live: operationsSplit.live,
-    sent: operationsSent,
-    answer: operationsSplit.live ? latestHandoffAnswer(activity, operationsSplit.live.id) : null,
+    holder: chainHolder,
     pendingRevision: piHistory.pending !== null,
   })
+  // THE SALESPERSON'S REPLY, waiting on the approver: still flagged, held by the approver, answered after the
+  // objection. A reply changes nothing in the PI, and the approver is told so.
+  const operationsReply = chainHolder === 'coordinator' && operationsView?.kind === 'recorded'
+    && operationsView.status === 'clarification_needed' ? operationsView.response : null
+  // The box under the strip's text: the approver's comment while Sales holds it, the reply while the approver
+  // does, the approver's note once it is passed on; else the earlier send-back line.
+  const operationsChainBox = chainHolder === 'coordinator' && operationsReply
+    ? {
+        head: `${operationsReply.by ?? 'The salesperson'} replied${operationsReply.at ? ` · ${operationsReply.at}` : ''}${
+          piHistory.pending ? '' : ` · PI unchanged: still V${operationsSplit.live?.version_number ?? ''}`}`,
+        comment: operationsReply.text,
+      }
+    : chainHolder === 'operations' && operationsForwarded?.note
+      ? {
+          head: `${operationsForwarded.by ?? 'The approver'} passed it to Operations · ${fmtDateTime(operationsForwarded.atIso)}`,
+          comment: operationsForwarded.note,
+        }
+      : operationsSentLine
   /**
    * WHETHER TO DRAW THE UPDATE CONTROL.
    *
@@ -3052,8 +3112,10 @@ export default function OrderDetailPage() {
       ? {
           versionNumber: operationsView.versionNumber, status: operationsView.status, unassigned: operationsView.unassigned,
           reasonLine: operationsClarificationLine,
-          sentBack: operationsSentLine,
+          sentBack: operationsChainBox,
           returned: salesReturn,
+          replied: !!operationsReply,
+          round: chainRound,
         }
       : null,
     alignmentPredatesVersion: operationsView?.kind === 'recorded' && operationsView.alignmentWarning
@@ -3086,6 +3148,7 @@ export default function OrderDetailPage() {
   // notification: remarks only, same PI version, back to the reviewer.
   const respondOffered = operationsReviewOpen && canRespondToHandoff({
     handoff: splitOperationsHandoffs(handoffs).live,
+    holder: chainHolder,
     orderStatus: order.status,
     mayRespond: mayProposeRevision,
     viewingAs: !!viewAsUserId,
@@ -3096,6 +3159,16 @@ export default function OrderDetailPage() {
     handoff: splitOperationsHandoffs(handoffs).live,
     orderStatus: order.status,
     maySend: actingAsAdmin || mayDecidePiAsAdmin,
+    viewingAs: !!viewAsUserId,
+  })
+  // THE APPROVER PASSES IT ON TO OPERATIONS (20270718000000), while the approver or Sales holds it. With the
+  // salesperson's reply waiting it forwards that reply (its note is optional); otherwise the approver's own
+  // note is required.
+  const forwardOffered = operationsReviewOpen && canForwardToOperations({
+    handoff: splitOperationsHandoffs(handoffs).live,
+    holder: chainHolder,
+    orderStatus: order.status,
+    mayForward: actingAsAdmin || mayDecidePiAsAdmin,
     viewingAs: !!viewAsUserId,
   })
 
@@ -3474,7 +3547,7 @@ export default function OrderDetailPage() {
         <OrderAttentionBar
           id={operationsReviewOpen ? OPERATIONS_REVIEW_ANCHOR : undefined}
           items={attention}
-          actions={operationsDecisionOffered || respondOffered || sendBackOffered || operationsLockedForSales ? (
+          actions={operationsDecisionOffered || respondOffered || sendBackOffered || forwardOffered || operationsLockedForSales ? (
             <>
               {operationsLockedForSales && (
                 <span className="order-notice-locked" data-locked-for-sales="true">{OPERATIONS_LOCKED_FOR_SALES}</span>
@@ -3501,14 +3574,30 @@ export default function OrderDetailPage() {
                   {RESPOND_BUTTON_LABEL}
                 </button>
               )}
+              {forwardOffered && (
+                <button type="button" className={operationsReply ? 'boe-btn boe-btn-primary' : 'boe-btn'} disabled={handoffBusy}
+                  onClick={() => { setHandoffError(null); setForwardOpen(true) }}>
+                  {operationsReply ? FORWARD_REPLY_BUTTON_LABEL : FORWARD_BUTTON_LABEL}
+                </button>
+              )}
               {sendBackOffered && (
                 <button type="button" className="boe-btn" disabled={handoffBusy}
                   onClick={() => { setHandoffError(null); setSendBackOpen(true) }}>
-                  {operationsSent ? SEND_BACK_AGAIN_LABEL : SEND_BACK_BUTTON_LABEL}
+                  {operationsSent && chainHolder === 'sales' ? SEND_BACK_AGAIN_LABEL : SEND_BACK_BUTTON_LABEL}
                 </button>
               )}
             </>
           ) : undefined}
+        />
+
+        {/* THE REVIEW THREAD (20270718000000): who holds the PI now and every hop of the loop, by round. */}
+        <PiReviewThread
+          entries={reviewThread.entries}
+          rounds={reviewThread.rounds}
+          holder={chainHolder}
+          holderSince={reviewThread.entries.length > 0 ? fmtDateTime(reviewThread.entries[reviewThread.entries.length - 1].atIso) : null}
+          formatWhen={fmtDateTime}
+          defaultOpen={chainHolder !== null}
         />
 
         <OrderStatusStrip
@@ -4231,6 +4320,18 @@ export default function OrderDetailPage() {
           failure={handoffError}
           onClose={() => { if (!handoffBusy) setSendBackOpen(false) }}
           onConfirm={comment => sendBackToSales(comment)}
+        />
+      )}
+      {forwardOpen && operationsView?.kind === 'recorded' && (
+        <ForwardToOperationsModal
+          orderNumber={order.display_number}
+          versionLabel={operationsView.versionLabel}
+          reply={operationsReply?.text ?? null}
+          replyBy={operationsReply?.by ?? null}
+          saving={handoffBusy}
+          failure={handoffError}
+          onClose={() => { if (!handoffBusy) setForwardOpen(false) }}
+          onConfirm={note => forwardToOperations(note)}
         />
       )}
       {recoverOpen && operationsView?.kind === 'recorded' && (

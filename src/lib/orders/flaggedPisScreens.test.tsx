@@ -75,7 +75,7 @@ describe('the strip on the other Orders dashboards', () => {
   test('one line per PI: Order, client, who flagged it, the wait, the reason, and a button to the Order', () => {
     const out = html(createElement(FlaggedPiStripView, { state: { kind: 'ready', rows: [flagged()] } }))
     assert.match(out, /Operations flagged 1 PI</)
-    assert.match(out, /Respond and resubmit/)
+    assert.match(out, /reply to the approver/)
     assert.match(out, />546</)
     assert.match(out, /Qavaali/)
     assert.match(out, /Flagged by Nitish Bansal/)

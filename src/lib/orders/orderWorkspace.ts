@@ -108,6 +108,10 @@ export type OrderAttentionInput = {
     sentBack?: { head: string; comment: string } | null
     /** The PI was sent back to Sales and is still with them (salesReturnStage); the item then says so. */
     returned?: 'with_sales' | 'resubmitted' | null
+    /** Sales replied to the approver's send-back and the approver has not passed it on yet (20270718000000). */
+    replied?: boolean
+    /** How many times Operations has flagged this version; said from the second on, so a loop is seen. */
+    round?: number
   } | null
   /** Production was aligned before this PI version was approved. */
   alignmentPredatesVersion?: number | null
@@ -216,19 +220,22 @@ export function orderAttentionItems(input: OrderAttentionInput): OrderAttentionI
     if (r.unassigned) {
       items.push({ key: 'operations_unassigned', label: 'No operations reviewer assigned', tone: 'amber' })
     }
+    const round = r.round && r.round >= 2 ? ` · Round ${r.round}` : ''
     items.push({
       key: 'operations_review',
-      label: r.returned
+      label: (r.returned
         ? SALES_RETURN_TITLE[r.returned](r.versionNumber)
         : r.status === 'clarification_needed'
           ? `PI V${r.versionNumber} flagged by operations: clarification needed`
-          : `PI V${r.versionNumber} awaiting operations review`,
+          : `PI V${r.versionNumber} awaiting operations review`) + round,
       tone: r.returned ? 'amber' : r.status === 'clarification_needed' ? 'red' : 'amber',
-      title: r.returned
+      title: (r.returned
         ? SALES_RETURN_TITLE[r.returned](r.versionNumber)
         : r.status === 'clarification_needed'
-          ? `PI V${r.versionNumber} flagged by operations`
-          : `PI V${r.versionNumber} awaiting operations review`,
+          ? (r.replied
+            ? `PI V${r.versionNumber} flagged by operations: Sales replied, waiting for the approver`
+            : `PI V${r.versionNumber} flagged by operations`)
+          : `PI V${r.versionNumber} awaiting operations review`) + round,
       // With Sales, what they must do comes first; Operations' reason stays after it.
       detail: [
         r.returned ? SALES_RETURN_INSTRUCTION[r.returned] : null,

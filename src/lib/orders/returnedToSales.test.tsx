@@ -18,22 +18,21 @@ import { RETURNED_TO_SALES_LABEL, isReturnedToSales, readFlaggedPis } from './fl
 
 const FLAGGED_AT = '2026-11-12T11:19:47Z'
 const SENT_AT = '2026-11-12T12:34:32Z'
-const live = { status: 'clarification_needed' as const, superseded_at: null, clarification_at: FLAGGED_AT }
+const live = { status: 'clarification_needed' as const, superseded_at: null }
 const stage = (over: Partial<Parameters<typeof salesReturnStage>[0]> = {}) =>
-  salesReturnStage({ live, sent: { atIso: SENT_AT }, answer: null, pendingRevision: false, ...over })
+  salesReturnStage({ live, holder: 'sales', pendingRevision: false, ...over })
 
 describe('the status a send-back puts the PI in', () => {
   test('sent back after Operations flagged it: with Sales; a revised PI waiting for approval: resubmitted', () => {
     assert.equal(stage(), 'with_sales')
     assert.equal(stage({ pendingRevision: true }), 'resubmitted')
-    assert.equal(stage({ live: { ...live, status: 'awaiting', clarification_at: null } }), 'with_sales', 'sent back before Operations decided')
+    assert.equal(stage({ live: { ...live, status: 'awaiting' } }), 'with_sales', 'sent back before Operations decided')
   })
 
-  test('it ends by itself: nothing sent, Operations flagged again since, the owner answered Operations since, accepted, replaced', () => {
-    assert.equal(stage({ sent: null }), null)
-    assert.equal(stage({ live: { ...live, clarification_at: '2026-11-12T13:00:00Z' } }), null)
-    assert.equal(stage({ answer: { atIso: '2026-11-12T13:00:00Z' } }), null)
-    assert.equal(stage({ answer: { atIso: '2026-11-12T12:00:00Z' } }), 'with_sales', 'an answer older than the send-back does not end it')
+  test('it ends by itself: somebody else holds it (the approver after a reply or a flag, Operations after a pass-on), accepted, replaced', () => {
+    assert.equal(stage({ holder: 'coordinator' }), null)
+    assert.equal(stage({ holder: 'operations' }), null)
+    assert.equal(stage({ holder: null }), null)
     assert.equal(stage({ live: { ...live, status: 'accepted' } }), null)
     assert.equal(stage({ live: { ...live, superseded_at: '2026-11-13T00:00:00Z' } }), null)
     assert.equal(stage({ live: null }), null)
@@ -50,7 +49,7 @@ describe('the status a send-back puts the PI in', () => {
     const withSales = item('with_sales')
     assert.equal(withSales?.title, 'PI V1 returned to Sales')
     assert.equal(withSales?.tone, 'amber')
-    assert.match(withSales?.detail ?? '', /^The approved PI cannot be edited in place\. The salesperson makes the requested changes with Edit PI and resubmits.* Price too low\.$/)
+    assert.match(withSales?.detail ?? '', /^The approved PI cannot be edited in place\. The salesperson replies to the approver, or makes the requested changes with Edit PI and resubmits.* Price too low\.$/)
     assert.equal(item('resubmitted')?.title, 'PI V1 returned to Sales: revised PI waiting for approval')
     assert.equal(item(null)?.title, 'PI V1 flagged by operations')
     assert.equal(item(null)?.tone, 'red')
@@ -102,6 +101,6 @@ describe('Operations is locked out while the PI is with Sales', () => {
 
   test('the lock ends with the return: the decision is offered again once salesReturnStage is null', () => {
     assert.equal(stage({ live: { ...live, superseded_at: '2026-11-13T00:00:00Z' } }), null, 'revised PI approved')
-    assert.equal(stage({ answer: { atIso: '2026-11-12T13:00:00Z' } }), null, 'answered Operations')
+    assert.equal(stage({ holder: 'coordinator' }), null, 'the salesperson replied: the approver holds it')
   })
 })

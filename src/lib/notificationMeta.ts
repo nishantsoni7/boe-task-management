@@ -477,6 +477,10 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
     if (type === 'order_operations_review_decided' && /sent PI V\d+ back to you/i.test(n.title ?? '')) {
       badge = { label: 'Returned to Sales', color: colors.amber, bg: colors.amberTint }
     }
+    // The salesperson's reply to that send-back, addressed to the approver (20270718000000): it waits on them.
+    if (type === 'order_operations_review_decided' && /replied on PI V\d+/i.test(n.title ?? '')) {
+      badge = { label: 'Sales replied', color: colors.amber, bg: colors.amberTint }
+    }
     // AN ORDER UPDATE'S entity_id IS THE CONFIRMED ORDER, so it opens the Order
     // itself — the same destination order_converted has always used, and the
     // page whose Activity trail explains what the sentence said. Opening it is

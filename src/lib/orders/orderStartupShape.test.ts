@@ -405,12 +405,14 @@ describe('no Order screen waits more than it must', () => {
       // by useOrderLineFlags (its own file, nothing awaits it), so the startup path is unchanged.
       // DETAIL 46 -> 47 (20270619000000): send_order_handoff_to_sales, the approver's (or an Admin's)
       // comment to the salesperson — a SAVE on a click, never on the startup path.
+      // DETAIL 47 -> 48 (20270718000000): forward_order_handoff_to_operations, the approver passing the PI
+      // on to Operations — likewise a SAVE on a click, never on the startup path.
       // GUARD 2 -> 0 and DASHBOARD 7 -> 5 (2026-11-12, owner: "remove the duplicate requests"): the
       // guard's role read and resolve_permission, and the dashboard's profile read and
       // resolve_effective_permissions, were the same answers the Orders frame's permission context
       // fetched again. All three now read that one context (resolve_effective_permissions_for_user),
       // so these four reads are gone, not moved; the dashboard's own data reads are unchanged.
-      [GUARD]: 0, [DASHBOARD]: 5, [ALL]: 8, [DETAIL]: 47,
+      [GUARD]: 0, [DASHBOARD]: 5, [ALL]: 8, [DETAIL]: 48,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times

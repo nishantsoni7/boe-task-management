@@ -8,7 +8,7 @@
 // THE FOUR STATES, newest step first. They are the Order page's own attention rules, read for the whole
 // list instead of one Order (orderWorkspace.ts / operationsHandoff.ts):
 //   1. a revised PI waits for the approver              order_pi_versions.status = 'pending'
-//   2. the approver sent the PI back to the salesperson salesReturnStage (loadOrdersWithSales)
+//   2. the approver sent the PI back to the salesperson salesReturnStage (ordersWithSales: the stored holder)
 //   3. Operations could not accept it ("asked for changes")  live handoff 'clarification_needed'
 //   4. the revised PI waits for Operations               live handoff 'awaiting'
 // "A change" means version 2 or later: every new Order starts with V1 awaiting Operations, and that is
@@ -20,7 +20,7 @@
 // than none.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { QUEUE_HANDOFF_COLUMNS, loadOrdersWithSales, type QueueHandoff } from './operationsHandoff'
+import { QUEUE_HANDOFF_COLUMNS, ordersWithSales, type QueueHandoff } from './operationsHandoff'
 
 export type PiChangeStage =
   | 'awaiting_approval'
@@ -110,7 +110,7 @@ export async function loadPiChangeMarkers(supabase: SupabaseClient): Promise<Map
     return buildPiChangeMarkers({
       pendingRevisionOrderIds: ((pending.data ?? []) as { order_id: string }[]).map(r => r.order_id),
       handoffs,
-      withSales: await loadOrdersWithSales(supabase, handoffs),
+      withSales: ordersWithSales(handoffs),
     })
   } catch {
     return new Map()
