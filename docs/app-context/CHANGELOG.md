@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-14 — Lead popup, left side: a next-step banner and one list, "B + C" (PR number stamped when it is opened; not merged) · no SQL
+## 2026-11-14 — Lead popup, left side: a next-step banner and one list, "B + C" (PR #793, open, not merged) · no SQL
 - **Owner ask (14 Nov).** A review of the live left side, then a choice from four clickable previews: B's next-step banner with C's single list; "Yes, plan B + C", "Approve", and "Looks right" on the real render.
 - **Built.** A next-step banner under the name: the follow-up in words (red with an alert icon when late, "11 days late · No contact yet"), with Call, WhatsApp and Change date in it; Call and WhatsApp left the name's row. "Held by" moved under the name; "Stuck" moved into the Board status button; the selected Hot / Warm / Cold is charcoal. The Requirement block, the two tiles and Client details became one list, "About this client", with one Edit details button showing "N not set" and a `mailto:` email. `nextStepOf` (`lib/salesLeads/board.ts`) says what `dueOf` says, with the day counts. Dossier rule 39.
 - **Measured** with the real component at the owner's window (left side 538 px): the owner's late lead 497 to 486, a full lead 517 to 530, a dead lead 539 to 444, a read-only lead 566 (scrolled) to 510; a three-line name 540 to 552 scrolls, as it did. A first build overflowed the full lead (554) and was tightened.
