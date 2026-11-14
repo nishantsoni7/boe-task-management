@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `111f4ef6` — Quotations: Import brings a BOE PI's price, customization and representative picture (no SQL) (#773)
-- Commits on this branch: 1334
+- Commit: `4891ae98` — Docs: stamp Quotations Import of a PI (#773) as merged 111f4ef6, deployed 13:28 IST (no SQL) (#774)
+- Commits on this branch: 1335
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 209
 - Migrations: 457 (first `20260530_create_positions.sql`, latest `20270716000000_sales_board_summary.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1032   Enums: 0
-- Test files: 842   Next.js 16.2.6, React 19.2.4
+- Test files: 843   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `4891ae98` 2026-11-14 Docs: stamp Quotations Import of a PI (#773) as merged 111f4ef6, deployed 13:28 IST (no SQL) (#774)
 - `111f4ef6` 2026-11-14 Quotations: Import brings a BOE PI's price, customization and representative picture (no SQL) (#773)
 - `2adad5f7` 2026-11-14 Docs: stamp the BOE One loader (#770) as merged 3dd0cc93, deployed 12:38 IST (no SQL) (#772)
 - `3dd0cc93` 2026-11-14 Platform: a slow wait shows the BOE One loader over the whole screen (no SQL) (#770)
@@ -38,7 +39,6 @@
 - `a4a53022` 2026-11-13 Docs: stamp #751 (Board status dropdown, project value and timeline gates) as merged 6417fe89, migration 20270711000000 applied (no SQL) (#752)
 - `6417fe89` 2026-11-13 Sales: Board status as a dropdown; moves ask for the project value and the expected timeline, never the quantity; a round focus border (migration 20270711000000) (#751)
 - `0f5b7f63` 2026-11-13 Docs: stamp #749 (Visit / Meeting, ClickUp move, Call back) as merged b9b552f7, migration 20270710000000 applied (no SQL) (#750)
-- `b9b552f7` 2026-11-13 Sales: Visit / Meeting stage and the owner's stage names; ClickUp Important Bulk / Bulk leads to Potential Clients; Call back; popup left side redesigned (migration 20270710000000) (#749)
 
 ## Pages by top-level area
 
@@ -162,6 +162,7 @@
 - `src/lib/notifications` — 7 source, 23 test
 - `src/lib/orders` — 109 source, 169 test
 - `src/lib/payroll` — 36 source, 35 test
+- `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/pricing` — 9 source, 5 test
