@@ -4,6 +4,7 @@
 import { initials, statusBadgeClass } from '@/lib/ui'
 import type { TaskStatus } from '@/lib/types'
 import { colors } from '@/lib/tokens'
+import { BoeOneLoader } from './BoeOneLoader'
 
 // ─── Avatar ───────────────────────────────────────────────────────────────────
 type AvatarProps = {
@@ -97,13 +98,11 @@ export function EmptyState({ message, hint }: EmptyStateProps) {
 // ─── LoadingScreen ────────────────────────────────────────────────────────────
 type LoadingScreenProps = {
   message?: string
+  /** The rotating one-liners under the logo. Off for a screen that is not a wait. */
+  cheer?: boolean
 }
 
-export function LoadingScreen({ message = 'Loading...' }: LoadingScreenProps) {
-  return (
-    <div className="boe-loading">
-      <div className="boe-loading-spinner" />
-      <p>{message}</p>
-    </div>
-  )
+// The full-screen BOE One loader. It fades in only if the wait is real; see BoeOneLoader.
+export function LoadingScreen({ message = 'Loading...', cheer = true }: LoadingScreenProps) {
+  return <BoeOneLoader message={message} cheer={cheer} />
 }

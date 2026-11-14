@@ -1357,7 +1357,7 @@ export default function TaskDetailPage() {
       </div>
     )
   }
-  if (!task)   return <LoadingScreen message="Task not found" />
+  if (!task)   return <LoadingScreen message="Task not found" cheer={false} />
 
   const isAssignee   = task.assigned_to === currentUserId
   const isCreator    = task.created_by === currentUserId
