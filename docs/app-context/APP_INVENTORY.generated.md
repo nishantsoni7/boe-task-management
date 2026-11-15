@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `96819932` — Docs: stamp #821 (the six Control Center screens with real routes) as merged 826ea9c6, deployed 19:15 IST, verified live (no SQL)
-- Commits on this branch: 1383
+- Commit: `a5edecfd` — Docs: regenerate the app inventory
+- Commits on this branch: 1384
 - Pages (`page.tsx`): 204   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
-- Test files: 863   Next.js 16.2.6, React 19.2.4
+- Test files: 864   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `a5edecfd` 2026-11-15 Docs: regenerate the app inventory
 - `96819932` 2026-11-15 Docs: stamp #821 (the six Control Center screens with real routes) as merged 826ea9c6, deployed 19:15 IST, verified live (no SQL)
 - `826ea9c6` 2026-11-15 Control Center step 2: the six ?tab= screens get real routes, old addresses redirect (no SQL) (#821)
 - `8bcc1aa3` 2026-11-15 Pricing: heights alone are not a footprint, and a labelled size in feet is read (no SQL) (#822)
@@ -38,7 +39,6 @@
 - `cc40fd5d` 2026-11-15 Docs: stamp page speed part 9 (#801) as merged 90c60493, deployed 11:13 IST, verified live (no SQL) (#802)
 - `90c60493` 2026-11-15 Page speed, part 9: the other Orders pages reuse the guard's profile and permissions (no SQL) (#801)
 - `a10410c5` 2026-11-15 Docs: stamp the premium document layout fixes (#787) as merged 80091824, deployed 09:28 IST, verified live (no SQL) (#797)
-- `e6663b40` 2026-11-15 Phones: Team Today no longer scrolls sideways, the Access page fits, Lead Master's Auto-allot switch wraps (#799)
 
 ## Pages by top-level area
 
@@ -167,6 +167,7 @@
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/pricing` — 9 source, 6 test
 - `src/lib/push` — 3 source, 1 test
+- `src/lib/queryPersist` — 1 source, 1 test
 - `src/lib/quotations` — 16 source, 10 test
 - `src/lib/salesLeads` — 15 source, 15 test
 - `src/lib/samples` — 1 source, 1 test

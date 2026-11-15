@@ -50,8 +50,10 @@ import type { EffectivePermission } from '@/lib/permissions/types'
 // employee's real screen.
 
 export type DisplaySubject = {
-  /** False while either identity is still resolving. Render no access decision on it. */
+  /** False while either identity is still resolving, or all there is is a saved copy. Render no access decision on it. */
   ready: boolean
+  /** True once there is any answer, saved or fresh (never while previewing). For PAINTING only: never decide on it. */
+  displayReady: boolean
 
   // ── Authenticated actor ────────────────────────────────────────────────────
   /** The signed-in user. Null once ready means no session. */
@@ -90,6 +92,7 @@ export function useDisplaySubject(): DisplaySubject {
   const { viewAsUserId } = useViewAs()
   const {
     ready: actorReady,
+    displayReady: actorDisplayReady,
     userId: actorUserId,
     profile: actorProfile,
     role: actorRole,
@@ -122,6 +125,7 @@ export function useDisplaySubject(): DisplaySubject {
   if (!previewing) {
     return {
       ready: actorReady,
+      displayReady: actorDisplayReady,
       actorUserId,
       actorRole,
       actorProfile,
@@ -147,6 +151,8 @@ export function useDisplaySubject(): DisplaySubject {
 
   return {
     ready: subjectReady,
+    // While previewing somebody else nothing is painted from a saved copy: the subject comes from the server.
+    displayReady: subjectReady,
     actorUserId,
     actorRole,
     actorProfile,

@@ -12,6 +12,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/client'
 import { clearPersistedUnreadCounts } from '@/lib/notificationCountCache'
+import { createPersister } from '@/lib/queryPersist/persistedCache'
 import { noteDocumentEntry } from '@/lib/navigation/appHistory'
 
 // Loaded on demand and never on the server: it is admin-only and must not weigh
@@ -101,6 +102,7 @@ function AuthIdentityBoundary({ children }: { children: ReactNode }) {
   useEffect(() => {
     const supabase = createClient()
     let cancelled = false
+    const persister = createPersister(queryClient)
 
     // Seed from the stored session (getSession is a LOCAL read — no request) so
     // that if the very first event we receive is somebody else signing in, we
@@ -109,9 +111,14 @@ function AuthIdentityBoundary({ children }: { children: ReactNode }) {
     void supabase.auth
       .getSession()
       .then((result: { data: { session: Session | null } }) => {
-        if (!cancelled && lastUserId.current === undefined) {
-          lastUserId.current = result.data.session?.user?.id ?? null
-        }
+        if (cancelled) return
+        const signedInId = result.data.session?.user?.id ?? null
+        if (lastUserId.current === undefined) lastUserId.current = signedInId
+        // THE SAVED COPY (2026-11-15, persisted cache): put it back for THIS person only (it is wiped if it
+        // belongs to anybody else, is older than 12 hours, or cannot be read), then keep it current. With nobody
+        // signed in there is no copy worth keeping.
+        if (signedInId) persister.attach(signedInId)
+        else persister.wipe()
       })
 
     // Not destructured: the browser client is created without generics, so this
@@ -131,6 +138,9 @@ function AuthIdentityBoundary({ children }: { children: ReactNode }) {
         // carry a user id and so could never be READ for somebody else, but on
         // a shared device there is no reason to keep them at all.
         clearPersistedUnreadCounts()
+        // And the saved copy of their screens (src/lib/queryPersist/persistedCache.ts).
+        persister.detach()
+        persister.wipe()
         return
       }
 
@@ -142,6 +152,7 @@ function AuthIdentityBoundary({ children }: { children: ReactNode }) {
       // the identity; there is no earlier user whose data could be lingering.
       if (lastUserId.current === undefined) {
         lastUserId.current = nextUserId
+        if (nextUserId) persister.attach(nextUserId, { restore: false })
         return
       }
 
@@ -181,11 +192,17 @@ function AuthIdentityBoundary({ children }: { children: ReactNode }) {
       lastUserId.current = nextUserId
       queryClient.clear()
       clearPersistedUnreadCounts()
+      // The saved copy belonged to whoever just left: wipe it, then start saving for the new person (nothing
+      // of theirs to restore yet).
+      persister.detach()
+      persister.wipe()
+      if (nextUserId) persister.attach(nextUserId, { restore: false })
     })
 
     return () => {
       cancelled = true
       listener.data.subscription.unsubscribe()
+      persister.detach()
     }
   }, [queryClient])
 

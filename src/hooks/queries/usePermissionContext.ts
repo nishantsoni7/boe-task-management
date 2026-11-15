@@ -78,10 +78,15 @@ const PROFILE_COLUMNS = 'id, full_name, email, phone, role, team, is_active, cre
 export const PERMISSION_STALE_MS = 30_000
 export const PERMISSION_GC_MS = 5 * 60 * 1000
 
+/** When this page session began: an answer older than this came from the saved copy, not from this visit. */
+const PAGE_STARTED_AT = Date.now()
+
 export type PermissionContext = {
-  /** False while either half is still resolving. Never render an access
-   *  decision — grant OR denial — while this is false. */
+  /** False while either half is still resolving, or while all there is is a SAVED copy from an earlier visit.
+   *  Never render an access decision — grant OR denial — while this is false. */
   ready: boolean
+  /** True once there is ANY answer, saved or fresh. For painting only (the launcher's cards): never decide on it. */
+  displayReady: boolean
   /** The SIGNED-IN user. Null once ready means no session: send them to /login. */
   userId: string | null
   /** The signed-in user's own profile row. Null if the read failed. */
@@ -130,7 +135,7 @@ export function usePermissionContext(): PermissionContext {
   const { data: userId, isPending: idPending } = useSignedInUserId()
   const qc = useQueryClient()
 
-  const { data, isPending: contextPending } = useQuery({
+  const { data, isPending: contextPending, dataUpdatedAt } = useQuery({
     // Scoped by user id: user B cannot address user A's entry even before the
     // listener in Providers has cleared it. Prefix mirrored in Providers.tsx.
     queryKey: ['permission-context', userId ?? null],
@@ -208,8 +213,15 @@ export function usePermissionContext(): PermissionContext {
 
   const profile = data?.profile ?? null
 
+  // A SAVED COPY IS FOR PAINTING, NEVER FOR DECIDING (2026-11-15, persisted cache). An answer put back from the
+  // device carries the time it was fetched in an EARLIER visit, so it is older than this page session. `ready`
+  // (every guard reads it) stays false until an answer fetched in THIS session lands; `displayReady` is true as soon
+  // as there is any answer, saved or fresh, and is what the launcher uses to draw its cards at once.
+  const savedOnly = data !== undefined && dataUpdatedAt < PAGE_STARTED_AT
+
   return {
-    ready: !idPending && !contextPending,
+    ready: !idPending && !contextPending && !savedOnly,
+    displayReady: !idPending && data !== undefined,
     userId: userId ?? null,
     profile,
     role: profile?.role ?? null,
