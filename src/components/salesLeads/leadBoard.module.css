@@ -139,10 +139,18 @@
 .exitOver { background: #FCEEEF; border-style: solid; }
 
 /* ── The lead popup ─────────────────────────────────────────────────── */
-/* In the middle of the page (owner, 2026-11-13): the client on the left, updates and activity on the right. */
+/* In the middle of the page (owner, 2026-11-13): the client on the left, updates and activity on the right. Laid out again on
+   2026-11-15 on the lines of Quotation Details (owner, after a clickable preview: "neat and easy to scan"): a status strip across
+   the top (what you act on), then two cards, the client and the activity. Capital labels over values, thin lines, no boxes inside
+   boxes. Sizes are variables set on .modal (see the end of this file): a phone's larger ones by default, a screen's growing with
+   the height of the window. */
 .scrim { position: fixed; inset: 0; background: rgba(48, 53, 54, 0.45); z-index: 60; }
-.modal { position: fixed; z-index: 61; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(1180px, calc(100vw - 48px)); height: min(800px, calc(100vh - 48px)); background: #fff; border-radius: 16px; box-shadow: var(--boe-shadow-dialog); display: flex; flex-direction: column; overflow: hidden; outline: none; font-size: 13px; line-height: 1.45; color: #303536; }
-.mBar { flex: 0 0 auto; height: 54px; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 14px; border-bottom: 1px solid #ECE7E0; }
+.modal {
+  --g: 12px; --sp: 14px; --padY: 16px; --padX: 16px; --cg: 14px; --name: 21px; --ctl: 48px; --btn: 46px; --stripY: 13px; --fgap: 14px;
+  position: fixed; z-index: 61; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(1180px, calc(100vw - 48px)); height: min(800px, calc(100vh - 48px));
+  background: #F7F5F1; border-radius: 16px; box-shadow: var(--boe-shadow-dialog); display: flex; flex-direction: column; overflow: hidden; outline: none; font-size: 13px; line-height: 1.45; color: #303536;
+}
+.mBar { flex: 0 0 auto; height: 54px; display: flex; align-items: center; gap: 14px; padding: 0 12px 0 14px; background: #fff; border-bottom: 1px solid #E4DED7; }
 .mNav { display: flex; align-items: center; gap: 2px; min-width: 0; }
 .mPos { margin-left: 8px; font-size: 12.5px; color: #686D6C; white-space: nowrap; }
 .mPos b { color: #303536; font-weight: 600; }
@@ -159,123 +167,125 @@
 .mTabs button[aria-selected="true"] { color: #303536; border-bottom-color: #B9472E; }
 .mCount { display: inline-block; margin-left: 6px; min-width: 20px; padding: 0 6px; border-radius: 999px; background: #F1EEE9; font-size: 12px; }
 .mLoading { flex: 1; padding: 24px; color: #686D6C; }
-.mBody { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(380px, 44%) minmax(0, 1fr); }
+/* The strip, then the two cards. The page does not scroll: each card is its own scroller. */
+.mBody { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; gap: var(--g); padding: var(--g) 16px calc(var(--g) + 2px); }
+.mCols { flex: 1 1 0; min-height: 0; display: grid; grid-template-columns: minmax(380px, 46%) minmax(0, 1fr); gap: 12px; }
 .mRel { position: relative; }
 .mNone { color: #686D6C; font-size: 12.5px; font-weight: 400; margin: 0; }
-.mH3 { margin: 0; font: 600 14px var(--boe-font-heading); color: #303536; }
+.mH3 { margin: 0; font: 700 16px var(--boe-font-heading); letter-spacing: -0.01em; color: #303536; }
+/* The label over every value (the same as Quotation Details): 12px / 700 / capitals. */
+.eyebrow { font: 700 12px/1.2 var(--boe-font-body); letter-spacing: .09em; text-transform: uppercase; color: #686D6C; }
 
-/* Left: who, where it stands, what they want */
-.mLeft { min-height: 0; overflow-y: auto; padding: 20px 24px 24px; display: flex; flex-direction: column; gap: 20px; scrollbar-width: thin; }
-.mWho { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
-.mWhoText { min-width: 0; flex: 1; }
-.mName { margin: 0; font: 700 24px/1.2 var(--boe-font-heading); letter-spacing: -0.015em; color: #303536; overflow-wrap: anywhere; }
-.metaRed { color: #A12438; font-weight: 600; }
-.mWa { flex: 0 0 auto; height: 38px; padding: 0 13px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; font: 600 13px var(--boe-font-body); color: #303536; cursor: pointer; }
-.mWa:hover { background: #FAF8F5; }
-.mWa svg { width: 16px; height: 16px; color: #2F7D4F; }
-.mPerson { display: inline-flex; align-items: center; gap: 8px; font-weight: 500; }
-.mAvSm { width: 24px; height: 24px; border-radius: 50%; background: #F8EAE4; color: #963B27; display: inline-flex; align-items: center; justify-content: center; font: normal 700 10px var(--boe-font-body); }
+/* The status strip: what you act on, in one row. The accent on its left edge says how the follow-up stands: red late, amber today,
+   green on time, grey none; a converted lead is green all over. Words say the same (never colour alone). */
+.strip { --acc: #8F9392; flex: 0 0 auto; position: relative; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, .9fr) minmax(0, 1.3fr) minmax(0, 1.15fr); background: #FBFAF8; border: 1px solid #E4DED7; border-left: 3px solid var(--acc); border-radius: 12px; box-shadow: var(--boe-shadow-panel); }
+.stripOk { --acc: #276247; }
+.stripToday { --acc: #C98A1E; background: #FFFBF0; }
+.stripLate { --acc: #B42332; background: #FBE9EC; }
+.stripWon { --acc: #276247; background: #E8F2EC; }
+.stCell { position: relative; min-width: 0; padding: var(--stripY) 22px; display: flex; flex-direction: column; justify-content: center; gap: 5px; }
+.stCell + .stCell::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 1px; background: rgba(48, 53, 54, .13); }
+.stFollow { flex-direction: row; align-items: center; gap: 13px; padding-left: 16px; }
+.stDisc { width: 38px; height: 38px; flex: 0 0 auto; border-radius: 50%; border: 1px solid #E4DED7; background: #fff; color: #4C5352; display: inline-flex; align-items: center; justify-content: center; }
+.stDisc svg { width: 18px; height: 18px; }
+.stripOk .stDisc, .stripWon .stDisc { color: #276247; border-color: #BCD8C8; }
+.stripToday .stDisc { color: #805B0D; border-color: #E6D2A0; }
+.stripLate .stDisc { color: #B42332; border-color: #E9B9C1; }
+.stText { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.stLab { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.stLab small { font: 500 12px var(--boe-font-body); letter-spacing: 0; text-transform: none; color: #686D6C; white-space: nowrap; }
+.stVal { font: 700 16px/1.25 var(--boe-font-heading); letter-spacing: -0.01em; color: #303536; overflow-wrap: anywhere; }
+.stripLate .stFollow .stVal { color: #6E1F2B; }
+.stripToday .stFollow .stVal { color: #805B0D; }
+.stDim, .stripLate .stFollow .stDim, .stripToday .stFollow .stDim { color: #686D6C; font-weight: 600; }
+.stSub { min-height: 22px; display: flex; flex-wrap: wrap; align-items: center; gap: 0 6px; font-size: 12.5px; color: #686D6C; }
+.stEm { font-weight: 600; }
+.stripLate .stEm { color: #7A2A36; }
+.stripToday .stEm { color: #805B0D; }
+.stDot { color: #B9B2A9; }
+.stripLate .nLink { color: #8E2F1D; }
 
-/* Round 3 (owner, 2026-11-13: "clumsy"): the name and how to reach them, one stage bar, then plain rows. */
-.mPhone { color: #303536; font-weight: 600; font-variant-numeric: tabular-nums; }
-.mDot { color: #CFC8BF; }
-.mStuck { margin-left: 2px; height: 20px; padding: 0 8px; border-radius: 999px; background: #FCEEEF; color: #A12438; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; }
-.mCall { height: 38px; padding: 0 14px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #B9472E; border-radius: 10px; background: #B9472E; color: #fff; font: 600 13px var(--boe-font-body); text-decoration: none; }
-.mCall:hover { background: #A33E27; }
-.mCall svg { width: 15px; height: 15px; }
+/* A link: words and an icon, no box. At least 28px tall (24px is the accessibility minimum), brand ink on white. */
+.nLink { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 4px; border: 0; border-radius: 6px; background: none; color: #963B27; font: 600 12.5px var(--boe-font-body); cursor: pointer; text-decoration: none; text-underline-offset: 3px; }
+.nLink:hover { text-decoration: underline; }
+.nLink svg { width: 14px; height: 14px; flex: 0 0 auto; }
+
 /* The Board status: one dropdown (owner, 2026-11-13, option B). */
-.mStatusBtn { width: 100%; height: 44px; display: flex; align-items: center; gap: 10px; padding: 0 14px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; cursor: pointer; font: 600 14px var(--boe-font-body); color: #303536; text-align: left; }
-.mStatusBtn:hover:not(:disabled) { background: #FAF8F5; border-color: #B9472E; }
-.mStatusBtn:disabled { cursor: default; }
+.mStatusBtn { width: 100%; height: var(--ctl); display: flex; align-items: center; gap: 9px; padding: 0 12px; border: 1px solid #CFC8BF; border-radius: 9px; background: #fff; cursor: pointer; font: 600 13.5px var(--boe-font-body); color: #303536; text-align: left; }
+.mStatusBtn:hover:not(:disabled) { border-color: #B9472E; }
+.mStatusBtn:disabled { cursor: default; background: #FBFAF8; }
 .mStatusBtn[aria-expanded="true"] { border-color: #B9472E; box-shadow: 0 0 0 3px #F8EAE4; }
-.mStatusBtn svg { width: 16px; height: 16px; margin-left: auto; color: #686D6C; }
+.mStatusBtn svg { width: 15px; height: 15px; margin-left: auto; color: #686D6C; }
 /* "Stuck" sits in the button, where it explains the days in the status; the arrow keeps a small gap after it. */
 .mStatusBtn .mStuck { margin-left: auto; }
 .mStatusBtn .mStuck + svg { margin-left: 8px; }
+.mStuck { height: 18px; padding: 0 7px; border-radius: 999px; background: #FCEEEF; color: #A12438; font-size: 11px; font-weight: 600; display: inline-flex; align-items: center; }
 .mDot8 { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
 .mStatusMenu { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 6; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; box-shadow: var(--boe-shadow-float); padding: 6px; }
 .mStatusItem { width: 100%; min-height: 38px; display: flex; align-items: center; gap: 9px; padding: 0 10px; border: 0; background: none; border-radius: 8px; font: 500 13px var(--boe-font-body); color: #303536; cursor: pointer; text-align: left; }
 .mStatusItem:hover { background: #FAF8F5; }
 .mStatusItem[aria-checked="true"] { background: #F8EAE4; color: #963B27; font-weight: 600; }
 .mStatusNow { margin-left: auto; font-size: 11.5px; font-weight: 500; color: #686D6C; }
-.mDeadNote { margin: 8px 0 0; font-size: 12.5px; color: #686D6C; }
-.mSec { display: flex; flex-direction: column; gap: 6px; }
-.mForm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 12px; }
-.mFull { grid-column: 1 / -1; }
-/* The left side, in the order a salesperson uses it (owner, 2026-11-14, after a clickable preview): who and how to reach them;
-   where the lead stands, in one card; what they want and what it is worth; the reference facts. Two text tiers: a 14px / 600
-   section heading and a 12px / 600 capitals field label; values are 14px. */
-.nMeta { margin-top: 6px; display: flex; flex-direction: column; gap: 2px; }
-.nPhoneLine { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 2px; min-height: 28px; }
-/* Call and WhatsApp (owner, 2026-11-15): at the end of the number's row; a full-width row of their own where the row is too narrow. */
-.nReach { margin-left: auto; display: flex; gap: 8px; }
-.nPhoneLine .mPhone { font-size: 14.5px; }
-.nSub { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; font-size: 12.5px; color: #686D6C; }
-.nCopy { height: 28px; margin-left: -2px; padding: 0 6px; border: 0; background: none; border-radius: 8px; color: #686D6C; display: inline-flex; align-items: center; gap: 5px; font: 600 12px var(--boe-font-body); cursor: pointer; }
-.nCopy:hover { background: #F1EEE9; color: #303536; }
-.nCopy svg { width: 15px; height: 15px; }
-.nCopy[data-done="1"] { color: #276247; }
+/* Hot / Warm / Cold: the selected one is charcoal, like "Updates only", so it never looks like the red of a late follow-up. */
+.stHeat { display: flex; height: var(--ctl); border: 1px solid #CFC8BF; border-radius: 9px; background: #fff; overflow: hidden; }
+.stHeat button { flex: 1 1 0; min-width: 0; padding: 0 8px; border: 0; background: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font: 500 13px var(--boe-font-body); color: #4C5352; cursor: pointer; }
+.stHeat button + button { border-left: 1px solid #E4DED7; }
+.stHeat button:hover:not(:disabled) { background: #FAF8F5; }
+.stHeat button:disabled { cursor: default; }
+.stHeat button[aria-pressed="true"] { background: #303536; color: #fff; font-weight: 600; }
 
-.nGroup { display: flex; flex-direction: column; gap: 12px; }
-/* A gap between the groups of the left side: only on a screen, where it grows into spare room (see the end of this file). */
-.nGap { display: none; }
-/* Board status and Hot / Warm / Cold are one quiet row (owner, 2026-11-14, "B + C"): the next-step banner above carries the alarm. */
-.nState { display: flex; flex-direction: column; gap: 12px; }
-.nPair { display: flex; flex-wrap: wrap; gap: 14px 12px; align-items: flex-start; }
-.nPair > .nCell:first-child { flex: 1 1 210px; }
-.nCell { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
-.nKey { margin: 0; display: flex; align-items: baseline; gap: 8px; font: 600 13px var(--boe-font-body); color: #4C5352; }
-.nKey small { font-size: 12.5px; font-weight: 400; color: #686D6C; }
-.nHeatSeg { display: inline-flex; height: 44px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; overflow: hidden; }
-.nHeatSeg button { min-width: 66px; padding: 0 12px; border: 0; background: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font: 500 13px var(--boe-font-body); color: #4C5352; cursor: pointer; }
-.nHeatSeg button + button { border-left: 1px solid #E4DED7; }
-.nHeatSeg button:hover:not(:disabled) { background: #FAF8F5; }
-.nHeatSeg button:disabled { cursor: default; }
-/* The selected one is charcoal, like "Updates only", so it never looks like the red of a late follow-up. */
-.nHeatSeg button[aria-pressed="true"] { background: #303536; color: #fff; font-weight: 600; }
-.nHeld { display: inline-flex; align-items: center; gap: 6px; }
-.nHeld b { color: #303536; font-weight: 600; }
-
-/* The follow-up (owner, 2026-11-14, "B + C"; its own card since 2026-11-15): the date in words, red when it is late, Change date a link at its end. */
-.nNext { border: 1px solid #E4DED7; border-radius: 14px; background: #FBFAF8; padding: 14px 16px; display: flex; align-items: center; gap: 12px; }
-.nNextOver { border-color: #E9B9C1; background: #FBE9EC; }
-.nNextTop { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; }
-.nNextIc { width: 34px; height: 34px; border-radius: 50%; border: 1px solid #E4DED7; background: #fff; color: #4C5352; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
-.nNextOver .nNextIc { border-color: transparent; color: #A12438; }
-.nNextIc svg { width: 18px; height: 18px; }
-.nNextText { flex: 1; min-width: 0; }
-.nNextTitle { margin: 0; font: 700 15px/1.3 var(--boe-font-heading); color: #303536; }
-.nNextOver .nNextTitle { color: #6E1F2B; }
-.nNextSub { margin: 2px 0 0; font-size: 13px; color: #686D6C; }
-.nNextOver .nNextSub { color: #7A2A36; }
-.nNextAct { flex: 0 0 auto; }
-.nNextOver .nLink { color: #8E2F1D; }
-.nNextAct .mPop { left: auto; right: 0; }
-
-.nSec { display: flex; flex-direction: column; gap: 10px; }
-.nHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; }
-.nH { margin: 0; font: 600 14px var(--boe-font-heading); color: #303536; }
-/* About this client (owner, 2026-11-14, "B + C"): the requirement and the facts in one list, one Edit details button. */
-/* A link: words and an icon, no box (owner, 2026-11-15). At least 28px tall (24px is the accessibility minimum), brand ink on white. */
-.nLink { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: #963B27; font: 600 13px var(--boe-font-body); cursor: pointer; text-decoration: none; text-underline-offset: 3px; }
-.nLink:hover { text-decoration: underline; }
-.nLink svg { width: 14px; height: 14px; flex: 0 0 auto; }
-.nTitle { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+/* Left: the client, in one card */
+.mLeft { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--g); scrollbar-width: thin; }
+.client { flex: 1 0 auto; display: flex; flex-direction: column; gap: var(--cg); padding: var(--padY) var(--padX); background: #fff; border: 1px solid #E4DED7; border-radius: 12px; box-shadow: var(--boe-shadow-panel); }
+.cHead { display: flex; align-items: center; gap: 10px; min-height: 26px; }
+.grow { flex: 1; }
 .nMissing { display: inline-flex; align-items: center; gap: 6px; font: 600 12px var(--boe-font-body); color: #805B0D; white-space: nowrap; }
 .nMissing::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #C98A1E; }
-.nProps { margin: 0; border: 1px solid #ECE7E0; border-radius: 12px; background: #fff; overflow: hidden; }
-.nProps > div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 11px 14px; }
-.nProps > div + div { border-top: 1px solid #ECE7E0; }
-.nProps dt { font: 500 13px var(--boe-font-body); color: #686D6C; }
-.nProps dd { margin: 0; font: 500 14px var(--boe-font-body); color: #303536; overflow-wrap: anywhere; }
-.nProps dd.nPre { white-space: pre-wrap; }
-.nProps dd.nNone { color: #686D6C; font-weight: 400; font-size: 13px; }
-.nProps dd small { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: #686D6C; }
+.mName { margin: 0; font: 800 var(--name)/1.25 var(--boe-font-heading); letter-spacing: -0.02em; color: #303536; overflow-wrap: anywhere; text-wrap: balance; }
+.cMeta { margin-top: -4px; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 13px; color: #4C5352; }
+.cWho { display: inline-flex; align-items: center; gap: 7px; }
+.cWho b { color: #963B27; font-weight: 600; }
+.mNobody { color: #686D6C; }
+.mAvSm { width: 22px; height: 22px; border-radius: 50%; background: #F8EAE4; color: #963B27; display: inline-flex; align-items: center; justify-content: center; font: normal 700 9.5px var(--boe-font-body); }
+.cTag { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 6px; background: #F1EEE9; color: #4C5352; font: 500 12px var(--boe-font-body); }
+/* The number you are about to call, with Copy; Call and WhatsApp at the end of the same row. */
+.cReach { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 6px; }
+.mPhone { display: inline-flex; align-items: center; gap: 8px; font: 600 15px var(--boe-font-body); font-variant-numeric: tabular-nums; color: #303536; }
+.mPhone svg { width: 15px; height: 15px; color: #B9472E; }
+.nCopy { height: 28px; padding: 0 7px; border: 0; background: none; border-radius: 8px; color: #686D6C; display: inline-flex; align-items: center; gap: 5px; font: 600 12px var(--boe-font-body); cursor: pointer; }
+.nCopy:hover { background: #F1EEE9; color: #303536; }
+.nCopy svg { width: 14px; height: 14px; }
+.nCopy[data-done="1"] { color: #276247; }
+.nReach { margin-left: auto; display: flex; gap: 8px; }
+.mCall, .mWa { flex: 0 0 auto; height: var(--btn); padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border-radius: 9px; font: 600 13px var(--boe-font-body); white-space: nowrap; cursor: pointer; }
+.mCall { border: 1px solid #B9472E; background: #B9472E; color: #fff; text-decoration: none; }
+.mCall:hover { background: #A33E27; }
+.mWa { border: 1px solid #CFC8BF; background: #fff; color: #303536; }
+.mWa:hover { background: #FAF8F5; }
+.mCall svg, .mWa svg { width: 15px; height: 15px; }
+.mWa svg { color: #2F7D4F; }
+.cSec { display: flex; flex-direction: column; gap: 7px; padding-top: var(--sp); border-top: 1px solid #ECE7E0; }
+.cReq { margin: 0; font-size: 13.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: #303536; }
+.cReq + .cReq { margin-top: 5px; }
+.cNone { margin: 0; font-size: 13px; font-style: italic; color: #686D6C; }
+.cFacts { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--fgap) 22px; }
+.cFact { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.cFull { grid-column: 1 / -1; }
+.cFact dd { margin: 0; font: 600 14px/1.35 var(--boe-font-body); color: #303536; overflow-wrap: anywhere; }
+.cFact dd.cNone { font-weight: 400; font-size: 13px; }
+.cFact dd.cWarn { color: #805B0D; font-style: normal; }
+.cFact dd small { display: block; margin-top: 2px; font: 400 12px/1.35 var(--boe-font-body); font-style: normal; color: #686D6C; }
 .nMail { display: inline-flex; align-items: center; gap: 6px; color: #963B27; text-decoration: none; }
 .nMail:hover { text-decoration: underline; }
 .nMail svg { width: 14px; height: 14px; flex: 0 0 auto; color: #686D6C; }
+.mForm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 14px; }
+.mForm .field { gap: 4px; }
+.mFull { grid-column: 1 / -1; }
+.cSec.detailsEdit { gap: 10px; }
+.readOnly { display: flex; align-items: flex-start; gap: 10px; }
+.readOnly svg { width: 16px; height: 16px; flex: 0 0 auto; margin-top: 1px; color: #686D6C; }
 
-/* The date menu, shared by the follow-up chip and the update box */
+/* The date menu, shared by the follow-up in the strip and the update box */
 .mPop { position: absolute; left: 0; top: calc(100% + 8px); z-index: 5; width: 280px; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; box-shadow: var(--boe-shadow-float); padding: 6px; }
 .mPopItem { width: 100%; min-height: 44px; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border: 0; background: none; border-radius: 8px; text-align: left; cursor: pointer; color: #303536; font: inherit; }
 .mPopItem:hover { background: #FAF8F5; }
@@ -287,57 +297,61 @@
 .mPick { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 4px; padding: 8px; border-top: 1px solid #F1EEE9; font-weight: 600; font-size: 13px; }
 .mPick input { height: 34px; border: 1px solid #CFC8BF; border-radius: 8px; padding: 0 8px; font: 500 13px var(--boe-font-body); color: #303536; }
 
-/* Right: write an update, and everything that happened */
-.mRight { min-height: 0; display: flex; flex-direction: column; background: #F7F5F1; border-left: 1px solid #ECE7E0; }
-.mRHead { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 14px 18px 10px; }
-.mTools { display: flex; align-items: center; gap: 6px; }
+/* Right: write an update, and everything that happened, in the second card. Days are headings, updates are rows with a thin line
+   under them (the Timeline of Quotation Details), not speech bubbles. */
+.mRight { min-height: 0; display: flex; flex-direction: column; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; box-shadow: var(--boe-shadow-panel); overflow: hidden; }
+.mRHead { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid #ECE7E0; }
+.mPill { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: 11px; background: #F1EEE9; color: #4C5352; font: 600 12px var(--boe-font-body); font-variant-numeric: tabular-nums; }
+.mTools { margin-left: auto; display: flex; align-items: center; gap: 6px; }
 .mSeg { display: inline-flex; border: 1px solid #CFC8BF; border-radius: 9px; overflow: hidden; background: #fff; }
-.mSeg button { height: 30px; padding: 0 11px; border: 0; background: none; font: 500 12px var(--boe-font-body); color: #4C5352; cursor: pointer; }
+.mSeg button { height: 30px; padding: 0 12px; border: 0; background: none; font: 500 12.5px var(--boe-font-body); color: #4C5352; cursor: pointer; }
 .mSeg button + button { border-left: 1px solid #E4DED7; }
-.mSeg button[aria-pressed="true"] { background: #303536; color: #fff; }
-.mSearch { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 0 18px 10px; }
+.mSeg button[aria-pressed="true"] { background: #303536; color: #fff; font-weight: 600; }
+.mSearch { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 10px 18px 0; }
 .mSearch input { flex: 1; height: 36px; border: 1px solid #CFC8BF; border-radius: 9px; padding: 0 12px; font: 400 13px var(--boe-font-body); background: #fff; color: #303536; }
-.mCompose { flex: 0 0 auto; margin: 0 18px 12px; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; padding: 10px 12px; }
-.mCompose:focus-within { border-color: #303536; box-shadow: 0 0 0 3px rgba(48, 53, 54, .1); }
-.mCompose textarea { display: block; width: 100%; box-sizing: border-box; border: 0; resize: none; font: 400 13.5px/1.45 var(--boe-font-body); color: #303536; padding: 2px 0; min-height: 44px; background: transparent; }
+.mCompose { flex: 0 0 auto; margin: 14px 18px; background: #FBFAF8; border: 1px solid #E4DED7; border-radius: 12px; position: relative; }
+.mCompose:focus-within { border-color: #303536; box-shadow: 0 0 0 3px rgba(48, 53, 54, .09); background: #fff; }
+.mCompose textarea { display: block; width: 100%; box-sizing: border-box; border: 0; resize: none; font: 400 13.5px/1.5 var(--boe-font-body); color: #303536; padding: 11px 14px 4px; min-height: 52px; background: transparent; }
 /* One rounded border on focus (the box itself), not a square ring around the text area (owner, 2026-11-13). */
 .mCompose textarea:focus, .mCompose textarea:focus-visible { outline: none !important; }
-.mChips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.mChip { height: 28px; padding: 0 10px; border: 1px solid #E4DED7; border-radius: 999px; background: #FAF8F5; font: 500 12px var(--boe-font-body); color: #4C5352; cursor: pointer; }
-.mChip:hover { border-color: #B9472E; color: #963B27; background: #fff; }
+.mChips { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 14px 11px; }
+.mChip { height: 28px; padding: 0 11px; border: 1px solid #E4DED7; border-radius: 999px; background: #fff; font: 500 12px var(--boe-font-body); color: #4C5352; cursor: pointer; }
+.mChip:hover { border-color: #B9472E; color: #963B27; }
 .mChip[aria-pressed="true"] { border-color: #B9472E; background: #F8EAE4; color: #963B27; font-weight: 600; }
-.mHint { margin: 8px 0 0; padding: 6px 9px; border-radius: 7px; background: #FBF1D9; color: #6B4A00; font-size: 12px; }
-.mFoot { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid #F1EEE9; }
+.mHint { margin: 0 14px 10px; padding: 6px 10px; border-radius: 8px; background: #FBF1D9; color: #6B4A00; font-size: 12px; }
+.mFoot { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-top: 1px solid #ECE7E0; }
 .mNext { flex: 1; display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: #4C5352; min-width: 0; flex-wrap: wrap; }
 .mNext > svg { width: 14px; height: 14px; color: #686D6C; flex: 0 0 auto; }
 .mNext b { color: #303536; font-weight: 600; }
 .mNext small { color: #686D6C; font-size: 12px; }
-.mKbd { font-size: 11px; color: #686D6C; white-space: nowrap; }
+.mKbd { font-size: 11.5px; color: #686D6C; white-space: nowrap; }
 .mPost { height: 36px; padding: 0 16px; border: 0; border-radius: 9px; background: #B9472E; color: #fff; font: 600 13px var(--boe-font-body); cursor: pointer; white-space: nowrap; }
 .mPost:hover:not(:disabled) { background: #A33E27; }
 .mPost:disabled { background: #E3D2CC; cursor: not-allowed; }
-.mFeed { flex: 1 1 0; min-height: 0; overflow-y: auto; padding: 4px 18px 22px; display: flex; flex-direction: column; gap: 10px; scrollbar-width: thin; }
-.mDay { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 11.5px; font-weight: 600; color: #686D6C; }
-.mDay::before, .mDay::after { content: ''; flex: 1; height: 1px; background: #E4DED7; }
-.mDay span { padding: 2px 10px; border: 1px solid #E4DED7; border-radius: 999px; background: #fff; }
-.mEntry { display: flex; gap: 10px; align-items: flex-start; }
+.mFeed { flex: 1 1 0; min-height: 0; overflow-y: auto; border-top: 1px solid #ECE7E0; scrollbar-width: thin; }
+.mDay { position: sticky; top: 0; z-index: 2; padding: 7px 18px; background: #FBFAF8; border-bottom: 1px solid #ECE7E0; font: 700 12px var(--boe-font-body); letter-spacing: .09em; text-transform: uppercase; color: #686D6C; }
+.mDay:not(:first-child) { border-top: 1px solid #ECE7E0; }
+.mEntry { display: flex; gap: 12px; align-items: flex-start; padding: 12px 18px; border-bottom: 1px solid #F1EEE9; }
 .mAv { width: 30px; height: 30px; flex: 0 0 auto; border-radius: 50%; background: #F8EAE4; color: #963B27; display: inline-flex; align-items: center; justify-content: center; font: 700 11px var(--boe-font-body); }
-.mBubble { flex: 1; min-width: 0; background: #fff; border: 1px solid #ECE7E0; border-radius: 4px 12px 12px 12px; padding: 9px 12px 10px; }
+.mAvCu { background: #EEECE8; color: #595D5B; font-size: 10.5px; }
+.mBubble { flex: 1; min-width: 0; }
 .mEHead { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .mEHead b { font-size: 13px; font-weight: 600; }
-.mEHead time, .mSys time { font-size: 11.5px; color: #686D6C; white-space: nowrap; }
-.mBubble p { margin: 3px 0 0; font-size: 13.5px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.mEHead time, .mSys time { font-size: 12px; color: #686D6C; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.mBubble p { margin: 2px 0 0; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mBubble mark { background: #FDE9A6; color: inherit; border-radius: 2px; }
 .mTags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
-.mTag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; }
-.mTagDue { background: #F7F5F1; border: 1px solid #E4DED7; color: #4C5352; font-weight: 500; }
+.mTag { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 6px; font-size: 11.5px; font-weight: 600; }
+.mTagDue { background: #fff; border: 1px solid #E4DED7; color: #4C5352; font-weight: 500; }
 .mTagNo { background: #FBF1D9; color: #6B4A00; }
 .mTagQuote { background: #E7EEF8; color: #2A4D80; }
 .mTagPlain { background: #F1EEE9; color: #4C5352; }
-.mSys { display: flex; align-items: center; gap: 10px; padding: 0 2px 0 40px; font-size: 12.5px; color: #4C5352; }
+.mSys { display: flex; align-items: center; gap: 12px; padding: 9px 18px; font-size: 12.5px; color: #4C5352; border-bottom: 1px solid #F1EEE9; }
+.mSys::before { content: ''; flex: 0 0 30px; height: 7px; background: radial-gradient(circle, #B9B2A9 0 3.5px, transparent 4px) center / 7px 7px no-repeat; }
 .mSys span { flex: 1; min-width: 0; }
 .mSys b { font-weight: 600; }
 .mSys small { color: #686D6C; font-size: 12px; }
+.mFeed > .mNone, .mFeed > .linkBtn, .mFeed > .clickup { margin: 12px 18px; }
 
 /* Shared by the popup's form and the small dialogs */
 .go { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -504,23 +518,23 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .modal { left: 0; top: 0; transform: none; width: 100%; height: 100%; border-radius: 0; }
   .mCrumb, .mEsc, .mKbd { display: none; }
   .mBar { justify-content: space-between; }
-  .mTabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid #ECE7E0; flex: 0 0 auto; }
-  .mBody { display: block; overflow: hidden; }
-  .mLeft, .mRight { height: 100%; }
-  .modal[data-tab="details"] .mRight, .modal[data-tab="activity"] .mLeft { display: none; }
-  .mRight { border-left: 0; }
-  .mLeft { padding: 16px 14px 28px; }
+  .mTabs { display: grid; grid-template-columns: 1fr 1fr; background: #fff; border-bottom: 1px solid #ECE7E0; flex: 0 0 auto; }
+  /* Details: the strip and the client scroll together. Activity: its own scroller fills the screen. */
+  .mBody { padding: 0; gap: 0; }
+  .modal[data-tab="details"] .mBody { display: block; overflow-y: auto; }
+  .modal[data-tab="details"] .mCols, .modal[data-tab="activity"] .mCols { display: block; }
+  .modal[data-tab="details"] .mRight, .modal[data-tab="activity"] .strip, .modal[data-tab="activity"] .mLeft { display: none; }
+  .modal[data-tab="activity"] .mRight { height: 100%; }
+  .mRight { border: 0; border-radius: 0; box-shadow: none; }
+  .mRHead .mH3, .mRHead .mPill { display: none; }
+  .mLeft { padding: 12px 12px 28px; overflow: visible; }
   .mForm { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: 8px 0; }
-  .mWho { flex-direction: column; }
-  .mStatusBtn { height: 48px; }
   .mStatusItem { min-height: 44px; }
-  .mCall, .mWa { flex: 1; justify-content: center; height: 46px; }
   .mChip { height: 40px; }
-  .mCompose { margin: 0 12px 10px; }
+  .mCompose { margin: 12px; }
   .mCompose textarea { font-size: 16px; }
   .mRHead, .mSearch { padding-left: 12px; padding-right: 12px; }
   .mSearch input { height: 44px; font-size: 16px; }
-  .mFeed { padding: 4px 12px 22px; }
   .mFoot { flex-wrap: wrap; }
   .mPost { flex: 1 1 100%; height: 46px; }
   .mPop { width: min(300px, calc(100vw - 48px)); }
@@ -531,105 +545,58 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .detailsFoot :global(.boe-btn), .linkBtn { height: 44px; }
 }
 
-/* The left side on a phone: full-width controls, 44px and larger touch targets, the two tiles stacked. */
+/* The strip and the client card on a phone: follow-up and last update side by side, status and temperature each on a row of their
+   own, full-width controls and 44px and larger touch targets. */
 @media (max-width: 767px) {
-  .nNext { padding: 14px 14px 6px; flex-wrap: wrap; row-gap: 0; }
-  .nNextTop { flex: 1 1 100%; }
-  .nNextAct { margin-left: -8px; }
-  .nLink { min-height: 44px; padding: 0 8px; }
-  .nReach { flex: 1 1 100%; margin-left: 0; }
-  .nPair > .nCell { flex: 1 1 100%; }
-  .nHeatSeg { width: 100%; height: 48px; }
-  .nHeatSeg button { flex: 1; }
+  .strip { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); margin: 12px 12px 0; }
+  .stCell { padding: 13px 14px; justify-content: flex-start; }
+  .stFollow { flex-direction: column; align-items: stretch; gap: 5px; }
+  .stDisc, .stDot { display: none; }
+  .stSub { min-height: 0; }
+  .stCell:nth-child(n+3) { grid-column: 1 / -1; border-top: 1px solid rgba(48, 53, 54, .13); }
+  .stCell:nth-child(n+3)::before { display: none; }
+  .stSub .nLink { min-height: 40px; margin-block: -9px; }
+  .cHead .nLink { min-height: 44px; margin-block: -9px; }
+  .stHeat { height: 48px; }
+  .mStatusBtn { height: 48px; }
   .nCopy { height: 44px; padding: 0 10px; }
-  .nProps > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .nReach { flex: 1 1 100%; margin-left: 0; }
+  .nReach > * { flex: 1; height: 46px; }
+  .cFacts { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* The left side on a screen. Compact first (owner, 2026-11-14: "too big overall ... the complete details shown without any vertical
-   scroll bar"), then roomier as the window gets taller (owner, 2026-11-15: "too messy because of less spacing ... use the space at
-   the bottom"). The popup is min(800px, 100vh - 48px) tall, so each size below grows in a straight line with the window's height:
-   its compact value at 640px or less (a laptop: a popup of 592px) and its roomy value at 850px or more (a popup of 800px). Each is
-   written clamp(compact, compact + (100vh - 640px) * (roomy - compact) / 210, roomy). On top of that the two gaps between the
-   groups (.nGap) stretch by up to --gMore each into whatever room the lead leaves, and give it back at once when a long lead
-   needs it, so spacing never makes a lead scroll that fitted. A lead with more than fits still scrolls (the left side keeps
-   overflow-y: auto, rule 37). The phone keeps the larger, finger-sized controls above. */
+/* The popup on a screen. Compact first (owner, 2026-11-14: "the complete details shown without any vertical scroll bar"), then
+   roomier as the window gets taller (owner, 2026-11-15: "use the space at the bottom"). The popup is min(800px, 100vh - 48px) tall,
+   so each size below grows in a straight line with the window's height: its compact value at 640px or less (a laptop: a popup of
+   592px) and its roomy value at 850px or more (a popup of 800px), written
+   clamp(compact, compact + (100vh - 640px) * (roomy - compact) / 210, roomy). The client card stretches to the height of its column,
+   so spare room ends up inside it, under its last row, and a long lead gives it back at once; a lead with more than fits still
+   scrolls (the left column keeps overflow-y: auto). The phone keeps the larger, finger-sized controls above. */
 @media (min-width: 768px) {
-  .mLeft {
-    --padY: clamp(14px, calc(14px + (100vh - 640px) * 0.0476), 24px);
-    --padX: clamp(18px, calc(18px + (100vh - 640px) * 0.0286), 24px);
-    --gGrp: clamp(11px, calc(11px + (100vh - 640px) * 0.0333), 18px);
-    --gMore: 32px;
-    --gIn: clamp(8px, calc(8px + (100vh - 640px) * 0.019), 12px);
-    --gId: clamp(3px, calc(3px + (100vh - 640px) * 0.0095), 5px);
-    --sec: clamp(6px, calc(6px + (100vh - 640px) * 0.019), 10px);
-    --name: clamp(19px, calc(19px + (100vh - 640px) * 0.0143), 22px);
-    --phone: clamp(14px, calc(14px + (100vh - 640px) * 0.0071), 15.5px);
-    --btn: clamp(30px, calc(30px + (100vh - 640px) * 0.0381), 38px);
-    --ctl: clamp(32px, calc(32px + (100vh - 640px) * 0.0286), 38px);
-    --ic: clamp(28px, calc(28px + (100vh - 640px) * 0.0286), 34px);
-    --cardY: clamp(7px, calc(7px + (100vh - 640px) * 0.019), 11px);
-    --rowY: clamp(4px, calc(4px + (100vh - 640px) * 0.031), 10.5px);
-    --rowX: clamp(12px, calc(12px + (100vh - 640px) * 0.019), 16px);
-    --lab: clamp(96px, calc(96px + (100vh - 640px) * 0.0762), 112px);
-    --dd: clamp(13px, calc(13px + (100vh - 640px) * 0.0048), 14px);
-    --dt: clamp(12px, calc(12px + (100vh - 640px) * 0.0048), 13px);
-    padding: var(--padY) var(--padX);
-    gap: 0;
+  .modal {
+    --g: clamp(10px, calc(10px + (100vh - 640px) * 0.019), 14px);
+    --sp: clamp(9px, calc(9px + (100vh - 640px) * 0.0333), 16px);
+    --padY: clamp(12px, calc(12px + (100vh - 640px) * 0.0476), 22px);
+    --padX: clamp(20px, calc(20px + (100vh - 640px) * 0.0286), 26px);
+    --cg: clamp(7px, calc(7px + (100vh - 640px) * 0.0429), 16px);
+    --name: clamp(20px, calc(20px + (100vh - 640px) * 0.0095), 22px);
+    --ctl: clamp(34px, calc(34px + (100vh - 640px) * 0.019), 38px);
+    --btn: clamp(32px, calc(32px + (100vh - 640px) * 0.0286), 38px);
+    --stripY: clamp(7px, calc(7px + (100vh - 640px) * 0.0333), 14px);
+    --fgap: clamp(8px, calc(8px + (100vh - 640px) * 0.0476), 18px);
   }
-  .nGap { display: block; flex: 1 1 var(--gGrp); min-height: var(--gGrp); max-height: calc(var(--gGrp) + var(--gMore)); }
-  .readOnly { margin-top: var(--gGrp); }
-  .mWho { gap: 10px; }
-  .mName { font-size: var(--name); letter-spacing: -0.015em; }
-  .nMeta { margin-top: var(--gId); gap: var(--gId); }
-  .nPhoneLine .mPhone { font-size: var(--phone); }
-  .nCopy { height: 28px; padding: 0 6px; font-size: 12px; }
-  .nCopy svg { width: 13px; height: 13px; }
-  .nSub { font-size: 12px; }
-  .mCall, .mWa { height: var(--btn); padding: 0 12px; gap: 6px; border-radius: 9px; font-size: 13px; }
-  .mCall svg, .mWa svg { width: 14px; height: 14px; }
-  .mStuck { height: 18px; padding: 0 7px; font-size: 11px; }
-
-  .nGroup { gap: var(--gIn); }
-  .nPair { gap: 8px 10px; }
-  .nPair > .nCell:first-child { flex-basis: 170px; }
-  .nCell { gap: calc(var(--gIn) / 2); }
-  .nKey { gap: 6px; font-size: 12.5px; }
-  .nKey small { font-size: 12px; }
-  .nNext { padding: var(--cardY) 14px; gap: 12px; border-radius: 12px; }
-  .nNextTop { gap: 12px; }
-  .nNextIc { width: var(--ic); height: var(--ic); }
-  .nNextIc svg { width: calc(var(--ic) / 2 + 1px); height: calc(var(--ic) / 2 + 1px); }
-  .nNextTitle { font-size: clamp(13.5px, calc(13.5px + (100vh - 640px) * 0.0048), 14.5px); }
-  .nNextSub { margin-top: 1px; font-size: 12.5px; }
-  .mStatusBtn { height: var(--ctl); padding: 0 10px; gap: 8px; border-radius: 9px; font-size: 13px; }
-  .mStatusBtn svg { width: 14px; height: 14px; }
-  .nHeatSeg { height: var(--ctl); border-radius: 9px; }
-  .nHeatSeg button { min-width: 0; padding: 0 10px; gap: 6px; font-size: 12.5px; }
-  .mAvSm { width: 18px; height: 18px; font-size: 8.5px; }
-
-  .nSec { gap: var(--sec); }
-  .nHead { min-height: 28px; }
-  .nH { font-size: clamp(14px, calc(14px + (100vh - 640px) * 0.0048), 15px); }
-  .nProps { border-radius: 10px; }
-  .nProps > div { grid-template-columns: var(--lab) minmax(0, 1fr); gap: 10px 12px; padding: var(--rowY) var(--rowX); }
-  .nProps dt { font-size: var(--dt); }
-  .nProps dd { font-size: var(--dd); line-height: 1.45; }
-  .nProps dd.nNone { font-size: calc(var(--dd) - 1px); }
-  .nProps dd small { margin-top: 1px; font-size: 11.5px; line-height: 1.3; }
-  .nMail svg { width: 13px; height: 13px; }
-
-  /* Edit details: the same, so the whole form shows too. */
-  .detailsEdit { gap: 8px; }
-  .mForm { gap: 8px 10px; }
-  .mForm .label { font-size: 12px; }
-  .mForm .input { height: 32px; padding: 0 10px; font-size: 12.5px; }
-  .mForm textarea.input { height: auto; min-height: 54px; padding: 7px 10px; }
-  .detailsEdit .mH3 { font-size: 13px; }
-  .detailsFoot :global(.boe-btn) { height: 32px; }
+  .stSub { min-height: clamp(20px, calc(20px + (100vh - 640px) * 0.0095), 22px); }
+  .stSub .nLink, .cHead .nLink { margin-block: -4px; }
+  .cHead { min-height: clamp(20px, calc(20px + (100vh - 640px) * 0.019), 24px); }
+  .mCompose { margin: var(--g) 18px; }
 }
 
-/* A narrow window: the number, Copy and the two buttons no longer fit in one row, so the buttons take a full-width row below. */
+/* A narrow window: the strip is two rows of two, and the number, Copy and the two buttons no longer fit in one row, so the buttons
+   take a full-width row below. */
 @media (min-width: 768px) and (max-width: 1080px) {
+  .strip { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .stCell:nth-child(n+3) { border-top: 1px solid rgba(48, 53, 54, .13); }
+  .stCell:nth-child(3)::before { display: none; }
   .nReach { flex: 1 1 100%; margin-left: 0; }
   .nReach > * { flex: 1; justify-content: center; }
 }

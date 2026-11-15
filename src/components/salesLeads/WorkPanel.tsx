@@ -2,19 +2,19 @@
 
 import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, Copy, Mail, MessageCircle, Pencil, Phone, Search, TriangleAlert, X } from 'lucide-react'
+import { Ban, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Clock, Copy, Eye, Mail, MessageCircle, Pencil, Phone, Search, TriangleAlert, X } from 'lucide-react'
 import { formatPhone, telHref } from '@/lib/exhibitionLeads/phone'
 import {
   addComment, changeDue, fetchWorkLead, SALES_KEY, updateFacts,
   type LeadFacts, type WorkDetail, type WorkLead,
 } from '@/lib/salesLeads/api'
 import {
-  activityTag, CLIENT_TYPES, dueOf, followUpChoices, isSunday, lastLabel, marketLabel, nextStepOf, nextWorkingDay, parseValue,
+  activityTag, CLIENT_TYPES, dueOf, followUpChoices, isSunday, lastOf, marketLabel, nextStepOf, nextWorkingDay, parseValue,
   QUICK_NOTES, SEGMENTS, stageLabel, STAGE_GUIDE, TEMPERATURES, valueLabel,
   type CommentTag, type Stage, type Temperature,
 } from '@/lib/salesLeads/board'
 import { sourceLabel } from '@/lib/salesLeads/constants'
-import { dayHeading, dayShort, initialsOf, istDayOf, timeLabel } from '@/lib/salesLeads/format'
+import { dayHeading, dayLabelLong, dayShort, initialsOf, istDayOf, timeLabel } from '@/lib/salesLeads/format'
 import { eventBy, eventLine, leadTitle } from './LeadBits'
 import { useDialogFocus } from './useDialogFocus'
 import type { LeadWork } from './useLeadWork'
@@ -37,6 +37,12 @@ import s from './leadBoard.module.css'
 // of the window (see the end of leadBoard.module.css); Call and WhatsApp on the phone number's row, where the number you are
 // about to call is read, so the follow-up date is a card of its own with "Change date" as a link; Edit details a link with a
 // pencil, not a box; Email before Source in the list.
+//
+// Laid out again later the same day (owner, "still not neat and easy to scan", after a clickable preview on the lines of Quotation
+// Details; Board status and Hot / Warm / Cold in the strip approved, Source kept in both places): a status strip across the top
+// (next follow-up with Change date, last update, Board status, Hot / Warm / Cold), then two cards, the client (name, who holds it,
+// the number with Call and WhatsApp, what they want, the facts with a label over each) and the activity (the update box, then each
+// day as a heading and each update as a row). The sizes are variables set on .modal in leadBoard.module.css.
 //
 // It opens at once: the list the lead was opened from already holds the lead, so the left side is drawn from that while
 // the full record (history and activity) is read; only the activity waits.
@@ -168,21 +174,22 @@ function PanelBody({ detail, work, focusLog, closeAfterPost, menu, setMenu, onCl
   const closed = lead.stage === 'converted' || lead.stage === 'dead'
   return (
     <div className={s.mBody}>
-      <div className={s.mLeft} aria-label="Lead details">
-        <Who lead={lead} work={work} canWork={canWork} closed={closed} />
-        <i className={s.nGap} aria-hidden="true" />
-        <div className={s.nGroup}>
-          <NextStep lead={lead} work={work} canWork={canWork} menu={menu} setMenu={setMenu} />
-          <StateBox lead={lead} since={filling ? null : stageSince(detail)} work={work} canWork={canWork} closed={closed} menu={menu} setMenu={setMenu} />
+      <Strip lead={lead} since={filling ? null : stageSince(detail)} work={work} canWork={canWork} menu={menu} setMenu={setMenu} />
+      <div className={s.mCols}>
+        <div className={s.mLeft} aria-label="Lead details">
+          {!canWork && (
+            <div className={s.readOnly}>
+              <Eye aria-hidden="true" />
+              <span>You can read this lead. {lead.holder_name ? `${lead.holder_name} holds it, and only` : 'Only'} the person holding it can write on it or move it.</span>
+            </div>
+          )}
+          <ClientCard lead={lead} work={work} canWork={canWork} closed={closed} />
         </div>
-        <i className={s.nGap} aria-hidden="true" />
-        <Details lead={lead} work={work} canWork={canWork} />
-        {!canWork && <div className={s.readOnly}>You can read this lead. {lead.holder_name ? `${lead.holder_name} holds it, and only` : 'Only'} the person holding it can write on it or move it.</div>}
+        <ActivitySide
+          detail={detail} work={work} canWrite={canWork && !closed} focusLog={focusLog} menu={menu} setMenu={setMenu}
+          onPosted={() => { if (closeAfterPost) onClose() }} filling={filling} loadFailed={loadFailed} reload={reload}
+        />
       </div>
-      <ActivitySide
-        detail={detail} work={work} canWrite={canWork && !closed} focusLog={focusLog} menu={menu} setMenu={setMenu}
-        onPosted={() => { if (closeAfterPost) onClose() }} filling={filling} loadFailed={loadFailed} reload={reload}
-      />
     </div>
   )
 }
@@ -200,65 +207,7 @@ function useCloseOnOutside(open: boolean, close: () => void) {
   return ref
 }
 
-// ── Left: who, where it stands, what they want ──────────────────────────────────────────────────────────────────────
-
-/**
- * The name; under it the number (the one contact fact, so it is the biggest line) with Copy beside it and, at the other end of
- * the same row, Call and WhatsApp (owner, 2026-11-15: they were in the follow-up banner, which is now a card of its own); then
- * the market and who holds the lead. A closed lead has no follow-up and no buttons, so its last update is said here. A lead
- * with no name has the number as its title, so Copy stands alone there.
- */
-function Who({ lead, work, canWork, closed }: { lead: WorkLead; work: LeadWork; canWork: boolean; closed: boolean }) {
-  const [copied, setCopied] = useState(false)
-  const title = leadTitle(lead)
-  const named = title !== formatPhone(lead.phone)
-  // Only somebody who can work an open lead reaches the client from here; "Call now" when the follow-up is late or due today.
-  const step = nextStepOf(lead, work.today)
-  const reach = canWork && step.kind !== 'closed'
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(lead.phone)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
-    } catch {
-      work.said('The number could not be copied. Select it instead.')
-    }
-  }
-
-  return (
-    <div className={s.mWho}>
-      <div className={s.mWhoText}>
-        <h2 className={s.mName}>{title}</h2>
-        <div className={s.nMeta}>
-          <div className={s.nPhoneLine}>
-            {named && <span className={s.mPhone}>{formatPhone(lead.phone)}</span>}
-            <button type="button" className={s.nCopy} data-done={copied ? '1' : '0'} aria-label="Copy number" onClick={() => void copy()}>
-              {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{copied ? 'Copied' : named ? 'Copy' : 'Copy number'}
-            </button>
-            {reach && (
-              <div className={s.nReach}>
-                <a className={s.mCall} href={telHref(lead.phone)}><Phone aria-hidden="true" />{step.kind === 'over' || step.kind === 'today' ? 'Call now' : 'Call'}</a>
-                <button type="button" className={s.mWa} onClick={() => work.openWhatsApp(lead)}><MessageCircle aria-hidden="true" />WhatsApp</button>
-              </div>
-            )}
-          </div>
-          <div className={s.nSub}>
-            <span>{marketLabel(lead)}</span>
-            <span className={s.mDot} aria-hidden="true">·</span>
-            <span className={s.nHeld}>
-              Held by{' '}
-              {lead.holder_name
-                ? <span className={s.mPerson}><i className={s.mAvSm} aria-hidden="true">{initialsOf(lead.holder_name)}</i><b>{lead.holder_name}</b></span>
-                : <span className={s.mNone}>nobody yet</span>}
-            </span>
-            {closed && <><span className={s.mDot} aria-hidden="true">·</span><span>{lastLabel(lead, work.today)}</span></>}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+// ── Left: the strip and the client ──────────────────────────────────────────────────────────────────────────────────
 
 const HEAT_CLASS: Record<Temperature, string> = { hot: s.heatHot, warm: s.heatWarm, cold: s.heatCold }
 
@@ -285,45 +234,6 @@ const STATUS_DOT: Record<Stage, string> = {
 /** The statuses a lead can be put in, in the owner's order; the three ways out after a line. */
 const STATUS_OPEN: readonly Stage[] = ['new', 'under_process', 'visit_meeting', 'potential', 'negotiation']
 const STATUS_OUT: readonly Stage[] = ['follow_up_later', 'converted', 'dead']
-
-/**
- * Where it stands (owner, 2026-11-14): the Board status (one dropdown: a lead can go from any status to any other, so it is a
- * choice, not a path) beside Hot / Warm / Cold. The follow-up is in the next-step banner above, "Held by" under the name.
- */
-function StateBox({ lead, since, work, canWork, closed, menu, setMenu }: {
-  lead: WorkLead; since: string | null; work: LeadWork; canWork: boolean; closed: boolean; menu: Menu; setMenu: (m: Menu) => void
-}) {
-  // The moment the popup opened: "12 days" in the status does not need to tick.
-  const [now] = useState(() => Date.now())
-  const due = dueOf(lead, work.today)
-  const heat = (value: Temperature) => {
-    if (value !== lead.temperature) void work.guarded(async () => { await updateFacts(work.supabase, lead.id, { temperature: value }) })
-  }
-  return (
-    <section className={s.nState} aria-label="Where this lead stands">
-      <div className={s.nPair}>
-        <div className={s.nCell}>
-          <div className={s.nKey}>Board status{since && <small>for {inStage(since, now)}</small>}</div>
-          <StatusMenu lead={lead} work={work} canWork={canWork} open={menu === 'status'} setOpen={open => setMenu(open ? 'status' : null)} />
-          {(lead.stage === 'dead' || lead.dead_note) && (
-            <p className={s.mDeadNote}>{lead.stage === 'dead' ? due.label : ''}{lead.stage === 'dead' && lead.dead_note ? ' · ' : ''}{lead.dead_note}</p>
-          )}
-          {closed && canWork && <p className={s.mDeadNote}>Choose a status to reopen it.</p>}
-        </div>
-        <div className={s.nCell}>
-          <div className={s.nKey}>Hot / Warm / Cold</div>
-          <span className={s.nHeatSeg} role="group" aria-label="How warm is this lead?">
-            {TEMPERATURES.map(t => (
-              <button key={t.value} type="button" aria-pressed={lead.temperature === t.value} disabled={!canWork} onClick={() => heat(t.value)}>
-                <i className={`${s.heat} ${HEAT_CLASS[t.value]}`} aria-hidden="true" />{t.label}
-              </button>
-            ))}
-          </span>
-        </div>
-      </div>
-    </section>
-  )
-}
 
 /** The Board status: the current one on the button, every status in the menu; picking one moves the lead at once. */
 function StatusMenu({ lead, work, canWork, open, setOpen }: { lead: WorkLead; work: LeadWork; canWork: boolean; open: boolean; setOpen: (open: boolean) => void }) {
@@ -361,52 +271,6 @@ function StatusMenu({ lead, work, canWork, open, setOpen }: { lead: WorkLead; wo
 
 const plural = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`
 
-/**
- * The follow-up (owner, 2026-11-14; its own card since 2026-11-15): the date, red and in words when it is late, with Change
- * date as a link at the end of the card. Call and WhatsApp are on the phone number's row, not here. A converted or dead lead
- * has none; somebody who can only read the lead sees the words without the link.
- */
-function NextStep({ lead, work, canWork, menu, setMenu }: { lead: WorkLead; work: LeadWork; canWork: boolean; menu: Menu; setMenu: (m: Menu) => void }) {
-  const open = menu === 'due'
-  const wrap = useCloseOnOutside(open, () => setMenu(null))
-  const step = nextStepOf(lead, work.today)
-  if (step.kind === 'closed') return null
-  const late = step.kind === 'over'
-  const title = step.kind === 'over' ? `Follow-up was due ${dayShort(step.date)}`
-    : step.kind === 'today' ? 'Follow up today'
-    : step.kind === 'wakes' ? `Back on ${dayShort(step.date)}`
-    : step.kind === 'soon' ? `Next follow-up ${dayShort(step.date)}`
-    : 'No follow-up date'
-  const note = step.kind === 'over' ? `${plural(step.days)} late` : step.kind === 'soon' ? (step.days === 1 ? 'Tomorrow' : `In ${plural(step.days)}`) : ''
-  function pick(day: string) {
-    setMenu(null)
-    if (day === lead.next_due_on) return
-    void work.guarded(async () => {
-      const r = await changeDue(work.supabase, lead.id, day)
-      if (r.status === 'saved') work.said(`Follow-up moved to ${dayShort(day)}.`)
-    })
-  }
-  return (
-    <section className={`${s.nNext}${late ? ` ${s.nNextOver}` : ''}`} aria-label="Next step">
-      <div className={s.nNextTop}>
-        <span className={s.nNextIc} aria-hidden="true">{late ? <TriangleAlert /> : <CalendarDays />}</span>
-        <div className={s.nNextText}>
-          <p className={s.nNextTitle}>{title}</p>
-          <p className={s.nNextSub}>{note}{note && ' · '}{lastLabel(lead, work.today)}</p>
-        </div>
-      </div>
-      {canWork && (
-        <div ref={wrap} className={`${s.mRel} ${s.nNextAct}`}>
-          <button type="button" className={s.nLink} aria-haspopup="menu" aria-expanded={open} title="Change the follow-up date" onClick={() => setMenu(open ? null : 'due')}>
-            {lead.next_due_on ? 'Change date' : 'Set a date'}<ChevronDown aria-hidden="true" />
-          </button>
-          {open && <FollowUpMenu today={work.today} value={lead.next_due_on ?? ''} onPick={pick} />}
-        </div>
-      )}
-    </section>
-  )
-}
-
 /** The dates offered for a follow-up: the next working day first, then 3 days, a week, or any date from today. */
 function FollowUpMenu({ today, value, onPick }: { today: string; value: string; onPick: (day: string) => void }) {
   const choices = followUpChoices(today)
@@ -427,12 +291,104 @@ function FollowUpMenu({ today, value, onPick }: { today: string; value: string; 
   )
 }
 
+type StripTone = 'late' | 'today' | 'ok' | 'quiet' | 'won'
+const TONE_CLASS: Record<StripTone, string> = { late: s.stripLate, today: s.stripToday, ok: s.stripOk, quiet: '', won: s.stripWon }
+
+/** The day of the last update: "Sun 1 Nov", with the year once it is not this one. */
+const onDay = (day: string, today: string) => (day.slice(0, 4) === today.slice(0, 4) ? dayShort(day) : dayLabelLong(day))
+
 /**
- * What they want (the words, then the project value and when they need it) and the reference facts, read as they are;
- * "Edit details" turns all of it into one form. Type of client and Quantity are not shown (owner, 2026-11-14) but are
- * still in the form.
+ * The status strip (owner, 2026-11-15, after a clickable preview on the lines of Quotation Details): what you act on, in one row
+ * across the top: the next follow-up (red and in words when it is late, with Change date), the last update, the Board status
+ * and Hot / Warm / Cold. A converted or dead lead has no follow-up, so that cell says so and says how to reopen the lead; somebody
+ * who can only read the lead sees the same words without the controls.
  */
-function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canWork: boolean }) {
+function Strip({ lead, since, work, canWork, menu, setMenu }: {
+  lead: WorkLead; since: string | null; work: LeadWork; canWork: boolean; menu: Menu; setMenu: (m: Menu) => void
+}) {
+  // The moment the popup opened: "12 days" in the status does not need to tick.
+  const [now] = useState(() => Date.now())
+  const open = menu === 'due'
+  const wrap = useCloseOnOutside(open, () => setMenu(null))
+  const step = nextStepOf(lead, work.today)
+  const last = lastOf(lead, work.today)
+  const tone: StripTone = step.kind === 'closed' ? (lead.stage === 'converted' ? 'won' : 'quiet')
+    : step.kind === 'over' ? 'late' : step.kind === 'today' ? 'today' : step.kind === 'none' ? 'quiet' : 'ok'
+  const Icon = step.kind === 'closed' ? (lead.stage === 'converted' ? CircleCheck : Ban)
+    : step.kind === 'over' ? TriangleAlert : step.kind === 'today' ? Clock : CalendarDays
+  const value = step.kind === 'closed' ? 'None needed' : step.kind === 'none' ? 'Not set' : step.kind === 'today' ? 'Today' : dayShort(step.date)
+  const dim = step.kind === 'closed' || step.kind === 'none'
+  const why = [dueOf(lead, work.today).label, lead.dead_note].filter(Boolean).join(' · ')
+  const sub = step.kind === 'over' ? `${plural(step.days)} late`
+    : step.kind === 'today' ? dayShort(step.date)
+    : step.kind === 'soon' ? (step.days === 1 ? 'Tomorrow' : `In ${plural(step.days)}`)
+    : step.kind === 'wakes' ? 'Parked until then'
+    : step.kind === 'none' ? 'No follow-up date'
+    : `${[lead.stage === 'dead' ? why : 'This lead is closed', canWork ? 'Pick a status to reopen it' : ''].filter(Boolean).join('. ')}.`
+  const heat = (next: Temperature) => {
+    if (next !== lead.temperature) void work.guarded(async () => { await updateFacts(work.supabase, lead.id, { temperature: next }) })
+  }
+  function pick(day: string) {
+    setMenu(null)
+    if (day === lead.next_due_on) return
+    void work.guarded(async () => {
+      const r = await changeDue(work.supabase, lead.id, day)
+      if (r.status === 'saved') work.said(`Follow-up moved to ${dayShort(day)}.`)
+    })
+  }
+  return (
+    <section className={`${s.strip} ${TONE_CLASS[tone]}`} aria-label="Where this lead stands">
+      <div className={`${s.stCell} ${s.stFollow}`}>
+        <span className={s.stDisc} aria-hidden="true"><Icon /></span>
+        <div className={s.stText}>
+          <div className={s.eyebrow}>Next follow-up</div>
+          <div className={`${s.stVal}${dim ? ` ${s.stDim}` : ''}`}>{value}</div>
+          <div ref={wrap} className={`${s.stSub} ${s.mRel}`}>
+            <span className={tone === 'late' || tone === 'today' ? s.stEm : undefined}>{sub}</span>
+            {canWork && step.kind !== 'closed' && (
+              <>
+                <span className={s.stDot} aria-hidden="true">·</span>
+                <button type="button" className={s.nLink} aria-haspopup="menu" aria-expanded={open} title="Change the follow-up date" onClick={() => setMenu(open ? null : 'due')}>
+                  {lead.next_due_on ? 'Change date' : 'Set a date'}<ChevronDown aria-hidden="true" />
+                </button>
+                {open && <FollowUpMenu today={work.today} value={lead.next_due_on ?? ''} onPick={pick} />}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className={s.stCell}>
+        <div className={s.eyebrow}>Last update</div>
+        <div className={`${s.stVal}${last.day ? '' : ` ${s.stDim}`}`}>{last.ago}</div>
+        <div className={s.stSub}>{last.day ? `${last.kind} · ${onDay(last.day, work.today)}` : 'No call or update yet'}</div>
+      </div>
+      <div className={s.stCell}>
+        <div className={`${s.eyebrow} ${s.stLab}`}>Board status{since && <small>for {inStage(since, now)}</small>}</div>
+        <StatusMenu lead={lead} work={work} canWork={canWork} open={menu === 'status'} setOpen={o => setMenu(o ? 'status' : null)} />
+      </div>
+      <div className={s.stCell}>
+        <div className={s.eyebrow}>Temperature</div>
+        <span className={s.stHeat} role="group" aria-label="How warm is this lead?">
+          {TEMPERATURES.map(t => (
+            <button key={t.value} type="button" aria-pressed={lead.temperature === t.value} disabled={!canWork} onClick={() => heat(t.value)}>
+              <i className={`${s.heat} ${HEAT_CLASS[t.value]}`} aria-hidden="true" />{t.label}
+            </button>
+          ))}
+        </span>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * The client, in one card (owner, 2026-11-15): the name; who holds the lead and the market; the number with Copy and, at the end
+ * of the same row, Call and WhatsApp (only for somebody who can work an open lead; "Call now" when the follow-up is late or due
+ * today); what they want in their own words; then the facts, each with its label over it. "N not set" and Edit details are at the
+ * top of the card; Edit details turns the requirement and the facts into one form. A lead with no name has the number as its
+ * title, so Copy stands alone there. Type of client and Quantity are not shown (owner, 2026-11-14) but are still in the form.
+ */
+function ClientCard({ lead, work, canWork, closed }: { lead: WorkLead; work: LeadWork; canWork: boolean; closed: boolean }) {
+  const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const start = useMemo(() => ({
     name: lead.name ?? '', email: lead.email ?? '', location: lead.location ?? '', requirement: lead.requirement ?? '',
@@ -443,6 +399,20 @@ function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canW
   const [problem, setProblem] = useState('')
   const set = (patch: Partial<typeof form>) => { setProblem(''); setForm(f => ({ ...f, ...patch })) }
   const edit = () => { setForm(start); setProblem(''); setEditing(true) }
+  const title = leadTitle(lead)
+  const named = title !== formatPhone(lead.phone)
+  const step = nextStepOf(lead, work.today)
+  const reach = canWork && !closed
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(lead.phone)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      work.said('The number could not be copied. Select it instead.')
+    }
+  }
 
   function save() {
     const facts: LeadFacts = {}
@@ -460,64 +430,90 @@ function Details({ lead, work, canWork }: { lead: WorkLead; work: LeadWork; canW
     })
   }
 
-  if (editing) {
-    const text = (key: 'name' | 'email' | 'location' | 'quantity' | 'timeline', label: string) => (
-      <div className={s.field}><label className={s.label} htmlFor={`fact-${key}`}>{label}</label><input id={`fact-${key}`} className={s.input} value={form[key]} onChange={e => set({ [key]: e.target.value })} /></div>
-    )
-    return (
-      <section className={`${s.mSec} ${s.detailsEdit}`} aria-label="Edit the details">
-        <h3 className={s.mH3}>Edit details</h3>
-        <div className={s.mForm}>
-          {text('name', 'Name')}
-          {text('email', 'Email')}
-          {text('location', 'Location')}
-          <div className={s.field}><label className={s.label} htmlFor="fact-type">Type of client</label><select id="fact-type" className={s.input} value={form.client_type} onChange={e => set({ client_type: e.target.value })}><option value="">Not set</option>{CLIENT_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-          <div className={s.field}><label className={s.label} htmlFor="fact-seg">Segment</label><select id="fact-seg" className={s.input} value={form.segment} onChange={e => set({ segment: e.target.value })}><option value="">Not set</option>{SEGMENTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
-          {text('quantity', 'Quantity')}
-          <div className={s.field}><label className={s.label} htmlFor="fact-value">Project value, approx. (₹)</label><input id="fact-value" className={s.input} inputMode="decimal" placeholder="e.g. 8 L" value={form.value} onChange={e => set({ value: e.target.value })} /></div>
-          <div className={`${s.field} ${s.mFull}`}><label className={s.label} htmlFor="fact-req">Requirement</label><textarea id="fact-req" className={s.input} value={form.requirement} onChange={e => set({ requirement: e.target.value })} /></div>
-          {text('timeline', 'Needed by')}
-        </div>
-        {problem && <div className="boe-callout boe-callout-error" role="alert">{problem}</div>}
-        <div className={s.detailsFoot}>
-          <button type="button" className="boe-btn boe-btn-primary" disabled={work.busy} onClick={save}>Save</button>
-          <button type="button" className="boe-btn boe-btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
-        </div>
-      </section>
-    )
-  }
-
-  // The rows that have nothing yet, counted beside the heading (the Source is always known).
+  // The rows that have nothing yet, counted at the top of the card (the Source is always known).
   const notSet = [lead.requirement, lead.expected_value_paise, lead.timeline, lead.location, lead.email].filter(v => v === null || v === undefined || v === '').length
+  const text = (key: 'name' | 'email' | 'location' | 'quantity' | 'timeline', label: string) => (
+    <div className={s.field}><label className={s.eyebrow} htmlFor={`fact-${key}`}>{label}</label><input id={`fact-${key}`} className={s.input} value={form[key]} onChange={e => set({ [key]: e.target.value })} /></div>
+  )
+
   return (
-    <section className={s.nSec} aria-label="About this client">
-      <div className={s.nHead}>
-        <div className={s.nTitle}>
-          <h3 className={s.nH}>About this client</h3>
-          {notSet > 0 && <span className={s.nMissing}>{notSet} not set</span>}
-        </div>
-        {canWork && (
-          <button type="button" className={s.nLink} onClick={edit}><Pencil aria-hidden="true" />Edit details</button>
+    <section className={s.client} aria-label="Client">
+      <div className={s.cHead}>
+        <span className={s.eyebrow}>Client</span>
+        <span className={s.grow} />
+        {!editing && notSet > 0 && <span className={s.nMissing}>{notSet} not set</span>}
+        {!editing && canWork && <button type="button" className={s.nLink} onClick={edit}><Pencil aria-hidden="true" />Edit details</button>}
+      </div>
+      <h2 className={s.mName}>{title}</h2>
+      <div className={s.cMeta}>
+        <span className={s.cWho}>
+          {lead.holder_name
+            ? <><i className={s.mAvSm} aria-hidden="true">{initialsOf(lead.holder_name)}</i>Held by <b>{lead.holder_name}</b></>
+            : <span className={s.mNobody}>Held by nobody yet</span>}
+        </span>
+        <span className={s.cTag}>{marketLabel(lead)}</span>
+      </div>
+      <div className={s.cReach}>
+        {named && <span className={s.mPhone}><Phone aria-hidden="true" />{formatPhone(lead.phone)}</span>}
+        <button type="button" className={s.nCopy} data-done={copied ? '1' : '0'} aria-label="Copy number" onClick={() => void copy()}>
+          {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}{copied ? 'Copied' : named ? 'Copy' : 'Copy number'}
+        </button>
+        {reach && (
+          <div className={s.nReach}>
+            <a className={s.mCall} href={telHref(lead.phone)}><Phone aria-hidden="true" />{step.kind === 'over' || step.kind === 'today' ? 'Call now' : 'Call'}</a>
+            <button type="button" className={s.mWa} onClick={() => work.openWhatsApp(lead)}><MessageCircle aria-hidden="true" />WhatsApp</button>
+          </div>
         )}
       </div>
-      <dl className={s.nProps}>
-        <div><dt>Requirement</dt><dd className={lead.requirement ? s.nPre : s.nNone}>{lead.requirement || 'The client has not said what they need yet.'}</dd></div>
-        <div>
-          <dt>Project value</dt>
-          {lead.expected_value_paise !== null
-            ? <dd>{valueLabel(lead.expected_value_paise)}</dd>
-            : <dd className={s.nNone}>Not set<small>Needed to move this lead to Potential Clients.</small></dd>}
+
+      {editing ? (
+        <div className={`${s.cSec} ${s.detailsEdit}`} role="group" aria-label="Edit the details">
+          <div className={s.mForm}>
+            {text('name', 'Name')}
+            {text('email', 'Email')}
+            {text('location', 'Location')}
+            <div className={s.field}><label className={s.eyebrow} htmlFor="fact-type">Type of client</label><select id="fact-type" className={s.input} value={form.client_type} onChange={e => set({ client_type: e.target.value })}><option value="">Not set</option>{CLIENT_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+            <div className={s.field}><label className={s.eyebrow} htmlFor="fact-seg">Segment</label><select id="fact-seg" className={s.input} value={form.segment} onChange={e => set({ segment: e.target.value })}><option value="">Not set</option>{SEGMENTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+            {text('quantity', 'Quantity')}
+            <div className={s.field}><label className={s.eyebrow} htmlFor="fact-value">Project value, approx. (₹)</label><input id="fact-value" className={s.input} inputMode="decimal" placeholder="e.g. 8 L" value={form.value} onChange={e => set({ value: e.target.value })} /></div>
+            <div className={`${s.field} ${s.mFull}`}><label className={s.eyebrow} htmlFor="fact-req">Requirement</label><textarea id="fact-req" className={s.input} value={form.requirement} onChange={e => set({ requirement: e.target.value })} /></div>
+            {text('timeline', 'Needed by')}
+          </div>
+          {problem && <div className="boe-callout boe-callout-error" role="alert">{problem}</div>}
+          <div className={s.detailsFoot}>
+            <button type="button" className="boe-btn boe-btn-primary" disabled={work.busy} onClick={save}>Save</button>
+            <button type="button" className="boe-btn boe-btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
+          </div>
         </div>
-        <div><dt>Needed by</dt><dd className={lead.timeline ? undefined : s.nNone}>{lead.timeline || 'Not shared'}</dd></div>
-        <div><dt>Location</dt><dd className={lead.location ? undefined : s.nNone}>{lead.location || 'Not shared'}</dd></div>
-        <div>
-          <dt>Email</dt>
-          {lead.email
-            ? <dd><a className={s.nMail} href={`mailto:${lead.email}`}><Mail aria-hidden="true" />{lead.email}</a></dd>
-            : <dd className={s.nNone}>Not shared</dd>}
-        </div>
-        <div><dt>Source</dt><dd>{sourceLabel(lead.source)}</dd></div>
-      </dl>
+      ) : (
+        <>
+          <div className={s.cSec}>
+            <div className={s.eyebrow}>Requirement</div>
+            {lead.requirement
+              ? lead.requirement.split(/\n{2,}/).map((p, i) => <p key={i} className={s.cReq}>{p}</p>)
+              : <p className={s.cNone}>The client has not said what they need yet.</p>}
+          </div>
+          <div className={s.cSec}>
+            <dl className={s.cFacts}>
+              <div className={s.cFact}>
+                <dt className={s.eyebrow}>Project value</dt>
+                {lead.expected_value_paise !== null
+                  ? <dd>{valueLabel(lead.expected_value_paise)}</dd>
+                  : <dd className={s.cWarn}>Not set<small>Needed for Potential Clients.</small></dd>}
+              </div>
+              <div className={s.cFact}><dt className={s.eyebrow}>Needed by</dt><dd className={lead.timeline ? undefined : s.cNone}>{lead.timeline || 'Not shared'}</dd></div>
+              <div className={s.cFact}><dt className={s.eyebrow}>Location</dt><dd className={lead.location ? undefined : s.cNone}>{lead.location || 'Not shared'}</dd></div>
+              <div className={s.cFact}><dt className={s.eyebrow}>Source</dt><dd>{sourceLabel(lead.source)}</dd></div>
+              <div className={`${s.cFact} ${s.cFull}`}>
+                <dt className={s.eyebrow}>Email</dt>
+                {lead.email
+                  ? <dd><a className={s.nMail} href={`mailto:${lead.email}`}><Mail aria-hidden="true" />{lead.email}</a></dd>
+                  : <dd className={s.cNone}>Not shared</dd>}
+              </div>
+            </dl>
+          </div>
+        </>
+      )}
     </section>
   )
 }
@@ -571,6 +567,7 @@ function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPoste
     <div className={s.mRight} aria-label="Activity">
       <div className={s.mRHead}>
         <h3 className={s.mH3}>Activity</h3>
+        {!filling && <span className={s.mPill}>{detail.activities.length + detail.events.length}</span>}
         <div className={s.mTools}>
           <div className={s.mSeg} role="group" aria-label="Show">
             <button type="button" aria-pressed={updatesOnly} onClick={() => setUpdatesOnly(true)}>Updates only</button>
@@ -603,7 +600,7 @@ function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPoste
               {heading && <div className={s.mDay}><span>{dayHeading(day, work.today)}</span></div>}
               {e.type === 'comment' ? (
                 <div className={s.mEntry}>
-                  <span className={s.mAv} aria-hidden="true">{e.imported ? 'CU' : initialsOf(e.by)}</span>
+                  <span className={`${s.mAv}${e.imported ? ` ${s.mAvCu}` : ''}`} aria-hidden="true">{e.imported ? 'CU' : initialsOf(e.by)}</span>
                   <div className={s.mBubble}>
                     <div className={s.mEHead}><b>{e.by}</b><time dateTime={e.at}>{timeLabel(e.at)}</time></div>
                     {e.text && <p><Marked text={e.text} q={query} /></p>}
