@@ -3,6 +3,8 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import type { UnmappedMinopId } from '@/lib/minop/unmapped'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
@@ -10,7 +12,6 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { Pencil } from 'lucide-react'
 import { useRefresh } from '@/contexts/RefreshContext'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, StatusFilter, ui } from '@/components/attendancePayroll/ui'
 import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import styles from './employees.module.css'
@@ -468,6 +469,7 @@ export default function EmployeeMasterPage() {
   const [unlinked, setUnlinked]   = useState<UnmappedMinopId[]>([])
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const { refreshKey } = useRefresh()
 
   useEffect(() => {
@@ -487,11 +489,7 @@ export default function EmployeeMasterPage() {
         }).catch(() => {})
 
         const [{ data: me }, empRes] = await Promise.all([
-          supabase
-            .from('users')
-            .select(USER_PROFILE_COLUMNS)
-            .eq('id', session.user.id)
-            .single(),
+          callerProfile(qc, session.user.id).then(data => ({ data })),
           fetch('/api/employee-list', {
             headers: { 'Authorization': `Bearer ${session.access_token}` },
           }).then(r => r.json()),

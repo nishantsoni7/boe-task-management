@@ -22,10 +22,11 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { PayrollAttendanceReview } from '@/components/attendanceRequests/PayrollAttendanceReview'
 import { Badge, MONTH_NAMES, MonthPicker, Notice, StateBlock, StatusFilter, istCurrentYearMonth, ui } from '@/components/attendancePayroll/ui'
 import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
@@ -97,6 +98,7 @@ function MonthlyReviewScreen() {
   const router = useRouter()
   const params = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   const view: View = params.get('view') === 'decisions' ? 'decisions' : 'summary'
   const { year, month } = monthFromParams(params)
@@ -110,12 +112,12 @@ function MonthlyReviewScreen() {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-      const { data: me } = await supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
+      const { data: me } = await callerProfile(qc, session.user.id).then(data => ({ data }))
       if (!me) { router.push('/login'); return }
       setProfile(me as UserProfile)
     }
     void init()
-  }, [supabase, router])
+  }, [supabase, qc, router])
 
   const go = (next: { view?: View; year?: number; month?: number }) => {
     const v = next.view ?? view

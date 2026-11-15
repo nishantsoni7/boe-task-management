@@ -3,11 +3,12 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useRefresh } from '@/contexts/RefreshContext'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
 import { QuickRangeSelect } from '@/components/ui/QuickRangeSelect'
@@ -73,6 +74,7 @@ export default function AttendanceRecordsPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const { refreshKey } = useRefresh()
 
   useEffect(() => {
@@ -83,11 +85,7 @@ export default function AttendanceRecordsPage() {
       setToken(session.access_token)
 
       const [{ data: me }, { data: emps }] = await Promise.all([
-        supabase
-          .from('users')
-          .select(USER_PROFILE_COLUMNS)
-          .eq('id', session.user.id)
-          .single(),
+        callerProfile(qc, session.user.id).then(data => ({ data })),
         supabase
           .from('users')
           .select('id, full_name, employee_code')

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `cc40fd5d` — Docs: stamp page speed part 9 (#801) as merged 90c60493, deployed 11:13 IST, verified live (no SQL) (#802)
-- Commits on this branch: 1362
+- Commit: `9220572d` — Docs: stamp #799 (phone fixes from the 390 px sweep) as merged e6663b40, deployed 10:38 IST, verified live (no SQL) (#800)
+- Commits on this branch: 1363
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
-- Test files: 858   Next.js 16.2.6, React 19.2.4
+- Test files: 859   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `9220572d` 2026-11-15 Docs: stamp #799 (phone fixes from the 390 px sweep) as merged e6663b40, deployed 10:38 IST, verified live (no SQL) (#800)
 - `cc40fd5d` 2026-11-15 Docs: stamp page speed part 9 (#801) as merged 90c60493, deployed 11:13 IST, verified live (no SQL) (#802)
 - `90c60493` 2026-11-15 Page speed, part 9: the other Orders pages reuse the guard's profile and permissions (no SQL) (#801)
 - `a10410c5` 2026-11-15 Docs: stamp the premium document layout fixes (#787) as merged 80091824, deployed 09:28 IST, verified live (no SQL) (#797)
@@ -38,7 +39,6 @@
 - `33813806` 2026-11-14 Backups: stop the pg_dump step's docker run after 5 minutes (#780)
 - `e0d4fe4c` 2026-11-14 Quotations: the premium client document, Download PDF, project type and lead time (migration 20270717000000) (#777)
 - `1651449f` 2026-11-14 Docs: stamp the PI review chain (#776) as merged 73a9cc30, deployed 19:44 IST (migration 20270718000000 applied 19:27 IST) (#779)
-- `73a9cc30` 2026-11-14 Orders: every hop between Operations and Sales on a PI passes through the approver (migration 20270718000000, applied) (#776)
 
 ## Pages by top-level area
 
