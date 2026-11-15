@@ -70,6 +70,10 @@ export function productType(name: string): string | null {
   return best?.type ?? null
 }
 
+// A unit may be glued to its number ("180cm", "250mm"): a plain \b would miss it and read the size as inches.
+const MM = /(?:\b|\d)mm\b/i
+const CM = /(?:\b|\d)cm\b/i
+
 /** Dimensions in inches from "6'0\" x 6'6\"", "72 x 78 x 18", "1800 x 2000 mm", "180 x 200 cm". */
 export function dimensionsInches(text: string | null | undefined): number[] | null {
   const t = String(text ?? '').trim()
@@ -77,7 +81,7 @@ export function dimensionsInches(text: string | null | undefined): number[] | nu
   if (/['"’”]|\bft\b|\bfeet\b/i.test(t)) return sizeInInches(t.replace(/\bft\b|\bfeet\b/gi, "'"))
   const nums = (t.match(/\d+(?:\.\d+)?/g) ?? []).map(Number).filter(n => n > 0).slice(0, 3)
   if (nums.length === 0) return null
-  const unit = /\bmm\b/i.test(t) ? 1 / 25.4 : /\bcm\b/i.test(t) ? 1 / 2.54 : /\bm\b/i.test(t) && Math.max(...nums) < 10 ? 39.37
+  const unit = MM.test(t) ? 1 / 25.4 : CM.test(t) ? 1 / 2.54 : /\bm\b/i.test(t) && Math.max(...nums) < 10 ? 39.37
     : Math.max(...nums) > 300 ? 1 / 25.4 : 1 // bare numbers: inches, unless they can only be millimetres
   return nums.map(n => Math.round(n * unit * 100) / 100)
 }
@@ -157,7 +161,7 @@ function labelledPlan(t: string): number | null | undefined {
 
 /** Square inches of two sides written in the unit the text uses (millimetres, centimetres, or inches). */
 function footprint(pair: number[], t: string): number | null {
-  const unit = /\bmm\b/i.test(t) || Math.max(...pair) > 300 ? 1 / 25.4 : /\bcm\b/i.test(t) ? 1 / 2.54 : 1
+  const unit = MM.test(t) || Math.max(...pair) > 300 ? 1 / 25.4 : CM.test(t) ? 1 / 2.54 : 1
   const area = pair[0] * unit * pair[1] * unit
   return area >= 4 && area <= 100_000 ? area : null
 }

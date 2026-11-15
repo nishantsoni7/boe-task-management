@@ -4,7 +4,7 @@
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { lineFeatures, planAreaOf } from './features'
+import { dimensionsInches, lineFeatures, planAreaOf } from './features'
 import { fitType, predict, type ModelPoint } from './model'
 
 const near = (a: number | null, b: number) => assert.ok(a !== null && Math.abs(a - b) < 1, `${a} is not ${b}`)
@@ -49,6 +49,18 @@ describe('the footprint of a size as PIs write it', () => {
   test('units: millimetres and centimetres written with labels', () => {
     near(planAreaOf('Length 1800 Width 900 Height 750 mm'), (1800 / 25.4) * (900 / 25.4))
     near(planAreaOf('Length 180 Width 90 Height 75 cm'), (180 / 2.54) * (90 / 2.54))
+  })
+
+  test('a unit glued to its number is still the unit ("180cm" is not 180 inches)', () => {
+    const cm = (180 / 2.54) * (90 / 2.54)
+    near(planAreaOf('L 180cm W 90cm H 75cm'), cm)
+    near(planAreaOf('Length - 180cm, Breadth - 90cm'), cm)
+    near(planAreaOf('180cm x 90cm x 75cm'), (180 / 2.54) * (90 / 2.54))
+    near(planAreaOf('L 250mm W 200mm'), (250 / 25.4) * (200 / 25.4))
+    near(planAreaOf('250mm x 200mm'), (250 / 25.4) * (200 / 25.4))
+    near(planAreaOf('Dia 60cm'), (60 / 2.54) ** 2)
+    assert.deepEqual(dimensionsInches('180cm x 200cm'), [70.87, 78.74])
+    near(planAreaOf('Comm 30 x 40'), 30 * 40) // a word ending in "mm" is not a unit
   })
 
   test('plain numbers keep the old rule, the two largest (tried as "first two of W x D x H" on 4,874 real lines: no better)', () => {
