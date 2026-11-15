@@ -116,3 +116,21 @@ export function toLine(l: { element: string; kind: string; material: string | nu
   const both = l.quantity !== null && l.rate !== null
   return { element: l.element, kind: (KINDS as readonly string[]).includes(l.kind) ? (l.kind as Kind) : 'other', material: l.material ?? '', quantity: s(l.quantity), unit: l.unit ?? '', rate: s(l.rate), amount: both ? '' : s(l.amount), reasoning: l.reasoning ?? '', from_ai: l.from_ai, wood: s(l.wood_amount ?? null) }
 }
+
+export const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
+
+export type CaseState = { status: string; submit_count: number; submitted_at: string | null; submitted_by_name: string | null; updated_at: string; updated_by_name: string | null }
+/** Where a case stands, in one sentence. Submitting is what makes a case count; a later change waits to be resubmitted. */
+export function statusText(c: CaseState): string {
+  const by = (n: string | null) => (n ? ` by ${n}` : '')
+  if (c.status === 'submitted' && c.submitted_at) return c.submit_count > 1
+    ? `Price resubmitted on ${shortDate(c.submitted_at)}${by(c.submitted_by_name)} (submitted ${c.submit_count} times).`
+    : `Price submitted on ${shortDate(c.submitted_at)}${by(c.submitted_by_name)}.`
+  if (c.submit_count > 0 && c.submitted_at) return `Price changed on ${shortDate(c.updated_at)}${by(c.updated_by_name)}, not resubmitted. Last submitted on ${shortDate(c.submitted_at)}.`
+  return 'Price saved, not submitted.'
+}
+/** The short label for a list or a badge. */
+export function statusLabel(c: Pick<CaseState, 'status' | 'submit_count'>): { label: string; badge: string } {
+  if (c.status === 'submitted') return { label: c.submit_count > 1 ? 'Resubmitted' : 'Submitted', badge: 'boe-badge-completed' }
+  return c.submit_count > 0 ? { label: 'Changed, not resubmitted', badge: 'boe-badge-waiting' } : { label: 'Saved, not submitted', badge: 'boe-badge-pending' }
+}

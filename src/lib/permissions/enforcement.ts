@@ -159,11 +159,11 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
 
   // Pricing: the price book is read-only functions behind module_entry_open('pricing'). Training (20270720000000)
   // is three closed tables; every read and write is a SECURITY DEFINER function that calls pricing_training_actor():
-  // `create` is checked in pricing_training_save / _submit and the photo upload, `approve` in pricing_training_decide,
-  // which does not refuse the checker's own case (owner, 15 Nov 2026). Entry: src/app/pricing/layout.tsx via ModuleGuard.
+  // `create` is checked in pricing_training_save / _submit / _message and the photo upload: anyone holding it may change
+  // and submit any case (20270724000000). Entry: src/app/pricing/layout.tsx via ModuleGuard.
   pricing: {
     state: 'enforced',
-    detail: 'View is enforced in the screen and in the database. Create (teach a training case) and Approve (check a case, your own included) are enforced in the database functions.',
+    detail: 'View is enforced in the screen and in the database. Create (teach, change and submit a training case) is enforced in the database functions.',
   },
 
   // Marketing, Meta Ads: every read is RLS on the meta_* tables (module_entry_open('marketing')). Browsers cannot

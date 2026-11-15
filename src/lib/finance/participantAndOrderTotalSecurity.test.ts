@@ -1298,6 +1298,8 @@ describe('the applied migrations are frozen', () => {
       '20270722000000_sales_lead_attachments.sql',
       // Pricing > Training: kind 'structure' and the nullable wood_amount column on pricing_training_lines; pricing_training_save re-created only to store it.
       '20270723000000_pricing_training_structure.sql',
+      // Pricing > Training: submitting is what counts. Two statuses, submit_count / submitted_by / updated_by, the closed history table pricing_training_events, six functions re-created, pricing_training_decide dropped, the approve action removed from pricing.
+      '20270724000000_pricing_training_submit_counts.sql',
     ])
   })
 
@@ -1823,6 +1825,7 @@ describe('the applied migrations are frozen', () => {
       '20270720000000_pricing_training.sql',
       '20270722000000_sales_lead_attachments.sql',
       '20270723000000_pricing_training_structure.sql',
+      '20270724000000_pricing_training_submit_counts.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
