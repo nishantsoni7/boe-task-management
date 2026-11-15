@@ -19,6 +19,7 @@ import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { READ_EFFORT, READ_SCHEMA, READ_SYSTEM_PROMPT, SURVEY_EFFORT, SURVEY_SCHEMA, SURVEY_SYSTEM_PROMPT, readInstruction, surveyInstruction } from '@/lib/quotations/scanPrompt'
 import { readScanBody } from '@/lib/quotations/scanReading'
+import { answerJson, jsonFormat } from '@/lib/ai/structuredOutput'
 
 export const runtime = 'nodejs'
 // A batch of three dense pages can take a minute and more to answer; the plan allows 300 s (two routes already use it).
@@ -87,7 +88,7 @@ export async function POST(req: NextRequest) {
         headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
           model, max_tokens: survey ? 6000 : 16000, system: survey ? SURVEY_SYSTEM_PROMPT : READ_SYSTEM_PROMPT,
-          output_config: { effort: survey ? SURVEY_EFFORT : READ_EFFORT, format: { type: 'json_schema', schema } },
+          output_config: { effort: survey ? SURVEY_EFFORT : READ_EFFORT, format: jsonFormat(schema) },
           messages: [{ role: 'user', content }],
         }),
       })
@@ -108,8 +109,7 @@ export async function POST(req: NextRequest) {
   // A very dense batch can run past the answer limit (its JSON is then incomplete): say so, so the browser reads those pages one at a time.
   if (answer.stop_reason === 'max_tokens') return reply({ ok: true, reading: null, cut: true })
   if (answer.stop_reason === 'refusal') return reply({ ok: false, error: 'The reader declined these pages.' }, 422)
-  let reading: unknown = null
-  try { reading = JSON.parse((answer.content ?? []).filter(c => c.type === 'text').map(c => c.text ?? '').join('')) } catch { /* answered below */ }
+  const reading = answerJson(answer)
   if (!reading) return reply({ ok: false, error: 'Nothing could be read from these pages.' }, 502)
   return reply({ ok: true, reading })
 }

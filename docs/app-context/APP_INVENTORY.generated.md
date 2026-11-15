@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `0d8f051e` — Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live (#840)
-- Commits on this branch: 1398
+- Commit: `d7cc469b` — Quotations: Start from a client file (migration 20270721000000, apply before merge)
+- Commits on this branch: 1399
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 464 (first `20260530_create_positions.sql`, latest `20270723000000_pricing_training_structure.sql`)
 - Tables ever created: 259 (dropped at some point: 8)   SQL functions: 1049   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `d7cc469b` 2026-11-15 Quotations: Start from a client file (migration 20270721000000, apply before merge)
 - `0d8f051e` 2026-11-15 Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live (#840)
 - `ca8348f3` 2026-11-15 Docs: stamp the Training wooden structure change (#838) as merged 679f1306, deployed 23:26 IST, migration 20270723000000 applied (no SQL) (#841)
 - `679f1306` 2026-11-15 Pricing Training: the wooden structure is one priced row, with an optional wood share (migration 20270723000000, already applied) (#838)
@@ -38,7 +39,6 @@
 - `d8a02296` 2026-11-15 Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL) (#819)
 - `0177f067` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
 - `82a446dc` 2026-11-15 Pricing: a unit glued to its number ("180cm") is read as the unit, not as inches (no SQL) (#817)
-- `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
 
 ## Pages by top-level area
 

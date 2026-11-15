@@ -163,7 +163,8 @@ describe('the scan route', () => {
     assert.match(route, /rpc\('quotation_my_access'\)/)
     assert.doesNotMatch(route, /\.storage|\.upload\(|insert\(/)
     // Structured output, never a forced tool: Sonnet 5.5 and Opus 5.5 answer a forced tool_choice with a 400 (seen 15 Nov 2026).
-    assert.match(route, /output_config: \{ effort: [^}]+format: \{ type: 'json_schema', schema \} \}/)
+    assert.match(route, /output_config: \{ effort: [^}]+format: jsonFormat\(schema\) \}/)
+    assert.match(route, /answerJson\(answer\)/)
     assert.doesNotMatch(route, /tool_choice/)
     assert.match(route, /process\.env\.ANTHROPIC_API_KEY/)
     for (const p of [SURVEY_SYSTEM_PROMPT, READ_SYSTEM_PROMPT]) {
