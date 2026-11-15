@@ -64,13 +64,32 @@ describe('Control Center navigation', () => {
     assert.equal(dashboard.includes('label="Super Admin"'), false, 'it must not still be in Task Management')
   })
 
-  test('every entry is a real link, and leaving Home is a step of its own in the history', () => {
+  test('every entry is a real link to a real route, so Back walks back through every screen', () => {
     assert.ok(shell.includes("import { AppLink as Link } from '@/components/ui/AppLink'"))
     assert.equal(shell.includes('router.push(path)'), false, 'no button-driven navigation remains')
-    // Switching between two screens of the main page replaces the entry, as it always did; leaving Home does not,
-    // so Back from a setting returns to the directory.
-    assert.ok(shell.includes("const inTab = onMain && !!tab && tab !== 'overview'"))
-    assert.ok(shell.includes('replace={inTab && !!s.tab}'))
+    // Since the six ?tab= screens got routes (2026-11-15) no link replaces the history entry: the sidebar
+    // used to, which is why Back skipped Numbering, Departments and the rest.
+    assert.equal(/replace=\{/.test(shell), false, 'no sidebar link replaces history any more')
+  })
+
+  test('the six former tabs are routes of their own, each rendering its screen, and the main page keeps none of them', () => {
+    const routes: [string, string][] = [
+      ['departments', '<DepartmentsTab />'],
+      ['order-numbering', '<OrderNumberCycleTab />'],
+      ['order-notifications', '<OrderNotificationRecipientsTab />'],
+      ['operations-handoff', '<OperationsReviewerTab'],
+      ['order-visibility', '<OrderVisibilityTab />'],
+      ['sales-team', '<SalesTeamTab />'],
+    ]
+    const page = read('src/app/admin/control-center/page.tsx')
+    for (const [route, render] of routes) {
+      assert.ok(read(`src/app/admin/control-center/${route}/page.tsx`).includes(render), `${route} must render its screen`)
+      assert.equal(page.includes(`tab === '${route}'`), false, `${route} must not also be a tab of the main page`)
+    }
+    // What stays on the main page: Home, the retired employee tab's redirect, the hidden Module Visibility tab.
+    assert.ok(page.includes('<HomeDirectory'))
+    assert.ok(page.includes("tab === 'modules'"))
+    assert.ok(page.split(/\r?\n/).length < 500, 'the main page is Home plus one hidden tab, not every screen')
   })
 
   test('the pages of the open area show under it, and there are no tabs above the page', () => {

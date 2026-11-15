@@ -198,7 +198,7 @@ describe('phone phase 4', () => {
     has('src/components/controlCenter/ForYouSettings.tsx', 'What the three settings mean', 'styles.phoneLegend')
     has('src/app/admin/control-center/data-management/page.tsx', 'cc.bulletsPhone', 'cc.bulletsDesk')
     has('src/app/admin/control-center/test-data-cleanup/page.tsx', 'className={cc.radio}')
-    has('src/app/admin/control-center/page.tsx', 'boe-p4-cc-select')
+    has('src/components/controlCenter/OperationsHandoffTab.tsx', 'boe-p4-cc-select')
     has('src/app/coming-soon/page.tsx', 'boe-p4-soon-card', 'boe-p4-soon-btn')
     has('src/app/settings/roles/page.tsx', 'boe-p3-settings', 'href="/admin/control-center/people"', 'href="/admin/control-center/permissions"')
     has('src/app/my-credits/how-it-works/page.tsx', 'boe-p4-flow-arrow', 'boe-p4-cr-stats')

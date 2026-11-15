@@ -303,7 +303,7 @@ describe('reading the stored configuration', () => {
     assert.match(ORDER_UPDATE_RECIPIENT_DESCRIPTION.bdm, /not the BDM associated with this Order/i)
 
     // And the Control Center page explains why it ships off, where the switch is.
-    const cc = read('src/app/admin/control-center/page.tsx')
+    const cc = read('src/components/controlCenter/OrderNotificationsTab.tsx')
     assert.match(cc, /Why BDM Department starts off/)
   })
 

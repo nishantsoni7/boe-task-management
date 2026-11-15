@@ -261,8 +261,8 @@ function ControlCenterNavWithTab({ pathname, onNavigate }: { pathname: string; o
 
 // Home, then one entry per area. Only the area you are in is open, showing its pages
 // underneath, so the list never grows past one screen and the pages are never hidden
-// behind a second row of tabs. Every entry is a real link, so Back/Forward walk
-// through sections. Data & Safety sits apart, in the warning colour.
+// behind a second row of tabs. Every entry is a real link to a real route, so Back/Forward walk
+// through every screen. Data & Safety sits apart, in the warning colour.
 //
 // What is deliberately NOT here:
 //   Roles              — nothing manages the three system roles; they are fixed
@@ -282,9 +282,6 @@ function ControlCenterNav({
   const loc = { pathname, tab }
   const current = activeHub(loc)
   const onMain = pathname === MAIN_PATH
-  // Switching between two screens of the main page replaces the history entry, as the in-place switch always
-  // did; leaving Home is a step of its own, so Back from a setting returns to the directory.
-  const inTab = onMain && !!tab && tab !== 'overview'
   // The one open area can be folded away by clicking it again. The fold belongs to that visit:
   // moving to another area (or back) forgets it.
   const [folded, setFolded] = useState<HubId | null>(null)
@@ -299,7 +296,6 @@ function ControlCenterNav({
       <div key={hub.id}>
         <Link
           href={hubHref(hub)}
-          replace={inTab && !!hub.sections[0].tab}
           onClick={e => {
             if (here) { e.preventDefault(); setFolded(open ? hub.id : null) } else navigate()
           }}
@@ -323,7 +319,6 @@ function ControlCenterNav({
                 <Link
                   key={s.id}
                   href={s.href}
-                  replace={inTab && !!s.tab}
                   onClick={navigate}
                   className={`boe-nav-item${active ? ' active' : ''}${hub.danger ? ` ${cc.navDangerSub}` : ''}`}
                   aria-current={active ? 'page' : undefined}
@@ -347,7 +342,6 @@ function ControlCenterNav({
     <nav className="boe-sidebar-section" aria-label="Control Center">
       <Link
         href={hubHref(NAV_HUBS[0])}
-        replace={inTab}
         onClick={navigate}
         className={`boe-nav-item${homeActive ? ' active' : ''}`}
         aria-current={homeActive ? 'page' : undefined}

@@ -348,7 +348,8 @@ describe('the notifications reach the reader and open the Order at the card', ()
 describe('the queues and the Control Center (the Action Queue itself is gone: pending work shows on the Orders and Finance dashboards)', () => {
   const DASHBOARD = read('src/app/orders/page.tsx')
   const ALL = read('src/app/orders/all/page.tsx')
-  const CC = read('src/app/admin/control-center/page.tsx')
+  const OPS_TAB = read('src/components/controlCenter/OperationsHandoffTab.tsx')
+  const OPS_ROUTE = read('src/app/admin/control-center/operations-handoff/page.tsx')
   const NAV = read('src/lib/controlCenter/navModel.ts')
 
   test('the dashboard counts the reader\'s own awaiting handoffs, the unassigned ones, and the flagged ones, from ONE read after the first draw', () => {
@@ -375,13 +376,13 @@ describe('the queues and the Control Center (the Action Queue itself is gone: pe
 
   test('Control Center assigns the reviewer through the RPC, from the live directory, by id, and reports what clearing unassigned', () => {
     assert.match(NAV, /'operations-handoff'/)
-    assert.match(CC, /tab === 'operations-handoff' && <OperationsReviewerTab members=\{members\} \/>/)
-    assert.match(CC, /supabase\.rpc\('set_order_operations_reviewer', \{\s*p_user_id: choice \|\| null,\s*\}\)/)
-    assert.match(CC, /unassigned: result\.unassigned_handoffs \?\? 0/)
-    assert.match(CC, /eligibleOperationsReviewers\(members\)/)
-    assert.doesNotMatch(CC, /\.from\('order_operations_reviewers'\)\s*\.(insert|update|upsert)/, 'never written directly')
-    assert.match(CC, /OPERATIONS_REVIEWER_CLEAR_OPTION/, 'clearing is allowed and visible')
-    assert.doesNotMatch(CC, /Nitish|Nishant/, 'nobody is named in code')
+    assert.match(OPS_ROUTE, /<OperationsReviewerTab members=\{members\.data \?\? NO_MEMBERS\} \/>/)
+    assert.match(OPS_TAB, /supabase\.rpc\('set_order_operations_reviewer', \{\s*p_user_id: choice \|\| null,\s*\}\)/)
+    assert.match(OPS_TAB, /unassigned: result\.unassigned_handoffs \?\? 0/)
+    assert.match(OPS_TAB, /eligibleOperationsReviewers\(members\)/)
+    assert.doesNotMatch(OPS_TAB, /\.from\('order_operations_reviewers'\)\s*\.(insert|update|upsert)/, 'never written directly')
+    assert.match(OPS_TAB, /OPERATIONS_REVIEWER_CLEAR_OPTION/, 'clearing is allowed and visible')
+    assert.doesNotMatch(OPS_TAB, /Nitish|Nishant/, 'nobody is named in code')
   })
 })
 

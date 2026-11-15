@@ -4,6 +4,17 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-15 — Control Center redesign, step 2: the six ?tab= screens get real routes (PR #821) · no SQL
+- **Owner ask.** "Start step 2: real routes for tab pages" (the second half of the Control Center redesign). Follows step 1 (#816) and the pending-work change (#818), both merged.
+- **Why.** Departments, the four Order screens and Sales team were `?tab=` views of one 1,490-line page: no address of their own, and every sidebar switch replaced the history entry, so Back skipped them.
+- **Routes.** `/admin/control-center/departments`, `/order-numbering`, `/order-notifications`, `/operations-handoff`, `/order-visibility`, `/sales-team`. Each is a thin page rendering a component moved out of `page.tsx` unchanged (`DepartmentsTab`, `OrderNumberingTab`, `OrderNotificationsTab`, `OperationsHandoffTab`; `OrderVisibilityTab` and `SalesTeamTab` already were). `page.tsx` is now Home plus the hidden Module Visibility tab (about 370 lines, was 1,490).
+- **Old addresses.** `next.config.ts` redirects each `/admin/control-center?tab=<screen>` to its route (temporary redirects, query values pass through), built from `LEGACY_TAB_REDIRECTS` in `navModel.ts` so the two cannot drift. `?tab=people` and `?tab=modules` still work as before.
+- **Navigation.** Sidebar links no longer replace history (`replace` and the `inTab` rule are gone); `ControlCenterTab` shrinks to overview / people / modules. Links in code now point at the routes: Authorities, the access catalog, `OPERATIONS_HANDOFF_UNASSIGNED_HREF`, the Sales import notice, Home and search. The copy on two of them said "Order Setup", renamed Orders in step 1.
+- **Not changed.** What any screen does or saves; permissions; the database. Behaviour to look at: each screen shows its skeleton while the shared lists load, as before.
+- **Tests.** `navModel.test.ts` (+routes, redirects read from `next.config.ts`), `controlCenterNav.test.ts` (no `replace`, six routes, small main page); pins re-pointed in `membersConsolidation`, `operationsHandoffSchema`, `orderUpdateNotifications`, `orderVisibilityScopes`, `phoneTasksAdmin.render`.
+- **Rollback.** Revert the commit; old `?tab=` addresses then resolve to the pre-step-2 page.
+
+## 2026-11-15 — Control Center redesign, step 1: Home + six areas, a searchable directory, no tabs, no pending work (PR #816, squash-merged 17:42 IST as `f1b7ea2e`) · no SQL
 ## 2026-11-15 — Pricing: heights alone are not a footprint, and a labelled size in feet is read (branch `fix/pricing-heights-feet`; PR number and merge SHA are added at the stamp) · no SQL
 - **Owner ask.** "Fix the heights-only and labelled feet faults too", the two faults left open by #811 and #817.
 - **Heights only.** In `labelledPlan()` (`src/lib/pricing/features.ts`): when every number in the text is labelled and none is a side ("Seat height 18, arm height 24"), there is no footprint. A marked height beside plain numbers ("24 x 18 x 30h") still leaves the footprint.
