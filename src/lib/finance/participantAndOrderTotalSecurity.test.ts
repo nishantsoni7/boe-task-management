@@ -1294,6 +1294,8 @@ describe('the applied migrations are frozen', () => {
       '20270719000000_finance_payment_request_tab_counts.sql',
       // Pricing > Training: three closed tables (cases, lines, messages), their SECURITY DEFINER functions, the actions create and approve on pricing (off by default), and the public bucket pricing-training. Nothing existing replaced.
       '20270720000000_pricing_training.sql',
+      // Quotations, Start from a client file: one column on quotation_lines (reference_images, checked by the new IMMUTABLE quotation_line_refs_ok), quotation_save re-issued. Nothing else replaced; the client copy is unchanged.
+      '20270721000000_quotation_line_reference_images.sql',
       // Sales Lead Board: files on an update. A private bucket, one closed table, three storage policies and three helpers, add_sales_lead_comment re-issued with a files argument (the four-argument function dropped) and get_sales_lead re-issued with the files. Nothing existing changed.
       '20270722000000_sales_lead_attachments.sql',
       // Pricing > Training: kind 'structure' and the nullable wood_amount column on pricing_training_lines; pricing_training_save re-created only to store it.
@@ -1823,6 +1825,7 @@ describe('the applied migrations are frozen', () => {
       '20270718000000_order_handoff_review_chain.sql',
       '20270719000000_finance_payment_request_tab_counts.sql',
       '20270720000000_pricing_training.sql',
+      '20270721000000_quotation_line_reference_images.sql',
       '20270722000000_sales_lead_attachments.sql',
       '20270723000000_pricing_training_structure.sql',
       '20270724000000_pricing_training_submit_counts.sql',

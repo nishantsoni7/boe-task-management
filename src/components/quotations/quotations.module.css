@@ -120,6 +120,25 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .plLinks .two { display: flex; gap: 12px; }
 .improve { font: 600 11.5px var(--boe-font-body); color: var(--boe-brand-ink); background: none; border: 0; cursor: pointer; padding: 2px 0; text-align: left; }
 .plRm { font: 600 11.5px var(--boe-font-body); color: var(--boe-text-muted); background: none; border: 0; cursor: pointer; padding: 2px 0; }
+/* Other pictures from the client's file (swatch, drawing, reference), under the main one (20270721000000). */
+.plRefs { display: flex; flex-wrap: wrap; gap: 6px; max-width: 168px; }
+.plRef { position: relative; display: grid; justify-items: center; gap: 1px; }
+.plRefImg { width: 50px; height: 42px; border-radius: 6px; border: 1px solid var(--boe-border); background: #fff; object-fit: contain; display: block; }
+.plRefKind { font: 600 10px var(--boe-font-body); color: var(--boe-text-muted); }
+.plRefRm { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--boe-border); background: #fff; color: var(--boe-text-muted); font-size: 13px; line-height: 1; cursor: pointer; padding: 0; }
+/* The scan review: the source page beside the rows, the spare pictures, the progress. */
+.scanSplit { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+@media (min-width: 1100px) { .scanSplit.withPage { grid-template-columns: minmax(0, 1fr) 360px; } }
+.scanPage { position: sticky; top: 0; align-self: start; border: 1px solid var(--boe-border); border-radius: 10px; background: var(--boe-surface-quiet); padding: 8px; display: grid; gap: 6px; }
+.scanPage img { width: 100%; height: auto; border-radius: 6px; background: #fff; display: block; }
+.scanPics { display: flex; flex-wrap: wrap; gap: 4px; align-items: flex-start; }
+.scanPick { padding: 0; border: 2px solid transparent; border-radius: 8px; background: none; cursor: pointer; }
+.scanPick:hover, .scanPick:focus-visible { border-color: var(--boe-brand-ink); }
+.scanTag { font: 600 10px var(--boe-font-body); color: var(--boe-text-muted); display: block; text-align: center; }
+.scanWants { font-size: 12px; color: var(--boe-brand-ink); margin-top: 3px; max-width: 280px; }
+.scanPool { border: 1px dashed var(--boe-border-strong); border-radius: 10px; padding: 8px; display: grid; gap: 6px; }
+.scanBar { height: 6px; border-radius: 3px; background: var(--boe-surface-quiet); overflow: hidden; }
+.scanBar > span { display: block; height: 100%; background: var(--boe-brand-ink); transition: width .3s; }
 .plMid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 10px 12px; min-width: 0; }
 .c3 { grid-column: span 3; } .c4 { grid-column: span 4; } .c5 { grid-column: span 5; } .c7 { grid-column: span 7; } .c12 { grid-column: span 12; }
 textarea.t3 { min-height: 86px; }

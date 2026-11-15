@@ -1,19 +1,19 @@
-// The browser's half of Import: spreadsheets and pasted text are read here (nothing leaves the browser); a PDF or a
-// photo is sent once to /api/quotations/import, read there, and dropped (owner allowed BOQ files to go to the AI
-// reader on 2026-11-12). Both end as review rows from importBoq.ts.
+// The browser's half of Import: spreadsheets and pasted text are read here (nothing leaves the browser); a PDF, a photo or a
+// PowerPoint is scanned (scanRun.ts: its pages become pictures on this device and only those go to the AI reader, owner
+// allowed 2026-11-12 and 2026-11-15). Everything ends as review rows from importBoq.ts.
 
 import type { createClient } from '@/lib/supabase/client'
 import { classifyRouteError } from '@/lib/errors/routeError'
-import { shrinkPhoto } from '@/lib/exhibitionLeads/scanClient'
 import { gridFromText, readGrid, type Cell, type ImportRow } from './importBoq'
+import { SCAN_ACCEPT, scanKind, type ScanPage } from './scanPages'
+import type { ScanProgress } from './scanRun'
+import type { Survey } from './scanReading'
 
 type Supabase = ReturnType<typeof createClient>
 
-export const IMPORT_ACCEPT = '.xlsx,.xls,.csv,.pdf,.jpg,.jpeg,.png,.webp'
-/** Vercel refuses a request body above 4.5 MB; PDFs above this are split or sent as Excel. */
-export const MAX_IMPORT_PDF_BYTES = 4 * 1024 * 1024
+export const IMPORT_ACCEPT = `.xlsx,.xls,.csv,${SCAN_ACCEPT}`
 
-export type ImportResult = { rows: ImportRow[]; pictures: Blob[]; note: string }
+export type ImportResult = { rows: ImportRow[]; pictures: Blob[]; note: string; pages?: ScanPage[]; survey?: Survey | null }
 
 export class ImportError extends Error {}
 
@@ -29,19 +29,33 @@ export function readFailure(e: unknown, fallback: string): { text: string; reloa
   return { text: e instanceof Error ? e.message : fallback, reload: false }
 }
 
-const kind = (f: File) => {
-  const n = f.name.toLowerCase()
-  if (/\.(xlsx|xls|csv)$/.test(n)) return 'sheet'
-  if (n.endsWith('.pdf') || f.type === 'application/pdf') return 'pdf'
-  if (/\.(jpe?g|png|webp)$/.test(n) || f.type.startsWith('image/')) return 'photo'
-  return null
-}
+const isSheet = (f: File) => /\.(xlsx|xls|csv)$/i.test(f.name)
 
-export async function readImportFile(supabase: Supabase, file: File): Promise<ImportResult> {
-  const k = kind(file)
-  if (k === 'sheet') return readSpreadsheet(file)
-  if (k === 'pdf' || k === 'photo') return readOnServer(supabase, file, k)
-  throw new ImportError('Use an Excel or CSV file, a PDF, or a photo (JPG, PNG, WebP).')
+/**
+ * One or more files, as review rows: every spreadsheet read here, every PDF / photo / PowerPoint scanned together (one survey
+ * over all their pages, so photos sent one by one on WhatsApp read as one document). Pictures of both kinds in one list.
+ */
+export async function readImportFiles(supabase: Supabase, files: readonly File[], onProgress: (p: ScanProgress) => void): Promise<ImportResult> {
+  const bad = files.find(f => !isSheet(f) && !scanKind(f))
+  if (bad) throw new ImportError(`${bad.name}: use Excel or CSV, a PDF, a photo (JPG, PNG, WebP) or a PowerPoint (.pptx).`)
+  const out: ImportResult = { rows: [], pictures: [], note: '' }
+  const notes: string[] = []
+  const take = (r: ImportResult) => {
+    const at = out.pictures.length
+    out.rows.push(...r.rows.map(x => ({ ...x, picture: x.picture === null ? null : x.picture + at, extras: x.extras?.map(e => ({ ...e, picture: e.picture + at })) })))
+    out.pictures.push(...r.pictures)
+    if (r.note) notes.push(r.note)
+  }
+  for (const f of files.filter(isSheet)) take(await readSpreadsheet(f))
+  const scan = files.filter(f => !isSheet(f))
+  if (scan.length) {
+    const { scanFiles } = await import('./scanRun')
+    const r = await scanFiles(supabase, scan, onProgress)
+    take(r)
+    Object.assign(out, { pages: r.pages, survey: r.survey })
+  }
+  out.note = notes.join(' ')
+  return out
 }
 
 export function readPastedText(input: string): ImportResult {
@@ -103,27 +117,4 @@ async function picturesBySheet(bytes: Uint8Array): Promise<Map<string, { row: nu
     }
   } catch { /* pictures are a bonus: the rows still import */ }
   return out
-}
-
-type ServerReply = { ok: true; reading: unknown; note?: string } | { ok: false; error: string }
-
-async function readOnServer(supabase: Supabase, file: File, k: 'pdf' | 'photo'): Promise<ImportResult> {
-  const { data: { session } } = await supabase.auth.getSession()
-  if (!session) throw new ImportError('Your session ended. Sign in again, then import.')
-  let upload: Blob = file
-  if (k === 'photo') upload = await shrinkPhoto(file)
-  else if (file.size > MAX_IMPORT_PDF_BYTES) throw new ImportError('This PDF is over 4 MB. Send the BOQ pages only, or the Excel file.')
-
-  const body = new FormData()
-  body.set('file', new File([upload], k === 'pdf' ? 'boq.pdf' : 'boq.jpg', { type: k === 'pdf' ? 'application/pdf' : 'image/jpeg' }))
-  let res: Response
-  try {
-    res = await fetch('/api/quotations/import', { method: 'POST', body, headers: { Authorization: `Bearer ${session.access_token}` } })
-  } catch { throw new ImportError('No connection. Check the network and try again.') }
-  const json = await res.json().catch(() => null) as ServerReply | null
-  if (!json) throw new ImportError(res.status === 504 ? 'Reading took too long. Send fewer pages, or the Excel file.' : 'Could not read the file right now. Try again.')
-  if (!json.ok) throw new ImportError(json.error)
-  const { parseBoqReading } = await import('./importBoq')
-  const rows = parseBoqReading(json.reading)
-  return { rows, pictures: [], note: rows.length ? (json.note ?? 'Read by the AI reader: check every row, especially the marked cells.') : 'No products found in this file.' }
 }

@@ -5,7 +5,10 @@
 // for a person to check (a client's BOQ can head its own rate that way). A PDF or photo never brings prices. Nothing here is trusted blindly: every row is shown for review first, and anything the reader was
 // unsure of is marked.
 
-import type { QuoteArea, QuoteLine } from './math'
+import { MAX_LINE_REFS, type LineRef, type QuoteArea, type QuoteLine } from './math'
+
+/** The start of the Remarks line that says what the client wants different from the reference picture (Improve picture reads it). */
+export const WANTS = 'Client wants: '
 
 export type ImportField = 'name' | 'size' | 'qty' | 'room' | 'material' | 'price'
 
@@ -28,12 +31,25 @@ export type ImportRow = {
   note: string
   /** A salesperson's side note from a column with no heading beside Customization ("Price given was for 30 pieces"); goes to the line's Internal note, never to the client. */
   internalNote: string
-  /** Index into the pictures read from the same file (Excel only). */
+  /** Index into the pictures read from the same file (an .xlsx, or cut from a scanned page). */
   picture: number | null
   doubtful: ImportField[]
   /** Where it came from, for the review table: "Row 12", "Page 2". */
   source: string
+  // A scanned file (scanReading.ts) also brings these; a spreadsheet does not.
+  /** The page the row was read from. */
+  page?: number
+  /** Its other pictures: a swatch, a drawing, another reference. */
+  extras?: RowPicture[]
+  /** What the client wants different from the reference picture, one per change ("fabric: beige → green"). */
+  changes?: string[]
+  /** The product as the client wants it, in one sentence (only when there are changes). */
+  wanted?: string
+  /** A second or later option for the same product: added as an optional line. */
+  optional?: boolean
 }
+
+export type RowPicture = { picture: number; kind: 'swatch' | 'drawing' | 'reference'; note: string }
 
 export type Cell = string | number | null | undefined
 type Col = 'sno' | 'name' | 'size' | 'qty' | 'room' | 'material' | 'finish' | 'spec' | 'custom' | 'note' | 'picture' | 'price' | 'priceWeak'
@@ -108,7 +124,7 @@ const roomTitle = (title: string) => text(title.replace(/[-–(]?\s*(\d+)\s*(roo
 const SKIP = /^(sub\s*-?\s*total|grand\s*total|total|amount|gst|igst|cgst|sgst|note|notes|terms)\b/i
 
 /** Quantity as the file gave it, turned into per room × rooms when it divides evenly; marked when unsure. */
-function placeQty(qty: number | null, rooms: number | null, basis: 'per_room' | 'total' | 'unknown'): Pick<ImportRow, 'qty' | 'qtyMode'> & { unsure: boolean } {
+export function placeQty(qty: number | null, rooms: number | null, basis: 'per_room' | 'total' | 'unknown'): Pick<ImportRow, 'qty' | 'qtyMode'> & { unsure: boolean } {
   if (qty === null) return { qty: null, qtyMode: 'per_unit', unsure: true }
   if (!rooms || rooms <= 1) return { qty, qtyMode: rooms ? 'per_unit' : 'fixed', unsure: false }
   if (basis === 'per_room') return { qty, qtyMode: 'per_unit', unsure: false }
@@ -196,40 +212,6 @@ export function gridFromText(input: string): Cell[][] {
     .map(line => (line.includes('\t') ? line.split('\t') : line.includes('|') ? line.split('|') : line.split(/\s{2,}/)).map(c => c.trim()))
 }
 
-// ── The server's reading of a PDF or photo ─────────────────────────────────────
-
-const str = (v: unknown, max = 300) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '')
-const FIELDS: ImportField[] = ['name', 'size', 'qty', 'room', 'material']
-
-/** The model's answer (tool input) → review rows. Anything outside the schema is dropped. */
-export function parseBoqReading(raw: unknown): ImportRow[] {
-  const o = (raw && typeof raw === 'object' ? raw : {}) as { rooms?: unknown; rows?: unknown }
-  const roomCount = new Map<string, number>()
-  if (Array.isArray(o.rooms)) for (const r of o.rooms.slice(0, 100)) {
-    const name = str((r as { name?: unknown })?.name, 80)
-    const n = Number((r as { count?: unknown })?.count)
-    if (name && Number.isInteger(n) && n >= 1 && n <= 5000) roomCount.set(name.toLowerCase(), n)
-  }
-  if (!Array.isArray(o.rows)) return []
-  return o.rows.slice(0, 600).flatMap((x): ImportRow[] => {
-    const r = (x && typeof x === 'object' ? x : {}) as Record<string, unknown>
-    const name = str(r.name, 160)
-    if (!name) return []
-    const room = str(r.room, 80)
-    const rooms = roomCount.get(room.toLowerCase()) ?? null
-    const basis = r.qty_basis === 'per_room' || r.qty_basis === 'total' ? r.qty_basis : 'unknown'
-    const placed = placeQty(qtyOf(typeof r.qty === 'number' || typeof r.qty === 'string' ? r.qty : null), rooms, basis)
-    const doubtful = Array.isArray(r.doubtful) ? FIELDS.filter(f => (r.doubtful as unknown[]).includes(f)) : []
-    if (placed.unsure && !doubtful.includes('qty')) doubtful.push('qty')
-    const page = Number(r.page)
-    return [{
-      id: rid(), include: true, room, rooms, name, size: str(r.size, 120), material: str(r.material, 200), finish: str(r.finish, 120),
-      spec: str(r.spec, 500), qty: placed.qty, qtyMode: placed.qtyMode, price: null, note: str(r.note, 300), internalNote: '', picture: null, doubtful,
-      source: Number.isInteger(page) && page > 0 ? `Page ${page}` : '',
-    }]
-  })
-}
-
 // ── Into the quotation ─────────────────────────────────────────────────────────
 
 const newKey = () => `n${Math.random().toString(36).slice(2, 10)}`
@@ -237,10 +219,11 @@ const newKey = () => `n${Math.random().toString(36).slice(2, 10)}`
 /**
  * The kept rows appended to the quotation: a room type per distinct room (an existing one with the same name is
  * reused), and a product per row with the row's price (none when the file gave none). `picturePaths` maps a row's id
- * to the stored path of its picture, if any.
+ * to the stored path of its picture, if any; `refPaths` to its other pictures (a scanned file). What the client wants
+ * different from the reference goes into Remarks under "Client wants:", and a second option becomes an optional line.
  */
-export function addToQuote(rows: readonly ImportRow[], areas: readonly QuoteArea[], picturePaths: ReadonlyMap<string, string> = new Map()):
-  { areas: QuoteArea[]; lines: QuoteLine[] } {
+export function addToQuote(rows: readonly ImportRow[], areas: readonly QuoteArea[], picturePaths: ReadonlyMap<string, string> = new Map(),
+  refPaths: ReadonlyMap<string, LineRef[]> = new Map()): { areas: QuoteArea[]; lines: QuoteLine[] } {
   const outAreas = [...areas]
   const keyFor = (room: string, rooms: number | null): string | null => {
     if (!room) return null
@@ -252,12 +235,14 @@ export function addToQuote(rows: readonly ImportRow[], areas: readonly QuoteArea
   }
   const lines = rows.filter(r => r.include && r.name.trim()).map((r): QuoteLine => {
     const area_key = keyFor(r.room.trim(), r.rooms)
+    const wants = r.wanted?.trim() || r.changes?.length ? `${WANTS}${[r.wanted?.trim(), ...(r.changes ?? [])].filter(Boolean).join('; ')}` : ''
     return {
       // Cut to the database's limits (20270614000000), so an imported line can always be saved.
-      key: newKey(), area_key, name: r.name.trim().slice(0, 160), size_text: r.size.slice(0, 80), spec: [r.spec.trim(), r.note.trim()].filter(Boolean).join('\n').slice(0, 1600),
+      key: newKey(), area_key, name: r.name.trim().slice(0, 160), size_text: r.size.slice(0, 80), spec: [r.spec.trim(), wants, r.note.trim()].filter(Boolean).join('\n').slice(0, 1600),
       material: r.material.slice(0, 120), finish: r.finish.slice(0, 120), category: '',
       qty_mode: area_key ? r.qtyMode : 'fixed', qty: Math.min(100000, Math.round((r.qty ?? 1) * 100) / 100) || 1, unit_price: r.price, tax_rate: 18,
-      image_path: picturePaths.get(r.id) ?? null, is_optional: false, client_note: '', internal_note: r.internalNote.slice(0, 1000), // the file's own note joins the Remarks text: the builder has no separate note for the client (20270714000000)
+      image_path: picturePaths.get(r.id) ?? null, is_optional: !!r.optional, client_note: '', internal_note: r.internalNote.slice(0, 1000), // the file's own note joins the Remarks text: the builder has no separate note for the client (20270714000000)
+      references: (refPaths.get(r.id) ?? []).slice(0, MAX_LINE_REFS),
     }
   })
   return { areas: outAreas, lines }

@@ -7,13 +7,19 @@
 
 type Schema = { [k: string]: unknown }
 
-/** The schema with `additionalProperties: false` on every object, as structured output requires. */
-export function closedSchema<T extends Schema>(s: T): T {
+/**
+ * The schema with `additionalProperties: false` on every object, as structured output requires. With `allRequired`, every
+ * property is required too: a schema with many optional fields was refused as "Schema is too complex" after about 3 minutes
+ * of compiling (the quotation scan, 15 Nov 2026) and accepted in seconds once all were required; the model then fills every
+ * field, an empty value meaning "not there".
+ */
+export function closedSchema<T extends Schema>(s: T, allRequired = false): T {
   const walk = (v: unknown): unknown => {
     if (Array.isArray(v)) return v.map(walk)
     if (!v || typeof v !== 'object') return v
     const o = Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]))
-    return o.type === 'object' ? { ...o, additionalProperties: false } : o
+    if (o.type !== 'object') return o
+    return { ...o, additionalProperties: false, ...(allRequired && o.properties ? { required: Object.keys(o.properties as object) } : {}) }
   }
   return walk(s) as T
 }
