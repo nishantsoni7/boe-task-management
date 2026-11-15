@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { imageRemotePatterns, PREVIEW_QUALITY, THUMB_QUALITY } from "./src/lib/imageHosts";
+import { LEGACY_TAB_REDIRECTS, MAIN_PATH } from "./src/lib/controlCenter/navModel";
 
 const nextConfig: NextConfig = {
   turbopack: {
@@ -140,6 +141,14 @@ const nextConfig: NextConfig = {
         destination: '/attendance/monthly-review?view=decisions',
         permanent: false,
       },
+      // CONTROL CENTER SCREENS THAT WERE ?tab= VIEWS OF ONE PAGE (2026-11-15): each has its own route now.
+      // The old address keeps working for bookmarks and old links, from the one list navModel.ts holds.
+      ...LEGACY_TAB_REDIRECTS.map(({ tab, href }) => ({
+        source: MAIN_PATH,
+        has: [{ type: 'query' as const, key: 'tab', value: tab }],
+        destination: href,
+        permanent: false,
+      })),
     ]
   },
 };

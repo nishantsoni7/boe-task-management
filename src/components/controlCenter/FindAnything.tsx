@@ -87,7 +87,7 @@ export function FindAnything({ onClose }: { onClose: () => void }) {
       .map<Hit>(d => ({
         key: `d:${d.department_key}`, group: 'Departments', label: d.department_name,
         sub: d.is_active ? 'Active department' : 'Inactive department',
-        href: `${MAIN_PATH}?tab=departments`, icon: 'dept',
+        href: `${MAIN_PATH}/departments`, icon: 'dept',
       }))
 
     // Screens first when the words name one; people first when they name a

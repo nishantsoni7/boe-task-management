@@ -127,7 +127,7 @@ export const OPERATIONS_HANDOFF_NOT_RECORDED_HINT =
 export const OPERATIONS_HANDOFF_UNASSIGNED_LABEL = 'No operations reviewer assigned'
 export const OPERATIONS_HANDOFF_UNASSIGNED_HINT =
   'An administrator must assign the operations reviewer in Control Center before this version can be accepted.'
-export const OPERATIONS_HANDOFF_UNASSIGNED_HREF = '/admin/control-center?tab=operations-handoff'
+export const OPERATIONS_HANDOFF_UNASSIGNED_HREF = '/admin/control-center/operations-handoff'
 
 export const ACCEPT_FOR_PRODUCTION_LABEL = 'Accept for production'
 export const CANNOT_ACCEPT_LABEL = 'Cannot accept'

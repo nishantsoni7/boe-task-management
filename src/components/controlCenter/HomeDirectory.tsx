@@ -124,7 +124,7 @@ export function HomeDirectory({ members, depts, modules, peopleInDept }: {
   for (const d of inactiveWithPeople) {
     checks.push({
       key: `inactive-${d.department_key}`, count: peopleInDept(d.department_key), where: 'People › Departments',
-      href: `${MAIN_PATH}?tab=departments`,
+      href: `${MAIN_PATH}/departments`,
       text: <><strong>{d.department_name}</strong> is inactive but still has people assigned</>,
     })
   }

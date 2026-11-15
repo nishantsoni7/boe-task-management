@@ -14,7 +14,7 @@
 // uses, with the same shared rule, so this screen can never store something
 // People or Modules would not.
 //
-// The Order Setup settings that decide access-like things (who reviews PI
+// The Orders settings that decide access-like things (who reviews PI
 // handoffs, whose orders a salesperson sees, who is told when an Order
 // changes) stay where they are and are linked from here — the owner's
 // decision of 2026-10-29.
@@ -70,8 +70,8 @@ function AuthoritiesPageInner() {
   const [group, setGroup] = useState<'all' | Group>('all')
   const [picker, setPicker] = useState<{ moduleKey: string; actionKey: string } | null>(null)
 
-  // The one Order Setup value worth reading here: the person who accepts PI
-  // handoffs. The same admin-only read Order Setup › Operations Handoff makes.
+  // The one Orders value worth reading here: the person who accepts PI
+  // handoffs. The same admin-only read Orders › Operations handoff makes.
   const [reviewerId, setReviewerId] = useState<string | null | undefined>(undefined)
   useEffect(() => {
     const load = async () => {
@@ -111,18 +111,18 @@ function AuthoritiesPageInner() {
     {
       group: 'Orders', label: 'Reviews PI handoffs for Operations',
       meaning: 'One person accepts each approved PI version for production, or asks for clarification.',
-      needs: 'Open Order Management', where: 'Order Setup › Operations Handoff', href: `${CC}?tab=operations-handoff`,
+      needs: 'Open Order Management', where: 'Orders › Operations handoff', href: `${CC}/operations-handoff`,
       value: reviewerId === undefined ? 'Loading…' : (nameOf(reviewerId) ?? 'Nobody assigned'),
     },
     {
       group: 'Orders', label: 'Whose orders a salesperson sees',
       meaning: 'Per sales candidate: their own, selected colleagues’, or every sales candidate’s orders. Only the owner account can change it.',
-      needs: 'Open Order Management', where: 'Order Setup › Order Visibility', href: `${CC}?tab=order-visibility`, value: 'Per salesperson',
+      needs: 'Open Order Management', where: 'Orders › Order visibility', href: `${CC}/order-visibility`, value: 'Per salesperson',
     },
     {
       group: 'Orders', label: 'Who is told when an Order changes',
       meaning: 'Four switches: Super Admin level, Administrators, the salesperson on the Order, the BDM department. A switchboard, not a permission.',
-      needs: '—', where: 'Order Setup › Notifications', href: `${CC}?tab=order-notifications`, value: 'Four switches',
+      needs: '—', where: 'Orders › Notifications', href: `${CC}/order-notifications`, value: 'Four switches',
     },
     {
       group: 'People & assets', label: 'Included in Performance',

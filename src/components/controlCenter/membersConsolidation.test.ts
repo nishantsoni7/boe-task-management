@@ -91,7 +91,7 @@ describe('the old surfaces are gone, not duplicated', () => {
     // different job: emptying a department, not editing a person.
     assert.equal(ccPage.includes('openEditUser'), false, 'the employee-list department dialog is gone')
     assert.equal(ccPage.includes('saveUserDept'), false)
-    assert.ok(ccPage.includes('startEditPerson'), 'the Departments popup keeps its own reassignment')
+    assert.ok(read('src/components/controlCenter/DepartmentsTab.tsx').includes('startEditPerson'), 'the Departments popup keeps its own reassignment')
   })
 })
 

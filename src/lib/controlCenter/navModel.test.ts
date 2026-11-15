@@ -2,9 +2,10 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import nextConfig from '../../../next.config'
 import {
-  COMMON_JOBS, MAIN_PATH, NAV_HUBS, NAV_SECTIONS, activeHub, activeSection, hubHref, isSectionActive,
-  resolveControlCenterTab, searchSections, sectionById,
+  COMMON_JOBS, LEGACY_TAB_REDIRECTS, LEGACY_TAB_SCREENS, MAIN_PATH, NAV_HUBS, NAV_SECTIONS, activeHub, activeSection,
+  hubHref, isSectionActive, resolveControlCenterTab, searchSections, sectionById,
 } from './navModel'
 
 const SETTINGS = NAV_SECTIONS.filter(s => s.hub.id !== 'home')
@@ -75,11 +76,46 @@ describe('navigation model', () => {
     assert.equal(activeHub({ pathname: `${MAIN_PATH}/review-rankings`, tab: null })?.id, 'staff')
   })
 
-  test('a tab section is active only on the main page with that tab', () => {
+  test('every screen but Home has its own route: no ?tab= address is left in the map', () => {
+    for (const s of NAV_SECTIONS) {
+      if (s.id === 'home') { assert.equal(s.href, MAIN_PATH); continue }
+      assert.equal(s.href.includes('?'), false, `${s.id} still has a query-string address`)
+      assert.equal(s.tab, undefined, `${s.id} still claims to be a tab of the main page`)
+    }
+  })
+
+  test('a screen is active on its own route, and only there', () => {
     const numbering = NAV_SECTIONS.find(s => s.id === 'order-numbering')!
-    assert.equal(isSectionActive(numbering, { pathname: MAIN_PATH, tab: 'order-numbering' }), true)
-    assert.equal(isSectionActive(numbering, { pathname: MAIN_PATH, tab: 'departments' }), false)
-    assert.equal(isSectionActive(numbering, { pathname: `${MAIN_PATH}/people`, tab: 'order-numbering' }), false)
+    assert.equal(isSectionActive(numbering, { pathname: `${MAIN_PATH}/order-numbering`, tab: null }), true)
+    assert.equal(isSectionActive(numbering, { pathname: MAIN_PATH, tab: null }), false)
+    assert.equal(isSectionActive(numbering, { pathname: `${MAIN_PATH}/departments`, tab: null }), false)
+  })
+
+  test('the six former tabs redirect from their old address to their own route, read from the one list', () => {
+    assert.deepEqual([...LEGACY_TAB_SCREENS].sort(), ['departments', 'operations-handoff', 'order-notifications', 'order-numbering', 'order-visibility', 'sales-team'])
+    for (const { tab, href } of LEGACY_TAB_REDIRECTS) {
+      assert.equal(href, `${MAIN_PATH}/${tab}`)
+      assert.ok(existsSync(join(process.cwd(), 'src/app', href, 'page.tsx')), `${href} has no page`)
+    }
+    // The resolver no longer knows them: reaching the main page with one of them is Home.
+    for (const tab of LEGACY_TAB_SCREENS) assert.equal(resolveControlCenterTab(tab), 'overview')
+  })
+
+  test('next.config redirects each old ?tab= address, as a temporary redirect, and nothing else on the main path', async () => {
+    const rules = (await nextConfig.redirects!()).filter(r => r.source === MAIN_PATH)
+    assert.equal(rules.length, LEGACY_TAB_REDIRECTS.length)
+    for (const { tab, href } of LEGACY_TAB_REDIRECTS) {
+      const rule = rules.find(r => r.destination === href)
+      assert.ok(rule, `${tab} is not redirected`)
+      assert.deepEqual(rule.has, [{ type: 'query', key: 'tab', value: tab }])
+      assert.equal(rule.permanent, false)
+    }
+  })
+
+  test('the two retired values the main page still answers are kept', () => {
+    assert.equal(resolveControlCenterTab('modules'), 'modules')
+    assert.equal(resolveControlCenterTab('people'), 'people')
+    assert.equal(resolveControlCenterTab(null), 'overview')
   })
 
   test('Home is active with no tab, with ?tab=overview, and with a tab it does not know', () => {
@@ -93,8 +129,9 @@ describe('navigation model', () => {
     assert.equal(activeHub({ pathname: `${MAIN_PATH}/permissions/modules`, tab: null })?.id, 'access')
     assert.equal(activeHub({ pathname: MAIN_PATH, tab: 'modules' })?.id, 'access')
     assert.equal(activeHub({ pathname: MAIN_PATH, tab: 'people' })?.id, 'people')
-    assert.equal(activeHub({ pathname: MAIN_PATH, tab: 'departments' })?.id, 'people')
-    assert.equal(activeHub({ pathname: MAIN_PATH, tab: 'sales-team' })?.id, 'sales')
+    assert.equal(activeHub({ pathname: `${MAIN_PATH}/departments`, tab: null })?.id, 'people')
+    assert.equal(activeHub({ pathname: `${MAIN_PATH}/sales-team`, tab: null })?.id, 'sales')
+    assert.equal(activeHub({ pathname: `${MAIN_PATH}/order-visibility`, tab: null })?.id, 'orders')
     assert.equal(activeHub({ pathname: `${MAIN_PATH}/data-management`, tab: null })?.id, 'data')
     // The Action Queue is gone: its old address is outside the map, so no area claims it.
     assert.equal(activeHub({ pathname: `${MAIN_PATH}/action-queue`, tab: null }), null)
