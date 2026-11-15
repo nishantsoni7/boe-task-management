@@ -151,7 +151,11 @@ export function predict(fit: Fit, f: LineFeatures, yearsAgo = 0): ModelSuggestio
   const unseen: string[] = []
   const g: LineFeatures = { ...f }
   for (const k of ['material', 'finish', 'clientType'] as const) {
-    if (!fit.seen[k].has(g[k])) { if (g[k] !== 'unknown') unseen.push(`${cap(g[k])} ${k === 'clientType' ? 'client type' : k}`); g[k] = fit.ref[k] }
+    if (!fit.seen[k].has(g[k])) {
+      // Each unseen kind says what it was priced as: a finish is priced as the usual finish, not as a material.
+      if (g[k] !== 'unknown') unseen.push(`${cap(g[k])} ${k === 'clientType' ? 'client type' : k} not seen before: priced as ${fit.ref[k] === 'unknown' ? 'the usual (none stated)' : cap(fit.ref[k])}`)
+      g[k] = fit.ref[k]
+    }
   }
   const x = design(g, Math.max(0, yearsAgo), fit)
   const yhat = x.reduce((s, v, i) => s + v * fit.coef[i], 0)
@@ -170,7 +174,7 @@ export function predict(fit: Fit, f: LineFeatures, yearsAgo = 0): ModelSuggestio
   parts.sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))
   const reasons = parts.slice(0, 3).map(p => `${p.pct > 0 ? '+' : ''}${p.pct}% ${p.label}`)
   if (!f.area && fit.columns.includes('logArea')) reasons.push('size not read: priced at a typical size')
-  if (unseen.length) reasons.push(`${unseen.join(', ')} not seen before: priced as ${cap(fit.ref.material)}`)
+  reasons.push(...unseen)
 
   let confidence: Confidence = fit.n >= 20 && fit.sigma <= 0.15 ? 'high' : fit.n >= 10 && fit.sigma <= 0.3 ? 'medium' : 'low'
   if (unseen.length && confidence === 'high') confidence = 'medium'

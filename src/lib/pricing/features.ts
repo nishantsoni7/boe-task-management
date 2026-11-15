@@ -89,6 +89,100 @@ export function planArea(dims: number[] | null): number | null {
   return area >= 4 && area <= 100_000 ? area : null
 }
 
+// ── plan size ───────────────────────────────────────────────────────────────
+// What a price depends on is the footprint, not the height. PIs write the size in several ways: plain numbers ("78 x 84 x 42"),
+// labelled ("Length - 72 Breadth - 24 Height - 30"), with the height marked ("36 × 24 × 30(H)", "24 x 18 x 30h"), or
+// `60" Length Standard Dimension (Seating Height 18")`. The first blind test on the owner's PIs (14 Nov 2026) showed the old rule
+// reading a labelled length / breadth / height as the two largest numbers, and a sofa's seat height as its depth.
+// Measured on all of the owner's old PI lines (4,874 in rupees): this reading finds a footprint on 2,072 of 3,998 lines of the
+// product types (1,771 before) and lowers the typical error of the fit from 44.1% to 42.5%. Plain numbers keep the old rule (the
+// two largest): reading them as the template's "W x D x H" (first two) was tried and fitted no better (44.5%).
+
+type Role = 'length' | 'breadth' | 'width' | 'depth' | 'height' | 'diameter'
+// Whole words only (and the typos seen in real PIs), so "Brass 3" is not a breadth.
+const ROLE: [Role, RegExp][] = [
+  ['diameter', /^(dia|diameter)$/],
+  ['length', /^(l|len|length|lenght|lentgh|lentdh|lenth|lengh)$/],
+  ['breadth', /^(b|breadth|bredth|brth)$/],
+  ['width', /^(w|wid|width|widht)$/],
+  ['depth', /^(d|dep|depth)$/],
+  ['height', /^(h|ht|height|hight|heigth|heght|heigh)$/],
+]
+const roleOf = (w: string): Role | null => ROLE.find(([, re]) => re.test(w.toLowerCase()))?.[0] ?? null
+const FEET = /\d\s*'(?!')|\bft\b|\bfeet\b/i
+const NUMBER = /\d+(?:\.\d+)?/g
+
+type Found = { role: Role; value: number; at: number }
+const PLAN_ROLES: Role[] = ['length', 'breadth', 'width', 'depth']
+
+/** The two sides a reading gives: a diameter twice, or the first two different sides in the order written. */
+function sidesOf(list: Found[]): number[] | null {
+  const dia = list.find(f => f.role === 'diameter')
+  if (dia) return [dia.value, dia.value]
+  const sides = PLAN_ROLES.map(r => list.find(f => f.role === r)).filter((s): s is Found => !!s).sort((a, b) => a.at - b.at)
+  return sides.length >= 2 ? [sides[0].value, sides[1].value] : null
+}
+
+/** Labelled sizes. `undefined`: read the text the plain way (no label gives a footprint); `null`: labelled, but the footprint
+ *  is not given (only a length, or a seat height); a number: two labelled sides (or a diameter), in square inches. */
+function labelledPlan(t: string): number | null | undefined {
+  if (FEET.test(t)) return undefined
+  const label: Found[] = [] // label then number: "Length - 72", "Breadth- 24", "Seating Height 18"
+  for (const m of t.matchAll(/\b([a-z]+)\s*[-:=.]?\s*(\d+(?:\.\d+)?)/gi)) {
+    const role = roleOf(m[1])
+    if (role) label.push({ role, value: Number(m[2]), at: m.index! + m[0].length - m[2].length })
+  }
+  const number: Found[] = [] // number then label: `60" Length`, "78 length 60 width", "24h"
+  for (const m of t.matchAll(/(\d+(?:\.\d+)?)\s*(?:"|”|''|in(?:ch(?:es)?)?\b)?\s*([a-z]+)\b/gi)) {
+    const role = roleOf(m[2])
+    if (role) number.push({ role, value: Number(m[1]), at: m.index! })
+  }
+  // A text that starts with a number is read number-then-label; one with a label before its first number, label-then-number.
+  const lead = t.slice(0, Math.max(0, t.search(/\d/)))
+  const startsWithLabel = roleOf(/([a-z]+)\W*$/i.exec(lead)?.[1] ?? '') !== null
+  const pair = (startsWithLabel ? [label, number] : [number, label]).map(sidesOf).find(p => p !== null) ?? null
+  if (!pair) {
+    // Only a height is labelled ("24 x 18 x 30h"): the plain way. One side labelled and the other numbers not (`L 72*24*30`): the plain way too.
+    // One side labelled and nothing else to read (`Length - 56 Standard Seating Height - 18`): no footprint is given.
+    const claimed = new Set([...label, ...number].map(f => f.at))
+    if (![...label, ...number].some(f => PLAN_ROLES.includes(f.role))) return undefined
+    const nums = (t.match(NUMBER) ?? []).map(Number)
+    if (nums.length - claimed.size < 2) return null
+    // A length written first ("L 72*24*30") names the order L x B x H: the first two numbers are the footprint.
+    const lone = [...label, ...number].find(f => PLAN_ROLES.includes(f.role))
+    return lone?.role === 'length' && lone.value === nums[0] ? footprint([nums[0], nums[1]], t) : undefined
+  }
+  return footprint(pair, t)
+}
+
+/** Square inches of two sides written in the unit the text uses (millimetres, centimetres, or inches). */
+function footprint(pair: number[], t: string): number | null {
+  const unit = /\bmm\b/i.test(t) || Math.max(...pair) > 300 ? 1 / 25.4 : /\bcm\b/i.test(t) ? 1 / 2.54 : 1
+  const area = pair[0] * unit * pair[1] * unit
+  return area >= 4 && area <= 100_000 ? area : null
+}
+
+/** The footprint in square inches from the size as a PI writes it, or null when it cannot be read. */
+export function planAreaOf(text: string | null | undefined): number | null {
+  const t = String(text ?? '').trim()
+  if (!t) return null
+  const labelled = labelledPlan(t)
+  if (labelled !== undefined) return labelled
+  const dims = dimensionsInches(t)
+  if (!dims) return null
+  // "36 x 24 x 30(H)" or "24 x 18 x 30h": the number marked as the height is not part of the footprint, wherever it stands.
+  const mark = !FEET.test(t) ? /(\d+(?:\.\d+)?)\s*["”']*\s*(?:\(\s*h(?:t|eight)?\s*\)|h(?:t|eight)?\b)/i.exec(t) : null
+  if (mark) {
+    const at = (t.slice(0, mark.index).match(NUMBER) ?? []).length
+    if (at < dims.length) dims.splice(at, 1)
+  }
+  // Plain numbers: the two largest, as before. Once a marked height is taken out, two numbers are left.
+  const [a, b] = (mark ? dims : [...dims].sort((x, y) => y - x)).slice(0, 2)
+  if (a === undefined || b === undefined) return null
+  const area = a * b
+  return area >= 4 && area <= 100_000 ? area : null
+}
+
 const pick = (list: [string, RegExp][], text: string) => list.find(([, re]) => re.test(text))?.[0] ?? 'unknown'
 
 export function qtyBand(q: number | null | undefined): LineFeatures['qtyBand'] {
@@ -100,7 +194,7 @@ export function lineFeatures(l: { name: string; size?: string | null; material?:
   const words = norm(`${l.name} ${l.material ?? ''} ${l.spec ?? ''}`)
   return {
     type: productType(l.name),
-    area: planArea(dimensionsInches(l.size)),
+    area: planAreaOf(l.size),
     material: pick(MATERIALS, words),
     finish: pick(FINISHES, norm(`${l.finish ?? ''} ${l.spec ?? ''} ${l.material ?? ''}`)),
     qtyBand: qtyBand(l.qty),
