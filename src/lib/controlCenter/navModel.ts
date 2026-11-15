@@ -19,16 +19,13 @@
 // requests). It shows on the dashboard of the module that owns it, never in the
 // Control Center.
 
-export type ControlCenterTab =
-  'overview' | 'departments' | 'people' | 'modules' | 'order-numbering' | 'order-notifications'
-  | 'operations-handoff' | 'order-visibility' | 'sales-team'
+// The main page (Home) still answers three ?tab= values: overview (Home itself) and the two retired
+// screens that resolve to a real one (modules, people). Every other screen has its own route.
+export type ControlCenterTab = 'overview' | 'people' | 'modules'
 
 export const MAIN_PATH = '/admin/control-center'
 
-const TABS: readonly ControlCenterTab[] = [
-  'departments', 'people', 'modules', 'order-numbering', 'order-notifications',
-  'operations-handoff', 'order-visibility', 'sales-team',
-]
+const TABS: readonly ControlCenterTab[] = ['people', 'modules']
 
 /** The section the main page shows for a ?tab= value. Anything unknown is Home. */
 export function resolveControlCenterTab(tabParam: string | null): ControlCenterTab {
@@ -49,7 +46,7 @@ export type NavSection = {
   /** Other settings worth a look from here, by section id. */
   related: string[]
   href: string
-  /** Set when the section is a ?tab= of the main page. */
+  /** Set only on Home, which is the main page itself (?tab=overview is Home too). */
   tab?: ControlCenterTab
   /** Extra words the search matches — what people type when they do not know the label. */
   keywords: string[]
@@ -67,15 +64,13 @@ export type NavHub = {
   sections: NavSection[]
 }
 
-const tabHref = (t: ControlCenterTab) => `${MAIN_PATH}?tab=${t}`
-
 export const NAV_HUBS: readonly NavHub[] = [
   {
     id: 'home',
     label: 'Home',
     blurb: 'Find any setting in one step.',
     sections: [{
-      id: 'home', label: 'Home', href: tabHref('overview'), tab: 'overview',
+      id: 'home', label: 'Home', href: MAIN_PATH, tab: 'overview',
       description: 'Find any setting in one step.',
       short: 'Find any setting in one step.', affects: '', related: [],
       keywords: ['overview', 'dashboard', 'summary', 'all settings'],
@@ -95,7 +90,7 @@ export const NAV_HUBS: readonly NavHub[] = [
           'deactivate', 'remove', 'delete employee', 'restore', 'role', 'level', 'designation level', 'email', 'phone'],
       },
       {
-        id: 'departments', label: 'Departments', href: tabHref('departments'), tab: 'departments',
+        id: 'departments', label: 'Departments', href: `${MAIN_PATH}/departments`,
         description: 'Create, rename, deactivate or delete a department.',
         short: 'Create, rename, retire',
         affects: 'Everyone assigned to a department', related: ['employees', 'designations'],
@@ -147,28 +142,28 @@ export const NAV_HUBS: readonly NavHub[] = [
     blurb: 'How Confirmed Orders are numbered, announced and handed to production.',
     sections: [
       {
-        id: 'order-numbering', label: 'Numbering', href: tabHref('order-numbering'), tab: 'order-numbering',
+        id: 'order-numbering', label: 'Numbering', href: `${MAIN_PATH}/order-numbering`,
         description: 'The number the next Confirmed Order will be given.',
         short: 'The next Confirmed Order number',
         affects: 'Every new Confirmed Order', related: ['order-notifications'],
         keywords: ['order number', 'next order number', 'sequence', 'cycle', 'confirmed order'],
       },
       {
-        id: 'order-notifications', label: 'Notifications', href: tabHref('order-notifications'), tab: 'order-notifications',
+        id: 'order-notifications', label: 'Notifications', href: `${MAIN_PATH}/order-notifications`,
         description: 'Who is told when a Confirmed Order changes.',
         short: 'Who is told about changes',
         affects: 'People listed as recipients', related: ['order-numbering', 'operations-handoff'],
         keywords: ['order notifications', 'alerts', 'recipients', 'notify'],
       },
       {
-        id: 'operations-handoff', label: 'Operations handoff', href: tabHref('operations-handoff'), tab: 'operations-handoff',
+        id: 'operations-handoff', label: 'Operations handoff', href: `${MAIN_PATH}/operations-handoff`,
         description: 'Who reviews each approved PI version for production.',
         short: 'Who reviews PIs for production',
         affects: 'Operations reviewers', related: ['authorities', 'order-notifications'],
         keywords: ['operations', 'reviewer', 'pi review', 'production', 'handoff'],
       },
       {
-        id: 'order-visibility', label: 'Order visibility', href: tabHref('order-visibility'), tab: 'order-visibility',
+        id: 'order-visibility', label: 'Order visibility', href: `${MAIN_PATH}/order-visibility`,
         description: 'Whose orders each sales candidate can see.',
         short: 'Whose orders sales can see',
         affects: 'Sales candidates', related: ['sales-team'],
@@ -182,7 +177,7 @@ export const NAV_HUBS: readonly NavHub[] = [
     blurb: 'Who uses Sales, whose leads they can read, and the company WhatsApp number.',
     sections: [
       {
-        id: 'sales-team', label: 'Sales team', href: tabHref('sales-team'), tab: 'sales-team',
+        id: 'sales-team', label: 'Sales team', href: `${MAIN_PATH}/sales-team`,
         description: 'Who uses Sales, who sees everyone, and whose leads a senior can read.',
         short: 'Who uses Sales and sees leads',
         affects: 'Sales users', related: ['order-visibility', 'by-module'],
@@ -277,12 +272,25 @@ export const COMMON_JOBS: readonly { id: string; label: string; href: string; se
   { id: 'reset-password', label: 'Reset a password', href: `${MAIN_PATH}/people`, sectionId: 'employees' },
   { id: 'change-access', label: 'Change someone’s access', href: `${MAIN_PATH}/permissions`, sectionId: 'by-person' },
   { id: 'announce', label: 'Publish an announcement', href: `${MAIN_PATH}/announcements`, sectionId: 'announcements' },
-  { id: 'next-number', label: 'Set the next Order number', href: tabHref('order-numbering'), sectionId: 'order-numbering' },
+  { id: 'next-number', label: 'Set the next Order number', href: `${MAIN_PATH}/order-numbering`, sectionId: 'order-numbering' },
 ]
 
 export function sectionById(id: string): (NavSection & { hub: NavHub }) | undefined {
   return NAV_SECTIONS.find(s => s.id === id)
 }
+
+/**
+ * The six screens that used to be ?tab= views of the main page (before 2026-11-15 they had no address of
+ * their own, so Back skipped them and none could be linked to). Each now has a route; the old address
+ * still works because next.config.ts redirects it, reading THIS list so the two cannot drift. A section's
+ * id is its old tab value.
+ */
+export const LEGACY_TAB_SCREENS = [
+  'departments', 'order-numbering', 'order-notifications', 'operations-handoff', 'order-visibility', 'sales-team',
+] as const
+
+export const LEGACY_TAB_REDIRECTS: readonly { tab: string; href: string }[] =
+  LEGACY_TAB_SCREENS.map(tab => ({ tab, href: sectionById(tab)!.href }))
 
 export type NavLocation = { pathname: string; tab: ControlCenterTab | null }
 

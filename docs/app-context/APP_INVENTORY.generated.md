@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `8bcc1aa3` — Pricing: heights alone are not a footprint, and a labelled size in feet is read (no SQL) (#822)
-- Commits on this branch: 1381
-- Pages (`page.tsx`): 200   API routes (`route.ts`): 212
+- Commit: `e742a51e` — Pricing: Training, where the price of a product is taught element by element (migration 20270720000000, apply before merge)
+- Commits on this branch: 1382
+- Pages (`page.tsx`): 206   API routes (`route.ts`): 212
 - Migrations: 461 (first `20260530_create_positions.sql`, latest `20270720000000_pricing_training.sql`)
 - Tables ever created: 258 (dropped at some point: 8)   SQL functions: 1045   Enums: 0
-- Test files: 864   Next.js 16.2.6, React 19.2.4
+- Test files: 865   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `e742a51e` 2026-11-15 Pricing: Training, where the price of a product is taught element by element (migration 20270720000000, apply before merge)
 - `8bcc1aa3` 2026-11-15 Pricing: heights alone are not a footprint, and a labelled size in feet is read (no SQL) (#822)
 - `f1b7ea2e` 2026-11-15 Control Center: Home and six areas, a searchable directory, no tabs, no pending work (no SQL) (#816)
 - `6d0d0700` 2026-11-15 Docs: stamp #819 (the lead popup's left side with room) as merged d8a02296, deployed 16:44 IST, verified live (no SQL) (#820)
@@ -38,13 +39,12 @@
 - `a10410c5` 2026-11-15 Docs: stamp the premium document layout fixes (#787) as merged 80091824, deployed 09:28 IST, verified live (no SQL) (#797)
 - `e6663b40` 2026-11-15 Phones: Team Today no longer scrolls sideways, the Access page fits, Lead Master's Auto-allot switch wraps (#799)
 - `9fc1f782` 2026-11-15 Docs: stamp page speed part 8 (#796) as merged 27deb4f7, deployed 09:50 IST, verified live (no SQL) (#798)
-- `27deb4f7` 2026-11-15 Page speed, part 8: the launcher's attendance answers join the one request (no SQL) (#796)
 
 ## Pages by top-level area
 
 - **(root)** (1): `/`
 - **account** (1): `/account`
-- **admin** (14): `/admin/control-center`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/day-close`, `/admin/control-center/for-you`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/review-rankings`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
+- **admin** (20): `/admin/control-center`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/day-close`, `/admin/control-center/departments`, `/admin/control-center/for-you`, `/admin/control-center/operations-handoff`, `/admin/control-center/order-notifications`, `/admin/control-center/order-numbering`, `/admin/control-center/order-visibility`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/review-rankings`, `/admin/control-center/sales-team`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
 - **announcements** (2): `/announcements`, `/announcements/[id]`
 - **assets-access** (3): `/assets-access`, `/assets-access/[id]`, `/assets-access/notifications`
 - **attendance** (14): `/attendance`, `/attendance/correction-log`, `/attendance/employees`, `/attendance/employees/[id]`, `/attendance/holidays`, `/attendance/minop`, `/attendance/minop/incoming`, `/attendance/monthly-review`, `/attendance/monthly-review/[userId]`, `/attendance/notifications`, `/attendance/records`, `/attendance/requests`, `/attendance/today`, `/attendance/upload`
@@ -168,6 +168,7 @@
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/pricing` — 12 source, 7 test
 - `src/lib/push` — 3 source, 1 test
+- `src/lib/queryPersist` — 1 source, 1 test
 - `src/lib/quotations` — 16 source, 10 test
 - `src/lib/salesLeads` — 15 source, 15 test
 - `src/lib/samples` — 1 source, 1 test

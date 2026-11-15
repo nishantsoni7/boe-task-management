@@ -281,7 +281,7 @@ export function ImportScreen() {
                     <b>{plural(progress.result.created, 'lead')} imported.</b>{' '}
                     {plural(progress.result.merged, 'task')} added as notes{progress.result.already ? `, ${progress.result.already.toLocaleString('en-IN')} already here` : ''}.
                     {progress.history && <> {plural(progress.history.result.comments, 'comment')} and {plural(progress.history.result.statuses, 'status change')} added with their dates.</>}
-                    {' '}<Link href="/sales/team">Open the Team page</Link>, or give people access in <Link href="/admin/control-center?tab=sales-team">Control Center</Link>.
+                    {' '}<Link href="/sales/team">Open the Team page</Link>, or give people access in <Link href="/admin/control-center/sales-team">Control Center</Link>.
                   </div>
                 </div>
               )}

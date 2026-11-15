@@ -121,8 +121,8 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
       can_be_order_assignee: { label: 'Counts as a sales candidate', meaning: 'Treated like the Sales department for Order Visibility and the salesperson dashboards, while outside Sales. Sales members count without it.' },
     },
     related: [
-      { label: 'Reviews PI handoffs for Operations', where: 'Order Setup › Operations Handoff', href: `${CC}?tab=operations-handoff` },
-      { label: 'Whose orders each salesperson sees', where: 'Order Setup › Order Visibility (owner only)', href: `${CC}?tab=order-visibility` },
+      { label: 'Reviews PI handoffs for Operations', where: 'Orders › Operations handoff', href: `${CC}/operations-handoff` },
+      { label: 'Whose orders each salesperson sees', where: 'Orders › Order visibility (owner only)', href: `${CC}/order-visibility` },
     ],
   },
   finance: {

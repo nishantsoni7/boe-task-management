@@ -66,12 +66,12 @@ describe('the screen never sends a choice the database would refuse', () => {
 })
 
 describe('the Control Center entry', () => {
-  test('is its own tab, wired through the layout and the page', () => {
-    const page = read('src/app/admin/control-center/page.tsx')
+  test('is its own screen at its own address, named in the navigation', () => {
+    const route = read('src/app/admin/control-center/order-visibility/page.tsx')
     const nav = read('src/lib/controlCenter/navModel.ts')
     assert.ok(nav.includes("id: 'order-visibility'"))
     assert.ok(nav.includes("label: 'Order visibility'"))
-    assert.ok(page.includes("tab === 'order-visibility' && <OrderVisibilityTab />"))
+    assert.ok(route.includes('<OrderVisibilityTab />'))
   })
   test('the screen calls only the two owner-only RPCs, and touches no table', () => {
     const tab = read('src/components/controlCenter/OrderVisibilityTab.tsx')
