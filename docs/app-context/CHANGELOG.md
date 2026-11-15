@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-15 — Pending work moves onto its module's dashboard: change requests on Orders, money to allocate on Finance (PR pending) · no SQL
+- **Owner rule.** Pending approvals and other action items do not belong in the Control Center; each shows on the dashboard of the module that owns it. The Action Queue listed seven kinds. Payment approval and needs-clarification were already Finance tabs; PI review and PI flagged were already in Orders' "Needs your decision"; operations review with nobody assigned was already in Orders' "Not aligned". Two had no module home: order change requests and money still to allocate.
+- **Orders.** `DecisionQueue` / `loadDecisionRows` read pending `order_change_requests` for an ACTING ADMINISTRATOR only (`canReviewChanges`, passed from the Orders page through `AdminDashboardView`) and add a `change_request` row ("Change request" / "Cancellation request", chip "Amend this Order" / "Cancel this Order", value only for an amendment that proposes one). A failed read is said on the card.
+- **Finance.** The Confirmed Payments sidebar entry gets an alert badge, for holders of `canAllocatePayment`, counting confirmed payments with money still to allocate (`useReceivedPaymentsCounts(['all', 'available'])`; one count-only query, allocators only).
+- **Modules.** The For you column's "more requests" link for order change requests now goes to `/orders` (it went to the Action Queue).
+- **Not in this PR.** The Action Queue page, its loader and hook stay until the Control Center redesign stops reading them on Home; they are then deleted in a follow-up commit, with their test pins.
+- **Tests.** `adminDashboard.test.tsx` +7 (row rules, drawing, who reads what, the failed read, page pins); `paymentsPaging.test.ts` and `ordersFinanceUsability.test.tsx` pins updated for the allocator count.
+- **Rollback.** Revert the commit; nothing is stored.
 ## 2026-11-15 — Quotations: the Quantity / Price section of a product is a neat numbers panel (PR #812) · no SQL
 - **Owner ask.** After the one-row version: it "does not look neat"; redesign the section to look neat and professional. A preview was shared and approved ("Yes, build it").
 - **Change.** `ProductLine.tsx`, `PricingDesk.tsx`, `quotations.module.css`: one bordered card with a Quantity box (the number and "pieces", or the per-room selector, in one box), a Price box (the rupee sign inside, label "Price before GST"), the suggestion as a small card ("Suggested ₹X" + Use, "Range" + Why?) and a footer band (Optional and the tools; the total and the piece count). It replaces the two-track rule of #809. Under 1200 px the panel sits under the boxes, up to 420 px wide; on a phone it is full width with 44 px controls. Dossier 29 section 16.

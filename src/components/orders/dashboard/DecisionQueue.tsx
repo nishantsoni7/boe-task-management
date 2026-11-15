@@ -6,6 +6,7 @@
 //   PI revision    revised PIs on confirmed Orders waiting on this reader
 //   Design Files / Client PO submissions waiting on this reader
 //   PI flagged   a PI Operations cannot accept, which THIS reader must answer (my_flagged_pis, 20270611000000)
+//   Change / cancellation request  a pending amendment on a Confirmed Order: an acting ADMINISTRATOR's only
 //
 // It replaces PiReviewSections and the "needs you" half of DocumentActionQueue on the approver's
 // dashboard. The three reads run together under the reader's own RLS, so a row can never name a PI or
@@ -16,6 +17,11 @@
 // View As. A flagged-PI read that fails is said on the card (the rows already read are still drawn); a database
 // without the function simply has none. The payment chip on a PI is the database's own position (see lib/orders/adminDashboard.ts);
 // a PI whose summary could not be read simply has no chip.
+//
+// CHANGE REQUESTS ARE READ FOR AN ACTING ADMINISTRATOR ONLY. This list is drawn for everybody who can approve
+// PIs, but the Order page offers a change request's review to an acting admin alone, and the table's policy also
+// returns a requester their own rows, so the read is gated here and not left to the policy. A failed read is said
+// on the card, like the flagged-PI one.
 
 import { useEffect, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
@@ -31,6 +37,8 @@ import {
 import { splitRevisionQueue } from '@/lib/orders/orderPiVersions'
 import { FLAGGED_LOAD_FAILED, loadFlaggedPis, loadSentBackComments, sentBackHistoryRead } from '@/lib/orders/flaggedPis'
 import {
+  CHANGES_LOAD_FAILED,
+  changeRequestRow,
   documentRow,
   flaggedRow,
   isMixed,
@@ -40,6 +48,7 @@ import {
   sinceLabel,
   sortDecisionRows,
   waitTone,
+  type ChangeRequestSource,
   type DecisionRow,
   type DocumentSource,
   type ReviewSource,
@@ -59,13 +68,18 @@ type RevisionRaw = {
   revision_reason: string | null; order: OrderEmbed
 }
 type DocumentRaw = PersistedDocumentSubmission & { order: OrderEmbed }
+type ChangeRaw = ChangeRequestSource & { requested_by_user: { full_name: string } | null }
 
-/** null = the PI read failed, which the card says; anything else is the list (and whether the flagged-PI read failed). */
+/**
+ * null = the PI read failed, which the card says; anything else is the list (and whether the flagged-PI or
+ * change-request read failed). `canReviewChanges` is the ACTING administrator (role admin, not under View As):
+ * it is not `isAdmin`, which here means "can approve PIs".
+ */
 export async function loadDecisionRows(
   supabase: SupabaseClient,
-  viewer: { viewerId: string; isAdmin: boolean },
-): Promise<{ rows: DecisionRow[]; flaggedFailed: boolean } | null> {
-  const [subs, revs, docs, flagged] = await Promise.all([
+  viewer: { viewerId: string; isAdmin: boolean; canReviewChanges: boolean },
+): Promise<{ rows: DecisionRow[]; flaggedFailed: boolean; changesFailed: boolean } | null> {
+  const [subs, revs, docs, flagged, changes] = await Promise.all([
     supabase
       .from('order_submissions')
       .select('id, client_name, bill_to_name, draft_reference, subtotal_after_discount, submitted_by, submitted_at')
@@ -77,6 +91,19 @@ export async function loadDecisionRows(
     readOpenDocumentSubmissions(supabase),
     // The ONE definition of "a flagged PI that waits on me": the database's (20270611000000).
     loadFlaggedPis({ rpc: async (fn: string) => supabase.rpc(fn) }),
+    // Pending amendments and cancellations, oldest first. Nobody but an acting admin is asked, so nobody else reads them.
+    viewer.canReviewChanges
+      ? supabase
+          .from('order_change_requests')
+          .select(`
+            id, order_id, order_number_snapshot, request_type, proposed_total_value, created_at,
+            order:orders!order_id(client_name),
+            requested_by_user:users!requested_by(full_name)
+          `)
+          .eq('status', 'pending')
+          .order('created_at', { ascending: true })
+          .limit(200)
+      : Promise.resolve({ data: [], error: null }),
   ])
   if (subs.error) return null
 
@@ -98,6 +125,8 @@ export async function loadDecisionRows(
   })
   const myDocuments: DocumentSource[] = splitDocumentQueue(docRows, { ...ctx, canSubmit: true })
     .needsYou.map(r => ({ ...r, client: clientOf.get(r.submission.id) ?? 'Client not recorded' }))
+
+  const changeRows = changes.error ? [] : ((changes.data ?? []) as unknown as ChangeRaw[])
 
   const ids = new Set<string>()
   for (const r of reviews) if (r.submitted_by) ids.add(r.submitted_by)
@@ -122,20 +151,23 @@ export async function loadDecisionRows(
     ...myRevisions.map(r => revisionRow(r, nameOf(r.uploadedBy))),
     ...myDocuments.map(r => documentRow(r, nameOf(r.submission.submitted_by))),
     ...(flagged ?? []).map(r => flaggedRow(r, sent[r.handoffId])),
+    ...changeRows.map(r => changeRequestRow(r, r.requested_by_user?.full_name ?? null)),
   ], Date.now())
-  return { rows, flaggedFailed: flagged === null }
+  return { rows, flaggedFailed: flagged === null, changesFailed: !!changes.error }
 }
 
 export type DecisionState =
   | { kind: 'loading' }
   | { kind: 'error' }
   | { kind: 'unavailable' }
-  | { kind: 'ready'; rows: DecisionRow[]; flaggedFailed?: boolean }
+  | { kind: 'ready'; rows: DecisionRow[]; flaggedFailed?: boolean; changesFailed?: boolean }
 
-export function DecisionQueue({ supabase, viewerId, isAdmin, viewingAs, reloadKey }: {
+export function DecisionQueue({ supabase, viewerId, isAdmin, canReviewChanges, viewingAs, reloadKey }: {
   supabase: SupabaseClient
   viewerId: string | null
   isAdmin: boolean
+  /** The acting administrator: role admin and not previewing somebody else. Decides whether change requests are read at all. */
+  canReviewChanges: boolean
   viewingAs: boolean
   /** Changes whenever the page re-reads the dashboard, so the list is read again with it. */
   reloadKey: string
@@ -145,11 +177,11 @@ export function DecisionQueue({ supabase, viewerId, isAdmin, viewingAs, reloadKe
   useEffect(() => {
     if (!viewerId || viewingAs) return
     let live = true
-    void loadDecisionRows(supabase, { viewerId, isAdmin }).then(read => {
-      if (live) setState(read ? { kind: 'ready', rows: read.rows, flaggedFailed: read.flaggedFailed } : { kind: 'error' })
+    void loadDecisionRows(supabase, { viewerId, isAdmin, canReviewChanges }).then(read => {
+      if (live) setState(read ? { kind: 'ready', rows: read.rows, flaggedFailed: read.flaggedFailed, changesFailed: read.changesFailed } : { kind: 'error' })
     })
     return () => { live = false }
-  }, [supabase, viewerId, viewingAs, isAdmin, reloadKey])
+  }, [supabase, viewerId, viewingAs, isAdmin, canReviewChanges, reloadKey])
 
   return <DecisionCard state={!viewerId || viewingAs ? { kind: 'unavailable' } : state} />
 }
@@ -167,6 +199,7 @@ export function DecisionCard({ state }: { state: DecisionState }) {
         <span className={styles.hint}>Longest waiting first</span>
       </header>
       {state.kind === 'ready' && state.flaggedFailed ? <p className={styles.note} role="alert">{FLAGGED_LOAD_FAILED}</p> : null}
+      {state.kind === 'ready' && state.changesFailed ? <p className={styles.note} role="alert">{CHANGES_LOAD_FAILED}</p> : null}
       {state.kind === 'loading' ? (
         <div className={styles.skeleton} aria-busy="true" aria-label="Loading what is waiting for your decision" />
       ) : state.kind === 'error' ? (
@@ -174,8 +207,8 @@ export function DecisionCard({ state }: { state: DecisionState }) {
       ) : state.kind === 'unavailable' ? (
         <p className={styles.note}>This list is not shown while you view as someone else.</p>
       ) : rows.length === 0 ? (
-        // A failed flagged-PI read is said below the header, never "nothing is waiting".
-        state.flaggedFailed ? null : (
+        // A failed flagged-PI or change-request read is said below the header, never "nothing is waiting".
+        state.flaggedFailed || state.changesFailed ? null : (
           <div className={styles.empty}><CircleCheck size={20} aria-hidden="true" /><span>Nothing is waiting for your decision.</span></div>
         )
       ) : (

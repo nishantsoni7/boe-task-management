@@ -18,6 +18,8 @@ import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
   ADMIN_BOARD_ORDER,
+  CHANGES_LOAD_FAILED,
+  changeRequestRow,
   documentRow,
   formatCompactRupees,
   isMixed,
@@ -34,7 +36,7 @@ import {
 import { PAYMENT_POSITIONS } from './paymentGate'
 import type { PersistedDocumentSubmission } from './orderDocumentSubmissions'
 import type { DashboardSummary } from './orderDashboardSummary'
-import { DecisionCard } from '@/components/orders/dashboard/DecisionQueue'
+import { DecisionCard, loadDecisionRows } from '@/components/orders/dashboard/DecisionQueue'
 import { AdminRevenueCard } from '@/components/orders/dashboard/AdminRevenueCard'
 import { AdminOrdersBoard } from '@/components/orders/dashboard/AdminOrdersBoard'
 
@@ -61,6 +63,11 @@ const revision = {
   uploadedBy: 'u-sales', uploadedAt: '2026-10-29T10:00:00Z', operationsReviewer: null,
   client: 'Aarav Interiors', reason: 'Change fabric on 4 chairs',
 }
+
+const changeRequest = (over: Record<string, unknown> = {}) => ({
+  id: 'c-1', order_id: 'o-7', order_number_snapshot: '527', request_type: 'edit' as const, proposed_total_value: '250000.00',
+  created_at: '2026-10-30T10:00:00Z', order: { client_name: 'Lakeview Resort' }, ...over,
+})
 
 const ref = (n: string) => ({ orderId: `id-${n}`, displayNumber: n, clientName: `Client ${n}`, status: 'running' })
 const late = (n: string, daysLate: number) => ({
@@ -182,6 +189,31 @@ describe('the decision list is one list, longest waiting first', () => {
     assert.equal(rows[1].chip?.sub, '“Change fabric on 4 chairs”')
   })
 
+  test('a change request is one more kind: it opens the Order, says amend or cancel, and shows a dash for a cancellation', () => {
+    const edit = changeRequestRow(changeRequest(), 'Ashok Choudhary')
+    assert.equal(edit.kind, 'change_request')
+    assert.equal(edit.kindLabel, 'Change request')
+    assert.match(edit.href, /^\/orders\/o-7\?/)
+    assert.equal(edit.client, 'Lakeview Resort')
+    assert.equal(edit.ref, 'Order 527')
+    assert.equal(edit.by, 'Ashok Choudhary')
+    assert.equal(edit.value, 250000)
+    assert.equal(edit.chip?.label, 'Amend this Order')
+    assert.equal(edit.chip?.sub, 'Awaiting your decision')
+    const cancel = changeRequestRow(changeRequest({ request_type: 'cancel', proposed_total_value: '250000.00' }), null)
+    assert.equal(cancel.kindLabel, 'Cancellation request')
+    assert.equal(cancel.chip?.label, 'Cancel this Order')
+    assert.equal(cancel.value, null, 'a cancellation proposes no value, so it is a dash, never a rupee amount')
+    assert.equal(changeRequestRow(changeRequest({ proposed_total_value: null }), null).value, null)
+    assert.equal(changeRequestRow(changeRequest({ order: null }), null).client, 'Client not recorded')
+  })
+
+  test('a change request waits in the same list, longest first', () => {
+    const sorted = sortDecisionRows([...rows, changeRequestRow(changeRequest({ created_at: '2026-10-28T10:00:00Z' }), null)], NOW)
+    assert.equal(sorted[0].key, 'chg-c-1')
+    assert.equal(isMixed(sorted), true)
+  })
+
   test('a PI with no client name falls back to the bill-to, then to a plain label', () => {
     assert.equal(reviewRow(review(4, { client_name: null, bill_to_name: 'Bill To Ltd' }), null, null).client, 'Bill To Ltd')
     assert.equal(reviewRow(review(5, { client_name: null }), null, null).client, 'Unnamed client')
@@ -273,12 +305,81 @@ describe('Needs your decision', () => {
     assert.match(out, /—/)
   })
 
+  test('a change request is tagged in a mixed list, and its cancellation shows a dash', () => {
+    const out = ready([
+      reviewRow(review(1), null, null),
+      changeRequestRow(changeRequest({ request_type: 'cancel' }), 'Ashok Choudhary'),
+    ])
+    assert.match(out, /Cancellation request/)
+    assert.match(out, /Order 527 · from Ashok Choudhary/)
+    assert.match(out, /Cancel this Order/)
+    assert.match(out, /Awaiting your decision/)
+  })
+
+  test('a failed change-request read is said, and an empty list is then never "nothing is waiting"', () => {
+    const out = html(createElement(DecisionCard, { state: { kind: 'ready', rows: [], changesFailed: true } }))
+    assert.ok(out.includes(CHANGES_LOAD_FAILED))
+    assert.match(out, /role="alert"/)
+    assert.equal(/Nothing is waiting/.test(out), false)
+    const withRows = html(createElement(DecisionCard, { state: { kind: 'ready', rows: sortDecisionRows([reviewRow(review(1), null, null)], NOW), changesFailed: true } }))
+    assert.ok(withRows.includes(CHANGES_LOAD_FAILED), 'the rows already read are still drawn beside the note')
+    assert.match(withRows, /Client 1/)
+  })
+
   test('nothing waiting is said, a failed read is an error, view-as is explained', () => {
     assert.match(ready([]), /Nothing is waiting for your decision/)
     assert.match(html(createElement(DecisionCard, { state: { kind: 'error' } })), /role="alert"[^>]*>What is waiting for your decision could not be loaded/)
     assert.equal(/Nothing is waiting/.test(html(createElement(DecisionCard, { state: { kind: 'error' } }))), false, 'an error is never "nothing"')
     assert.match(html(createElement(DecisionCard, { state: { kind: 'unavailable' } })), /view as someone else/)
     assert.match(html(createElement(DecisionCard, { state: { kind: 'loading' } })), /aria-busy="true"/)
+  })
+})
+
+// ── Who is asked to decide a change request ───────────────────────────────────
+
+describe('the change-request read', () => {
+  // A table-by-table stand-in for the client: every chain call answers with the same builder, which resolves to
+  // that table's answer. It records which tables were asked, because the point is who reads what.
+  function fakeSupabase(answers: Record<string, { data?: unknown[]; error?: { message: string } }>) {
+    const asked: string[] = []
+    const chain = (table: string): unknown => {
+      const answer = answers[table] ?? {}
+      const builder: unknown = new Proxy({}, {
+        get: (_t, prop) => (prop === 'then'
+          ? (resolve: (v: unknown) => unknown) => resolve({ data: answer.data ?? [], error: answer.error ?? null })
+          : () => builder),
+      })
+      return builder
+    }
+    return { asked, client: { from: (table: string) => { asked.push(table); return chain(table) }, rpc: async () => ({ data: [], error: null }) } }
+  }
+  const pending = [{ ...changeRequest(), requested_by_user: { full_name: 'Ashok Choudhary' } }]
+
+  test('an acting administrator reads them and sees them, with who asked', async () => {
+    const f = fakeSupabase({ order_change_requests: { data: pending } })
+    const read = await loadDecisionRows(f.client as never, { viewerId: 'u-admin', isAdmin: true, canReviewChanges: true })
+    assert.ok(read)
+    assert.ok(f.asked.includes('order_change_requests'))
+    assert.deepEqual(read.rows.map(r => r.key), ['chg-c-1'])
+    assert.equal(read.rows[0].by, 'Ashok Choudhary')
+    assert.equal(read.changesFailed, false)
+  })
+
+  test('anybody else is never asked: the table also returns a requester their own rows, so the read itself is withheld', async () => {
+    const f = fakeSupabase({ order_change_requests: { data: pending } })
+    const read = await loadDecisionRows(f.client as never, { viewerId: 'u-approver', isAdmin: true, canReviewChanges: false })
+    assert.ok(read)
+    assert.equal(f.asked.includes('order_change_requests'), false)
+    assert.deepEqual(read.rows, [])
+    assert.equal(read.changesFailed, false)
+  })
+
+  test('a failed read leaves the other rows and says it failed', async () => {
+    const f = fakeSupabase({ order_change_requests: { error: { message: 'boom' } } })
+    const read = await loadDecisionRows(f.client as never, { viewerId: 'u-admin', isAdmin: true, canReviewChanges: true })
+    assert.ok(read, 'the PI read did not fail, so the list is still drawn')
+    assert.equal(read.changesFailed, true)
+    assert.deepEqual(read.rows, [])
   })
 })
 
@@ -373,6 +474,15 @@ describe('the page', () => {
     assert.equal(page.includes('PiReviewSections'), false)
     assert.equal(existsSync(join(ROOT, 'src/components/orders/dashboard/PiReviewSections.tsx')), false)
     assert.equal(/\.pi-q/.test(read('src/app/globals.css')), false, 'the retired queue styles are gone')
+  })
+
+  test('only the acting administrator is asked to decide change requests, and View As never lends that', () => {
+    assert.ok(page.includes("canReviewChanges={profile?.role === 'admin' && !viewAsUserId}"))
+    assert.ok(read('src/components/orders/dashboard/AdminDashboardView.tsx').includes('canReviewChanges={canReviewChanges}'))
+    const src = read('src/components/orders/dashboard/DecisionQueue.tsx')
+    assert.ok(src.includes('viewer.canReviewChanges'))
+    assert.ok(src.includes("from('order_change_requests')"))
+    assert.ok(src.includes(".eq('status', 'pending')"))
   })
 
   test('the approver branch no longer draws the three plain cards', () => {

@@ -15,17 +15,19 @@ import { AdminRevenueCard } from './AdminRevenueCard'
 import { DecisionQueue } from './DecisionQueue'
 import styles from './adminDashboard.module.css'
 
-export function AdminDashboardView({ summary, supabase, viewerId, isAdmin, viewingAs }: {
+export function AdminDashboardView({ summary, supabase, viewerId, isAdmin, canReviewChanges, viewingAs }: {
   summary: DashboardSummary
   supabase: SupabaseClient
   viewerId: string | null
   isAdmin: boolean
+  /** The acting administrator (role admin, not under View As): the only reader asked to decide change requests. */
+  canReviewChanges: boolean
   viewingAs: boolean
 }) {
   return (
     <div className={styles.root}>
       <div className={summary.revenue ? styles.top : styles.topSolo}>
-        <DecisionQueue supabase={supabase} viewerId={viewerId} isAdmin={isAdmin} viewingAs={viewingAs} reloadKey={summary.now} />
+        <DecisionQueue supabase={supabase} viewerId={viewerId} isAdmin={isAdmin} canReviewChanges={canReviewChanges} viewingAs={viewingAs} reloadKey={summary.now} />
         {summary.revenue ? <AdminRevenueCard revenue={summary.revenue} /> : null}
       </div>
       <AdminOrdersBoard summary={summary} />

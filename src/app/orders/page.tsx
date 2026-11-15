@@ -397,6 +397,8 @@ export default function OrdersDashboardPage() {
               supabase={supabase}
               viewerId={profile?.id ?? null}
               isAdmin={ordersCaps.canApproveOrderSubmission}
+              // The same rule the Order page uses to offer a change request's review: View As never lends authority.
+              canReviewChanges={profile?.role === 'admin' && !viewAsUserId}
               viewingAs={!!viewAsUserId}
             />
           ) : summary.summary.overview ? (
