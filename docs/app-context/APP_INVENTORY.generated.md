@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f1193693` — Docs: stamp PR #809 in the changelog, the 01 row and dossier 29
-- Commits on this branch: 1374
+- Commit: `cac730c8` — Quotations: Product and Material, Dimensions and Remarks share widths on a product (no SQL)
+- Commits on this branch: 1376
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `cac730c8` 2026-11-15 Quotations: Product and Material, Dimensions and Remarks share widths on a product (no SQL)
+- `797e46a4` 2026-11-15 Docs: regenerate the app inventory
 - `f1193693` 2026-11-15 Docs: stamp PR #809 in the changelog, the 01 row and dossier 29
 - `b7d7b0bd` 2026-11-15 Merge remote-tracking branch 'origin/main' into fix/quotation-line-qty-price-row
 - `0d3b784a` 2026-11-15 Docs: regenerate the app inventory after merging main
@@ -37,8 +39,6 @@
 - `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
 - `a781646e` 2026-11-15 Sales: lead popup left side gets a next-step banner and one About this client list (no SQL) (#793)
 - `1ff42c1e` 2026-11-14 Docs: stamp #791 (merged 1a395cf4, deployed 22:50 IST) and #780 (merged 33813806, tools installed 20:18 IST) (#794)
-- `b54f6989` 2026-11-14 Docs: stamp #788 (phone popover and pending buttons) as merged d06e6248, deployed 22:33 IST (no SQL) (#790)
-- `1a395cf4` 2026-11-14 Orders: PI review thread inside the operations notice, replies keep their line breaks (no SQL) (#791)
 
 ## Pages by top-level area
 
