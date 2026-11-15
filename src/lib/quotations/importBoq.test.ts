@@ -4,7 +4,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { addToQuote, gridFromText, parseBoqReading, priceOf, qtyOf, readGrid, roomsOf, type Cell } from './importBoq'
-import { ImportError, readFailure, readPastedText, readSpreadsheet } from './importFile'
+import { ImportError, pricedRows, readFailure, readPastedText, readSpreadsheet } from './importFile'
 
 const BOQ: Cell[][] = [
   ['Example Resort – Typical Rooms BOQ'],
@@ -182,6 +182,59 @@ describe('a BOE PI', () => {
     assert.deepEqual(res.rows.map(r => [r.name, r.qty, r.material, r.price, r.spec]), [['Chair', 40, 'Acacia wood', 4800, 'With arms']])
     assert.equal(res.pictures.length, 2)
     assert.equal(res.pictures[res.rows[0].picture!].size, png.length) // the column E picture, not the longer one in column K
+  })
+
+  test('a row with a Code is a product even with no quantity, a row without one is a room title; headless text beside Customization is a side note', () => {
+    const { rows } = readGrid([
+      ['Code', 'Name', 'Quantity', 'Dimension', 'Cost per piece (INR)', 'Customization', null, null],
+      [null, 'BOHO ROOM (4 ROOMS)'],
+      ['SB04-B001', 'Chair', 4, '30 x 30', 4800, 'With arms', 'Price given was for 30 pieces', 12],
+      ['SB04-B012', 'Barbecue Table'], // no quantity yet, but it has a code: a product
+    ])
+    // 4 chairs in the file over 4 rooms = 1 per room
+    assert.deepEqual(rows.map(r => [r.name, r.room, r.rooms, r.qty, r.internalNote]), [['Chair', 'BOHO ROOM', 4, 1, 'Price given was for 30 pieces'], ['Barbecue Table', 'BOHO ROOM', 4, null, '']])
+    assert.ok(rows[1].doubtful.includes('qty'))
+    assert.equal(addToQuote(rows, []).lines[0].internal_note, 'Price given was for 30 pieces')
+    assert.equal(addToQuote([{ ...rows[0], internalNote: 'n'.repeat(1500) }], []).lines[0].internal_note.length, 1000)
+  })
+
+  test('the tab that carries the BOE price wins over a helper tab with more rows (the Santosh Hotel PI)', async () => {
+    const mod = await import('exceljs')
+    const ExcelJS = ((mod as unknown as { default?: typeof mod }).default ?? mod) as typeof mod
+    const wb = new ExcelJS.Workbook()
+    // The real PI's shape: Master first, then helper tabs that list the same products with no BOE price, one row more.
+    const master = wb.addWorksheet('Master')
+    master.addRow(['Code', 'Name', 'Quantity', 'Dimension in inches', 'Representative Image', null, 'Material', 'Cost per piece (INR)', 'Total Cost (INR)', null, 'Customization'])
+    master.addRow(['SB04-B001', 'Chair', 28, 'Standard Dimension', null, null, 'Mild Steel, Rope', 4900, 137200, 'B001', null, 'For 30 pieces'])
+    master.addRow(['SB04-B002', 'Sofa Chamber', 24, 'Length - 56', null, null, 'Natural Cane', 34000, 816000, 'B002', 'Each chamber will have 2 - 2seater sofas'])
+    master.addRow(['SB04-B012', 'Barbecue Table', null, null, null, null, null, null, null, 'B012', 'Tile top as Koren White'])
+    master.addRow(['SB04-B013', 'Table Outdoor', 2, 'Length - 78', null, null, 'Cast Iron Base', null, null, 'B013', 'Tile as peppercorn White'])
+    const helper = wb.addWorksheet('Packing cost and Fabric Cost')
+    helper.addRow(['Code', 'Name', 'Quantity', 'Dimension in inches & Shape', 'Representative Image', null, 'Material', 'Fabric Per pc', 'Total fabric'])
+    for (const [i, n] of ['Chair', 'Sofa Chamber', 'Barbecue Table', 'Table Outdoor', 'Chair'].entries()) helper.addRow([`SB04-B00${i}`, n, i + 1, '30 x 30', null, null, 'Steel', null, 0])
+    const res = await readSpreadsheet(new File([await wb.xlsx.writeBuffer() as ArrayBuffer], 'pi.xlsx'))
+    assert.match(res.note, /sheet "Master"/)
+    assert.deepEqual(res.rows.map(r => [r.name, r.room, r.qty, r.price, r.spec, r.internalNote]), [
+      ['Chair', '', 28, 4900, '', 'For 30 pieces'],
+      ['Sofa Chamber', '', 24, 34000, 'Each chamber will have 2 - 2seater sofas', ''],
+      ['Barbecue Table', '', null, null, 'Tile top as Koren White', ''], // a product, not a room title that swallows the next row
+      ['Table Outdoor', '', 2, null, 'Tile as peppercorn White', ''],
+    ])
+  })
+
+  test('tab choice: a client\'s short rate summary does not beat its full list, and without any price the longer tab still wins', async () => {
+    const mod = await import('exceljs')
+    const ExcelJS = ((mod as unknown as { default?: typeof mod }).default ?? mod) as typeof mod
+    const wb = new ExcelJS.Workbook()
+    const list = wb.addWorksheet('Full list')
+    list.addRow(['Item', 'Qty', 'Size'])
+    for (const n of ['Bed', 'Desk', 'Chair']) list.addRow([n, 2, '30 x 30'])
+    const summary = wb.addWorksheet('Summary')
+    summary.addRow(['Item', 'Qty', 'Rate'])
+    summary.addRow(['Bed', 2, 900])
+    const res = await readSpreadsheet(new File([await wb.xlsx.writeBuffer() as ArrayBuffer], 'boq.xlsx'))
+    assert.match(res.note, /sheet "Full list"/)
+    assert.equal(pricedRows(res.rows), 0)
   })
 })
 

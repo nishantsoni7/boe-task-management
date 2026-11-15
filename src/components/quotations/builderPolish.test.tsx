@@ -127,3 +127,11 @@ describe('the page rows (items 8 and 9)', () => {
     assert.match(CSS, /\.shareDl \.btn \{ flex: 1 1 140px; justify-content: center; \}/)
   })
 })
+
+describe('the suggested price: who sees "Why?" (owner, 15 Nov 2026)', () => {
+  test('the builder hands the product rows the way to correct the logic only to the Pricing module\'s people, decided as the /pricing guard decides', () => {
+    assert.match(SCREEN, /canAccessManagementModule\(\{ role: subject\.subjectRole, moduleKey: 'pricing', isModuleActive: true, permissions: subject\.subjectPermissionsByModule\.get\('pricing'\) \?\? \[\] \}\)/)
+    assert.ok(SCREEN.includes('feedbackCtx={seesWhy ? {'), 'a person without Pricing gets no feedbackCtx, so no "Why?" and no form')
+    assert.ok(read('src/app/pricing/layout.tsx').includes('moduleKey="pricing"'), 'the module this check mirrors')
+  })
+})

@@ -3,7 +3,8 @@
 // Phase 5, the pricing desk: the price hint under each product's price, the price-approval card on a quotation,
 // and, on the list, the desk's "Waiting for price approval" list and the administrator's limits.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BadgeCheck } from 'lucide-react'
@@ -22,28 +23,71 @@ import s from './quotations.module.css'
 
 type Supabase = ReturnType<typeof createClient>
 
-/** "Last ordered ₹60,000 · ₹56,000–₹60,000 over 2 orders · last quoted ₹54,000  [Use]" */
+type WhyCtx = { line: FeedbackLine; clientType: string | null; quotationId: string | null; isDesk: boolean }
+
+/**
+ * The suggested price, kept to one line for everyone: "Suggested ₹4,790 (₹3,800–₹6,050)  Use", or "Last ordered ₹7,300  Use" when
+ * only history is known (owner, 15 Nov 2026: the old block was "extremely messy"). How it was worked out, the history, and the
+ * way to correct the logic sit behind "Why?", which only people who pass `feedback` see (the builder gives it to holders of the
+ * Pricing module: Admin, or granted per person). Hiding is a need-to-see filter, not a security boundary: the model is fitted
+ * in the browser from the shared price pool.
+ */
 export function PriceHintLine({ hint, model, price, editable, onUse, feedback }: {
   hint?: PriceHint; model?: ModelSuggestion | null; price: number | null; editable: boolean; onUse: (p: number) => void
-  /** The line behind the suggestion; with it, a doorway to feedback and to correcting the logic sits under every suggestion (owner, 13 Nov 2026). */
-  feedback?: { line: FeedbackLine; clientType: string | null; quotationId: string | null; isDesk: boolean }
+  feedback?: WhyCtx
 }) {
+  const [why, setWhy] = useState(false)
   if (!model && (!hint || (!hint.ordered && !hint.quoted))) return null
   const o = hint?.ordered ?? null
   const sug = model ?? (hint?.points ? suggestPrice(hint.points) : null)
   const last = sug ? sug.price : o ? Number(o.last) : Number(hint!.quoted!.last)
   return (
     <div className={`${s.small} ${s.muted}`} style={{ lineHeight: 1.35 }}>
-      {sug && <div title={`From ${sug.basis}`}>Suggested <b>{formatINR(sug.price)}</b> ({sug.confidence}{sug.low !== sug.high ? `, ${formatINR(sug.low)}–${formatINR(sug.high)}` : ''})</div>}
-      {model && model.reasons.length > 0 && <div>{model.reasons.join(' · ')}</div>}
-      {o && <>Last ordered <b>{formatINR(Number(o.last))}</b>{Number(o.count) > 1 && <> · {formatINR(Number(o.min))}–{formatINR(Number(o.max))} over {o.count}</>}</>}
-      {hint?.quoted && <>{o ? ' · ' : ''}last quoted {formatINR(Number(hint.quoted.last))}</>}
+      {sug
+        ? <>Suggested <b>{formatINR(sug.price)}</b>{sug.low !== sug.high && <> ({formatINR(sug.low)}–{formatINR(sug.high)})</>}</>
+        : o ? <>Last ordered <b>{formatINR(Number(o.last))}</b></> : <>Last quoted <b>{formatINR(Number(hint!.quoted!.last))}</b></>}
       {editable && price !== last && <> <button type="button" className={s.linkBtn} onClick={() => onUse(last)}>Use</button></>}
-      {sug && feedback && (
-        <div><SuggestionFeedback source="quotation" line={feedback.line} clientType={feedback.clientType} quotationId={feedback.quotationId} isDesk={feedback.isDesk}
-          suggestion={{ price: sug.price, low: sug.low, high: sug.high, confidence: sug.confidence, basis: sug.basis, reasons: model?.reasons ?? [] }} /></div>
-      )}
+      {feedback && <> <button type="button" className={s.linkBtn} onClick={() => setWhy(true)} aria-haspopup="dialog">Why?</button></>}
+      {why && feedback && <PriceWhy ctx={feedback} hint={hint} model={model} sug={sug} onClose={() => setWhy(false)} />}
     </div>
+  )
+}
+
+/** The popup behind "Why?": what the suggestion rests on, the history, and the form to share feedback or correct the logic. */
+function PriceWhy({ ctx, hint, model, sug, onClose }: { ctx: WhyCtx; hint?: PriceHint; model?: ModelSuggestion | null; sug: { price: number; low: number; high: number; confidence: string; basis: string } | null; onClose: () => void }) {
+  const o = hint?.ordered ?? null
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  // In the body, not inside the product row: the row sits in a muted small-print block that a popup must not inherit.
+  return createPortal(
+    <div className={s.scrim} onClick={onClose}>
+      <div className={s.modal} style={{ maxWidth: 480, color: 'var(--boe-text)', fontSize: 14 }} role="dialog" aria-modal="true" aria-labelledby="why-title" onClick={e => e.stopPropagation()}>
+        <div className={s.cardHead}><h2 id="why-title">{ctx.line.name.trim() || 'This product'}: the price</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} aria-label="Close" autoFocus>×</button></div>
+        <div className={s.cardBody} style={{ display: 'grid', gap: 10 }}>
+          {sug && (
+            <div>
+              <div>Suggested <b>{formatINR(sug.price)}</b>{sug.low !== sug.high && <> · range {formatINR(sug.low)}–{formatINR(sug.high)}</>} · {sug.confidence} confidence</div>
+              <div className={`${s.small} ${s.muted}`}>From {sug.basis}</div>
+            </div>
+          )}
+          {model && model.reasons.length > 0 && <ul className={s.small} style={{ margin: 0, paddingLeft: 18 }}>{model.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>}
+          {(o || hint?.quoted) && (
+            <div className={s.small}>
+              {o && <div>Last ordered <b>{formatINR(Number(o.last))}</b>{Number(o.count) > 1 && <> · {formatINR(Number(o.min))}–{formatINR(Number(o.max))} over {o.count} orders</>}</div>}
+              {hint?.quoted && <div>Last quoted <b>{formatINR(Number(hint.quoted.last))}</b></div>}
+            </div>
+          )}
+          {sug && (
+            <SuggestionFeedback source="quotation" line={ctx.line} clientType={ctx.clientType} quotationId={ctx.quotationId} isDesk={ctx.isDesk} defaultOpen
+              suggestion={{ price: sug.price, low: sug.low, high: sug.high, confidence: sug.confidence, basis: sug.basis, reasons: model?.reasons ?? [] }} />
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
   )
 }
 

@@ -113,19 +113,68 @@ describe('the feedback and correction doorway', () => {
   })
 })
 
-describe('the doorway sits under every suggested price on a quotation line', () => {
+describe('the suggested price on a quotation line: one line for everyone, "Why?" for the Pricing people', () => {
   const MODEL: ModelSuggestion = { price: 59700, low: 54600, high: 65400, confidence: 'medium', reasons: ['+18% Teak instead of Mango'], basis: 'the price model for Bed (92 prices)', n: 92, type: 'bed' }
+  const HINT = { name: 'x', ordered: { last: 50000, last_at: '2026-01-01', min: 40000, max: 52000, count: 3 }, quoted: { last: 48000, last_at: '2026-02-01' } }
   const ctx = { line: LINE, clientType: null, quotationId: 'q-1', isDesk: false }
   const html = (props: Partial<Parameters<typeof PriceHintLine>[0]>) => renderToStaticMarkup(createElement(PriceHintLine, { price: null, editable: true, onUse: () => {}, ...props }))
+  const draw = (props: Partial<Parameters<typeof PriceHintLine>[0]>) => {
+    const ui = mount(createElement(PriceHintLine, { price: null, editable: true, onUse: () => {}, ...props }))
+    cleanup = () => ui.unmount()
+    return ui
+  }
 
-  test('a model suggestion shows the doorway; no suggestion, or no line context, does not', () => {
-    assert.match(html({ model: MODEL, feedback: ctx }), /Suggested[\s\S]*₹59,700[\s\S]*Feedback or correct the logic/)
-    assert.doesNotMatch(html({ model: MODEL }), /Feedback or correct the logic/)
-    assert.doesNotMatch(html({ model: null, hint: { name: 'x', ordered: { last: 50000, last_at: '2026-01-01', min: 50000, max: 50000, count: 1 }, quoted: null }, feedback: ctx }), /Feedback or correct the logic/, 'a plain last-ordered hint is not a calculation to correct')
+  test('without the Pricing module it is one short line: the price, its range, Use; no reasons, history, confidence or link', () => {
+    const out = html({ model: MODEL, hint: HINT })
+    assert.match(out, /Suggested[\s\S]*₹59,700[\s\S]*\(₹54,600–₹65,400\)[\s\S]*Use/)
+    for (const gone of [/Why\?/, /Feedback or correct the logic/, /Teak instead of Mango/, /medium/, /Last ordered/, /last quoted/i, /92 prices/]) assert.doesNotMatch(out, gone)
+    assert.equal((out.match(/<div/g) ?? []).length, 1, 'one block, not a stack of lines')
   })
 
-  test('it shows even when the quotation can no longer be edited', () => {
-    assert.match(html({ model: MODEL, editable: false, feedback: ctx }), /Feedback or correct the logic/)
+  test('with only history it says "Last ordered" once and nothing else; no history and no model draws nothing', () => {
+    const out = html({ model: null, hint: { ...HINT, quoted: null } })
+    assert.match(out, /Last ordered[\s\S]*₹50,000[\s\S]*Use/)
+    assert.doesNotMatch(out, /over 3|₹40,000|Why\?/)
+    assert.equal(html({ model: null, hint: { name: 'x', ordered: null, quoted: null } }), '')
+  })
+
+  test('Use fills the suggestion and goes away once the price is that figure; a locked quotation has no Use', () => {
+    assert.doesNotMatch(html({ model: MODEL, price: 59700 }), /Use/)
+    assert.doesNotMatch(html({ model: MODEL, editable: false }), />Use</)
+  })
+
+  test('with the Pricing module "Why?" opens the popup: reasons, range, confidence, history and the form to correct the logic', () => {
+    const ui = draw({ model: MODEL, hint: HINT, feedback: ctx })
+    assert.doesNotMatch(ui.text(), /Teak instead of Mango/, 'closed until asked')
+    ui.click(ui.button('Why?'))
+    const t = ui.text()
+    assert.match(t, /King bed with headboard: the price/)
+    assert.match(t, /range ₹54,600–₹65,400 · medium confidence/)
+    assert.match(t, /From the price model for Bed \(92 prices\)/)
+    assert.match(t, /\+18% Teak instead of Mango/)
+    assert.match(t, /Last ordered ₹50,000 · ₹40,000–₹52,000 over 3 orders/)
+    assert.match(t, /Last quoted ₹48,000/)
+    assert.match(t, /Share feedback/)
+    assert.match(t, /Correct the logic/)
+    assert.equal(ui.one('[role=dialog]').getAttribute('aria-modal'), 'true')
+    assert.equal(ui.one('[role=dialog]').parentElement?.parentElement, document.body, 'drawn in the page body, not inside the muted product row')
+  })
+
+  test('the popup closes with Close, Escape or a click outside; it opens on a locked quotation too', () => {
+    const ui = draw({ model: MODEL, editable: false, feedback: ctx })
+    for (const close of [() => ui.click(ui.button('×')), () => ui.press('Escape'), () => ui.click(ui.one('[role=dialog]').parentElement!)]) {
+      ui.click(ui.button('Why?'))
+      assert.equal(ui.all('[role=dialog]').length, 1)
+      close()
+      assert.equal(ui.all('[role=dialog]').length, 0)
+    }
+  })
+
+  test('history only: the popup shows the facts and no form (there is no calculation to correct)', () => {
+    const ui = draw({ model: null, hint: HINT, feedback: ctx })
+    ui.click(ui.button('Why?'))
+    assert.match(ui.text(), /Last ordered ₹50,000 · ₹40,000–₹52,000 over 3 orders/)
+    assert.doesNotMatch(ui.text(), /Correct the logic|Share feedback/)
   })
 })
 

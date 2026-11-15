@@ -11,6 +11,8 @@ import { PI_STAGE_LABEL, makePiDraft, piWorkbookFor, type PiStage } from '@/lib/
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
+import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
+import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 import { formatINR } from '@/lib/currency'
 import { istDateOf } from '@/lib/istDate'
 import {
@@ -50,6 +52,10 @@ type Msg = { tone: 'ok' | 'bad' | 'warn'; text: string; undo?: () => void } | nu
 export default function BuilderScreen() {
   const { id } = useParams<{ id: string }>()
   const { supabase, profile, loading, signOut, access, accessLoaded, notSetUp } = useQuotations()
+  // "Why?" under a suggested price, with the way to correct the logic, is for the Pricing module's people (owner, 15 Nov 2026):
+  // Admin, or switched on per person in Control Center → Access. Decided the way ModuleGuard decides entry to /pricing.
+  const subject = useDisplaySubject()
+  const seesWhy = subject.ready && canAccessManagementModule({ role: subject.subjectRole, moduleKey: 'pricing', isModuleActive: true, permissions: subject.subjectPermissionsByModule.get('pricing') ?? [] })
   const qc = useQueryClient()
   const quoteQ = useQuery({ queryKey: quotationKeys.one(id), queryFn: () => fetchQuotation(supabase, id), enabled: accessLoaded, retry: false })
 
@@ -390,7 +396,7 @@ export default function BuilderScreen() {
                 first={li === 0} last={li === g.lines.length - 1} url={p => pictureUrl(supabase, p)}
                 onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onImprove={() => setStudioFor(l.key)} onView={() => setViewing(l.key)}
                 hint={hintFor.get(l.name.trim())} model={modelFor.get(l.key)} onRemove={() => removeLine(l.key)}
-                feedbackCtx={{ clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) }}
+                feedbackCtx={seesWhy ? { clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) } : undefined}
                 onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
             ))}
           </div>

@@ -26,7 +26,7 @@ export type FeedbackLine = FeedbackDoc['line']
 /** What the model said: the price, its range and confidence, and the reasons it showed. */
 export type FeedbackSuggestion = { price: number; low: number; high: number; confidence: string; basis: string; reasons?: string[] }
 
-export function SuggestionFeedback({ source, line, clientType, suggestion, quotationId = null, isDesk = false, client, label = 'Feedback or correct the logic' }: {
+export function SuggestionFeedback({ source, line, clientType, suggestion, quotationId = null, isDesk = false, client, label = 'Feedback or correct the logic', defaultOpen = false }: {
   source: FeedbackDoc['source']
   line: FeedbackLine
   clientType: string | null
@@ -37,9 +37,11 @@ export function SuggestionFeedback({ source, line, clientType, suggestion, quota
   /** The database client; the page's own unless a test passes one. */
   client?: Supabase
   label?: string
+  /** Start with the form open (the "Why?" popup is already the place to give feedback). */
+  defaultOpen?: boolean
 }) {
   const id = useId()
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(defaultOpen)
   const [mode, setMode] = useState<'feedback' | 'correction'>('feedback')
   const [kind, setKind] = useState<Exclude<FeedbackKind, 'correction'>>('too_high')
   const [price, setPrice] = useState('')

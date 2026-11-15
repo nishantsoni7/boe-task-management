@@ -49,7 +49,14 @@ export function readPastedText(input: string): ImportResult {
   return { rows, pictures: [], note: rows.length ? '' : 'No products found in the text. Paste the rows with their headings.' }
 }
 
-/** Every sheet is tried; the one giving the most products wins. Pictures come from .xlsx files only. */
+/**
+ * Products that carry BOE's own price. A PI's helper tabs (packing, fabric, finish) list the same products with no price,
+ * so the tab with the price must win over a tab that merely has more rows. A price read from a bare "Price" / "Rate"
+ * heading (marked doubtful) does not count: a client's small rate summary must not beat the full list.
+ */
+export const pricedRows = (rows: readonly ImportRow[]) => rows.filter(r => r.price !== null && !r.doubtful.includes('price')).length
+
+/** Every sheet is tried; the one with the most priced products wins, then the one with the most products. Pictures come from .xlsx files only. */
 export async function readSpreadsheet(file: File): Promise<ImportResult> {
   const bytes = new Uint8Array(await file.arrayBuffer())
   const XLSX = await import('xlsx')
@@ -64,7 +71,8 @@ export async function readSpreadsheet(file: File): Promise<ImportResult> {
     const pictureRows = new Map<number, number>()
     sheetPics.forEach((p, i) => { if (!pictureRows.has(p.row)) pictureRows.set(p.row, i) })
     const { rows, headerRow } = readGrid(grid, pictureRows)
-    if (!best || rows.length > best.rows.length) best = { rows, pictures: sheetPics.map(p => p.blob), sheet: name, headerRow }
+    const [priced, bestPriced] = [pricedRows(rows), best ? pricedRows(best.rows) : 0]
+    if (!best || priced > bestPriced || (priced === bestPriced && rows.length > best.rows.length)) best = { rows, pictures: sheetPics.map(p => p.blob), sheet: name, headerRow }
   }
   if (!best || best.rows.length === 0) return { rows: [], pictures: [], note: 'No products found. Check that the sheet has a heading row (Description, Qty, Size…).' }
   return {
