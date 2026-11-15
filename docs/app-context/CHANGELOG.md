@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-16 — Pricing: the wood list with rates, and the wood picked on a structure row (branch `feat/pricing-woods`, NOT MERGED, migration 20270725000000 NOT APPLIED) · migration `20270725000000_pricing_woods.sql` (a new table: backup first)
+## 2026-11-16 — Pricing: the wood list with rates, and the wood picked on a structure row (branch `feat/pricing-woods`, PR #845 squash-merged 16 Nov 2026 01:08 IST as `65a81cd2`, deployed 01:10 IST; migration 20270725000000 APPLIED by the owner before the merge (table and functions confirmed)) · migration `20270725000000_pricing_woods.sql` (a new table: backup first)
 - **Why.** Step 1 of "the estimator uses submitted training cases" (plan agreed with the owner on 16 Nov, defaults accepted). His rule: for another wood, the wood share of a wooden structure changes and the rest stays. For that the app must know each wood and what it costs.
 - **Wood rates page.** Pricing → Wood rates (`/pricing/woods`): each wood with its rate per cubic foot. Anyone with Pricing reads it; Create adds, changes and removes (removal offers Undo). A wood may have no rate yet.
 - **Structure row.** On a Wooden structure row the material box is now "Wood", picked from the list or typed; a typed wood joins the list without a rate when the case is saved. The photo reader no longer fills it: a photo cannot name a wood, so its words go to the note.
