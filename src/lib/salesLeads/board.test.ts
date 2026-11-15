@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  activityTag, bigQuantity, checklistFor, nameWithoutPhone, countryOf, DEAD_REASONS, dueOf, flagOf, followUpChoices, isSunday, lastLabel, lastOf, marketLabel, nextStepOf, nextWorkingDay, parseValue,
+  activityTag, bigQuantity, checklistFor, nameWithoutPhone, countryOf, DEAD_REASONS, dueAfterUpdate, dueOf, flagOf, followUpChoices, isSunday, lastLabel, lastOf, marketLabel, nextStepOf, nextWorkingDay, parseValue,
   PATH_STAGES, QUICK_NOTES, quickMessages, rankMyDay, stageLabel, STAGES, valueLabel, whatsAppLink, whyFirst,
 } from './board'
 import { dayHeading, dayShort, istDayOf, timeLabel } from './format'
@@ -275,6 +275,22 @@ describe('the last touch', () => {
     assert.deepEqual(lastOf({ last_activity_at: '2026-11-03T01:00:00Z', last_kind: 'call' }, TODAY), { ago: 'Today', day: '2026-11-03', kind: 'Call' })
     assert.deepEqual(lastOf({ last_activity_at: '2026-11-02T01:00:00Z', last_kind: 'note' }, TODAY), { ago: 'Yesterday', day: '2026-11-02', kind: 'Update' })
     assert.deepEqual(lastOf({ last_activity_at: '2025-10-15T12:00:00Z', last_kind: 'note' }, TODAY), { ago: '384 days ago', day: '2025-10-15', kind: 'Update' })
+  })
+})
+
+// The update box lost its own date (owner, 2026-11-15): the follow-up is changed at the top of the popup.
+describe('the follow-up after an update', () => {
+  test('a date still ahead stays; a late, due-today or missing one goes to the next working day', () => {
+    assert.equal(dueAfterUpdate({ next_due_on: '2026-11-18' }, '2026-11-15'), '2026-11-18')
+    assert.equal(dueAfterUpdate({ next_due_on: '2026-11-16' }, '2026-11-15'), '2026-11-16')
+    assert.equal(dueAfterUpdate({ next_due_on: '2026-11-15' }, '2026-11-15'), '2026-11-16', 'due today')
+    assert.equal(dueAfterUpdate({ next_due_on: '2026-11-03' }, '2026-11-15'), '2026-11-16', 'late')
+    assert.equal(dueAfterUpdate({ next_due_on: null }, '2026-11-14'), '2026-11-16', 'none, from a Saturday')
+  })
+  test('the first quick note reads "Not responding" and still saves "Client not responding." with the not_responding tag', () => {
+    assert.equal(QUICK_NOTES[0].label, 'Not responding')
+    assert.equal(QUICK_NOTES[0].text, 'Client not responding.')
+    assert.equal(QUICK_NOTES[0].tag, 'not_responding')
   })
 })
 

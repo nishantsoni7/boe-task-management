@@ -94,7 +94,7 @@ export const outcomeLabel = (outcome: string) => OUTCOME_WORDS[outcome] ?? outco
  */
 export type CommentTag = 'not_responding' | 'quotation'
 export const QUICK_NOTES: readonly { key: string; label: string; text: string; tag: CommentTag | null }[] = [
-  { key: 'not_responding', label: 'Client not responding', text: 'Client not responding.', tag: 'not_responding' },
+  { key: 'not_responding', label: 'Not responding', text: 'Client not responding.', tag: 'not_responding' },
   { key: 'quotation', label: 'Shared quotation', text: 'Shared the quotation.', tag: 'quotation' },
   { key: 'catalogue', label: 'Shared catalogue', text: 'Shared the catalogue.', tag: null },
   { key: 'will_get_back', label: 'Client will get back', text: 'Client will get back to us.', tag: null },
@@ -367,6 +367,15 @@ export function lastOf(lead: { last_activity_at: string | null; last_kind: strin
   const day = lead.last_activity_at.slice(0, 10)
   const days = daysBetween(day, today)
   return { ago: days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : `${days} days ago`, day, kind: kindLabel(lead.last_kind ?? '') }
+}
+
+/**
+ * Where the follow-up goes when an update is posted (owner, 2026-11-15: the update box no longer has a date of its own, the
+ * follow-up is changed at the top of the popup). A date still ahead stays, so one chosen at the top is not undone by the post;
+ * a late, due-today or missing one moves to the next working day, as it always did.
+ */
+export function dueAfterUpdate(lead: { next_due_on: string | null }, today: string): string {
+  return lead.next_due_on && lead.next_due_on > today ? lead.next_due_on : nextWorkingDay(today)
 }
 
 export const whenFrom = (today: string, days: number) => istAddDays(today, days)

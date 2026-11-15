@@ -9,7 +9,7 @@ import {
   type LeadFacts, type WorkDetail, type WorkLead,
 } from '@/lib/salesLeads/api'
 import {
-  activityTag, CLIENT_TYPES, dueOf, followUpChoices, isSunday, lastOf, marketLabel, nextStepOf, nextWorkingDay, parseValue,
+  activityTag, CLIENT_TYPES, dueAfterUpdate, dueOf, followUpChoices, isSunday, lastOf, marketLabel, nextStepOf, parseValue,
   QUICK_NOTES, SEGMENTS, stageLabel, STAGE_GUIDE, TEMPERATURES, valueLabel,
   type CommentTag, type Stage, type Temperature,
 } from '@/lib/salesLeads/board'
@@ -48,7 +48,7 @@ import s from './leadBoard.module.css'
 // the full record (history and activity) is read; only the activity waits.
 
 /** Only one menu is open at a time; Escape closes it before it closes the popup. */
-type Menu = 'status' | 'due' | 'next' | null
+type Menu = 'status' | 'due' | null
 type Tab = 'details' | 'activity'
 
 /**
@@ -186,7 +186,7 @@ function PanelBody({ detail, work, focusLog, closeAfterPost, menu, setMenu, onCl
           <ClientCard lead={lead} work={work} canWork={canWork} closed={closed} />
         </div>
         <ActivitySide
-          detail={detail} work={work} canWrite={canWork && !closed} focusLog={focusLog} menu={menu} setMenu={setMenu}
+          detail={detail} work={work} canWrite={canWork && !closed} focusLog={focusLog}
           onPosted={() => { if (closeAfterPost) onClose() }} filling={filling} loadFailed={loadFailed} reload={reload}
         />
       </div>
@@ -534,8 +534,8 @@ function Marked({ text, q }: { text: string; q: string }) {
   return <>{parts.map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : <Fragment key={i}>{p}</Fragment>))}</>
 }
 
-function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPosted, filling, loadFailed, reload }: {
-  detail: WorkDetail; work: LeadWork; canWrite: boolean; focusLog: boolean; menu: Menu; setMenu: (m: Menu) => void; onPosted: () => void
+function ActivitySide({ detail, work, canWrite, focusLog, onPosted, filling, loadFailed, reload }: {
+  detail: WorkDetail; work: LeadWork; canWrite: boolean; focusLog: boolean; onPosted: () => void
   filling: boolean; loadFailed: boolean; reload: () => void
 }) {
   // Updates only is what is read first (owner, 2026-11-14): "Updates only" is the first button and is on when the popup opens.
@@ -585,7 +585,7 @@ function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPoste
           {query && <span className={s.mNone}>{shown.length} found</span>}
         </div>
       )}
-      {canWrite && <Composer lead={detail.lead} work={work} focus={focusLog} menu={menu} setMenu={setMenu} onPosted={onPosted} />}
+      {canWrite && <Composer lead={detail.lead} work={work} focus={focusLog} onPosted={onPosted} />}
       <div className={s.mFeed}>
         {filling && !loadFailed && <p className={s.mNone} role="status">Loading the activity…</p>}
         {loadFailed && (
@@ -639,20 +639,20 @@ function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPoste
   )
 }
 
-function Composer({ lead, work, focus, menu, setMenu, onPosted }: {
-  lead: WorkLead; work: LeadWork; focus: boolean; menu: Menu; setMenu: (m: Menu) => void; onPosted: () => void
+function Composer({ lead, work, focus, onPosted }: {
+  lead: WorkLead; work: LeadWork; focus: boolean; onPosted: () => void
 }) {
   const [text, setText] = useState('')
   // A quick note the person tapped; two of them carry a meaning the database keeps (a try nobody answered, a quotation).
   const [quick, setQuick] = useState<string | null>(null)
   const [tag, setTag] = useState<CommentTag | null>(null)
-  const [due, setDue] = useState(() => nextWorkingDay(work.today))
   const [saving, setSaving] = useState(false)
-  const wrap = useCloseOnOutside(menu === 'next', () => setMenu(null))
   const box = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { if (focus) box.current?.focus() }, [focus])
   const ready = text.trim() !== '' && !saving
-  const why = followUpChoices(work.today).find(c => c.date === due)?.why.toLowerCase() ?? (isSunday(due) ? 'a Sunday, picked by you' : 'picked by you')
+  // The follow-up is changed at the top of the popup (owner, 2026-11-15), so posting keeps a date still ahead and moves a late,
+  // due-today or missing one to the next working day.
+  const due = dueAfterUpdate(lead, work.today)
   const notResponding = tag === 'not_responding'
   // What posting does besides saving the words, when it is not obvious.
   const hint = notResponding
@@ -684,7 +684,7 @@ function Composer({ lead, work, focus, menu, setMenu, onPosted }: {
       void work.refresh()
       work.said(`Saved. Next follow-up ${dayShort(r.lead.next_due_on ?? due)}.`, r.activity_id)
       if (notResponding && (r.streak ?? 0) >= 3) work.threeTries(r.lead)
-      setText(''); setQuick(null); setTag(null); setDue(nextWorkingDay(work.today))
+      setText(''); setQuick(null); setTag(null)
       onPosted()
     } catch (e) {
       work.fail(e)
@@ -708,13 +708,7 @@ function Composer({ lead, work, focus, menu, setMenu, onPosted }: {
       </div>
       {hint && <p className={s.mHint}>{hint}</p>}
       <div className={s.mFoot}>
-        <div ref={wrap} className={`${s.mRel} ${s.mNext}`}>
-          <CalendarDays aria-hidden="true" />
-          <span>Follow up <b>{dayShort(due)}</b> <small>{why}</small></span>
-          <button type="button" className={s.linkBtn} aria-haspopup="menu" aria-expanded={menu === 'next'} onClick={() => setMenu(menu === 'next' ? null : 'next')}>Change</button>
-          {menu === 'next' && <FollowUpMenu today={work.today} value={due} onPick={day => { setDue(day); setMenu(null) }} />}
-        </div>
-        <span className={s.mKbd}>Ctrl + Enter</span>
+        <span className={s.mKbd}>Ctrl + Enter to post</span>
         <button type="button" className={s.mPost} disabled={!ready} onClick={() => void post()}>{saving ? 'Saving…' : 'Post update'}</button>
       </div>
     </section>

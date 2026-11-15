@@ -256,6 +256,21 @@ describe('the popup, as approved on the clickable previews (owner, 2026-11-14 an
     assert.ok(/\.stHeat button\[aria-pressed="true"\] \{ background: #303536; color: #fff;/.test(css))
   })
 
+  // Owner, 2026-11-15, on the live popup: "hovering on the selected temperature makes the text invisible".
+  test('the selected Hot / Warm / Cold keeps its charcoal under the mouse (its white words would vanish on the light hover)', () => {
+    assert.ok(css.includes('.stHeat button:hover:not(:disabled):not([aria-pressed="true"]) { background: #FAF8F5; }'))
+    assert.ok(!css.includes('.stHeat button:hover:not(:disabled) {'), 'no hover rule that also reaches the selected one')
+  })
+
+  test('the update box has no date of its own: the follow-up is changed at the top, and posting keeps a date still ahead', () => {
+    const composer = panel.slice(panel.indexOf('function Composer('))
+    assert.ok(!composer.includes('FollowUpMenu') && !composer.includes('Follow up <b>') && !composer.includes('setDue') && !composer.includes('s.mNext'))
+    assert.ok(composer.includes('const due = dueAfterUpdate(lead, work.today)') && composer.includes('nextDue: due'))
+    assert.ok(panel.includes("type Menu = 'status' | 'due' | null"), 'one menu less')
+    assert.ok(composer.includes('<span className={s.mKbd}>Ctrl + Enter to post</span>'))
+    assert.ok(!css.includes('.mNext'))
+  })
+
   test('the activity card has a count beside its heading, and its days and updates are headings and rows, not bubbles', () => {
     assert.ok(panel.includes('{!filling && <span className={s.mPill}>{detail.activities.length + detail.events.length}</span>}'))
     assert.ok(/\.mDay \{ position: sticky; top: 0;/.test(css))

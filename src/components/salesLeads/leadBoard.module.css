@@ -230,7 +230,8 @@
 .stHeat { display: flex; height: var(--ctl); border: 1px solid #CFC8BF; border-radius: 9px; background: #fff; overflow: hidden; }
 .stHeat button { flex: 1 1 0; min-width: 0; padding: 0 8px; border: 0; background: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font: 500 13px var(--boe-font-body); color: #4C5352; cursor: pointer; }
 .stHeat button + button { border-left: 1px solid #E4DED7; }
-.stHeat button:hover:not(:disabled) { background: #FAF8F5; }
+/* Not the selected one: its charcoal stays, or its white words would vanish on a light hover. */
+.stHeat button:hover:not(:disabled):not([aria-pressed="true"]) { background: #FAF8F5; }
 .stHeat button:disabled { cursor: default; }
 .stHeat button[aria-pressed="true"] { background: #303536; color: #fff; font-weight: 600; }
 
@@ -319,11 +320,7 @@
 .mChip:hover { border-color: #B9472E; color: #963B27; }
 .mChip[aria-pressed="true"] { border-color: #B9472E; background: #F8EAE4; color: #963B27; font-weight: 600; }
 .mHint { margin: 0 14px 10px; padding: 6px 10px; border-radius: 8px; background: #FBF1D9; color: #6B4A00; font-size: 12px; }
-.mFoot { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-top: 1px solid #ECE7E0; }
-.mNext { flex: 1; display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: #4C5352; min-width: 0; flex-wrap: wrap; }
-.mNext > svg { width: 14px; height: 14px; color: #686D6C; flex: 0 0 auto; }
-.mNext b { color: #303536; font-weight: 600; }
-.mNext small { color: #686D6C; font-size: 12px; }
+.mFoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px 14px; border-top: 1px solid #ECE7E0; }
 .mKbd { font-size: 11.5px; color: #686D6C; white-space: nowrap; }
 .mPost { height: 36px; padding: 0 16px; border: 0; border-radius: 9px; background: #B9472E; color: #fff; font: 600 13px var(--boe-font-body); cursor: pointer; white-space: nowrap; }
 .mPost:hover:not(:disabled) { background: #A33E27; }
