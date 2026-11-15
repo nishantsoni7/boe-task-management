@@ -24,6 +24,11 @@ const PART_OF: Readonly<Record<string, string>> = {
   '/api/scoreboard/me': 'me',
   '/api/scoreboard/vote': 'vote',
   '/api/scoreboard/star-seller': 'starSeller',
+  // Part 8 (2026-11-14): the launcher's attendance answers. The queue is the ONE address the launcher asks
+  // (pending, scope=queue), by its exact string: the Requests screen's other statuses are not batched.
+  '/api/attendance/my-punch': 'punch',
+  '/api/attendance/machine-status': 'machine',
+  '/api/attendance-requests?scope=queue&status=pending': 'queue',
 }
 
 export const BATCH_ROUTE = '/api/day-close/launcher'

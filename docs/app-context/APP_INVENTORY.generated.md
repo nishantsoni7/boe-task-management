@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `80091824` — Quotations: three layout fixes in the premium document, found by rendering a sample of the live PDF (no SQL) (#787)
-- Commits on this branch: 1356
+- Commit: `d5782ad7` — Docs: stamp the premium document layout fixes (#787) as merged 80091824, deployed 09:28 IST, verified live (no SQL)
+- Commits on this branch: 1357
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
-- Test files: 856   Next.js 16.2.6, React 19.2.4
+- Test files: 857   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `d5782ad7` 2026-11-15 Docs: stamp the premium document layout fixes (#787) as merged 80091824, deployed 09:28 IST, verified live (no SQL)
 - `80091824` 2026-11-15 Quotations: three layout fixes in the premium document, found by rendering a sample of the live PDF (no SQL) (#787)
 - `69402b1a` 2026-11-15 Docs: stamp #793 (lead popup banner and list) as merged a781646e, deployed 08:59 IST, string-verified live (no SQL) (#795)
 - `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
@@ -38,7 +39,6 @@
 - `4891ae98` 2026-11-14 Docs: stamp Quotations Import of a PI (#773) as merged 111f4ef6, deployed 13:28 IST (no SQL) (#774)
 - `111f4ef6` 2026-11-14 Quotations: Import brings a BOE PI's price, customization and representative picture (no SQL) (#773)
 - `2adad5f7` 2026-11-14 Docs: stamp the BOE One loader (#770) as merged 3dd0cc93, deployed 12:38 IST (no SQL) (#772)
-- `3dd0cc93` 2026-11-14 Platform: a slow wait shows the BOE One loader over the whole screen (no SQL) (#770)
 
 ## Pages by top-level area
 

@@ -20,6 +20,11 @@ describe('which parts are asked for', () => {
     assert.deepEqual(parseLauncherParts(''), [])
     assert.deepEqual(parseLauncherParts(LAUNCHER_PARTS.join(',')), [...LAUNCHER_PARTS])
   })
+
+  test('the three attendance parts (page speed part 8) are known, after the four Day Close parts', () => {
+    assert.deepEqual([...LAUNCHER_PARTS], ['prompt', 'me', 'vote', 'starSeller', 'punch', 'machine', 'queue'])
+    assert.deepEqual(parseLauncherParts('queue,punch,machine,hacker'), ['punch', 'machine', 'queue'])
+  })
 })
 
 describe('what the batch answers', () => {
@@ -28,6 +33,9 @@ describe('what the batch answers', () => {
     me: async () => ok({ scored: false }),
     vote: async () => ok({ error: 'Day Close is not switched on for you.' }, 403),
     starSeller: async () => ok({ seller: null }),
+    punch: async () => ok({ state: 'none' }),
+    machine: async () => ok({ error: 'Forbidden' }, 403),
+    queue: async () => ok({ requests: [], viewer_id: null }),
     ...overrides,
   })
 
@@ -106,9 +114,35 @@ describe('the route and the wiring', () => {
     assert.equal(/export async function (POST|PUT|PATCH|DELETE)/.test(batch), false, 'a batch of reads only')
   })
 
-  test('the four routes still exist (the fallback)', () => {
-    for (const r of ['day-close/prompt', 'scoreboard/me', 'scoreboard/vote', 'scoreboard/star-seller']) {
+  test('the three attendance parts are the UNCHANGED GET handlers of their routes, run with the caller\'s own headers', () => {
+    const batch = src('src/app/api/day-close/launcher/route.ts')
+    for (const [handler, route, path] of [
+      ['myPunch', 'src/app/api/attendance/my-punch/route.ts', '/api/attendance/my-punch'],
+      ['machineStatus', 'src/app/api/attendance/machine-status/route.ts', '/api/attendance/machine-status'],
+      ['requestQueue', 'src/app/api/attendance-requests/route.ts', '/api/attendance-requests?scope=queue&status=pending'],
+    ]) {
+      assert.ok(batch.includes(`viaRoute(${handler}, '${path}')`), `${handler} is a part of the batch, at its own address`)
+      assert.match(src(route), /export async function GET\(req: NextRequest\)/, `${route} still answers for itself`)
+    }
+    assert.match(batch, /headers: req\.headers/, 'the bearer token travels with each part, so each route signs the caller in itself')
+  })
+
+  test('the routes still exist (the fallback)', () => {
+    for (const r of ['day-close/prompt', 'scoreboard/me', 'scoreboard/vote', 'scoreboard/star-seller',
+      'attendance/my-punch', 'attendance/machine-status', 'attendance-requests']) {
       assert.ok(existsSync(join(root, 'src/app/api', r, 'route.ts')), r)
+    }
+  })
+
+  test('the three hooks ask through the batcher and nothing fetches their routes around it', () => {
+    for (const [file, path] of [
+      ['src/hooks/queries/usePunchStrip.ts', '/api/attendance/my-punch'],
+      ['src/hooks/queries/useMachineHealth.ts', '/api/attendance/machine-status'],
+      ['src/app/modules/PendingApprovals.tsx', '/api/attendance-requests?scope=queue&status=pending'],
+    ]) {
+      const code = src(file)
+      assert.ok(code.includes(`batchedGet('${path}')`), `${file} asks through the batcher`)
+      assert.equal(code.includes(`fetch('${path}'`), false, `${file} does not fetch ${path} around it`)
     }
   })
 
