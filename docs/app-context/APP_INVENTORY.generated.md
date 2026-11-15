@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `3ba2ef47` — Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
-- Commits on this branch: 1382
+- Commit: `7d19282b` — Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
+- Commits on this branch: 1384
 - Pages (`page.tsx`): 198   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `7d19282b` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
+- `d7d0ae9f` 2026-11-15 Pending work shows on its module's dashboard: change requests on Orders, money to allocate on Finance (no SQL) (#818)
 - `3ba2ef47` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
 - `d8a02296` 2026-11-15 Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL) (#819)
 - `65beb47f` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
@@ -37,8 +39,6 @@
 - `cc40fd5d` 2026-11-15 Docs: stamp page speed part 9 (#801) as merged 90c60493, deployed 11:13 IST, verified live (no SQL) (#802)
 - `90c60493` 2026-11-15 Page speed, part 9: the other Orders pages reuse the guard's profile and permissions (no SQL) (#801)
 - `a10410c5` 2026-11-15 Docs: stamp the premium document layout fixes (#787) as merged 80091824, deployed 09:28 IST, verified live (no SQL) (#797)
-- `e6663b40` 2026-11-15 Phones: Team Today no longer scrolls sideways, the Access page fits, Lead Master's Auto-allot switch wraps (#799)
-- `9fc1f782` 2026-11-15 Docs: stamp page speed part 8 (#796) as merged 27deb4f7, deployed 09:50 IST, verified live (no SQL) (#798)
 
 ## Pages by top-level area
 
