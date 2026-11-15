@@ -13,6 +13,7 @@ import s from './quotations.module.css'
 /**
  * One product on the builder (layout B, owner-approved 13 Nov 2026): its picture (click to see it large), the boxes, and the
  * numbers. The boxes form two columns (owner, 15 Nov 2026): Product above Material (5 of 12), Dimensions above Remarks (7 of 12).
+ * The numbers are one card (owner, 15 Nov 2026): Quantity and Price, the suggestion, then a footer with Optional, the tools, the total and the count.
  * GST is not here: a quotation has one GST rate, in the totals (each product still stores it).
  * There is no Finish box (owner, 13 Nov 2026: not needed). `finish` stays in the line's data, stored and re-sent on every save,
  * because the database rewrites the lines and a missing key would wipe it; words typed into Material and Remarks still reach the price model.
@@ -62,32 +63,37 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
         </div>
       </div>
       <div className={s.plRight}>
-        <div className={s.field}><span>Quantity</span>
-          <div className={s.qtyRow}>
-            <input aria-label={perUnit ? `Quantity per ${area!.unit_label.replace(/s$/, '')}` : 'Quantity'} className={`${s.input} ${s.money}`} type="number" min={0} step="any" value={l.qty ?? ''} onChange={e => onChange({ qty: e.target.value === '' ? null : Number(e.target.value) })} disabled={!editable} />
-            {area ? (
-              <select aria-label="Quantity is" className={s.input} value={l.qty_mode} onChange={e => onChange({ qty_mode: e.target.value as QuoteLine['qty_mode'] })} disabled={!editable}>
-                <option value="per_unit">per {area.unit_label.replace(/s$/, '')}</option>
-                <option value="fixed">in total</option>
-              </select>
-            ) : <span className={`${s.small} ${s.muted}`} style={{ alignSelf: 'center' }}>pieces</span>}
+        <div className={s.qp}>
+          <div className={s.field}><span>Quantity</span>
+            <div className={s.qtyBox}>
+              <input aria-label={perUnit ? `Quantity per ${area!.unit_label.replace(/s$/, '')}` : 'Quantity'} className={s.qtyIn} type="number" min={0} step="any" value={l.qty ?? ''} onChange={e => onChange({ qty: e.target.value === '' ? null : Number(e.target.value) })} disabled={!editable} />
+              {area ? (
+                <select aria-label="Quantity is" className={s.qtySel} value={l.qty_mode} onChange={e => onChange({ qty_mode: e.target.value as QuoteLine['qty_mode'] })} disabled={!editable}>
+                  <option value="per_unit">per {area.unit_label.replace(/s$/, '')}</option>
+                  <option value="fixed">in total</option>
+                </select>
+              ) : <span className={s.qtyUnit}>pieces</span>}
+            </div>
           </div>
+          <label className={s.field}><span>Price before GST</span>
+            <span className={s.rupeeBox}><span className={s.rs} aria-hidden>₹</span><input aria-label="Unit price (₹, before GST)" className={s.rupeeIn} type="number" min={0} placeholder="Price" value={l.unit_price ?? ''} onChange={e => onChange({ unit_price: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value))) })} disabled={!editable} /></span>
+          </label>
         </div>
-        <label className={s.field}><span>Price ₹ before GST</span><input aria-label="Unit price (₹, before GST)" className={`${s.input} ${s.money}`} type="number" min={0} placeholder="Price ₹" value={l.unit_price ?? ''} onChange={e => onChange({ unit_price: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value))) })} disabled={!editable} /></label>
         <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p) })}
           feedback={feedbackCtx && { line: { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }, ...feedbackCtx }} />
-        <div className={s.row} style={{ justifyContent: 'space-between' }}>
+        <div className={s.plFoot}>
           <label className={s.optLab}><input type="checkbox" checked={l.is_optional} onChange={e => onChange({ is_optional: e.target.checked })} disabled={!editable} /> Optional</label>
-          <div className={s.plTotal}>{l.unit_price === null ? <span className={s.muted}>No price</span> : formatINR(total)}<div className={`${s.small} ${s.muted}`} style={{ fontWeight: 400 }}>{l.is_optional ? 'not in the total' : `${qty.toLocaleString('en-IN')} ${qty === 1 ? 'piece' : 'pieces'}`}</div></div>
+          <div className={s.plTotal}>{l.unit_price === null ? <span className={s.muted}>No price</span> : formatINR(total)}</div>
+          {editable ? (
+            <div className={s.plTools}>
+              <button className={s.iconBtn} onClick={() => onMove(-1)} disabled={first} aria-label="Move up"><ArrowUp size={15} /></button>
+              <button className={s.iconBtn} onClick={() => onMove(1)} disabled={last} aria-label="Move down"><ArrowDown size={15} /></button>
+              <button className={s.iconBtn} onClick={onDuplicate} aria-label="Duplicate"><Copy size={15} /></button>
+              <button className={s.iconBtn} onClick={onRemove} aria-label="Remove product"><Trash2 size={15} /></button>
+            </div>
+          ) : <span />}
+          <div className={`${s.plPieces} ${s.small} ${s.muted}`}>{l.is_optional ? 'not in the total' : `${qty.toLocaleString('en-IN')} ${qty === 1 ? 'piece' : 'pieces'}`}</div>
         </div>
-        {editable && (
-          <div className={s.plTools}>
-            <button className={s.iconBtn} onClick={() => onMove(-1)} disabled={first} aria-label="Move up"><ArrowUp size={15} /></button>
-            <button className={s.iconBtn} onClick={() => onMove(1)} disabled={last} aria-label="Move down"><ArrowDown size={15} /></button>
-            <button className={s.iconBtn} onClick={onDuplicate} aria-label="Duplicate"><Copy size={15} /></button>
-            <button className={s.iconBtn} onClick={onRemove} aria-label="Remove product"><Trash2 size={15} /></button>
-          </div>
-        )}
       </div>
     </div>
   )
