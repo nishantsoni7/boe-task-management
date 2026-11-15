@@ -4,12 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-15 — Phones: Team Today / Team Performance no longer scroll sideways, the Access page fits, and Lead Master's Auto-allot switch wraps (branch `fix/phone-team-today-and-permissions`; the PR number and merge commit are stamped in a docs follow-up after the merge) · no SQL
+## 2026-11-15 — Phones: Team Today / Team Performance no longer scroll sideways, the Access page fits, and Lead Master's Auto-allot switch wraps (PR #799, squash-merged 10:36 IST as `e6663b40`, deployed 10:38 IST) · no SQL
 - **Owner ask.** "Sweep the other modules at 390px", then "Yes, fix both" for the two defects whose fix was tested.
 - **The sweep.** 154 pages on the live site, each alone in a 390 px frame, listing anything outside the clipped content column plus the page's sideways scroll. 3 real defects, 2 cosmetic bleeds (Marketing stat chips, Inventory save bar), 1 false positive (QR print block). Notes in the side-session notes, not in the repo.
 - **Fix 1.** `src/components/dayClose/teamToday.module.css`: `.scroll` gets `position: relative`, so the roster's absolute `.srOnly` labels stay inside its scroll box. `/tasks/team-today` and `/performance/team` were 836 px wide at 390 and could be dragged sideways; injected on the live page: 375 px, no sideways scroll, table still scrolls in its card.
 - **Fix 2.** `src/app/admin/control-center/permissions/permissions.module.css` (max-width 1023px): `.layout` `1fr` -> `minmax(0, 1fr)`. The Access page was 399 px wide in a 375 px column; injected: 351 px, 0 elements outside.
 - **Test.** `src/app/phoneSweepLayout.test.ts` pins all three rules.
+- **Live after the deploy (10:38 IST, no injected CSS, 390 px).** Team Today: page 375 px wide, table scrolls inside its card. Access page: 351 px column, nothing outside. Lead Master: row wraps, Auto-allot switch at 220..366 inside the page. Not yet seen on a real phone.
 - **Fix 3 (owner: "wrap the auto-allot row on phones").** `src/components/salesLeads/salesLeads.module.css` phone rule: `.whoBar` `flex-wrap: nowrap` -> `wrap`. The admin's "Auto-allot on" switch was cut off at 263..409 in a 375 px column; it now takes a second line. The row still never scrolls (that would clip the person picker).
 
 ## 2026-11-14 — Quotations: three layout fixes in the premium document (PR #787 squash-merged 2026-11-15 09:25 IST as `80091824`, deployed 09:28 IST, verified live) · no SQL
