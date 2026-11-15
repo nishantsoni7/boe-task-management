@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
 
   let res: Response | null = null
   let lastStatus = 0
+  let why = '' // the service's own words (status, error type, message: never a key), so the screen can say what to fix
   for (const model of MODELS) {
     try {
       res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -75,14 +76,15 @@ export async function POST(req: NextRequest) {
     }
     lastStatus = res.status
     if (res.ok) break
-    const detail = await res.json().catch(() => null) as { error?: { type?: string } } | null
+    const detail = await res.json().catch(() => null) as { error?: { type?: string; message?: string } } | null
     console.error('pricing training read: provider refused', { model, status: res.status, type: detail?.error?.type })
+    why = `${res.status} ${detail?.error?.type ?? 'error'}${detail?.error?.message ? `: ${detail.error.message.slice(0, 200)}` : ''}`
     if (res.status !== 404) break // only an unknown model moves on to the next one
   }
   if (!res || !res.ok) {
     if (lastStatus === 401 || lastStatus === 403) return reply({ ok: false, error: 'The reading service refused its key. Ask the admin to check ANTHROPIC_API_KEY.' }, 502)
     if (lastStatus === 429 || lastStatus === 529) return reply({ ok: false, error: 'The reading service is busy. Try again in a minute.' }, 503)
-    return reply({ ok: false, error: 'Could not read the photo right now. You can still add the materials yourself.' }, 502)
+    return reply({ ok: false, error: `Could not read the photo. The reading service answered: ${why || lastStatus}. You can still add the materials yourself.` }, 502)
   }
   const reading = parseReading(answerJson(await res.json().catch(() => null)))
   if (!reading) return reply({ ok: false, error: 'I could not read this photo. Try one with the whole product in view, or add the materials yourself.' })

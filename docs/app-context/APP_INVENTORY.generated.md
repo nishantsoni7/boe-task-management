@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `8442b3e6` — Docs: stamp the "New update" mark (#832) as merged d23cd7e4, deployed 21:57 IST (no SQL) (#833)
-- Commits on this branch: 1391
+- Commit: `121c5a70` — Docs: stamp the lead popup polish with its pull request number (#836)
+- Commits on this branch: 1393
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 461 (first `20260530_create_positions.sql`, latest `20270720000000_pricing_training.sql`)
 - Tables ever created: 258 (dropped at some point: 8)   SQL functions: 1045   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `121c5a70` 2026-11-15 Docs: stamp the lead popup polish with its pull request number (#836)
+- `a1385195` 2026-11-15 Sales: lead popup polish, the selected temperature stays readable on hover and the update box is shorter (no SQL)
 - `8442b3e6` 2026-11-15 Docs: stamp the "New update" mark (#832) as merged d23cd7e4, deployed 21:57 IST (no SQL) (#833)
 - `29ff4ecd` 2026-11-15 Sales: the lead popup is a status strip and two cards, on the lines of Quotation Details (no SQL) (#829)
 - `d23cd7e4` 2026-11-15 Orders: an order back with Operations is marked "New update" on the list and dashboard (no SQL) (#832)
@@ -37,8 +39,6 @@
 - `cebad468` 2026-11-15 Pricing: sizes read by their labels, and the reason for an unseen finish worded right (no SQL) (#811)
 - `4e866120` 2026-11-15 Quotations: Quantity and Price share one row on a product from 1200 px (no SQL) (#809)
 - `4760d62e` 2026-11-15 Docs: stamp page speed part 11 (#807) as merged bb407054, migration 20270719000000 applied, verified live (#808)
-- `bb407054` 2026-11-15 Page speed, part 11: the Payment Requests badges in one call (migration 20270719000000 applied) (#807)
-- `27d52de1` 2026-11-15 Docs: stamp #805 (Import reads the right tab; one-line suggested price) as merged e4f0c6e2, deployed 12:41 IST, verified live (no SQL) (#806)
 
 ## Pages by top-level area
 

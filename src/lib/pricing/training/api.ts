@@ -67,7 +67,7 @@ export async function readPhoto(s: Supabase, jpeg: Blob): Promise<Reading> {
   let res: Response
   try { res = await fetch('/api/pricing/training/read', { method: 'POST', body, headers: { Authorization: `Bearer ${session.access_token}` } }) } catch { throw new TrainingError('network', 'No connection. Check the network and try again.') }
   const json = await res.json().catch(() => null) as { ok: true; reading: unknown } | { ok: false; error: string } | null
-  if (!json) throw new TrainingError('unknown', 'Could not read the photo right now. You can still add the materials yourself.')
+  if (!json) throw new TrainingError('unknown', `Could not read the photo right now (the server answered ${res.status}). You can still add the materials yourself.`)
   if (!json.ok) throw new TrainingError('unknown', json.error)
   const reading = parseReading(json.reading)
   if (!reading) throw new TrainingError('unknown', 'I could not read this photo. You can still add the materials yourself.')
