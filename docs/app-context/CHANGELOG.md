@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-15 — Control Center redesign, step 2: the six ?tab= screens get real routes (PR #821) · no SQL
+## 2026-11-15 — Control Center redesign, step 2: the six ?tab= screens get real routes (PR #821, squash-merged 19:13 IST as `826ea9c6`, deployed 19:15 IST, old addresses verified live) · no SQL
 - **Owner ask.** "Start step 2: real routes for tab pages" (the second half of the Control Center redesign). Follows step 1 (#816) and the pending-work change (#818), both merged.
 - **Why.** Departments, the four Order screens and Sales team were `?tab=` views of one 1,490-line page: no address of their own, and every sidebar switch replaced the history entry, so Back skipped them.
 - **Routes.** `/admin/control-center/departments`, `/order-numbering`, `/order-notifications`, `/operations-handoff`, `/order-visibility`, `/sales-team`. Each is a thin page rendering a component moved out of `page.tsx` unchanged (`DepartmentsTab`, `OrderNumberingTab`, `OrderNotificationsTab`, `OperationsHandoffTab`; `OrderVisibilityTab` and `SalesTeamTab` already were). `page.tsx` is now Home plus the hidden Module Visibility tab (about 370 lines, was 1,490).
