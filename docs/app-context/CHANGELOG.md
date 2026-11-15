@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-14 — Quotations: three layout fixes in the premium document (branch `fix/quotation-document-layout`, PR pending) · no SQL
+## 2026-11-14 — Quotations: three layout fixes in the premium document (PR #787 squash-merged 2026-11-15 09:25 IST as `80091824`, deployed 09:28 IST, verified live) · no SQL
 - **Found by** rendering a sample of the live PDF (15 pages) for the owner; fixed after measuring the real render in headless Edge.
 - **Half-empty product page.** The planner treated a product name over 27 characters as two lines; a mixed-case name of up to 31 characters prints on one (a card is 41 units wide, the name 2.85 units; capitals are about 30% wider). `nameLines()`: 30 characters per line, capitals count 1.3, never fewer lines than the browser drew over 43 measured names. The sample's Deluxe Room (8 products) packs 4 + 4, was 2 / 4 / 2.
 - **No picture, no frame.** A product with no picture prints its text only; `cardUnits` leaves the picture out (31.7 units, measured 46.2 vs 14.5), so text-only cards pack more rows per page. Checked at 390 and 320 px.
