@@ -395,11 +395,12 @@ describe('no Order screen waits more than it must', () => {
       // page's existing Promise.all via loadAdvance — one more read, no more waits.
       // ALL 7 -> 8 (20270528000000): the Factory Status line's one read, orders_dispatch_progress, issued INSIDE the
       // same Promise.all via loadDispatch — one more read, no more waits; a failed read just draws no line.
-      // ALL stays 8 (2026-11-14, Operations' request): the PI-change marker adds two reads (the pending
-      // order_pi_versions and the live order_operations_handoffs from version 2) plus loadOrdersWithSales'
-      // one history read, but they live in lib/orders/piChangeMarker.ts (loadPiChangeMarkers), so this
-      // file-wide count does not see them. They are issued INSIDE the page's existing Promise.all via
-      // loadPiChanges — more reads, no more waits; a failed read just draws no marker.
+      // ALL stays 8 (2026-11-15, owner: "New update" for an order back with Operations; it replaced the
+      // 2026-11-14 PI-change pills): ONE read of the live order_operations_handoffs, in
+      // lib/orders/backWithOperations.ts (loadOrdersBackWithOperations), so this file-wide count does not see
+      // it. It is issued INSIDE the page's existing Promise.all via loadBackWithOps — one more read, no more
+      // waits; a failed read just draws no mark. The Orders dashboard calls the same function from its own
+      // Promise.all (DASHBOARD stays 5).
       // DETAIL 45 -> 46 (20270616000000): flag_order_lines, the operations reviewer's line-by-line
       // review, on a press of Send back to Sales / Accept with comments. The flags themselves are read
       // by useOrderLineFlags (its own file, nothing awaits it), so the startup path is unchanged.

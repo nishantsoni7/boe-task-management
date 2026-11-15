@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `c696e68f` — Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
-- Commits on this branch: 1387
+- Commit: `44d4bad8` — Orders: an order back with Operations is marked "New update" on the list and the dashboard (no SQL)
+- Commits on this branch: 1389
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 461 (first `20260530_create_positions.sql`, latest `20270720000000_pricing_training.sql`)
 - Tables ever created: 258 (dropped at some point: 8)   SQL functions: 1045   Enums: 0
-- Test files: 867   Next.js 16.2.6, React 19.2.4
+- Test files: 868   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `44d4bad8` 2026-11-15 Orders: an order back with Operations is marked "New update" on the list and the dashboard (no SQL)
+- `475569ea` 2026-11-15 AI calls: structured output instead of a forced tool (no SQL) (#830)
 - `c696e68f` 2026-11-15 Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
 - `431cd0c2` 2026-11-15 Pricing: Training, where the price of a product is taught element by element (migration 20270720000000, apply before merge) (#826)
 - `2e4bc210` 2026-11-15 Control Center: a switch for price approval on quotations (no SQL) (#825)
@@ -37,8 +39,6 @@
 - `27d52de1` 2026-11-15 Docs: stamp #805 (Import reads the right tab; one-line suggested price) as merged e4f0c6e2, deployed 12:41 IST, verified live (no SQL) (#806)
 - `e4f0c6e2` 2026-11-15 Quotations: Import reads the right tab of a PI; suggested price is one line with a Why? popup (no SQL) (#805)
 - `cec40927` 2026-11-15 Docs: stamp page speed part 10 (#803) as merged 5c6f2118, deployed 12:07 IST, verified live (no SQL) (#804)
-- `5c6f2118` 2026-11-15 Page speed, part 10: the Attendance pages reuse the guard's profile row (no SQL) (#803)
-- `9220572d` 2026-11-15 Docs: stamp #799 (phone fixes from the 390 px sweep) as merged e6663b40, deployed 10:38 IST, verified live (no SQL) (#800)
 
 ## Pages by top-level area
 
@@ -162,7 +162,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 5 source, 8 test
 - `src/lib/notifications` — 9 source, 25 test
-- `src/lib/orders` — 110 source, 170 test
+- `src/lib/orders` — 110 source, 171 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
