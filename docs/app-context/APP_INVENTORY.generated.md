@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `44d4bad8` — Orders: an order back with Operations is marked "New update" on the list and the dashboard (no SQL)
+- Commit: `d23cd7e4` — Orders: an order back with Operations is marked "New update" on the list and dashboard (no SQL) (#832)
 - Commits on this branch: 1389
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 461 (first `20260530_create_positions.sql`, latest `20270720000000_pricing_training.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `44d4bad8` 2026-11-15 Orders: an order back with Operations is marked "New update" on the list and the dashboard (no SQL)
+- `d23cd7e4` 2026-11-15 Orders: an order back with Operations is marked "New update" on the list and dashboard (no SQL) (#832)
 - `475569ea` 2026-11-15 AI calls: structured output instead of a forced tool (no SQL) (#830)
 - `c696e68f` 2026-11-15 Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
 - `431cd0c2` 2026-11-15 Pricing: Training, where the price of a product is taught element by element (migration 20270720000000, apply before merge) (#826)
