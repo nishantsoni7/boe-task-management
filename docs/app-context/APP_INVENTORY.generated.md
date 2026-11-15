@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `7d19282b` — Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
-- Commits on this branch: 1384
+- Commit: `1354488b` — Merge origin/main into fix/pricing-heights-feet (inventory regenerated)
+- Commits on this branch: 1381
 - Pages (`page.tsx`): 198   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,17 +14,14 @@
 
 ## Latest 25 commits
 
-- `7d19282b` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
+- `1354488b` 2026-11-15 Merge origin/main into fix/pricing-heights-feet (inventory regenerated)
+- `6d0d0700` 2026-11-15 Docs: stamp #819 (the lead popup's left side with room) as merged d8a02296, deployed 16:44 IST, verified live (no SQL) (#820)
+- `5474f246` 2026-11-15 Pricing: heights alone are not a footprint, and a labelled size in feet is read (no SQL)
 - `d7d0ae9f` 2026-11-15 Pending work shows on its module's dashboard: change requests on Orders, money to allocate on Finance (no SQL) (#818)
-- `3ba2ef47` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
 - `d8a02296` 2026-11-15 Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL) (#819)
-- `65beb47f` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
 - `0177f067` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
-- `164b7b0c` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
 - `82a446dc` 2026-11-15 Pricing: a unit glued to its number ("180cm") is read as the unit, not as inches (no SQL) (#817)
 - `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
-- `4704838a` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
-- `3fcad29e` 2026-11-15 Control Center: Home and six areas, a searchable directory, no tabs, no pending work (no SQL)
 - `c65a3d36` 2026-11-15 Docs: master instruction sheet asks for a Doors check before changing who may do, see or be told something (#813)
 - `80841c38` 2026-11-15 Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL) (#812)
 - `cebad468` 2026-11-15 Pricing: sizes read by their labels, and the reason for an unseen finish worded right (no SQL) (#811)
@@ -39,6 +36,9 @@
 - `cc40fd5d` 2026-11-15 Docs: stamp page speed part 9 (#801) as merged 90c60493, deployed 11:13 IST, verified live (no SQL) (#802)
 - `90c60493` 2026-11-15 Page speed, part 9: the other Orders pages reuse the guard's profile and permissions (no SQL) (#801)
 - `a10410c5` 2026-11-15 Docs: stamp the premium document layout fixes (#787) as merged 80091824, deployed 09:28 IST, verified live (no SQL) (#797)
+- `e6663b40` 2026-11-15 Phones: Team Today no longer scrolls sideways, the Access page fits, Lead Master's Auto-allot switch wraps (#799)
+- `9fc1f782` 2026-11-15 Docs: stamp page speed part 8 (#796) as merged 27deb4f7, deployed 09:50 IST, verified live (no SQL) (#798)
+- `27deb4f7` 2026-11-15 Page speed, part 8: the launcher's attendance answers join the one request (no SQL) (#796)
 
 ## Pages by top-level area
 
