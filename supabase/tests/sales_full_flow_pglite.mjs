@@ -1,6 +1,6 @@
 // One lead's whole life through the REAL Sales migrations, as every role: added in Lead Master, allotted, worked through
 // every stage to Converted, parked, Dead, enquired again; then the manager, the lead manager and Admin; then the alerts,
-// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), the two old Google Sheets (20270530000000), the website capture (20270531000000/100), the automatic allotment (20270602000000), the Lead Master date range (20270606000000), the WhatsApp chats (20270609000000) and their judging (20270613000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
+// the fixes of 20270527000000, ClickUp's full history, "Can be given leads" (20270529000000), the two old Google Sheets (20270530000000), the website capture (20270531000000/100), the automatic allotment (20270602000000), the Lead Master date range (20270606000000), the WhatsApp chats (20270609000000) and their judging (20270613000000), and the files on an update (20270722000000). Runs in an in-memory Postgres (PGlite) over small stubs, like
 // sales_go_live_pglite.mjs. Run:
 //   node supabase/tests/sales_full_flow_pglite.mjs <dir with @electric-sql/pglite installed>
 // Prints every step, keeps going after a failure, and ends with "all N checks passed" or exits 1.
@@ -1479,6 +1479,119 @@ await step('Browser users cannot fire the alert job', () =>
     await facts(U.ashok, id, { requirement: 'Sofas', expected_value_paise: 90000000 })
     must((await move(U.ashok, id, 'converted', 'under_process')).status === 'moved', 'converted without a quantity')
     must(!(await scalar(`select position('''quantity''' in pg_get_functiondef('public.move_sales_lead(uuid, text, text, text, text, text, date)'::regprocedure)) > 0`)), 'quantity still asked')
+  })
+}
+
+{
+  // ── Files on an update (20270722000000) ──
+  // The platform's storage tables are stood in for by two small tables; the policies, the helpers and the function are the real ones.
+  await db.exec(`
+    create schema storage;
+    grant usage on schema storage to anon, authenticated, service_role;
+    create table storage.buckets (id text primary key, name text, public boolean, file_size_limit bigint, allowed_mime_types text[]);
+    create table storage.objects (id uuid primary key default gen_random_uuid(), bucket_id text, name text, owner uuid, owner_id text,
+      metadata jsonb, created_at timestamptz not null default now());
+    alter table storage.objects enable row level security;
+    grant select, insert, update, delete on storage.objects to authenticated;
+  `)
+  await step('The migration applies over the live register, its self-checks included', async () => {
+    await db.exec(mig('20270722000000_sales_lead_attachments.sql'))
+    must(await scalar(`select to_regprocedure('public.add_sales_lead_comment(uuid, text, text, date)') is null`), 'the four-argument function is gone')
+    must(await scalar(`select public = false and file_size_limit = 10485760 from storage.buckets where id = 'sales-lead-files'`), 'private, 10 MB')
+  })
+  const fresh = async phone => {
+    const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, [phone])
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [L.lead.id, U.ashok])
+    return L.lead.id
+  }
+  const put = (uid, lead, file, size = 1234, type = 'application/pdf', bucket = 'sales-lead-files') =>
+    one(uid, `insert into storage.objects (bucket_id, name, owner_id, metadata) values ($1, $2, $3, $4::jsonb) returning name`,
+      [bucket, `${lead}/${file}`, uid, JSON.stringify({ size, mimetype: type })])
+  const paths = (lead, ...names) => JSON.stringify(names.map(n => ({ path: `${lead}/${n}`, name: n.replace(/^[a-z0-9]+-/, '') })))
+  const addWith = (uid, id, note, f) => one(uid, `select public.add_sales_lead_comment($1, $2, null, null, $3::jsonb)`, [id, note, f])
+  const acts = async id => Number(await scalar(`select count(*) from public.sales_lead_activities where lead_id = $1`, [id]))
+  const A = await fresh('+91 97111 01000')
+  const B = await fresh('+91 97111 01001')
+
+  await step('Only somebody who can work the lead may upload into its folder', async () => {
+    await put(U.ashok, A, 'k1-quote.pdf')
+    await put(U.ashok, A, 'k2-site.jpg', 800, 'image/jpeg')
+    await expectErr(U.mohit, `insert into storage.objects (bucket_id, name, owner_id, metadata) values ('sales-lead-files', '${A}/m-x.pdf', '${U.mohit}', '{}')`, /row-level security/)
+    await expectErr(U.manager, `insert into storage.objects (bucket_id, name, owner_id, metadata) values ('sales-lead-files', '${A}/m-y.pdf', '${U.manager}', '{}')`, /row-level security/)
+    await expectErr(U.nobody, `insert into storage.objects (bucket_id, name, owner_id, metadata) values ('sales-lead-files', '${A}/m-z.pdf', '${U.nobody}', '{}')`, /row-level security/)
+  })
+  await step('A folder that is not a lead, and any other bucket, are refused without a cast error', async () => {
+    await expectErr(U.ashok, `insert into storage.objects (bucket_id, name, owner_id, metadata) values ('sales-lead-files', 'avatars/x.png', '${U.ashok}', '{}')`, /row-level security/)
+    await expectErr(U.ashok, `insert into storage.objects (bucket_id, name, owner_id, metadata) values ('sales-lead-files', '00000000-0000-0000-0000-00000000dead/x.png', '${U.ashok}', '{}')`, /row-level security/)
+    await expectErr(U.ashok, `insert into storage.objects (bucket_id, name, owner_id, metadata) values ('somewhere-else', '${A}/x.png', '${U.ashok}', '{}')`, /row-level security/)
+  })
+  await step('The files are readable by whoever can see the lead, and by nobody else', async () => {
+    const n = uid => one(uid, `select count(*) from storage.objects where bucket_id = 'sales-lead-files' and name like $1`, [`${A}/%`]).then(Number)
+    must(await n(U.ashok) === 2 && await n(U.leadmgr) === 2 && await n(U.manager) === 2, 'the holder, the allotter and the manager see both')
+    must(await n(U.mohit) === 0 && await n(U.nobody) === 0, 'another salesperson and a person with no access see none')
+  })
+  await step('An update with two files stores them, taking size and type from the stored object', async () => {
+    const before = await acts(A)
+    const r = await addWith(U.ashok, A, 'Sent the quotation and a site photo', paths(A, 'k1-quote.pdf', 'k2-site.jpg'))
+    must(r.status === 'saved', JSON.stringify(r))
+    must(await acts(A) === before + 1, 'one update')
+    const rows = (await db.query(`select file_name, mime_type, size_bytes::int as size, uploaded_by from public.sales_lead_attachments where activity_id = $1 order by file_name`, [r.activity_id])).rows
+    must(rows.length === 2 && rows[0].file_name === 'quote.pdf' && rows[0].size === 1234 && rows[0].mime_type === 'application/pdf', JSON.stringify(rows))
+    must(rows[1].file_name === 'site.jpg' && rows[1].size === 800 && rows[1].mime_type === 'image/jpeg' && rows.every(x => x.uploaded_by === U.ashok), JSON.stringify(rows))
+    const d = await one(U.ashok, `select public.get_sales_lead($1)`, [A])
+    const files = d.activities[0].files
+    must(files.length === 2 && files.some(f => f.name === 'quote.pdf' && f.size === 1234 && f.path === `${A}/k1-quote.pdf`), JSON.stringify(files))
+    const m = await one(U.manager, `select public.get_sales_lead($1)`, [A])
+    must(m.activities[0].files.length === 2, 'the manager reads them too')
+  })
+  await step('The table of files is read-only for everybody, and shows only the leads a person can see', async () => {
+    const n = uid => one(uid, `select count(*) from public.sales_lead_attachments`).then(Number)
+    must(await n(U.ashok) === 2 && await n(U.manager) === 2 && await n(U.mohit) === 0 && await n(U.nobody) === 0, 'visibility follows the lead')
+    await expectErr(U.ashok, `insert into public.sales_lead_attachments (lead_id, activity_id, storage_path, file_name, mime_type, size_bytes, uploaded_by) select lead_id, activity_id, 'x', 'x', 'x', 1, '${U.ashok}' from public.sales_lead_attachments limit 1`, /permission denied/)
+    await expectErr(U.leadmgr, `update public.sales_lead_attachments set file_name = 'y'`, /permission denied/)
+    await expectErr(U.leadmgr, `delete from public.sales_lead_attachments`, /permission denied/)
+  })
+  await step('A wrong file refuses the whole update and writes nothing', async () => {
+    const before = await acts(B)
+    const attempt = (note, f, re) => expectErr(U.ashok, `select public.add_sales_lead_comment($1, $2, null, null, $3::jsonb)`, re, [B, note, f])
+    await put(U.ashok, B, 'g1-ok.pdf')
+    await put(U.ashok, A, 'g2-elsewhere.pdf')
+    await put(U.leadmgr, B, 'g3-theirs.pdf')
+    await attempt('x', JSON.stringify([{ path: `${A}/g2-elsewhere.pdf`, name: 'a.pdf' }]), /Check the files/)
+    await attempt('x', paths(B, 'g9-never-uploaded.pdf'), /has not finished uploading/)
+    await attempt('x', paths(B, 'g3-theirs.pdf'), /has not finished uploading/)
+    await attempt('x', paths(B, 'g1-ok.pdf', 'g1-ok.pdf'), /same file is attached twice/)
+    await attempt('x', JSON.stringify(Array.from({ length: 11 }, (_, i) => ({ path: `${B}/n${i}`, name: 'n.pdf' }))), /up to 10 files/)
+    await attempt('x', '{"path": "a"}', /Check the files/)
+    await attempt('x', JSON.stringify([{ path: `${B}/g1-ok.pdf`, name: 'n'.repeat(201) }]), /Check the files/)
+    must(await acts(B) === before, 'no update was written by any of them')
+    must(Number(await scalar(`select count(*) from public.sales_lead_attachments where lead_id = $1`, [B])) === 0, 'no file row either')
+  })
+  await step('A file already on an update cannot be attached to a second one', async () => {
+    const before = await acts(A)
+    await expectErr(U.ashok, `select public.add_sales_lead_comment($1, 'again', null, null, $2::jsonb)`, /Check the details/, [A, paths(A, 'k1-quote.pdf')])
+    must(await acts(A) === before, 'the second update was rolled back')
+  })
+  await step('A call with four arguments still works, and an update without files has an empty list', async () => {
+    const r = await one(U.ashok, `select public.add_sales_lead_comment($1, 'Called, will think')`, [B])
+    must(r.status === 'saved', JSON.stringify(r))
+    const d = await one(U.ashok, `select public.get_sales_lead($1)`, [B])
+    must(Array.isArray(d.activities[0].files) && d.activities[0].files.length === 0, JSON.stringify(d.activities[0].files))
+    const four = await one(U.ashok, `select public.add_sales_lead_comment(p_id => $1, p_note => 'By name', p_tag => null, p_next_due => null)`, [B])
+    must(four.status === 'saved', 'named arguments, as PostgREST sends them')
+  })
+  await step('A file is deleted only by its uploader and only while it is not on an update', async () => {
+    await put(U.ashok, B, 'd1-pending.pdf')
+    const del = (uid, name) => as(uid, `delete from storage.objects where bucket_id = 'sales-lead-files' and name = $1 returning name`, [name]).then(r => r.rows.length)
+    must(await del(U.mohit, `${B}/d1-pending.pdf`) === 0, 'another person cannot')
+    must(await del(U.leadmgr, `${B}/d1-pending.pdf`) === 0, 'nor somebody who is not the uploader')
+    must(await del(U.ashok, `${A}/k1-quote.pdf`) === 0, 'a file on an update stays')
+    must(await del(U.ashok, `${B}/d1-pending.pdf`) === 1, 'the uploader removes a pending file')
+  })
+  await step('A lead that is closed takes no new upload', async () => {
+    const C = await fresh('+91 97111 01002')
+    await db.exec(`update public.sales_leads set stage = 'dead', dead_reason = 'project_cancelled', closed_at = now() where id = '${C}'`)
+    await expectErr(U.ashok, `insert into storage.objects (bucket_id, name, owner_id, metadata) values ('sales-lead-files', '${C}/c1.pdf', '${U.ashok}', '{}')`, /row-level security/)
   })
 }
 
