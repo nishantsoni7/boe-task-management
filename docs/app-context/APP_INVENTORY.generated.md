@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `80214cb4` — Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL)
-- Commits on this branch: 1353
+- Commit: `ef3d79c5` — Merge remote-tracking branch 'origin/main' into docs/stamp-lead-popup-793
+- Commits on this branch: 1356
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
@@ -14,7 +14,10 @@
 
 ## Latest 25 commits
 
-- `80214cb4` 2026-11-14 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL)
+- `ef3d79c5` 2026-11-15 Merge remote-tracking branch 'origin/main' into docs/stamp-lead-popup-793
+- `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
+- `be08067b` 2026-11-15 Docs: stamp #793 (lead popup banner and list) as merged a781646e, deployed 08:59 IST, string-verified live (no SQL)
+- `a781646e` 2026-11-15 Sales: lead popup left side gets a next-step banner and one About this client list (no SQL) (#793)
 - `1ff42c1e` 2026-11-14 Docs: stamp #791 (merged 1a395cf4, deployed 22:50 IST) and #780 (merged 33813806, tools installed 20:18 IST) (#794)
 - `b54f6989` 2026-11-14 Docs: stamp #788 (phone popover and pending buttons) as merged d06e6248, deployed 22:33 IST (no SQL) (#790)
 - `1a395cf4` 2026-11-14 Orders: PI review thread inside the operations notice, replies keep their line breaks (no SQL) (#791)
@@ -36,9 +39,6 @@
 - `111f4ef6` 2026-11-14 Quotations: Import brings a BOE PI's price, customization and representative picture (no SQL) (#773)
 - `2adad5f7` 2026-11-14 Docs: stamp the BOE One loader (#770) as merged 3dd0cc93, deployed 12:38 IST (no SQL) (#772)
 - `3dd0cc93` 2026-11-14 Platform: a slow wait shows the BOE One loader over the whole screen (no SQL) (#770)
-- `c705b65e` 2026-11-14 Docs: SEO Rankings heading merged as 93db82c5 (#769) (#771)
-- `93db82c5` 2026-11-14 SEO Rankings: heading no longer says "20" money keywords (#769)
-- `b62262a2` 2026-11-14 Docs: stamp the lead popup, board cards and speed work (#761) as merged 8b64c4d3, deployed 06:04 IST, 20270716000000 applied, with the live measurements (no SQL) (#764)
 
 ## Pages by top-level area
 
