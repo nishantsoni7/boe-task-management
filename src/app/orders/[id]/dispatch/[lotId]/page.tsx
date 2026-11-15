@@ -9,9 +9,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { useViewAs } from '@/hooks/useViewAs'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { parseDispatchData, type DispatchData } from '@/lib/orders/dispatch'
 import type { UserProfile } from '@/lib/types'
 import OrderDispatchRecord from '../../OrderDispatchRecord'
@@ -26,6 +27,7 @@ export default function OrderDispatchRecordPage() {
   const { id, lotId } = useParams<{ id: string; lotId: string }>()
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const { viewAsUserId } = useViewAs()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [access, setAccess] = useState<Access>({ kind: 'loading' })
@@ -35,8 +37,10 @@ export default function OrderDispatchRecordPage() {
     void (async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
+      // Profile and Orders permissions come from what the Orders guard just read when under 30 s old
+      // (callerProfile / callerModulePermissions, 2026-11-15): one request fewer beside this page's own.
       const [me, orderRes, read] = await Promise.all([
-        supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
+        callerProfile(qc, session.user.id).then(data => ({ data })),
         supabase.from('orders').select('client_name').eq('id', id).maybeSingle(),
         supabase.rpc('order_dispatch_read', { p_order_id: id }),
       ])
@@ -48,7 +52,7 @@ export default function OrderDispatchRecordPage() {
       setAccess({ kind: 'ready', data, clientName: (orderRes.data as { client_name: string | null }).client_name })
     })()
     return () => { live = false }
-  }, [supabase, id, router])
+  }, [supabase, qc, id, router])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()

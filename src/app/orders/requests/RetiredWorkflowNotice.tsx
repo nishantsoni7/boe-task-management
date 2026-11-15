@@ -27,11 +27,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { FileText, Archive } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 
 /** Where the retired workflow's users are sent instead. */
 export const PI_DRAFTS_PATH = '/orders/drafts'
@@ -90,6 +91,7 @@ export function RetiredWorkflowNotice({ requestId }: { requestId?: string }) {
 
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   useEffect(() => {
     const init = async () => {
@@ -98,8 +100,10 @@ export function RetiredWorkflowNotice({ requestId }: { requestId?: string }) {
 
       // Both reads in one group: the provenance lookup needs nothing from the
       // profile, and neither blocks the other.
+      // Profile and Orders permissions come from what the Orders guard just read when under 30 s old
+      // (callerProfile / callerModulePermissions, 2026-11-15): one request fewer beside this page's own.
       const [{ data: me }, order] = await Promise.all([
-        supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
+        callerProfile(qc, session.user.id).then(data => ({ data })),
         requestId ? resolveConvertedOrder(supabase, requestId).catch(() => null) : Promise.resolve(null),
       ])
 

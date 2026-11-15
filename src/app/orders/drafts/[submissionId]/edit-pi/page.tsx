@@ -11,10 +11,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
 import { editPiPageHref } from '@/lib/orders/editPiPage'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import type { UserProfile } from '@/lib/types'
 
 type Draft = { id: string; client_name: string | null; draft_reference: string | null; order_id: string | null }
@@ -29,6 +30,7 @@ export default function EditDraftPiPage() {
   const { submissionId } = useParams<{ submissionId: string }>()
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [access, setAccess] = useState<Access>({ kind: 'loading' })
 
@@ -37,8 +39,10 @@ export default function EditDraftPiPage() {
     void (async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
+      // Profile and Orders permissions come from what the Orders guard just read when under 30 s old
+      // (callerProfile / callerModulePermissions, 2026-11-15): one request fewer beside this page's own.
       const [me, subRes, canEdit, canAdmin] = await Promise.all([
-        supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
+        callerProfile(qc, session.user.id).then(data => ({ data })),
         supabase.from('order_submissions').select('id, client_name, draft_reference, order_id').eq('id', submissionId).maybeSingle(),
         supabase.rpc('can_edit_order_submission', { p_submission_id: submissionId }),
         supabase.rpc('can_admin_edit_order_submission', { p_submission_id: submissionId }),
@@ -58,7 +62,7 @@ export default function EditDraftPiPage() {
       setAccess({ kind: 'ready', draft })
     })()
     return () => { live = false }
-  }, [supabase, submissionId, router])
+  }, [supabase, qc, submissionId, router])
 
   const draftHref = `/orders/drafts/${submissionId}`
   const handleSignOut = async () => {

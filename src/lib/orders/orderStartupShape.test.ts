@@ -418,7 +418,9 @@ describe('no Order screen waits more than it must', () => {
       // (callerProfile / callerModulePermissions, src/hooks/queries/usePermissionContext.ts) when it is
       // under 30 s old and are read from the database otherwise, so the reads are not dropped: they
       // are shared, and one request fewer waits beside the page's data. The data reads are unchanged.
-      [GUARD]: 0, [DASHBOARD]: 5, [ALL]: 8, [DETAIL]: 45,
+      // ALL 8 -> 7 and RETIRED_NOTICE 3 -> 2 (2026-11-15): their own profile read now comes from the guard's answer
+      // (callerProfile) when under 30 s old, as DETAIL/DRAFTS/PI_DETAIL did on 2026-11-14. IMPORT is deliberately untouched.
+      [GUARD]: 0, [DASHBOARD]: 5, [ALL]: 7, [DETAIL]: 45,
       // PI_DETAIL went 19 -> 20: can_admin_edit_order_submission, the second
       // capability probe added in 20260927000000. It is resolved INSIDE the
       // page's existing Promise.all, so the count grew and the number of times
@@ -499,7 +501,7 @@ describe('no Order screen waits more than it must', () => {
       // succeeds, one orders.select('id') under the approver's RLS decides
       // whether the page may open the new Order. A press, never at load; the
       // startup path is unchanged.
-      [DRAFTS]: 2, [PI_DETAIL]: 28, [RETIRED_NOTICE]: 3, [IMPORT]: 8,
+      [DRAFTS]: 2, [PI_DETAIL]: 28, [RETIRED_NOTICE]: 2, [IMPORT]: 8,
     }
     for (const [path, count] of Object.entries(expected)) {
       assert.equal(queryCount(path), count, path)

@@ -14,10 +14,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { callerModulePermissions, callerProfile } from '@/hooks/queries/usePermissionContext'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities, type OrdersCapabilities } from '@/lib/permissions/orders'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import type { UserProfile } from '@/lib/types'
 import OrderPaymentPlan from '../OrderPaymentPlan'
 
@@ -38,6 +38,7 @@ export default function OrderPaymentPlanPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [access, setAccess] = useState<Access>({ kind: 'loading' })
 
@@ -46,10 +47,12 @@ export default function OrderPaymentPlanPage() {
     void (async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
+      // Profile and Orders permissions come from what the Orders guard just read when under 30 s old
+      // (callerProfile / callerModulePermissions, 2026-11-15): two requests fewer beside this page's own.
       const [me, orderRes, perms] = await Promise.all([
-        supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
+        callerProfile(qc, session.user.id).then(data => ({ data })),
         supabase.from('orders').select('id, display_number, client_name, source_order_submission_id').eq('id', id).maybeSingle(),
-        getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
+        callerModulePermissions(qc, supabase, session.user.id, 'orders'),
       ])
       if (!live) return
       const meRow = me.data as UserProfile | null
@@ -61,7 +64,7 @@ export default function OrderPaymentPlanPage() {
       setAccess({ kind: 'ready', order, caps })
     })()
     return () => { live = false }
-  }, [supabase, id, router])
+  }, [supabase, qc, id, router])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
