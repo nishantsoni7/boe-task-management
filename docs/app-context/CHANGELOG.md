@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-15 — Pricing Training: the wooden structure is one priced row, with an optional wood share (branch `feat/training-structure-price`, NOT MERGED, migration 20270722000000 NOT APPLIED) · migration `20270722000000_pricing_training_structure.sql` (alters a table: backup first)
+- **Owner, after the first real case (an arm chair with a cane back).** The reading was good but split the wood into Frame wood, Arms, Legs and Seat base. A chair's wooden structure is made in one go and quoted as ONE structure price, not per cubic foot, because the making is complicated and the labour is high. The wood share is still worth recording, optionally, because for another wood the wood cost changes and the rest stays about the same.
+- **Reader.** The prompt now says the wooden structure is one part named "Wooden structure"; a wooden piece is listed separately only when it is visibly a different material. That row arrives with the new kind.
+- **Elements.** New kind `structure` ("Wooden structure"). On such a row an optional box "Of which wood" records the wood alone; the screen shows the rest as labour and hardware. It is never more than the structure price.
+- **Database.** `pricing_training_lines`: kind check gains `structure`, new nullable `wood_amount` (0 to the amount). `pricing_training_save` re-created only to store it. Safe in either order: the old code ignores the column, the old function ignores the key.
+- **Tests.** `doc.test.ts` (3 new), `pricing_training_pglite.mjs` (1 new block on both migrations), both ledgers.
+
 ## 2026-11-15 — Pricing Training: a failed photo reading says why, and can be tried again (branch `fix/training-photo-read`, NOT MERGED) · no SQL
 - **Owner report (15 Nov, 21:25 IST).** The first real photo was not read: "Could not read the photo right now". That sentence was the catch-all, so the cause could not be seen, and the only way to retry was to upload again.
 - **Fix.** `POST /api/pricing/training/read` now returns the reading service's own answer (status, error type, first 200 characters of its message; never a key) in the sentence shown. A new button on the Photo card, "Read the materials from the photo" / "Read the photo again", reads the saved photo without a new upload. Auto-adding the materials as editable rows was already built and is unchanged: it happens whenever a reading succeeds and no element is listed yet.

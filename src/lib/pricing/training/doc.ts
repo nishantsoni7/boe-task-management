@@ -2,18 +2,20 @@
 // A case is a product photo plus the elements of its price, each typed by a person in their own way:
 // a quantity and a rate when they know them, or just an amount when they do not.
 
-export const KINDS = ['material', 'labour', 'overhead', 'margin', 'other'] as const
+export const KINDS = ['structure', 'material', 'labour', 'overhead', 'margin', 'other'] as const
 export type Kind = (typeof KINDS)[number]
-export const KIND_LABEL: Record<Kind, string> = { material: 'Material', labour: 'Labour', overhead: 'Overhead', margin: 'Margin', other: 'Other' }
+export const KIND_LABEL: Record<Kind, string> = { structure: 'Wooden structure', material: 'Material', labour: 'Labour', overhead: 'Overhead', margin: 'Margin', other: 'Other' }
 
 /** A row as it is typed: numbers stay text so a half-typed value is not lost. */
-export type Line = { element: string; kind: Kind; material: string; quantity: string; unit: string; rate: string; amount: string; reasoning: string; from_ai: boolean }
+export type Line = { element: string; kind: Kind; material: string; quantity: string; unit: string; rate: string; amount: string; reasoning: string; from_ai: boolean
+  /** Only on a Wooden structure row: how much of its amount is the wood itself (optional). The rest is labour and hardware. */
+  wood: string }
 export type CaseForm = { name: string; variant: string; width_in: string; depth_in: string; height_in: string; sold_price: string; notes: string; image_path: string | null; ai_reading: Reading | null }
 
 export type ReadMaterial = { part: string; material: string; note: string; confidence: number }
 export type Reading = { category: string; variant: string; confidence: number; materials: ReadMaterial[]; cannot_see: string }
 
-export const emptyLine = (): Line => ({ element: '', kind: 'material', material: '', quantity: '', unit: '', rate: '', amount: '', reasoning: '', from_ai: false })
+export const emptyLine = (): Line => ({ element: '', kind: 'material', material: '', quantity: '', unit: '', rate: '', amount: '', reasoning: '', from_ai: false, wood: '' })
 export const emptyForm = (): CaseForm => ({ name: '', variant: '', width_in: '', depth_in: '', height_in: '', sold_price: '', notes: '', image_path: null, ai_reading: null })
 
 /** A typed number, or null when the box is empty or not a number ("1,800" and " 0.9 " are numbers). */
@@ -24,6 +26,12 @@ export function num(text: string | number | null | undefined): number | null {
 }
 const round2 = (n: number) => Math.round(n * 100) / 100
 
+/** What is left of a structure price after the wood: labour and hardware. Null when no wood share is given. */
+export function structureRest(l: Pick<Line, 'kind' | 'wood' | 'quantity' | 'rate' | 'amount'>): number | null {
+  const w = l.kind === 'structure' ? num(l.wood) : null
+  return w === null ? null : Math.round((lineAmount(l) - w) * 100) / 100
+}
+
 /** Quantity × rate when both are typed; otherwise the amount typed directly. */
 export function lineAmount(l: Pick<Line, 'quantity' | 'rate' | 'amount'>): number {
   const q = num(l.quantity), r = num(l.rate)
@@ -33,7 +41,7 @@ export function lineAmount(l: Pick<Line, 'quantity' | 'rate' | 'amount'>): numbe
 export const usesQuantity = (l: Pick<Line, 'quantity' | 'rate'>) => num(l.quantity) !== null && num(l.rate) !== null
 
 export function totals(lines: readonly Line[]): { total: number; byKind: Record<Kind, number> } {
-  const byKind: Record<Kind, number> = { material: 0, labour: 0, overhead: 0, margin: 0, other: 0 }
+  const byKind: Record<Kind, number> = { structure: 0, material: 0, labour: 0, overhead: 0, margin: 0, other: 0 }
   for (const l of lines) byKind[l.kind] = round2(byKind[l.kind] + lineAmount(l))
   return { total: round2(KINDS.reduce((s, k) => s + byKind[k], 0)), byKind }
 }
@@ -50,6 +58,11 @@ export function problems(form: CaseForm, lines: readonly Line[], forSend: boolea
     if (!l.element.trim()) out.push(`Element ${n} needs a name.`)
     for (const [key, label] of [['quantity', 'quantity'], ['rate', 'rate'], ['amount', 'amount']] as const) {
       if (l[key].trim() && num(l[key]) === null) out.push(`Element ${n}: the ${label} must be a number.`)
+    }
+    if (l.kind === 'structure' && l.wood.trim()) {
+      const w = num(l.wood)
+      if (w === null) out.push(`Element ${n}: the wood share must be a number.`)
+      else if (w > lineAmount(l)) out.push(`Element ${n}: the wood share is more than the structure price.`)
     }
     if (forSend && l.element.trim() && lineAmount(l) <= 0) out.push(`Element ${n} (${l.element.trim()}) has no amount.`)
   })
@@ -68,6 +81,7 @@ export function saveDoc(form: CaseForm, lines: readonly Line[]) {
       element: l.element.trim(), kind: l.kind, material: l.material.trim() || null,
       quantity: n(l.quantity), unit: l.unit.trim() || null, rate: n(l.rate), amount: lineAmount(l),
       reasoning: l.reasoning.trim() || null, from_ai: l.from_ai,
+      wood_amount: l.kind === 'structure' ? n(l.wood) : null,
     })),
   }
 }
@@ -92,12 +106,13 @@ export function parseReading(input: unknown): Reading | null {
 
 /** The reader's materials as starting rows: named and marked as read from the photo, with no amounts. */
 export function readingToLines(r: Reading): Line[] {
-  return r.materials.map(m => ({ ...emptyLine(), element: m.part, material: m.material, reasoning: m.note, from_ai: true }))
+  // The whole wooden structure is one row with one price (it is made in one go); everything else is a material.
+  return r.materials.map(m => ({ ...emptyLine(), element: m.part, kind: /wooden structure/i.test(m.part) ? 'structure' as const : 'material' as const, material: m.material, reasoning: m.note, from_ai: true }))
 }
 
 /** A saved row (numbers) back into a typed row (text). */
-export function toLine(l: { element: string; kind: string; material: string | null; quantity: number | null; unit: string | null; rate: number | null; amount: number; reasoning: string | null; from_ai: boolean }): Line {
+export function toLine(l: { element: string; kind: string; material: string | null; quantity: number | null; unit: string | null; rate: number | null; amount: number; reasoning: string | null; from_ai: boolean; wood_amount?: number | null }): Line {
   const s = (v: number | null) => (v === null || v === undefined ? '' : String(Number(v)))
   const both = l.quantity !== null && l.rate !== null
-  return { element: l.element, kind: (KINDS as readonly string[]).includes(l.kind) ? (l.kind as Kind) : 'other', material: l.material ?? '', quantity: s(l.quantity), unit: l.unit ?? '', rate: s(l.rate), amount: both ? '' : s(l.amount), reasoning: l.reasoning ?? '', from_ai: l.from_ai }
+  return { element: l.element, kind: (KINDS as readonly string[]).includes(l.kind) ? (l.kind as Kind) : 'other', material: l.material ?? '', quantity: s(l.quantity), unit: l.unit ?? '', rate: s(l.rate), amount: both ? '' : s(l.amount), reasoning: l.reasoning ?? '', from_ai: l.from_ai, wood: s(l.wood_amount ?? null) }
 }

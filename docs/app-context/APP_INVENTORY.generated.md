@@ -5,16 +5,18 @@
 
 ## Snapshot
 
-- Commit: `8e260853` — Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL)
-- Commits on this branch: 1391
+- Commit: `3f7824d8` — Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL) (#834)
+- Commits on this branch: 1393
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
-- Migrations: 461 (first `20260530_create_positions.sql`, latest `20270720000000_pricing_training.sql`)
+- Migrations: 462 (first `20260530_create_positions.sql`, latest `20270722000000_pricing_training_structure.sql`)
 - Tables ever created: 258 (dropped at some point: 8)   SQL functions: 1045   Enums: 0
 - Test files: 868   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `8e260853` 2026-11-15 Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL)
+- `3f7824d8` 2026-11-15 Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL) (#834)
+- `1d7fcac4` 2026-11-15 Pricing Training: a failed photo reading says why, and can be tried again (no SQL) (#828)
+- `8442b3e6` 2026-11-15 Docs: stamp the "New update" mark (#832) as merged d23cd7e4, deployed 21:57 IST (no SQL) (#833)
 - `29ff4ecd` 2026-11-15 Sales: the lead popup is a status strip and two cards, on the lines of Quotation Details (no SQL) (#829)
 - `d23cd7e4` 2026-11-15 Orders: an order back with Operations is marked "New update" on the list and dashboard (no SQL) (#832)
 - `475569ea` 2026-11-15 AI calls: structured output instead of a forced tool (no SQL) (#830)
@@ -37,8 +39,6 @@
 - `cebad468` 2026-11-15 Pricing: sizes read by their labels, and the reason for an unseen finish worded right (no SQL) (#811)
 - `4e866120` 2026-11-15 Quotations: Quantity and Price share one row on a product from 1200 px (no SQL) (#809)
 - `4760d62e` 2026-11-15 Docs: stamp page speed part 11 (#807) as merged bb407054, migration 20270719000000 applied, verified live (#808)
-- `bb407054` 2026-11-15 Page speed, part 11: the Payment Requests badges in one call (migration 20270719000000 applied) (#807)
-- `27d52de1` 2026-11-15 Docs: stamp #805 (Import reads the right tab; one-line suggested price) as merged e4f0c6e2, deployed 12:41 IST, verified live (no SQL) (#806)
 
 ## Pages by top-level area
 
@@ -504,7 +504,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270616000000_order_line_flags.sql`
 - `20270617000000_quotation_pricing_desk.sql`
 - `20270618000000_quotation_reports.sql`
 - `20270619000000_order_handoff_send_to_sales.sql`
@@ -534,6 +533,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270718000000_order_handoff_review_chain.sql`
 - `20270719000000_finance_payment_request_tab_counts.sql`
 - `20270720000000_pricing_training.sql`
+- `20270722000000_pricing_training_structure.sql`
 
 ## All SQL function names
 

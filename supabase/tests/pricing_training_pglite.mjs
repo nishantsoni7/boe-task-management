@@ -180,4 +180,22 @@ let id
   ok('Admin holds view, create and approve; the functions and grants can be applied again')
 }
 
+{ // 20270722000000: the wooden structure as one priced row, with an optional wood share
+  await db.exec(mig('20270722000000_pricing_training_structure.sql'))
+  const S = { name: 'Arm chair, cane back', lines: [
+    { element: 'Wooden structure', kind: 'structure', material: 'Teak', amount: 4200, wood_amount: 1600, reasoning: 'Frame, arms and legs made in one go' },
+    { element: 'Cane back', kind: 'material', amount: 650 },
+  ] }
+  const sid = await rpc(U.teacher, 'pricing_training_save', null, S)
+  const got = await rpc(U.teacher, 'pricing_training_get', sid)
+  assert.equal(got.lines[0].kind, 'structure'); assert.equal(Number(got.lines[0].wood_amount), 1600); assert.equal(got.lines[1].wood_amount, null)
+  await fails(U.teacher, 'select public.pricing_training_save(null, $1)', [{ name: 'x', lines: [{ element: 'Wooden structure', kind: 'structure', amount: 4200, wood_amount: 5000 }] }], /PRICING_TRAINING_INVALID/)
+  await fails(U.teacher, 'select public.pricing_training_save(null, $1)', [{ name: 'x', lines: [{ element: 'y', kind: 'gift', amount: 1 }] }], /PRICING_TRAINING_INVALID/)
+  await rpc(U.teacher, 'pricing_training_save', sid, { name: 'Arm chair, cane back', lines: [{ element: 'Wooden structure', kind: 'structure', amount: 4200 }] })
+  assert.equal((await rpc(U.teacher, 'pricing_training_get', sid)).lines[0].wood_amount, null)
+  await fails(U.viewer, 'select public.pricing_training_save(null, $1)', [S], /PRICING_TRAINING_FORBIDDEN/)
+  await fails(U.teacher, 'select wood_amount from public.pricing_training_lines', [], /permission denied/)
+  ok('a wooden structure is one priced row; the wood share is optional and never more than the price')
+}
+
 console.log(`all ${checks} checks passed`)
