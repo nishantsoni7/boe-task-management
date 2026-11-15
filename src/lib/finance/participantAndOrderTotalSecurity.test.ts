@@ -1294,6 +1294,8 @@ describe('the applied migrations are frozen', () => {
       '20270719000000_finance_payment_request_tab_counts.sql',
       // Pricing > Training: three closed tables (cases, lines, messages), their SECURITY DEFINER functions, the actions create and approve on pricing (off by default), and the public bucket pricing-training. Nothing existing replaced.
       '20270720000000_pricing_training.sql',
+      // Sales Lead Board: files on an update. A private bucket, one closed table, three storage policies and three helpers, add_sales_lead_comment re-issued with a files argument (the four-argument function dropped) and get_sales_lead re-issued with the files. Nothing existing changed.
+      '20270722000000_sales_lead_attachments.sql',
     ])
   })
 
@@ -1817,6 +1819,7 @@ describe('the applied migrations are frozen', () => {
       '20270718000000_order_handoff_review_chain.sql',
       '20270719000000_finance_payment_request_tab_counts.sql',
       '20270720000000_pricing_training.sql',
+      '20270722000000_sales_lead_attachments.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
