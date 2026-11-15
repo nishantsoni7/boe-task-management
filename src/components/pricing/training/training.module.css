@@ -30,6 +30,7 @@
 .field { display: grid; gap: 4px; min-width: 0; }
 .el { border-top: 1px solid #E4DED7; padding: 14px 16px; display: grid; gap: 10px; }
 .elGrid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 2fr) minmax(0, 1fr) minmax(0, .9fr) minmax(0, 1fr) minmax(0, 1.1fr) auto; gap: 10px; align-items: end; }
+.wood { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 200px) minmax(0, 1.6fr) auto; gap: 12px; align-items: end; padding: 12px 16px; border-top: 1px solid #E4DED7; }
 .split { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); gap: 12px; align-items: end; }
 .split p { margin: 0 0 10px; }
 .amount { font: 700 15px var(--boe-font-heading); font-variant-numeric: tabular-nums; text-align: right; min-height: 40px; display: flex; align-items: center; justify-content: flex-end; }
@@ -55,3 +56,5 @@
   .grand { margin-left: 0; width: 100%; }
   .wrap { padding: 12px; }
 }
+
+@media (max-width: 900px) { .wood { grid-template-columns: minmax(0, 1fr) auto; } .wood > :nth-child(2), .wood > :nth-child(3) { grid-column: 1 / -1; } }

@@ -240,4 +240,26 @@ let id
   ok('submit is what counts: old statuses converted, anyone who teaches may change and resubmit any case, with a history')
 }
 
+{ // 20270725000000: the wood list
+  await db.exec(mig('20270725000000_pricing_woods.sql'))
+  await fails(U.teacher, 'select * from public.pricing_woods', [], /permission denied/)
+  await fails(U.nobody, 'select public.pricing_woods_list()', [], /PRICING_TRAINING_FORBIDDEN/)
+  await fails(U.viewer, 'select public.pricing_wood_save($1, $2)', ['Teak', 2900], /PRICING_WOODS_FORBIDDEN/)
+  await rpc(U.teacher, 'pricing_wood_save', 'Teak', 2900)
+  await rpc(U.teacher, 'pricing_wood_save', 'Sheesham', null)          // a name with no rate yet
+  await rpc(U.checker, 'pricing_wood_save', ' teak ', null)            // the same wood again, no rate given: nothing changes
+  let w = await rpc(U.viewer, 'pricing_woods_list')
+  assert.deepEqual(w.map((x) => [x.name, x.rate === null ? null : Number(x.rate)]), [['Sheesham', null], ['Teak', 2900]])
+  await rpc(U.checker, 'pricing_wood_save', 'TEAK', 3100)              // a new rate, by somebody else
+  await rpc(U.teacher, 'pricing_wood_save', 'Sheesham', 2300)
+  w = await rpc(U.viewer, 'pricing_woods_list')
+  assert.deepEqual(w.map((x) => [x.name, Number(x.rate), x.updated_by_name]), [['Sheesham', 2300, 'Teacher'], ['Teak', 3100, 'Checker']])
+  await fails(U.teacher, 'select public.pricing_wood_save($1, $2)', ['T', 100], /PRICING_WOODS_INVALID/)
+  await fails(U.teacher, 'select public.pricing_wood_save($1, $2)', ['Oak', 0], /PRICING_WOODS_INVALID/)
+  await fails(U.viewer, 'select public.pricing_wood_remove($1)', ['Teak'], /PRICING_WOODS_FORBIDDEN/)
+  await rpc(U.teacher, 'pricing_wood_remove', 'teak')
+  assert.deepEqual((await rpc(U.viewer, 'pricing_woods_list')).map((x) => x.name), ['Sheesham'])
+  ok('the wood list: anyone with Pricing reads it, teachers add, change and remove; one row per wood whatever its capitals')
+}
+
 console.log(`all ${checks} checks passed`)

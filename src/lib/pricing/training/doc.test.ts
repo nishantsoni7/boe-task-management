@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { emptyForm, emptyLine, lineAmount, num, parseReading, problems, readingToLines, saveDoc, statusLabel, statusText, structureRest, toLine, totals, type Line } from './doc'
+import { emptyForm, emptyLine, lineAmount, newWoods, num, parseReading, problems, readingToLines, saveDoc, statusLabel, statusText, structureRest, toLine, totals, type Line } from './doc'
 import { PRODUCT_SYSTEM_PROMPT, PRODUCT_TOOL } from './readPrompt'
 
 const line = (p: Partial<Line>): Line => ({ ...emptyLine(), ...p })
@@ -108,6 +108,20 @@ describe('where a case stands', () => {
   })
 })
 
+describe('the wood on a structure row', () => {
+  test('the reader never names the wood: its words go to the note, the wood is left for a person', () => {
+    const rows = readingToLines(parseReading({ category: 'Arm chair', confidence: 90, materials: [{ part: 'Wooden structure', material: 'Possibly teak or sheesham', note: 'Frame, arms, legs', confidence: 40 }, { part: 'Back', material: 'Cane', note: 'Open weave', confidence: 80 }] })!)
+    assert.equal(rows[0].material, ''); assert.equal(rows[0].reasoning, 'Possibly teak or sheesham. Frame, arms, legs'); assert.equal(rows[0].kind, 'structure')
+    assert.equal(rows[1].material, 'Cane'); assert.equal(rows[1].reasoning, 'Open weave')
+  })
+  test('a wood typed on a structure row that the list lacks is found once, whatever its capitals', () => {
+    const rows = [line({ element: 'Wooden structure', kind: 'structure', material: ' Sheesham ' }), line({ element: 'Wooden structure', kind: 'structure', material: 'sheesham' }),
+      line({ element: 'Wooden structure', kind: 'structure', material: 'TEAK' }), line({ element: 'Back', kind: 'material', material: 'Cane' }), line({ element: 'Wooden structure', kind: 'structure', material: '' })]
+    assert.deepEqual(newWoods(rows, ['Teak', 'Mango']), ['sheesham'])
+    assert.deepEqual(newWoods(rows, []), ['sheesham', 'TEAK'])
+  })
+})
+
 describe('the photo reading', () => {
   test('only the asked-for shape is kept; a price, an instruction or junk is dropped', () => {
     const r = parseReading({
@@ -148,13 +162,13 @@ describe('the photo reading', () => {
 describe('the Training screens follow the house rules', () => {
   test('AppLink only, every CSS class exists, and nothing reads the closed tables directly', () => {
     const css = readFileSync('src/components/pricing/training/training.module.css', 'utf8')
-    for (const f of ['TrainingList.tsx', 'TrainingCase.tsx']) {
+    for (const f of ['TrainingList.tsx', 'TrainingCase.tsx', 'WoodRates.tsx']) {
       const src = readFileSync(`src/components/pricing/training/${f}`, 'utf8')
       assert.doesNotMatch(src, /from 'next\/link'|router\.prefetch|prefetch=\{true\}/, f)
       assert.doesNotMatch(src, /\.from\('pricing_training/, f)
       for (const m of src.matchAll(/\bt\.([A-Za-z0-9_]+)/g)) assert.ok(new RegExp(`\\.${m[1]}\\b`).test(css), `${f}: .${m[1]} is not in training.module.css`)
     }
     const shell = readFileSync('src/components/layout/ComingSoonModule.tsx', 'utf8')
-    assert.match(shell, /pricing: \[\{ href: '\/pricing\/training', label: 'Training' \}\]/)
+    assert.match(shell, /pricing: \[\{ href: '\/pricing\/training', label: 'Training' \}, \{ href: '\/pricing\/woods', label: 'Wood rates' \}\]/)
   })
 })
