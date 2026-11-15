@@ -449,9 +449,22 @@ function FinancePageInner() {
    * the sum of. A count that fails leaves its badge unknown rather than zero: a
    * confident 0 on a tab holding records is worse than no number.
    */
+  /**
+   * The four badges in ONE call when no search is typed (2026-11-15): finance_payment_request_tab_counts
+   * (20270719000000) applies the same four rules, under the caller's own row-level security. Null on ANY
+   * failure, a database without the function included, so the four requests below still answer.
+   */
+  const countTabsAtOnce = async (cutoffIso: string): Promise<(readonly [FilterTab, number | null])[] | null> => {
+    const { data, error } = await supabase.rpc('finance_payment_request_tab_counts', { p_cutoff: cutoffIso })
+    const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null | undefined
+    if (error || !row) return null
+    const counted = COUNTED_TABS.map(tab => [tab, Number(row[tab])] as const)
+    return counted.every(([, n]) => Number.isFinite(n) && n >= 0) ? counted : null
+  }
+
   const loadCounts = async (cutoffIso: string) => {
     const token = loadToken.current
-    const results = await Promise.all(COUNTED_TABS.map(async tab => {
+    const results = (!filters.search ? await countTabsAtOnce(cutoffIso) : null) ?? await Promise.all(COUNTED_TABS.map(async tab => {
       const { count, error } = await applyTab(
         scopedQuery(
           supabase

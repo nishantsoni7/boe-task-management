@@ -17,7 +17,7 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 |---|---|---|---|---|---|---|---|---|---|
 | `/orders/[id]` | prepared | client | 3034 KB / 223 | 144 (61/71/12) | 1 | 29 | 9 | 2 | fflate |
 | `/orders/drafts/[submissionId]` | prepared | client | 2675 KB / 198 | 130 (56/66/8) | 3 | 20 | 10 | 2 | - |
-| `/finance` | static | client | 1265 KB / 136 | 99 (51/44/4) | 3 | 26 | 10 | 2 | - |
+| `/finance` | static | client | 1266 KB / 136 | 100 (51/45/4) | 3 | 26 | 10 | 2 | - |
 | `/finance/payments-to-verify` | static | client | 1301 KB / 138 | 69 (29/36/4) | 3 | 17 | 9 | 2 | - |
 | `/finance/received` | static | client | 1300 KB / 138 | 69 (29/36/4) | 3 | 17 | 9 | 2 | - |
 | `/modules` | static | client | 1140 KB / 115 | 64 (22/39/3) | 3 | 7 | - | 9 | - |
@@ -37,7 +37,7 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 |---|---|---|---|---|---|---|---|---|---|
 | `/meetings/[id]` | prepared | client | 555 KB / 49 | 63 (35/23/5) | - | 11 | 20 | - | - |
 | `/meetings/inbox` | static | client | 154 KB / 20 | 14 (9/5/0) | - | 2 | 11 | - | - |
-| `/finance` | static | client | 1265 KB / 136 | 99 (51/44/4) | 3 | 26 | 10 | 2 | - |
+| `/finance` | static | client | 1266 KB / 136 | 100 (51/45/4) | 3 | 26 | 10 | 2 | - |
 | `/orders/drafts/[submissionId]` | prepared | client | 2675 KB / 198 | 130 (56/66/8) | 3 | 20 | 10 | 2 | - |
 | `/finance/payments-to-verify` | static | client | 1301 KB / 138 | 69 (29/36/4) | 3 | 17 | 9 | 2 | - |
 | `/finance/received` | static | client | 1300 KB / 138 | 69 (29/36/4) | 3 | 17 | 9 | 2 | - |
@@ -116,7 +116,7 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/exhibition-leads/exhibitions` | static | server | 78 KB / 16 | 1 (1/0/0) | 3 | - | - | - | - |
 | `/exhibition-leads/my` | static | server | 139 KB / 22 | 1 (1/0/0) | 4 | - | - | 1 | - |
 | `/exhibition-leads/ranking` | static | server | 70 KB / 16 | 1 (1/0/0) | 3 | - | - | 1 | - |
-| `/finance` | static | client | 1265 KB / 136 | 99 (51/44/4) | 3 | 26 | 10 | 2 | - |
+| `/finance` | static | client | 1266 KB / 136 | 100 (51/45/4) | 3 | 26 | 10 | 2 | - |
 | `/finance/bank` | static | client | 702 KB / 70 | 51 (18/32/1) | 3 | 5 | 8 | 2 | - |
 | `/finance/expenses` | static | client | 872 KB / 80 | 45 (26/19/0) | 3 | 11 | 5 | 2 | - |
 | `/finance/expenses/new` | static | client | 728 KB / 69 | 28 (12/16/0) | 3 | 4 | - | 2 | - |
@@ -192,8 +192,8 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/pricing` | static | server | 141 KB / 25 | 18 (1/17/0) | 2 | - | - | - | - |
 | `/q/[token]` | prepared | server | 124 KB / 21 | 15 (1/14/0) | 3 | - | - | - | - |
 | `/quick-start-guide` | static | client | 22 KB / 2 | 0 (0/0/0) | - | - | - | - | - |
-| `/quotations` | static | server | 84 KB / 18 | 9 (1/8/0) | 4 | - | - | - | - |
-| `/quotations/[id]` | prepared | server | 684 KB / 66 | 31 (10/16/5) | 9 | 2 | - | - | - |
+| `/quotations` | static | server | 87 KB / 18 | 9 (1/8/0) | 4 | - | - | - | - |
+| `/quotations/[id]` | prepared | server | 689 KB / 66 | 31 (10/16/5) | 9 | 2 | - | - | - |
 | `/quotations/[id]/print` | prepared | server | 73 KB / 12 | 0 (0/0/0) | 3 | - | - | - | - |
 | `/quotations/learning` | static | server | 74 KB / 17 | 9 (1/8/0) | 3 | - | - | - | - |
 | `/quotations/learning/[id]` | prepared | server | 57 KB / 15 | 9 (1/8/0) | 2 | - | - | - | - |
