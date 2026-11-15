@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `355054c7` — Merge the stamp branch (#834) into feat/lead-popup-polish so the two pull requests no longer collide
-- Commits on this branch: 1398
+- Commit: `2c64661b` — Sales: files on a lead's update, by button, drag and drop and paste (migration 20270722000000, apply before merge)
+- Commits on this branch: 1399
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 462 (first `20260530_create_positions.sql`, latest `20270722000000_sales_lead_attachments.sql`)
 - Tables ever created: 259 (dropped at some point: 8)   SQL functions: 1048   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `2c64661b` 2026-11-15 Sales: files on a lead's update, by button, drag and drop and paste (migration 20270722000000, apply before merge)
 - `355054c7` 2026-11-15 Merge the stamp branch (#834) into feat/lead-popup-polish so the two pull requests no longer collide
 - `5bdc90e2` 2026-11-15 Merge origin/main into docs/stamp-lead-popup-strip-829 (changelog: main's version with the stamp re-applied; inventory regenerated)
 - `178958bd` 2026-11-15 Merge origin/main into feat/lead-popup-polish (changelog: both entries kept; inventory regenerated)
@@ -38,7 +39,6 @@
 - `d8a02296` 2026-11-15 Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL) (#819)
 - `0177f067` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
 - `82a446dc` 2026-11-15 Pricing: a unit glued to its number ("180cm") is read as the unit, not as inches (no SQL) (#817)
-- `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
 
 ## Pages by top-level area
 
