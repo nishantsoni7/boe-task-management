@@ -87,7 +87,9 @@ describe('the photo reading', () => {
     assert.match(route, /rpc\('pricing_training_access'\)/)
     assert.ok(route.indexOf("rpc('pricing_training_access')") < route.indexOf('api.anthropic.com'), 'access is checked before the paid call')
     assert.doesNotMatch(route, /\.storage|\.upload\(|insert\(|service_role|adminClient/)
-    assert.match(route, /tool_choice: \{ type: 'tool', name: PRODUCT_TOOL\.name \}/)
+    // Structured output: Sonnet 5.5 and Opus 5.5 refuse a forced tool_choice with a 400 (checked live 15 Nov 2026).
+    assert.match(route, /output_config: \{ format: jsonFormat\(PRODUCT_TOOL\.input_schema\) \}/)
+    assert.doesNotMatch(route, /tool_choice/)
     assert.match(route, /process\.env\.ANTHROPIC_API_KEY/)
     assert.match(route, /parseReading\(/)
     assert.match(PRODUCT_SYSTEM_PROMPT, /Never state or guess a price/)

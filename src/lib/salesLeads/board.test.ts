@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  activityTag, bigQuantity, checklistFor, nameWithoutPhone, countryOf, DEAD_REASONS, dueOf, flagOf, followUpChoices, isSunday, lastLabel, marketLabel, nextStepOf, nextWorkingDay, parseValue,
+  activityTag, bigQuantity, checklistFor, nameWithoutPhone, countryOf, DEAD_REASONS, dueOf, flagOf, followUpChoices, isSunday, lastLabel, lastOf, marketLabel, nextStepOf, nextWorkingDay, parseValue,
   PATH_STAGES, QUICK_NOTES, quickMessages, rankMyDay, stageLabel, STAGES, valueLabel, whatsAppLink, whyFirst,
 } from './board'
 import { dayHeading, dayShort, istDayOf, timeLabel } from './format'
@@ -268,6 +268,13 @@ describe('the last touch', () => {
     assert.equal(lastLabel({ last_activity_at: '2026-11-03T01:00:00Z', last_kind: 'call' }, TODAY), 'Last call today')
     assert.equal(lastLabel({ last_activity_at: '2026-11-02T01:00:00Z', last_kind: 'whatsapp' }, TODAY), 'Last whatsapp yesterday')
     assert.equal(lastLabel({ last_activity_at: '2026-10-24T01:00:00Z', last_kind: 'meeting' }, TODAY), 'Last meeting 10 d ago')
+  })
+  // The status strip of the lead popup (owner, 2026-11-15) says how long ago, which day and what it was, in three parts.
+  test('the popup strip gets it in parts: how long ago, the day, and what it was', () => {
+    assert.deepEqual(lastOf({ last_activity_at: null, last_kind: null }, TODAY), { ago: 'No contact yet', day: null, kind: '' })
+    assert.deepEqual(lastOf({ last_activity_at: '2026-11-03T01:00:00Z', last_kind: 'call' }, TODAY), { ago: 'Today', day: '2026-11-03', kind: 'Call' })
+    assert.deepEqual(lastOf({ last_activity_at: '2026-11-02T01:00:00Z', last_kind: 'note' }, TODAY), { ago: 'Yesterday', day: '2026-11-02', kind: 'Update' })
+    assert.deepEqual(lastOf({ last_activity_at: '2025-10-15T12:00:00Z', last_kind: 'note' }, TODAY), { ago: '384 days ago', day: '2025-10-15', kind: 'Update' })
   })
 })
 

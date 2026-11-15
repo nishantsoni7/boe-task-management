@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { answerJson, jsonFormat } from '@/lib/ai/structuredOutput'
 import { parseReading } from '@/lib/pricing/training/doc'
 import { PRODUCT_INSTRUCTION, PRODUCT_SYSTEM_PROMPT, PRODUCT_TOOL } from '@/lib/pricing/training/readPrompt'
 
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
         signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
         headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
-          model, max_tokens: 2000, system: PRODUCT_SYSTEM_PROMPT, tools: [PRODUCT_TOOL], tool_choice: { type: 'tool', name: PRODUCT_TOOL.name },
+          model, max_tokens: 2000, system: PRODUCT_SYSTEM_PROMPT, output_config: { format: jsonFormat(PRODUCT_TOOL.input_schema) },
           messages: [{ role: 'user', content: [source, { type: 'text', text: PRODUCT_INSTRUCTION }] }],
         }),
       })
@@ -85,8 +86,7 @@ export async function POST(req: NextRequest) {
     if (lastStatus === 429 || lastStatus === 529) return reply({ ok: false, error: 'The reading service is busy. Try again in a minute.' }, 503)
     return reply({ ok: false, error: `Could not read the photo. The reading service answered: ${why || lastStatus}. You can still add the materials yourself.` }, 502)
   }
-  const json = await res.json().catch(() => null) as { content?: { type: string; input?: unknown }[] } | null
-  const reading = parseReading(json?.content?.find(c => c.type === 'tool_use')?.input)
+  const reading = parseReading(answerJson(await res.json().catch(() => null)))
   if (!reading) return reply({ ok: false, error: 'I could not read this photo. Try one with the whole product in view, or add the materials yourself.' })
   return reply({ ok: true, reading })
 }

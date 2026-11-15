@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `c696e68f` — Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
-- Commits on this branch: 1387
+- Commit: `c714dc7e` — Pricing Training: a failed photo reading says why, and can be tried again (no SQL)
+- Commits on this branch: 1388
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 461 (first `20260530_create_positions.sql`, latest `20270720000000_pricing_training.sql`)
 - Tables ever created: 258 (dropped at some point: 8)   SQL functions: 1045   Enums: 0
-- Test files: 866   Next.js 16.2.6, React 19.2.4
+- Test files: 868   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `c714dc7e` 2026-11-15 Pricing Training: a failed photo reading says why, and can be tried again (no SQL)
 - `c696e68f` 2026-11-15 Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
 - `431cd0c2` 2026-11-15 Pricing: Training, where the price of a product is taught element by element (migration 20270720000000, apply before merge) (#826)
 - `2e4bc210` 2026-11-15 Control Center: a switch for price approval on quotations (no SQL) (#825)
@@ -38,7 +39,6 @@
 - `e4f0c6e2` 2026-11-15 Quotations: Import reads the right tab of a PI; suggested price is one line with a Why? popup (no SQL) (#805)
 - `cec40927` 2026-11-15 Docs: stamp page speed part 10 (#803) as merged 5c6f2118, deployed 12:07 IST, verified live (no SQL) (#804)
 - `5c6f2118` 2026-11-15 Page speed, part 10: the Attendance pages reuse the guard's profile row (no SQL) (#803)
-- `9220572d` 2026-11-15 Docs: stamp #799 (phone fixes from the 390 px sweep) as merged e6663b40, deployed 10:38 IST, verified live (no SQL) (#800)
 
 ## Pages by top-level area
 
@@ -142,6 +142,7 @@
 
 ## Library folders (src/lib)
 
+- `src/lib/ai` — 1 source, 1 test
 - `src/lib/assets` — 19 source, 17 test
 - `src/lib/attachments` — 1 source, 1 test
 - `src/lib/attendance` — 20 source, 14 test
@@ -161,7 +162,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 5 source, 8 test
 - `src/lib/notifications` — 9 source, 25 test
-- `src/lib/orders` — 110 source, 170 test
+- `src/lib/orders` — 110 source, 171 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
