@@ -60,8 +60,11 @@ describe('Finish is no longer a box (item 3)', () => {
   test('the product row has no Finish box; Product and Dimensions fill the first row', () => {
     const html = draw(line({ finish: 'PU' }))
     assert.ok(!html.includes('aria-label="Finish"') && !html.includes('<span>Finish</span>'))
-    assert.match(html, /<label class="field c7"><span>Product<\/span>/)
-    assert.match(html, /<label class="field c5"><span>Dimensions \(in\)<\/span>/)
+    // two columns (owner, 15 Nov 2026): Product and Material are 5 of 12, Dimensions and Remarks are 7 of 12
+    assert.match(html, /<label class="field c5"><span>Product<\/span>/)
+    assert.match(html, /<label class="field c7"><span>Dimensions \(in\)<\/span>/)
+    assert.match(html, /<label class="field c5"><span>Material<\/span>/)
+    assert.match(html, /<label class="field c7"><span>Remarks \/ customization<\/span>/)
   })
   test('the value that is already stored still travels with every save, or the database would wipe it (it rewrites the lines)', () => {
     const doc = saveDoc(header(), [], [line({ finish: 'PU' })], '2026-11-14T00:00:00Z')
