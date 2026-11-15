@@ -123,13 +123,14 @@ describe('no Order Request navigation remains', () => {
     }
   })
 
-  test('the Admin action queue no longer asks anybody to convert one', () => {
-    const queue = read('src/lib/controlCenter/actionQueue.ts')
-    assert.equal(queue.includes('order_request_conversion'), false)
-    assert.equal(queue.includes("from('order_requests')"), false)
-    // What replaced it in the business: the PI review queue.
-    assert.ok(queue.includes("'order_pi_review'"))
-    assert.ok(queue.includes("from('order_submissions')"))
+  test('the Control Center no longer lists work to convert one: the Action Queue is gone, and the PI review queue is on Orders', () => {
+    // What replaced the conversion row in the business is the PI review queue, which the approver's
+    // Orders dashboard ("Needs your decision") reads from submitted PI Drafts.
+    assert.equal(existsSync(join(process.cwd(), 'src/lib/controlCenter/actionQueue.ts')), false)
+    const decisions = read('src/components/orders/dashboard/DecisionQueue.tsx')
+    assert.equal(decisions.includes('order_request_conversion'), false)
+    assert.equal(decisions.includes("from('order_requests')"), false)
+    assert.ok(decisions.includes("from('order_submissions')"))
   })
 })
 

@@ -761,7 +761,7 @@ link into Finance or Order Requests; it decided nothing, stored nothing and
 configured nothing, so it was a second way to reach two modules rather than a
 Control Center function.
 
-The route `/admin/control-center/action-queue` is **left in place** so existing
+(Superseded 2026-11-15: the route, page and loader were deleted; pending work shows on the dashboard of the module that owns it.) The route `/admin/control-center/action-queue` was **left in place** so existing
 links and bookmarks still resolve, and the Finance and Orders pages it pointed at
 are untouched. Only the navigation entry in `ControlCenterLayout` was removed.
 

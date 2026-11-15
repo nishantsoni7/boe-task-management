@@ -17,7 +17,7 @@ Use together with `02_MASTER_INSTRUCTION_SHEET.md`. Copy this list into the PR d
 - [ ] **Navigation:** sidebar / Control Center hub placement per the navigation standard; mobile layout verified at phone width.
 - [ ] **Notifications:** new `notifications.type` values need a migration (Postgres enum) that is applied **before** the code that inserts them; add the module's own notification page if the pattern exists; respect the "silence" rules (no self-notify, system-activity filtering).
 - [ ] **Waiting on a person:** every state that needs a decision or action from a named person has ONE database read using the same function the action's door asks, a For you item (default Always on if it must not be missed), a row on the module's dashboard if it has one, and a test that it leaves when done; a notification alone is not enough (`modules/12-notifications.md` §8e).
-- [ ] **Control Center:** action-queue entries, announcements, data-management or test-data-cleanup coverage if the module creates test data.
+- [ ] **Control Center:** a setting goes in navModel.ts (ONE area; pending work goes on the module's own dashboard, never in the Control Center), announcements, data-management or test-data-cleanup coverage if the module creates test data.
 - [ ] **View As:** reads show the viewed employee, writes remain the admin's; no writes while previewing.
 
 ## C. Data

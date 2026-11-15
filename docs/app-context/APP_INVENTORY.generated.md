@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `4e866120` — Quotations: Quantity and Price share one row on a product from 1200 px (no SQL) (#809)
-- Commits on this branch: 1370
-- Pages (`page.tsx`): 199   API routes (`route.ts`): 211
+- Commit: `cebad468` — Pricing: sizes read by their labels, and the reason for an unseen finish worded right (no SQL) (#811)
+- Commits on this branch: 1371
+- Pages (`page.tsx`): 198   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
-- Test files: 861   Next.js 16.2.6, React 19.2.4
+- Test files: 863   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `cebad468` 2026-11-15 Pricing: sizes read by their labels, and the reason for an unseen finish worded right (no SQL) (#811)
 - `4e866120` 2026-11-15 Quotations: Quantity and Price share one row on a product from 1200 px (no SQL) (#809)
 - `4760d62e` 2026-11-15 Docs: stamp page speed part 11 (#807) as merged bb407054, migration 20270719000000 applied, verified live (#808)
 - `bb407054` 2026-11-15 Page speed, part 11: the Payment Requests badges in one call (migration 20270719000000 applied) (#807)
@@ -38,13 +39,12 @@
 - `1e80e23c` 2026-11-14 Page speed, part 7: the launcher's badge counts in one call (no SQL) (#789)
 - `d06e6248` 2026-11-14 Orders: on a phone the Main PI Details popover stays inside the card and the pending buttons are 44px (#788)
 - `2750eb00` 2026-11-14 Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL) (#784)
-- `59a8d9e2` 2026-11-14 Docs: stamp page speed part 6 (#785) as merged e4ba4410, deployed 21:39 IST, verified live (no SQL) (#786)
 
 ## Pages by top-level area
 
 - **(root)** (1): `/`
 - **account** (1): `/account`
-- **admin** (15): `/admin/control-center`, `/admin/control-center/action-queue`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/day-close`, `/admin/control-center/for-you`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/review-rankings`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
+- **admin** (14): `/admin/control-center`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/day-close`, `/admin/control-center/for-you`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/review-rankings`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
 - **announcements** (2): `/announcements`, `/announcements/[id]`
 - **assets-access** (3): `/assets-access`, `/assets-access/[id]`, `/assets-access/notifications`
 - **attendance** (14): `/attendance`, `/attendance/correction-log`, `/attendance/employees`, `/attendance/employees/[id]`, `/attendance/holidays`, `/attendance/minop`, `/attendance/minop/incoming`, `/attendance/monthly-review`, `/attendance/monthly-review/[userId]`, `/attendance/notifications`, `/attendance/records`, `/attendance/requests`, `/attendance/today`, `/attendance/upload`
@@ -146,7 +146,7 @@
 - `src/lib/attendance` — 20 source, 14 test
 - `src/lib/auth` — 1 source, 1 test
 - `src/lib/boeCredits` — 6 source, 9 test
-- `src/lib/controlCenter` — 2 source, 1 test
+- `src/lib/controlCenter` — 2 source, 2 test
 - `src/lib/customerReviews` — 30 source, 41 test
 - `src/lib/dayClose` — 6 source, 5 test
 - `src/lib/errors` — 1 source, 1 test

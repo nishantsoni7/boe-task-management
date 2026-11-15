@@ -89,7 +89,6 @@ describe('the pages use the phone pieces', () => {
     ['src/components/controlCenter/MembersWorkspace.tsx', '<PhoneSearchFilter'],
     ['src/app/performance/team/page.tsx', '<PhoneTableCards'],
     ['src/app/assets-access/page.tsx', '<PhoneSearchFilter'],
-    ['src/app/admin/control-center/action-queue/page.tsx', '<PhoneTableCards'],
     ['src/app/my-issues/page.tsx', '<PhoneTableCards'],
     ['src/app/my-credits/page.tsx', '<PhoneHeaderMenu'],
     ['src/app/manager/page.tsx', 'boe-p3-manager'],
