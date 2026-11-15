@@ -4,7 +4,7 @@
 // a copy of a SHORT, NAMED list of query results on the device and puts it back at the next visit, where it is
 // shown immediately and then refreshed in the background (a restored entry is old, so every screen that uses it
 // asks again at once). Owner decisions (15 Nov): the launcher and own profile, task lists, Orders and PI lists, Sales
-// leads and quotations MAY be kept (phase A: the launcher, the profile and task lists); Finance, Payroll,
+// leads and quotations MAY be kept (phase A: the launcher, the profile and task lists; phase B: Sales leads and the quotations list); Finance, Payroll,
 // Attendance and salary data NEVER.
 //
 // THE RULES THIS FILE ENFORCES
@@ -50,10 +50,28 @@ export const FORBIDDEN_WORDS = /finance|payroll|attendance|salary|payment|credit
 /** The tasks family also holds completed-task archives with filters; phase A saves only the person's open list. */
 const isOwnOpenTaskList = (key: readonly unknown[]) => key[0] !== 'tasks' || (key[1] === 'assigned-to' && key.length === 3)
 
+/**
+ * Phase B (Sales). These keys carry no person's id, so the "owner's id in the key" rule cannot apply. They are safe for
+ * the same reason everything here is: the saved copy names ONE owner, is restored only for that owner, and the in-memory
+ * cache is cleared whenever the signed-in person changes (Providers.tsx), so nothing in it was ever fetched as somebody
+ * else. Listed by hand: Sales leads' list, people, board and My Day; the quotations list. NOT the held WhatsApp chats,
+ * a single lead's detail or phone check, the team figures, or the quotation access answer (that one decides who may edit).
+ * A list saved with a search typed is skipped: a number someone looked up is not worth keeping.
+ */
+const SALES_PARTS: ReadonlySet<string> = new Set(['list', 'people', 'board', 'my-day'])
+function isSalesOrQuotationKey(key: readonly unknown[]): boolean {
+  if (key[0] === 'sales-leads') return typeof key[1] === 'string' && SALES_PARTS.has(key[1]) && (key[1] !== 'list' || key[key.length - 1] === '')
+  return key[0] === 'quotations' && key[1] === 'list'
+}
+
 export function isPersistableKey(key: readonly unknown[], userId: string): boolean {
-  if (typeof key[0] !== 'string' || !ALLOWED_FAMILIES.has(key[0])) return false
-  if (!key.includes(userId)) return false
-  if (!isOwnOpenTaskList(key)) return false
+  if (typeof key[0] !== 'string') return false
+  const salesLike = isSalesOrQuotationKey(key)
+  if (!salesLike) {
+    if (!ALLOWED_FAMILIES.has(key[0])) return false
+    if (!key.includes(userId)) return false
+    if (!isOwnOpenTaskList(key)) return false
+  }
   let text: string
   try { text = JSON.stringify(key) } catch { return false }
   return !FORBIDDEN_WORDS.test(text)

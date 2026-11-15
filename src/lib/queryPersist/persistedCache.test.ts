@@ -55,6 +55,43 @@ describe('what may be saved', () => {
   })
 })
 
+describe('phase B: Sales leads and quotations', () => {
+  test('the lead list (no search), people, board, My Day and the quotations list are saved', () => {
+    for (const key of [
+      ['sales-leads', 'list', 'today', '', '', 'all', 'all', ''], ['sales-leads', 'people'], ['sales-leads', 'board', 'f'],
+      ['sales-leads', 'board', 'column', 'new', 'f'], ['sales-leads', 'my-day'], ['quotations', 'list', 'mine'], ['quotations', 'list', 'all'],
+    ]) assert.equal(isPersistableKey(key, ME), true, JSON.stringify(key))
+  })
+
+  test('never: a searched list, held WhatsApp chats, one lead, a phone check, team figures, the quotation access answer or one quotation', () => {
+    for (const key of [
+      ['sales-leads', 'list', 'all', '', '', 'all', 'all', '98765'], ['sales-leads', 'held'], ['sales-leads', 'detail', 'x'],
+      ['sales-leads', 'phone', '98765'], ['sales-leads', 'team', '', '', ''], ['sales-leads', 'premium-misplaced'], ['sales-leads', 'auto-allot'],
+      ['quotations', 'access'], ['quotations', 'one', 'q1'], ['quotations'], ['sales-leads'],
+    ]) assert.equal(isPersistableKey(key, ME), false, JSON.stringify(key))
+  })
+
+  test('the lead key family in the source is still the one listed here', () => {
+    const api = readFileSync(join(process.cwd(), 'src/lib/salesLeads/api.ts'), 'utf8')
+    assert.match(api, /export const SALES_KEY = 'sales-leads'/)
+    const list = readFileSync(join(process.cwd(), 'src/lib/quotations/api.ts'), 'utf8')
+    assert.ok(list.includes("['quotations', 'list', scope]"))
+  })
+
+  test('a saved lead list comes back only for its owner', () => {
+    const qc = client(), storage = memoryStorage()
+    put(qc, ['sales-leads', 'list', 'today', '', '', 'all', 'all', ''], { pages: [{ rows: [{ id: 'a' }], total: 1 }], pageParams: [0] })
+    assert.ok(savePersistedCache(qc, ME, storage, NOW) > 0)
+    const other = client()
+    assert.equal(restorePersistedCache(other, OTHER, storage, NOW), 0)
+    assert.equal(storage.data.has(PERSIST_KEY), false)
+    put(qc, ['sales-leads', 'list', 'today', '', '', 'all', 'all', ''], { pages: [{ rows: [{ id: 'a' }], total: 1 }], pageParams: [0] })
+    savePersistedCache(qc, ME, storage, NOW)
+    const mine = client()
+    assert.equal(restorePersistedCache(mine, ME, storage, NOW), 1)
+  })
+})
+
 describe('saving and restoring', () => {
   test('a saved result comes back, a Map included, with its original timestamp (so it is stale and is refetched)', () => {
     const storage = memoryStorage()
