@@ -1,14 +1,10 @@
 'use client'
 
 import { Suspense, useEffect, useState, useMemo, useCallback } from 'react'
-import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { UserPlus, ShieldCheck, Megaphone, Hash, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import type { UserProfile } from '@/lib/types'
 import { MAIN_PATH, resolveControlCenterTab, type ControlCenterTab } from '@/lib/controlCenter/navModel'
-import { CATEGORY_META, pendingAgeLabel } from '@/lib/controlCenter/actionQueue'
-import { useActionQueue } from '@/hooks/queries/useActionQueue'
 import { ControlCenterSkeleton } from '@/components/layout/ControlCenterSkeleton'
 import { Avatar } from '@/components/ui/atoms'
 import {
@@ -35,8 +31,6 @@ import {
   describeReviewerSaved,
   eligibleOperationsReviewers,
 } from '@/lib/orders/operationsHandoff'
-import { MODULE_ENFORCEMENT, moduleEnforcement, ENFORCEMENT_BADGE_LABEL } from '@/lib/permissions/enforcement'
-import { ENGINE_GATED_MODULE_KEYS } from '@/lib/permissions/moduleVisibility'
 import {
   useAdminMembers, useDepartments, useAppModules, useControlCenterCache,
   NO_MEMBERS, NO_DEPARTMENTS, NO_APP_MODULES,
@@ -45,6 +39,7 @@ import {
 import { ModuleMemberPicker } from './ModuleMemberPicker'
 import { OrderVisibilityTab } from '@/components/controlCenter/OrderVisibilityTab'
 import { SalesTeamTab } from '@/components/controlCenter/SalesTeamTab'
+import { HomeDirectory } from '@/components/controlCenter/HomeDirectory'
 
 // ── Local types ───────────────────────────────────────────────────────────────
 
@@ -561,261 +556,6 @@ function OrderNumberCycleTab() {
   )
 }
 
-// ── Overview ─────────────────────────────────────────────────────────────────
-//
-// A landing surface, not a dashboard: what can be managed here, where to go,
-// and whether anything in the configuration that is already loaded looks
-// wrong. Every number and every attention row is derived from the three
-// cached lists and the enforcement table in code — nothing is fetched for it.
-
-type EnforcementSummary = {
-  enforced: string[]
-  partial: string[]
-  prepared: string[]
-}
-
-/**
- * Which modules the permission engine actually decides, per module, from the
- * one source that answers that question (src/lib/permissions/enforcement.ts).
- * Attendance and Payroll are admin-only by product decision and are not
- * counted — there is no grant to enforce.
- */
-function summarizeEnforcement(): EnforcementSummary {
-  const keys = new Set<string>([...ENGINE_GATED_MODULE_KEYS, ...Object.keys(MODULE_ENFORCEMENT)])
-  const out: EnforcementSummary = { enforced: [], partial: [], prepared: [] }
-  for (const key of keys) {
-    if (isSelfServiceModule(key)) continue
-    const state = moduleEnforcement(key).state
-    if (state === 'enforced') out.enforced.push(key)
-    else if (state === 'partial') out.partial.push(key)
-    else if (state === 'prepared') out.prepared.push(key)
-  }
-  return out
-}
-
-function titleCase(key: string): string {
-  return key.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
-}
-
-// ── Home ──────────────────────────────────────────────────────────────────────
-//
-// What an administrator opens the Control Center to find out, in the order they
-// need it: what is waiting on THEM, what is wrong with the setup, and the few
-// jobs they do again and again. Counts of departments and modules are still
-// here, but at the bottom — they answer "how big is this", not "what do I do".
-
-const COMMON_JOBS: { href: string; icon: typeof UserPlus; label: string; sub: string }[] = [
-  { href: `${MAIN_PATH}/people?new=1`, icon: UserPlus, label: 'Add an employee', sub: 'Create an account' },
-  { href: `${MAIN_PATH}/permissions`, icon: ShieldCheck, label: 'Change someone’s access', sub: 'By employee, module by module' },
-  { href: `${MAIN_PATH}/announcements`, icon: Megaphone, label: 'Publish an announcement', sub: 'A notice for chosen employees' },
-  { href: `${MAIN_PATH}?tab=order-numbering`, icon: Hash, label: 'Set the next Order number', sub: 'Confirmed Order numbering' },
-  { href: `${MAIN_PATH}?tab=departments`, icon: Building2, label: 'Manage departments', sub: 'Add, rename, deactivate' },
-]
-
-function WaitingOnYou() {
-  const queue = useActionQueue()
-  const items = queue.data?.items ?? []
-
-  // One row per kind of work, oldest item first, so the row's link opens the
-  // thing that has waited longest.
-  const groups = (Object.keys(CATEGORY_META) as (keyof typeof CATEGORY_META)[])
-    .map(category => {
-      const rows = items.filter(i => i.category === category)
-      return { category, count: rows.length, oldest: rows[0] }
-    })
-    .filter(g => g.count > 0)
-    .sort((a, b) => new Date(a.oldest.pendingSince).getTime() - new Date(b.oldest.pendingSince).getTime())
-
-  return (
-    <CcSection
-      title="Waiting on you"
-      description="Finance and Orders work that needs an administrator, oldest first."
-      action={items.length > 0 ? <Link className={cc.linkBtn} href={`${MAIN_PATH}/action-queue`}>See all {items.length}</Link> : undefined}
-    >
-      <div className={cc.list}>
-        {queue.isPending ? (
-          <div className={cc.listRow}><span className={cc.muted}>Checking Finance and Orders…</span></div>
-        ) : queue.isError ? (
-          <div className={cc.listRow}>
-            <span className={cc.dot} />
-            <span className={cc.listMain}>Could not read the queue.</span>
-            <button className={cc.linkBtn} onClick={() => void queue.refetch()}>Retry</button>
-          </div>
-        ) : (
-          <>
-            {queue.data?.error && (
-              <div className={cc.listRow}>
-                <span className={cc.dot} />
-                <span className={cc.listMain}>{queue.data.error}</span>
-              </div>
-            )}
-            {groups.length === 0 && !queue.data?.error ? (
-              <div className={cc.listRow}>
-                <span className={`${cc.dot} ${cc.dotOk}`} />
-                Nothing is waiting on an administrator.
-              </div>
-            ) : groups.map(g => (
-              <Link key={g.category} className={cc.queueRow} href={g.oldest.href}>
-                <span className={cc.queueCount}>{g.count}</span>
-                <span className={cc.listMain}>
-                  <strong>{CATEGORY_META[g.category].label}</strong>
-                  <div className={cc.listDetail}>{g.oldest.clientName} · {g.oldest.module}{g.count > 1 ? ` and ${g.count - 1} more` : ''}</div>
-                </span>
-                <span className={cc.queueAge}>oldest {pendingAgeLabel(g.oldest.pendingSince)}</span>
-              </Link>
-            ))}
-          </>
-        )}
-      </div>
-    </CcSection>
-  )
-}
-
-function OverviewTab({
-  members, depts, modules, peopleInDept,
-}: {
-  members: UserProfile[]
-  depts: Department[]
-  modules: AppModule[]
-  peopleInDept: (key: string) => number
-}) {
-  const live = members.filter(m => !m.is_deleted)
-  const activeMembers = live.filter(m => m.is_active)
-  const activeDepts = depts.filter(d => d.is_active)
-  const launcherModules = modules.filter(m => m.visibility_type !== 'hidden')
-  const enforcement = summarizeEnforcement()
-  const enforcementTotal = enforcement.enforced.length + enforcement.partial.length + enforcement.prepared.length
-
-  const moduleName = (key: string) => modules.find(m => m.module_key === key)?.module_name ?? titleCase(key)
-
-  // Attention rows — real conditions in loaded data, nothing predicted.
-  const knownDept = new Set(depts.map(d => d.department_key))
-  const withoutDepartment = activeMembers.filter(m => !m.team || !knownDept.has(m.team))
-  const inactiveWithPeople = depts.filter(d => !d.is_active && peopleInDept(d.department_key) > 0)
-  const customEmpty = modules.filter(m => m.visibility_type === 'custom' && (m.allowed_user_ids?.length ?? 0) === 0)
-  const notEnforced = [...enforcement.partial, ...enforcement.prepared]
-
-  const attention: { key: string; text: React.ReactNode; href: string; action: string }[] = []
-  if (withoutDepartment.length > 0) {
-    attention.push({
-      key: 'no-dept',
-      text: <>{withoutDepartment.length} active {withoutDepartment.length === 1 ? 'employee has' : 'employees have'} no department.</>,
-      href: `${MAIN_PATH}/people`, action: 'Review employees',
-    })
-  }
-  for (const d of inactiveWithPeople) {
-    attention.push({
-      key: `inactive-${d.department_key}`,
-      text: <><strong>{d.department_name}</strong> is inactive but still has {peopleInDept(d.department_key)} {peopleInDept(d.department_key) === 1 ? 'person' : 'people'} assigned.</>,
-      href: `${MAIN_PATH}?tab=departments`, action: 'Open departments',
-    })
-  }
-  for (const m of customEmpty) {
-    attention.push({
-      key: `custom-${m.module_key}`,
-      text: <><strong>{m.module_name}</strong> is set to Custom visibility with no members, so nobody but administrators can see it.</>,
-      href: `${MAIN_PATH}?tab=modules`, action: 'Open visibility',
-    })
-  }
-
-  return (
-    <>
-      <WaitingOnYou />
-
-      <CcSection title="Needs attention" description="Checked against the departments, employees and module settings already loaded.">
-        <div className={cc.list}>
-          {attention.length === 0 ? (
-            <div className={cc.listRow}>
-              <span className={`${cc.dot} ${cc.dotOk}`} />
-              Nothing needs attention. Every active employee has a department, no inactive department still holds people, and no module is set to an empty Custom audience.
-            </div>
-          ) : attention.map(row => (
-            <div key={row.key} className={cc.listRow}>
-              <span className={cc.dot} />
-              <span className={cc.listMain}>{row.text}</span>
-              <Link className={cc.linkBtn} href={row.href}>{row.action}</Link>
-            </div>
-          ))}
-        </div>
-      </CcSection>
-
-      <CcSection title="Common jobs" description="Straight to the screen; Add an employee opens its dialog.">
-        <div className={cc.jobs}>
-          {COMMON_JOBS.map(job => (
-            <Link key={job.href} className={cc.job} href={job.href}>
-              <job.icon size={16} strokeWidth={1.9} />
-              <span>{job.label}<span className={cc.jobSub}>{job.sub}</span></span>
-            </Link>
-          ))}
-        </div>
-      </CcSection>
-
-      <CcSection title="At a glance">
-        <div className={cc.stats} style={{ marginBottom: 0 }}>
-          <div className={cc.stat}>
-            <div className={cc.statValue}>{activeMembers.length}</div>
-            <div className={cc.statLabel}>Active employees</div>
-            <div className={cc.statMeta}>{live.length - activeMembers.length} deactivated</div>
-          </div>
-          <div className={cc.stat}>
-            <div className={cc.statValue}>{activeDepts.length}</div>
-            <div className={cc.statLabel}>Active departments</div>
-            <div className={cc.statMeta}>{depts.length} in total</div>
-          </div>
-          <div className={cc.stat}>
-            <div className={cc.statValue}>{launcherModules.length}</div>
-            <div className={cc.statLabel}>Modules in the launcher</div>
-            <div className={cc.statMeta}>{modules.length - launcherModules.length} hidden</div>
-          </div>
-          <div className={cc.stat}>
-            <div className={cc.statValue}>{enforcement.enforced.length}<span className={cc.muted} style={{ fontSize: 13, fontWeight: 500 }}> / {enforcementTotal}</span></div>
-            <div className={cc.statLabel}>Modules with enforced access</div>
-            <div className={cc.statMeta}>
-              {enforcement.partial.length > 0 && `${enforcement.partial.length} ${ENFORCEMENT_BADGE_LABEL.partial.toLowerCase()} · `}
-              {enforcement.prepared.length} {ENFORCEMENT_BADGE_LABEL.prepared.toLowerCase()}
-            </div>
-          </div>
-        </div>
-      </CcSection>
-
-      {/* Which modules the permission engine decides today, from the one
-          source that answers it (src/lib/permissions/enforcement.ts). A grant
-          in a module that is not enforced is saved but decides nothing, and an
-          administrator handing out access deserves to know that here, not
-          only inside the Change Access dialog. Folded away: it is reference,
-          not something to act on every day. */}
-      <details className={`${cc.section} ${cc.fold}`}>
-        <summary>
-          Access enforcement{notEnforced.length > 0 ? ` — ${notEnforced.length} not fully applied` : ''}
-        </summary>
-        <div className={cc.sectionDesc} style={{ marginTop: -6, marginBottom: 10 }}>
-          Modules where saved permissions are not yet fully applied by the engine. Every other module is enforced in the database and the screen.
-        </div>
-        <div className={cc.list}>
-          {notEnforced.length === 0 ? (
-            <div className={cc.listRow}>
-              <span className={`${cc.dot} ${cc.dotOk}`} />
-              Every module&apos;s permissions are enforced.
-            </div>
-          ) : notEnforced.map(key => {
-            const e = moduleEnforcement(key)
-            return (
-              <div key={key} className={cc.listRow}>
-                <span className={cc.dot} />
-                <span className={cc.listMain}>
-                  <strong>{moduleName(key)}</strong>
-                  <div className={cc.listDetail}>{e.detail}</div>
-                </span>
-                <CcBadge tone={e.state === 'partial' ? 'amber' : 'gray'}>{ENFORCEMENT_BADGE_LABEL[e.state]}</CcBadge>
-              </div>
-            )
-          })}
-        </div>
-      </details>
-    </>
-  )
-}
-
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function ControlCenterPage() {
@@ -1142,7 +882,7 @@ function ControlCenterPageInner() {
     <>
       {/* ── Overview ─────────────────────────────────────────────────────── */}
       {tab === 'overview' && (
-        <OverviewTab members={members} depts={depts} modules={modules} peopleInDept={peopleInDept} />
+        <HomeDirectory members={members} depts={depts} modules={modules} peopleInDept={peopleInDept} />
       )}
 
       {/* ── Order Numbering ──────────────────────────────────────────────── */}

@@ -1,16 +1,23 @@
 // The Control Center's map, as data.
 //
-// ONE REGISTRY, THREE READERS. The sidebar, the section tabs above each page
-// and the Find-anything search all read this list, so a destination is added
-// once and appears in all three — and cannot be findable in one and missing
-// from another. The sidebar offers the HUBS (seven entries); a hub with more than
-// one section shows those sections as tabs above its page.
+// ONE REGISTRY, FOUR READERS. The sidebar, the Home directory, the page frame
+// (breadcrumb, "affects", related settings) and the Find-anything search all
+// read this list, so a setting is added once and appears in all four — and
+// cannot be findable in one and missing from another.
 //
-// WHY HUBS. The sidebar used to list every screen: fourteen entries, eight of
-// them unrelated items under one "System" heading. An administrator looking for
-// "who can open Finance" or "the next Order number" had to scan the whole list
-// and guess. A hub is a task area ("People", "Access", "Order Setup"), and the
-// screens inside it are one click away and visible together.
+// SIX AREAS, NAMED BY THE JOB. The sidebar used to offer nine groups, four of
+// them holding one page each and named after the feature that had just arrived
+// ("For you", "Reviews", "Day Close & Scoreboard"); two screens were both called
+// "People"; WhatsApp Connection sat in the red Records & Data group. An
+// administrator looking for "who can open Finance" or "the next Order number"
+// had to guess a group first. An area is something an administrator manages
+// ("People", "Orders", "Sales"), a setting lives in exactly ONE area, and the
+// sidebar opens the pages of the area you are in, so there are no tabs above
+// the page any more.
+//
+// WHAT IS NOT HERE: pending work (approvals, payments to allocate, change
+// requests). It shows on the dashboard of the module that owns it, never in the
+// Control Center.
 
 export type ControlCenterTab =
   'overview' | 'departments' | 'people' | 'modules' | 'order-numbering' | 'order-notifications'
@@ -28,26 +35,34 @@ export function resolveControlCenterTab(tabParam: string | null): ControlCenterT
   return TABS.find(t => t === tabParam) ?? 'overview'
 }
 
-export type HubId = 'home' | 'people' | 'access' | 'orders' | 'announcements' | 'for-you' | 'reviews' | 'day-close' | 'records'
+export type HubId = 'home' | 'people' | 'access' | 'orders' | 'sales' | 'staff' | 'data'
 
 export type NavSection = {
   id: string
   label: string
-  /** What the screen is for, in the words an administrator would use. */
+  /** What the screen is for, in the words an administrator would use. Also the page's subtitle. */
   description: string
+  /** The few words under the label on the Home directory. */
+  short: string
+  /** Who or what a change here touches, said under the title so the weight of a change is known first. */
+  affects: string
+  /** Other settings worth a look from here, by section id. */
+  related: string[]
   href: string
   /** Set when the section is a ?tab= of the main page. */
   tab?: ControlCenterTab
   /** Extra words the search matches — what people type when they do not know the label. */
   keywords: string[]
+  /** The change cannot be undone: said in the warning colour. */
+  irreversible?: boolean
 }
 
 export type NavHub = {
   id: HubId
   label: string
-  /** Shown above the page title; omitted when it would only repeat the title. */
-  eyebrow?: string
-  /** Rendered apart from the everyday hubs, in the warning colour. */
+  /** One line under the area's name on the Home directory. */
+  blurb: string
+  /** Rendered apart from the everyday areas, in the warning colour. */
   danger?: boolean
   sections: NavSection[]
 }
@@ -58,30 +73,39 @@ export const NAV_HUBS: readonly NavHub[] = [
   {
     id: 'home',
     label: 'Home',
+    blurb: 'Find any setting in one step.',
     sections: [{
       id: 'home', label: 'Home', href: tabHref('overview'), tab: 'overview',
-      description: 'What is waiting on you, what needs attention, and the common jobs.',
-      keywords: ['overview', 'dashboard', 'summary', 'attention', 'pending', 'queue'],
+      description: 'Find any setting in one step.',
+      short: 'Find any setting in one step.', affects: '', related: [],
+      keywords: ['overview', 'dashboard', 'summary', 'all settings'],
     }],
   },
   {
     id: 'people',
     label: 'People',
+    blurb: 'Who works here: accounts, departments and job titles.',
     sections: [
       {
         id: 'employees', label: 'Employees', href: `${MAIN_PATH}/people`,
         description: 'Add, edit, deactivate or remove an account; reset a password.',
+        short: 'Accounts, passwords, status',
+        affects: 'Everyone with a BOE account', related: ['departments', 'by-person'],
         keywords: ['staff', 'user', 'account', 'member', 'add employee', 'new employee', 'password', 'reset password',
           'deactivate', 'remove', 'delete employee', 'restore', 'role', 'level', 'designation level', 'email', 'phone'],
       },
       {
         id: 'departments', label: 'Departments', href: tabHref('departments'), tab: 'departments',
         description: 'Create, rename, deactivate or delete a department.',
+        short: 'Create, rename, retire',
+        affects: 'Everyone assigned to a department', related: ['employees', 'designations'],
         keywords: ['team', 'add department', 'rename department', 'delete department', 'who is in'],
       },
       {
         id: 'designations', label: 'Designations', href: `${MAIN_PATH}/positions`,
-        description: 'Job titles available on employee records.',
+        description: 'Job titles that can be chosen on an employee record.',
+        short: 'Job titles on employee records',
+        affects: 'Employee records', related: ['employees'],
         keywords: ['position', 'job title', 'title', 'role name'],
       },
     ],
@@ -89,27 +113,29 @@ export const NAV_HUBS: readonly NavHub[] = [
   {
     id: 'access',
     label: 'Access',
+    blurb: 'Who can open what, and who makes which decisions.',
     sections: [
       {
-        id: 'by-employee', label: 'People', href: `${MAIN_PATH}/permissions`,
-        description: 'What one person can open, how much they can do inside, and which decisions are theirs.',
+        id: 'by-person', label: 'By person', href: `${MAIN_PATH}/permissions`,
+        description: 'One person: what they can open, how much they can do inside, and which decisions are theirs.',
+        short: 'What one person can open',
+        affects: 'The person you pick', related: ['by-module', 'authorities'],
         keywords: ['permission', 'permissions', 'access control', 'grant', 'revoke', 'can see', 'cannot see', 'level',
-          'by employee', 'finance access', 'orders access', 'turn off access', 'remove access'],
+          'by employee', 'by person', 'people', 'finance access', 'orders access', 'turn off access', 'remove access'],
       },
       {
-        id: 'by-module', label: 'Modules', href: `${MAIN_PATH}/permissions/modules`,
+        id: 'by-module', label: 'By module', href: `${MAIN_PATH}/permissions/modules`,
         description: 'One module across everyone: who can open it, at what level, and who holds its authorities.',
-        keywords: ['who can open', 'who has access', 'by module', 'module access', 'module visibility', 'launcher',
+        short: 'Who can open one module',
+        affects: 'Everyone, for one module', related: ['by-person', 'authorities'],
+        keywords: ['who can open', 'who has access', 'by module', 'modules', 'module access', 'module visibility', 'launcher',
           'hide module', 'team access', 'department access'],
-      },
-      {
-        id: 'sales-team', label: 'Sales team', href: tabHref('sales-team'), tab: 'sales-team',
-        description: 'Who uses Sales, who sees everyone, and whose leads a senior can read.',
-        keywords: ['sales', 'leads', 'senior', 'junior', 'manager', 'lead board', 'lead access', 'salesperson', 'view all leads'],
       },
       {
         id: 'authorities', label: 'Authorities', href: `${MAIN_PATH}/permissions/authorities`,
         description: 'Every decision granted to a named person, in one list: who can approve, see everything, or move money.',
+        short: 'Who can approve or decide',
+        affects: 'Named people', related: ['by-person', 'operations-handoff'],
         keywords: ['who can approve', 'approve pi', 'all payments', 'all orders', 'authority', 'authorities',
           'decisions', 'reconcile', 'allocate', 'verify', 'team performance', 'who decides'],
       },
@@ -117,93 +143,125 @@ export const NAV_HUBS: readonly NavHub[] = [
   },
   {
     id: 'orders',
-    label: 'Order Setup',
+    label: 'Orders',
+    blurb: 'How Confirmed Orders are numbered, announced and handed to production.',
     sections: [
       {
         id: 'order-numbering', label: 'Numbering', href: tabHref('order-numbering'), tab: 'order-numbering',
         description: 'The number the next Confirmed Order will be given.',
+        short: 'The next Confirmed Order number',
+        affects: 'Every new Confirmed Order', related: ['order-notifications'],
         keywords: ['order number', 'next order number', 'sequence', 'cycle', 'confirmed order'],
       },
       {
         id: 'order-notifications', label: 'Notifications', href: tabHref('order-notifications'), tab: 'order-notifications',
         description: 'Who is told when a Confirmed Order changes.',
+        short: 'Who is told about changes',
+        affects: 'People listed as recipients', related: ['order-numbering', 'operations-handoff'],
         keywords: ['order notifications', 'alerts', 'recipients', 'notify'],
       },
       {
-        id: 'operations-handoff', label: 'Operations Handoff', href: tabHref('operations-handoff'), tab: 'operations-handoff',
+        id: 'operations-handoff', label: 'Operations handoff', href: tabHref('operations-handoff'), tab: 'operations-handoff',
         description: 'Who reviews each approved PI version for production.',
+        short: 'Who reviews PIs for production',
+        affects: 'Operations reviewers', related: ['authorities', 'order-notifications'],
         keywords: ['operations', 'reviewer', 'pi review', 'production', 'handoff'],
       },
       {
-        id: 'order-visibility', label: 'Order Visibility', href: tabHref('order-visibility'), tab: 'order-visibility',
+        id: 'order-visibility', label: 'Order visibility', href: tabHref('order-visibility'), tab: 'order-visibility',
         description: 'Whose orders each sales candidate can see.',
+        short: 'Whose orders sales can see',
+        affects: 'Sales candidates', related: ['sales-team'],
         keywords: ['sales', 'see orders', 'visibility', 'salesperson'],
       },
     ],
   },
   {
-    id: 'announcements',
-    label: 'Announcements',
-    sections: [{
-      id: 'announcements', label: 'Announcements', href: `${MAIN_PATH}/announcements`,
-      description: 'Publish a notice to chosen employees and see who has read it.',
-      keywords: ['notice', 'broadcast', 'message', 'publish', 'news', 'read receipts'],
-    }],
+    id: 'sales',
+    label: 'Sales',
+    blurb: 'Who uses Sales, whose leads they can read, and the company WhatsApp number.',
+    sections: [
+      {
+        id: 'sales-team', label: 'Sales team', href: tabHref('sales-team'), tab: 'sales-team',
+        description: 'Who uses Sales, who sees everyone, and whose leads a senior can read.',
+        short: 'Who uses Sales and sees leads',
+        affects: 'Sales users', related: ['order-visibility', 'by-module'],
+        keywords: ['sales', 'leads', 'senior', 'junior', 'manager', 'lead board', 'lead access', 'salesperson', 'view all leads'],
+      },
+      {
+        id: 'whatsapp-connection', label: 'WhatsApp connection', href: `${MAIN_PATH}/whatsapp-connection`,
+        description: 'Connect the company WhatsApp number to the Lead Master. It stays on the phone.',
+        short: 'Connect the company number',
+        affects: 'The Lead Master', related: ['sales-team'],
+        keywords: ['whatsapp', 'company number', 'coexistence', 'meta', 'connect number', 'leads'],
+      },
+    ],
   },
   {
-    id: 'for-you',
-    label: 'For you',
-    sections: [{
-      id: 'for-you', label: 'For you', href: `${MAIN_PATH}/for-you`,
-      description: 'What can appear in the right-hand column on Modules, for everyone.',
-      keywords: ['right column', 'right side', 'side panel', 'modules panel', 'cards', 'urgent', 'immediate',
-        'payment request', 'always on', 'customize'],
-    }],
+    id: 'staff',
+    label: 'Staff experience',
+    blurb: 'What your team sees on their own screens.',
+    sections: [
+      {
+        id: 'announcements', label: 'Announcements', href: `${MAIN_PATH}/announcements`,
+        description: 'Publish a notice to chosen employees for a set of dates, and see who has read it.',
+        short: 'Notices for chosen people',
+        affects: 'Chosen employees', related: ['for-you'],
+        keywords: ['notice', 'broadcast', 'message', 'publish', 'news', 'read receipts'],
+      },
+      {
+        id: 'for-you', label: 'For you column', href: `${MAIN_PATH}/for-you`,
+        description: 'Decide what can appear in the right-hand column on Modules. Keep it to what needs attention now.',
+        short: 'Right-hand column on Modules',
+        affects: 'Every employee, on Modules', related: ['announcements'],
+        keywords: ['for you', 'right column', 'right side', 'side panel', 'modules panel', 'cards', 'urgent', 'immediate',
+          'payment request', 'always on', 'customize'],
+      },
+      {
+        id: 'review-rankings', label: 'Review leaderboard', href: `${MAIN_PATH}/review-rankings`,
+        description: 'Show or hide the review leaderboard for every employee.',
+        short: 'Show or hide the ranking',
+        affects: 'Every employee', related: ['day-close-switch'],
+        keywords: ['leaderboard', 'ranking', 'rankings', 'hide ranking', 'show ranking', 'review ranking', 'top reviewer',
+          'points', 'customer reviews', 'who leads', 'reviews'],
+      },
+      {
+        id: 'day-close-switch', label: 'Day Close & Scoreboard', href: `${MAIN_PATH}/day-close`,
+        description: 'Switch Day Close and the Scoreboard on for the team when you have introduced them, or pause them.',
+        short: 'Go live or pause for the team',
+        affects: 'The whole team', related: ['review-rankings'],
+        keywords: ['day close', 'scoreboard', 'score', 'strike', 'strikes', 'plan due', 'pause', 'hide', 'go live', 'introduce',
+          'team today', 'close my day', 'proof', 'leave lock', 'red strip'],
+      },
+    ],
   },
   {
-    id: 'reviews',
-    label: 'Reviews',
-    sections: [{
-      id: 'review-rankings', label: 'Rankings', href: `${MAIN_PATH}/review-rankings`,
-      description: 'Show or hide the review leaderboard for everyone.',
-      keywords: ['leaderboard', 'ranking', 'rankings', 'hide ranking', 'show ranking', 'review ranking', 'top reviewer',
-        'points', 'customer reviews', 'who leads'],
-    }],
-  },
-  {
-    id: 'day-close',
-    label: 'Day Close & Scoreboard',
-    sections: [{
-      id: 'day-close-switch', label: 'Go live', href: `${MAIN_PATH}/day-close`,
-      description: 'Switch Day Close and the Scoreboard on for the team, or pause them.',
-      keywords: ['day close', 'scoreboard', 'score', 'strike', 'strikes', 'plan due', 'pause', 'hide', 'go live', 'introduce',
-        'team today', 'close my day', 'proof', 'leave lock', 'red strip'],
-    }],
-  },
-  {
-    id: 'records',
-    label: 'Records & Data',
+    id: 'data',
+    label: 'Data & Safety',
+    blurb: 'Removing test data and task records. Some of this cannot be undone.',
     danger: true,
     sections: [
       {
-        id: 'test-data-cleanup', label: 'Test Data Cleanup', href: `${MAIN_PATH}/test-data-cleanup`,
-        description: 'Remove one verified test transaction.',
+        id: 'test-data-cleanup', label: 'Test data cleanup', href: `${MAIN_PATH}/test-data-cleanup`,
+        description: 'Remove one complete verified test transaction while the system is in testing.',
+        short: 'Remove one test transaction',
+        affects: 'One test transaction', related: ['data-management'],
         keywords: ['delete test order', 'remove test data', 'cleanup', 'purge', 'test order'],
       },
       {
-        id: 'data-management', label: 'Data Management', href: `${MAIN_PATH}/data-management`,
-        description: 'Clear all operational Order and Finance data. Never reversible.',
+        id: 'data-management', label: 'Data management', href: `${MAIN_PATH}/data-management`,
+        description: 'Clear all operational Order and Finance data. Admin only, and never reversible.',
+        short: 'Clear all Order and Finance data',
+        affects: 'All Order and Finance data. Never reversible.', related: ['test-data-cleanup'],
+        irreversible: true,
         keywords: ['reset', 'wipe', 'clear data', 'delete all', 'orders data', 'finance data'],
       },
       {
-        id: 'task-records', label: 'Task Records', href: '/super-admin',
+        id: 'task-records', label: 'Task records', href: '/super-admin',
         description: 'Member-wise task reporting and permanent task deletion.',
+        short: 'Task reports and deletion',
+        affects: 'Task history', related: ['data-management'],
         keywords: ['tasks', 'delete task', 'super admin', 'task report'],
-      },
-      {
-        id: 'whatsapp-connection', label: 'WhatsApp Connection', href: `${MAIN_PATH}/whatsapp-connection`,
-        description: 'Connect the company WhatsApp number to the Lead Master. It stays on the phone.',
-        keywords: ['whatsapp', 'company number', 'coexistence', 'meta', 'connect number', 'leads'],
       },
     ],
   },
@@ -212,6 +270,19 @@ export const NAV_HUBS: readonly NavHub[] = [
 /** Every section of every hub, flat, each remembering its hub. */
 export const NAV_SECTIONS: readonly (NavSection & { hub: NavHub })[] =
   NAV_HUBS.flatMap(hub => hub.sections.map(s => ({ ...s, hub })))
+
+/** The jobs done most often, straight to the screen. Home draws them; the empty search offers them too. */
+export const COMMON_JOBS: readonly { id: string; label: string; href: string; sectionId: string }[] = [
+  { id: 'add-employee', label: 'Add an employee', href: `${MAIN_PATH}/people?new=1`, sectionId: 'employees' },
+  { id: 'reset-password', label: 'Reset a password', href: `${MAIN_PATH}/people`, sectionId: 'employees' },
+  { id: 'change-access', label: 'Change someone’s access', href: `${MAIN_PATH}/permissions`, sectionId: 'by-person' },
+  { id: 'announce', label: 'Publish an announcement', href: `${MAIN_PATH}/announcements`, sectionId: 'announcements' },
+  { id: 'next-number', label: 'Set the next Order number', href: tabHref('order-numbering'), sectionId: 'order-numbering' },
+]
+
+export function sectionById(id: string): (NavSection & { hub: NavHub }) | undefined {
+  return NAV_SECTIONS.find(s => s.id === id)
+}
 
 export type NavLocation = { pathname: string; tab: ControlCenterTab | null }
 
@@ -225,12 +296,19 @@ export function isSectionActive(section: NavSection, { pathname, tab }: NavLocat
   return pathname === section.href
 }
 
-/** The hub holding the screen on show, or null for one outside the map (Action Queue). */
+/**
+ * The section on show. Two retired ?tab= values still resolve: ?tab=modules is By module,
+ * and ?tab=people lands on Employees. A screen outside the map answers null.
+ */
+export function activeSection(loc: NavLocation): (NavSection & { hub: NavHub }) | null {
+  if (loc.pathname === MAIN_PATH && loc.tab === 'modules') return sectionById('by-module') ?? null
+  if (loc.pathname === MAIN_PATH && loc.tab === 'people') return sectionById('employees') ?? null
+  return NAV_SECTIONS.find(s => isSectionActive(s, loc)) ?? null
+}
+
+/** The hub holding the screen on show, or null for one outside the map. */
 export function activeHub(loc: NavLocation): NavHub | null {
-  // The retired ?tab=modules URL still resolves; it belongs with By Module.
-  if (loc.pathname === MAIN_PATH && loc.tab === 'modules') return NAV_HUBS.find(h => h.id === 'access') ?? null
-  if (loc.pathname === MAIN_PATH && loc.tab === 'people') return NAV_HUBS.find(h => h.id === 'people') ?? null
-  return NAV_HUBS.find(h => h.sections.some(s => isSectionActive(s, loc))) ?? null
+  return activeSection(loc)?.hub ?? null
 }
 
 /** Where a hub's sidebar entry goes: its first section. */
@@ -255,7 +333,7 @@ export function scoreSection(section: NavSection & { hub: NavHub }, query: strin
   const label = norm(section.label)
   const hub = norm(section.hub.label)
   const keywords = section.keywords.map(norm)
-  const description = norm(section.description)
+  const description = norm(`${section.description} ${section.short}`)
 
   let total = 0
   for (const word of q.split(' ')) {

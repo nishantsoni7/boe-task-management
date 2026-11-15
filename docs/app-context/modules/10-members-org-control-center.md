@@ -17,7 +17,7 @@ tools. Admin only. The launcher card "Employee Records" (`employee_records` modu
 ## 2. Status at commit 852e0493
 
 Shipped. Control Center is "complete" (closed by the owner 2026-09-03; reopened only for defects/business needs). Latest change:
-#307 (2026-10-13) six navigation hubs, section tabs, Find anything, useful Home. Not shipped / pending: members area still has two
+**15 Nov 2026 redesign, step 1 (PR pending): navigation and layout rebuilt, screens' contents untouched.** Nine hubs and the section tabs became Home + six areas (People, Access, Orders, Sales, Staff experience, Data & Safety) holding 19 settings; Home is a searchable directory of every setting; the page header has a breadcrumb and a one-line "Affects / Related" strip; the sidebar opens the pages of the area you are in; the Action Queue left the Control Center (owner: pending work shows on the dashboard of the module that owns it). Earlier: #307 (2026-10-13) six navigation hubs, section tabs, Find anything, useful Home. Not shipped / pending: members area still has two
 legacy surfaces (`/settings/*`), no Phase for delegated people-administration.
 
 ## 3. Pages and API routes
@@ -28,7 +28,7 @@ Pages (`src/app/admin/control-center/**`, all under one layout that is the admin
 - `/admin/control-center/people` (Employees: list + one dialog per person: Employment / Account / Access / Danger zone) - `MembersWorkspace.tsx`
 - `/admin/control-center/positions` (Designations editor, shared `PositionsManager`)
 - `/admin/control-center/permissions`, `/permissions/modules` (module 09)
-- `/admin/control-center/action-queue` (outside the nav map; `activeHub()` returns null)
+- `/admin/control-center/action-queue` REMOVED (15 Nov 2026): page, loader `actionQueue.ts` and hook `useActionQueue` are deleted; the address is outside the map (`activeHub()` returns null). Its kinds live on the Finance and Orders dashboards.
 - `/admin/control-center/announcements` (+ `AnnouncementForm.tsx`)
 - `/admin/control-center/day-close` (Day Close & Scoreboard > Go live: the team switch, starts paused, `DayCloseLiveSetting.tsx`; reads and writes through `/api/day-close/members`, write = action `set_live`, administrators only; columns `day_close_settings.team_live` / `live_since`, migration `20270704000000`; module 30 section 9)
 - `/admin/control-center/review-rankings` (Reviews > Rankings: one on/off switch for the review leaderboard, `ReviewRankingsSetting.tsx`; writes through `set_review_rankings_visible`, admin only; table `review_display_settings`, migration `20270702000000`; module 14 section 4a)
@@ -39,10 +39,7 @@ Pages (`src/app/admin/control-center/**`, all under one layout that is the admin
   deletion), `/super-admin/view-user/[userId]`.
 - Employee-facing: `/announcements`, `/announcements/[id]`.
 
-Nine hubs (Reviews > Rankings is the show/hide switch for the review leaderboard, module 14; Day Close & Scoreboard > Go live is the team switch for Day Close and the Scoreboard, module 30; `src/lib/controlCenter/navModel.ts`, one registry read by the sidebar, the section tabs and Find-anything): Home - People
-(Employees, Departments, Designations) - Access (People, Modules, Authorities) - Order Setup (Numbering, Notifications, Operations Handoff,
-Order Visibility) - Announcements - For you - Records & Data (Test Data Cleanup, Data Management, Task Records). `FindAnything.tsx` searches labels +
-keywords; every query word must match (`score`).
+Home + six areas, nineteen settings (`src/lib/controlCenter/navModel.ts`: ONE registry read by the sidebar, the Home directory, the page header and search; a setting lives in exactly one area): **People** (Employees, Departments, Designations) - **Access** (By person, By module, Authorities) - **Orders** (Numbering, Notifications, Operations handoff, Order visibility) - **Sales** (Sales team, WhatsApp connection) - **Staff experience** (Announcements, For you column, Review leaderboard = module 14's show/hide switch, Day Close & Scoreboard = module 30's team switch) - **Data & Safety**, danger-styled (Test data cleanup, Data management, Task records). Each section carries `short` (the directory line), `affects`, `related` and `irreversible`. Search (`FindAnything.tsx`, Ctrl K or `/`) matches labels + keywords, every query word must match (`score`); empty, it offers this tab's recent screens (`recent.ts`, sessionStorage, may fail silently) and the five `COMMON_JOBS`. The six `?tab=` screens (Departments, the four Order screens, Sales team) are still views of `page.tsx` (step 2 gives them routes). Retired `?tab=modules` and `?tab=people` still resolve (`activeSection`). The sidebar menu starts PINNED open for a browser that never chose (`useSidebarPinned(true)`; a stored choice wins; no other module changes). Leaving Home pushes history; switching between two `?tab=` screens replaces it (`inTab`).
 
 API routes (every one re-checks admin from the bearer token; many also require `is_active` and `is_deleted !== true`):
 `/api/admin-members` GET (columns include `designation_level`, `performance_tracking_enabled`), `/api/deleted-members` GET,
@@ -109,10 +106,8 @@ manager; attendance-only employee with placeholder `@attendance.local` email and
 - Announcements: default window = today (IST) through day 15 inclusive (`ANNOUNCEMENT_DEFAULT_DAYS = 15`); banner lists at most `ANNOUNCEMENT_BANNER_MAX_ROWS = 3`
   unread; signed PDF URL TTL 300 s; PDF max 10 MiB. A recipient sees it on Modules until "I have read this" and can reopen it from `/announcements`
   for the whole window.
-- Action Queue (`src/lib/controlCenter/actionQueue.ts`, one loader for the page and Home): categories finance_pending_approval, finance_needs_clarification,
-  finance_suspense, order_pi_review, order_change_request, order_operations_review, order_operations_clarification, each with a deep link into the owning page
-  (Order Request conversion row is gone since `20261007000000`). Cached under `['control-center','action-queue',userId]`, `CONTROL_CENTER_STALE_MS` = 30 s.
-- Home "Access enforcement" list is rendered from `moduleEnforcement()` (module 09), so it can never claim more than the code enforces.
+- **No pending work in the Control Center (owner, 15 Nov 2026).** The Action Queue is deleted. Payment approval and needs-clarification are Finance's Pending / Needs clarification tabs; PI review, PI flagged, change requests and operations-unassigned are Orders' "Needs your decision" / "Not aligned"; money still to allocate is the alert badge on Finance's Confirmed Payments (all in the same-day pendencies change, see CHANGELOG). Home fetches nothing of its own: the directory chips (Employees, Departments, By module counts) and the "Setup checks" (an active employee with no department, an inactive department that still has people, a module set to an empty Custom audience; drawn only when something is wrong) come from the three cached lists.
+- Home "Access enforcement" list (folded) is rendered from `moduleEnforcement()` (module 09), so it can never claim more than the code enforces.
 - Test Data Cleanup: one verified test transaction; requires typing `DELETE TEST DATA` and a reason; route re-checks active admin; runs
   begin_test_data_cleanup -> storage removal (manifest from the claim) -> finalize in ONE request so an approved PI can never survive with its files destroyed.
   Data Management reset: scope + reason + exact phrase (e.g. `DELETE FINANCE TEST DATA`) + plan hash; freezes the module, kept claim means "ask again to finish".
@@ -122,16 +117,16 @@ manager; attendance-only employee with placeholder `@attendance.local` email and
 ## 7. Key components & lib files
 
 `src/components/controlCenter/{CcPrimitives.tsx (CcSection/CcToolbar/CcTable/CcBadge/ActiveBadge/CcEmpty/CcDialog/CcField), controlCenter.module.css,
-FindAnything.tsx, MembersWorkspace.tsx, OrderVisibilityTab.tsx, TeamAccessCard.tsx}`, `src/components/layout/{ControlCenterLayout,ControlCenterContext,
-ControlCenterSkeleton}.tsx`, `src/hooks/queries/{useControlCenterData,useActionQueue,usePermissionContext,useAnnouncements}.ts` (`useAdminMembers`,
-`useDepartments`, `useAppModules`, 30 s stale, keys include userId; `useControlCenterCache()` setters take `prev => next`), `src/lib/controlCenter/{navModel,actionQueue}.ts`,
+FindAnything.tsx, HomeDirectory.tsx (Home), hubIcons.ts, MembersWorkspace.tsx, OrderVisibilityTab.tsx, TeamAccessCard.tsx}`, `src/components/layout/{ControlCenterLayout,ControlCenterContext,
+ControlCenterSkeleton}.tsx`, `src/hooks/queries/{useControlCenterData,usePermissionContext,useAnnouncements}.ts` (`useAdminMembers`,
+`useDepartments`, `useAppModules`, 30 s stale, keys include userId; `useControlCenterCache()` setters take `prev => next`), `src/lib/controlCenter/{navModel,recent}.ts`,
 `src/lib/users/{lastAdministrator,designationLevels,safeColumns}.ts`, `src/components/positions/PositionsManager.tsx`, `src/lib/announcements.ts`,
 `src/app/admin/control-center/ModuleMemberPicker.tsx`.
 
 ## 8. Decisions made & why
 
 - One People screen replaced two disconnected ones (Control Center read-only table + Employee Records page); all seven member APIs unchanged.
-- Hubs instead of a 14-entry flat sidebar; one registry feeds sidebar, tabs and search.
+- Hubs instead of a 14-entry flat sidebar; one registry feeds sidebar, tabs and search. **Superseded 15 Nov 2026:** six areas named by the job (not by the feature that arrived), pages shown under the open area in the sidebar, no tabs, Home as the directory. Two screens were both "People": now "People" (accounts) and Access > "By person". WhatsApp Connection (it is not data) moved from Records & Data to Sales; Sales team moved from Access to Sales. The right-hand column of the preview became a one-line strip under the title, because the real Access and Employees screens are wide and were tuned to the space they have.
 - Task Management lost Performance, Team Performance, Settings group and Super Admin from its sidebar; one user menu at the foot of all module sidebars.
 - `users.team` enum -> text (Option B) so Control Center departments are the source of truth; adding to the enum was rejected as a treadmill.
 - Designation level is informational only, no backfill (34 production users, 0 levels at merge, from memory).
@@ -141,8 +136,7 @@ ControlCenterSkeleton}.tsx`, `src/hooks/queries/{useControlCenterData,useActionQ
 
 ## 9. Known traps / gotchas / unfixed defects
 
-1. Contradiction: `docs/Module Docs/ACCESS_CONTROL_V1.md` says the Control Center Action Queue was removed (2026-08-15). It exists again at this commit
-   (`/admin/control-center/action-queue`, `useActionQueue`, Home counts). Trust the code.
+1. The Action Queue came back after ACCESS_CONTROL_V1 said it was removed (2026-08-15), and was removed for good on 15 Nov 2026. Do not rebuild it in the Control Center: pending work belongs on its module's dashboard.
 2. `users.team` conversion hit `0A000` because four `orders`/`order_activity_log` RLS policies referenced the column; check `pg_depend` before any `ALTER COLUMN TYPE`.
 3. Adding a column to `users` needs a column GRANT and a `safeColumns.ts` entry (module 08), else 42703; `select('*')` on `users` is an error.
 4. Adding a migration breaks hard-coded ledger tests (module 08/09). `participantAndOrderTotalSecurity.test.ts` has a FROZEN (applied, hash-pinned) list and a pending list;
@@ -159,7 +153,7 @@ ControlCenterSkeleton}.tsx`, `src/hooks/queries/{useControlCenterData,useActionQ
 
 ## 10. Tests that guard it
 
-`src/lib/controlCenter/navModel.test.ts`, `src/components/layout/controlCenterNav.test.ts` (labels, `<Link>`, `replace={onMain}`, `tabParam === 'modules'`),
+`src/lib/controlCenter/navModel.test.ts`, `src/lib/controlCenter/recent.test.ts`, `src/components/controlCenter/homeDirectory.test.tsx`, `src/components/layout/controlCenterNav.test.ts` (labels, `<Link>`, `inTab`, `tab === 'modules'`, menu default, no tabs, Action Queue files stay deleted),
 `src/components/controlCenter/membersConsolidation.test.ts`, `src/lib/users/lastAdministrator.test.ts`, `src/lib/users/designationLevels.test.ts`,
 `src/lib/announcements.test.ts`, `src/lib/announcementsMigration.test.ts`, `src/lib/permissions/accessControlUi.test.ts` (layout gate strings),
 `compatibilityMigration.test.ts` (needs `'modules'` in `ControlCenterLayout.tsx` and `tab === 'modules'` in page.tsx), `moduleMatrixRoute.test.ts`,

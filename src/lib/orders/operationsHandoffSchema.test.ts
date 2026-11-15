@@ -345,12 +345,11 @@ describe('the notifications reach the reader and open the Order at the card', ()
   })
 })
 
-describe('the queues and the Control Center', () => {
+describe('the queues and the Control Center (the Action Queue itself is gone: pending work shows on the Orders and Finance dashboards)', () => {
   const DASHBOARD = read('src/app/orders/page.tsx')
   const ALL = read('src/app/orders/all/page.tsx')
-  const QUEUE = read('src/lib/controlCenter/actionQueue.ts')
   const CC = read('src/app/admin/control-center/page.tsx')
-  const LAYOUT = read('src/components/layout/ControlCenterLayout.tsx')
+  const NAV = read('src/lib/controlCenter/navModel.ts')
 
   test('the dashboard counts the reader\'s own awaiting handoffs, the unassigned ones, and the flagged ones, from ONE read after the first draw', () => {
     // 2026-10-22: the three head counts became one read of the undecided handoffs (three numbers taken
@@ -374,20 +373,8 @@ describe('the queues and the Control Center', () => {
     assert.match(ALL, /setListState\(\{ ops: 'all' \}\)/)
   })
 
-  test('the Action Queue lists awaiting AND flagged handoffs, shows the reviewer\'s reason and an inactive reviewer, links to the card, skips cancelled Orders', () => {
-    assert.match(QUEUE, /'order_operations_review'/)
-    assert.match(QUEUE, /'order_operations_clarification'/)
-    assert.match(QUEUE, /\.in\('status', \['awaiting', 'clarification_needed'\]\)\s*\.is\('superseded_at', null\)/)
-    assert.match(QUEUE, /cannot accept — "\$\{r\.clarification_reason \?\? 'no reason recorded'\}"/, 'the reviewer\'s reason is on the row')
-    assert.match(QUEUE, /reviewer inactive/)
-    assert.match(QUEUE, /UNASSIGNED_REASON_LABEL\[r\.unassigned_reason \?\? 'no_reviewer'\]/, 'an unassigned row says WHY')
-    assert.match(QUEUE, /if \(r\.order\?\.status === 'cancelled'\) continue/)
-    assert.match(QUEUE, /case 'order_operations_review':\s+return `\/orders\/\$\{id\}#\$\{OPERATIONS_REVIEW_ANCHOR\}`/)
-    assert.match(QUEUE, /case 'order_operations_clarification': return `\/orders\/\$\{id\}#\$\{OPERATIONS_REVIEW_ANCHOR\}`/)
-  })
-
   test('Control Center assigns the reviewer through the RPC, from the live directory, by id, and reports what clearing unassigned', () => {
-    assert.match(LAYOUT, /'operations-handoff'/)
+    assert.match(NAV, /'operations-handoff'/)
     assert.match(CC, /tab === 'operations-handoff' && <OperationsReviewerTab members=\{members\} \/>/)
     assert.match(CC, /supabase\.rpc\('set_order_operations_reviewer', \{\s*p_user_id: choice \|\| null,\s*\}\)/)
     assert.match(CC, /unassigned: result\.unassigned_handoffs \?\? 0/)
