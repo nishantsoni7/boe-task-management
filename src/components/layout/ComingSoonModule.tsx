@@ -2,8 +2,8 @@
 
 import { useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
-import { useRouter } from 'next/navigation'
-import { Home, LayoutDashboard } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { GraduationCap, Home, LayoutDashboard } from 'lucide-react'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { createClient } from '@/lib/supabase/client'
 import { ModuleIcon } from '@/components/modules/ModuleIcons'
@@ -14,6 +14,12 @@ import s from './comingSoonModule.module.css'
 
 // A registered module with nothing inside it yet (Sales, Marketing, Pricing): the BOE Module Layout Standard
 // shell around one notice. When the owner sets out what a module does, it gets its own layout and leaves this.
+
+// A module that has grown a second page lists its pages here; the first one keeps the navLabel it was given.
+// Pricing: the Price book, and Training (20270720000000), where a product's price is taught element by element.
+const MORE_PAGES: Record<string, { href: string; label: string }[]> = {
+  pricing: [{ href: '/pricing/training', label: 'Training' }],
+}
 
 const BADGE_CLASS = `boe-badge boe-badge-waiting ${s.badge}`
 
@@ -36,6 +42,9 @@ export function ComingSoonModule({ moduleKey, title, navLabel = 'Overview', chil
   const [railPinned, toggleRailPinned] = useSidebarPinned()
   const { profile } = usePermissionContext()
   const router = useRouter()
+  const pathname = usePathname() ?? ''
+  const more = MORE_PAGES[moduleKey] ?? []
+  const onMore = more.some(m => pathname.startsWith(m.href))
   const supabase = useMemo(() => createClient(), [])
 
   const handleSignOut = async () => {
@@ -74,9 +83,9 @@ export function ComingSoonModule({ moduleKey, title, navLabel = 'Overview', chil
 
         <div className="boe-sidebar-section">
           <button
-            className="boe-nav-item active"
-            aria-current="page"
-            onClick={() => setSidebarOpen(false)}
+            className={`boe-nav-item${onMore ? '' : ' active'}`}
+            aria-current={onMore ? undefined : 'page'}
+            onClick={() => { setSidebarOpen(false); if (onMore) router.push(`/${moduleKey}`) }}
             style={{ fontWeight: 500, fontSize: 13.5, marginBottom: '2px' }}
           >
             <span style={{ color: '#37352F', display: 'flex', alignItems: 'center' }}>
@@ -84,6 +93,23 @@ export function ComingSoonModule({ moduleKey, title, navLabel = 'Overview', chil
             </span>
             <span className="boe-rail-label">{navLabel}</span>
           </button>
+          {more.map(m => {
+            const active = pathname.startsWith(m.href)
+            return (
+              <button
+                key={m.href}
+                className={`boe-nav-item${active ? ' active' : ''}`}
+                aria-current={active ? 'page' : undefined}
+                onClick={() => { setSidebarOpen(false); router.push(m.href) }}
+                style={{ fontWeight: 500, fontSize: 13.5, marginBottom: '2px' }}
+              >
+                <span style={{ color: '#37352F', display: 'flex', alignItems: 'center' }}>
+                  <GraduationCap size={15} strokeWidth={1.8} />
+                </span>
+                <span className="boe-rail-label">{m.label}</span>
+              </button>
+            )
+          })}
         </div>
 
         <div className="boe-sidebar-foot">

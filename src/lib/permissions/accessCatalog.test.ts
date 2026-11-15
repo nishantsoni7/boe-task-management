@@ -62,7 +62,7 @@ describe('levels are offered only where they change behaviour', () => {
       customer_review_requests: ['viewer'],            // entry is `use`
       sales: ['viewer', 'contributor'],                // your own leads, then add and correct a lead (assign and view_all are authorities)
       marketing: ['viewer', 'contributor'],            // Meta Ads: read, then set the spending cap and the target
-      pricing: ['viewer'],
+      pricing: ['viewer', 'contributor', 'manager'],   // the price book, then teach a training case, then check cases
       seo: ['viewer', 'contributor', 'manager'],
       quotations: ['viewer', 'contributor'],            // own quotations, then start and change them (view_all is an authority)       // edit a board item, then answer a strategy change
     }
