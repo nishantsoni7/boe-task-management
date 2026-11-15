@@ -241,6 +241,9 @@ export type WorkLead = SalesLead & {
   stuck: boolean
 }
 
+/** A file on an update (migration 20270722000000): where it is stored, what it is called and how big it is. */
+export type LeadFile = { id: string; name: string; type: string; size: number; path: string }
+
 export type Activity = {
   id: string
   kind: string
@@ -250,6 +253,8 @@ export type Activity = {
   next_due_on: string | null
   actor_name: string | null
   at: string
+  /** Absent until the files migration is applied. */
+  files?: LeadFile[]
 }
 
 export type WorkDetail = {
@@ -327,9 +332,15 @@ export const fetchBoardPage = (s: Supabase, stage: Stage, offset: number, limit:
 export const fetchWorkLead = (s: Supabase, id: string) =>
   call<WorkDetail>(() => s.rpc('get_sales_lead', { p_id: id }))
 
-/** A comment on a lead (add_sales_lead_comment, 20270703000100). The follow-up date is the next working day unless given. */
-export const addComment = (s: Supabase, id: string, a: { note: string; tag: CommentTag | null; nextDue?: string }) =>
-  call<WorkResult>(() => s.rpc('add_sales_lead_comment', { p_id: id, p_note: a.note, p_tag: a.tag, p_next_due: a.nextDue ?? null }))
+/**
+ * A comment on a lead (add_sales_lead_comment, 20270703000100; files 20270722000000). The follow-up date is the next working day
+ * unless given. Files go with the update only when there are some, so an update without files still works before the files
+ * migration is applied.
+ */
+export const addComment = (s: Supabase, id: string, a: { note: string; tag: CommentTag | null; nextDue?: string; files?: { path: string; name: string }[] }) =>
+  call<WorkResult>(() => s.rpc('add_sales_lead_comment', {
+    p_id: id, p_note: a.note, p_tag: a.tag, p_next_due: a.nextDue ?? null, ...(a.files && a.files.length > 0 ? { p_files: a.files } : {}),
+  }))
 
 /** Moves the follow-up date of an open lead, in any stage (change_sales_lead_due, 20270703000100). */
 export const changeDue = (s: Supabase, id: string, due: string) =>

@@ -2,14 +2,18 @@
 
 import { Fragment, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Ban, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Clock, Copy, Eye, Mail, MessageCircle, Pencil, Phone, Search, TriangleAlert, X } from 'lucide-react'
+import {
+  Ban, CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight, CircleCheck, Clock, Copy, Eye, FileSpreadsheet, FileText, Image as ImageIcon, LoaderCircle, Mail,
+  MessageCircle, Paperclip, Pencil, Phone, Presentation, RotateCw, Search, TriangleAlert, X,
+} from 'lucide-react'
 import { formatPhone, telHref } from '@/lib/exhibitionLeads/phone'
 import {
   addComment, changeDue, fetchWorkLead, SALES_KEY, updateFacts,
-  type LeadFacts, type WorkDetail, type WorkLead,
+  type LeadFacts, type LeadFile, type WorkDetail, type WorkLead,
 } from '@/lib/salesLeads/api'
+import { canPreview, fileKind, formatBytes, LEAD_FILE_ACCEPT, LEAD_FILES_BUCKET, noteForFiles, type FileKind } from '@/lib/salesLeads/files'
 import {
-  activityTag, CLIENT_TYPES, dueOf, followUpChoices, isSunday, lastOf, marketLabel, nextStepOf, nextWorkingDay, parseValue,
+  activityTag, CLIENT_TYPES, dueAfterUpdate, dueOf, followUpChoices, isSunday, lastOf, marketLabel, nextStepOf, parseValue,
   QUICK_NOTES, SEGMENTS, stageLabel, STAGE_GUIDE, TEMPERATURES, valueLabel,
   type CommentTag, type Stage, type Temperature,
 } from '@/lib/salesLeads/board'
@@ -17,6 +21,7 @@ import { sourceLabel } from '@/lib/salesLeads/constants'
 import { dayHeading, dayLabelLong, dayShort, initialsOf, istDayOf, timeLabel } from '@/lib/salesLeads/format'
 import { eventBy, eventLine, leadTitle } from './LeadBits'
 import { useDialogFocus } from './useDialogFocus'
+import { useLeadFiles, type QueuedFile } from './useLeadFiles'
 import type { LeadWork } from './useLeadWork'
 import s from './leadBoard.module.css'
 
@@ -48,7 +53,7 @@ import s from './leadBoard.module.css'
 // the full record (history and activity) is read; only the activity waits.
 
 /** Only one menu is open at a time; Escape closes it before it closes the popup. */
-type Menu = 'status' | 'due' | 'next' | null
+type Menu = 'status' | 'due' | null
 type Tab = 'details' | 'activity'
 
 /**
@@ -186,7 +191,7 @@ function PanelBody({ detail, work, focusLog, closeAfterPost, menu, setMenu, onCl
           <ClientCard lead={lead} work={work} canWork={canWork} closed={closed} />
         </div>
         <ActivitySide
-          detail={detail} work={work} canWrite={canWork && !closed} focusLog={focusLog} menu={menu} setMenu={setMenu}
+          detail={detail} work={work} canWrite={canWork && !closed} focusLog={focusLog}
           onPosted={() => { if (closeAfterPost) onClose() }} filling={filling} loadFailed={loadFailed} reload={reload}
         />
       </div>
@@ -521,7 +526,7 @@ function ClientCard({ lead, work, canWork, closed }: { lead: WorkLead; work: Lea
 // ── Right: write an update, and everything that happened ────────────────────────────────────────────────────────────
 
 type Entry =
-  | { key: string; at: string; type: 'comment'; by: string; text: string | null; tag: ReturnType<typeof activityTag>; due: string | null; imported: boolean }
+  | { key: string; at: string; type: 'comment'; by: string; text: string | null; tag: ReturnType<typeof activityTag>; due: string | null; imported: boolean; files: readonly LeadFile[] }
   | { key: string; at: string; type: 'system'; line: React.ReactNode; by: string }
 
 const SHOWN = 30
@@ -534,8 +539,8 @@ function Marked({ text, q }: { text: string; q: string }) {
   return <>{parts.map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : <Fragment key={i}>{p}</Fragment>))}</>
 }
 
-function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPosted, filling, loadFailed, reload }: {
-  detail: WorkDetail; work: LeadWork; canWrite: boolean; focusLog: boolean; menu: Menu; setMenu: (m: Menu) => void; onPosted: () => void
+function ActivitySide({ detail, work, canWrite, focusLog, onPosted, filling, loadFailed, reload }: {
+  detail: WorkDetail; work: LeadWork; canWrite: boolean; focusLog: boolean; onPosted: () => void
   filling: boolean; loadFailed: boolean; reload: () => void
 }) {
   // Updates only is what is read first (owner, 2026-11-14): "Updates only" is the first button and is on when the popup opens.
@@ -550,7 +555,7 @@ function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPoste
   const entries: Entry[] = useMemo(() => [
     ...detail.activities.map<Entry>(a => ({
       key: a.id, at: a.at, type: 'comment', by: a.kind === 'imported' ? 'From ClickUp' : a.actor_name ?? 'A former colleague', text: a.note,
-      tag: a.kind === 'imported' ? null : activityTag(a), due: a.next_due_on, imported: a.kind === 'imported',
+      tag: a.kind === 'imported' ? null : activityTag(a), due: a.next_due_on, imported: a.kind === 'imported', files: a.files ?? [],
     })),
     ...detail.events.map<Entry>((e, i) => ({ key: `e${i}`, at: e.at, type: 'system', line: eventLine(e), by: eventBy(e) })),
   ].sort((a, b) => b.at.localeCompare(a.at) || rank(a) - rank(b)), [detail])
@@ -559,9 +564,26 @@ function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPoste
   const shown = entries.filter(e => {
     if (e.type === 'system') return !updatesOnly && !query
     if (!query) return true
-    return [e.text ?? '', e.by, e.tag?.label ?? ''].join(' ').toLowerCase().includes(query)
+    return [e.text ?? '', e.by, e.tag?.label ?? '', ...e.files.map(f => f.name)].join(' ').toLowerCase().includes(query)
   })
   const list = all || query ? shown : shown.slice(0, SHOWN)
+
+  // The links to the files of the updates, signed for five minutes in one call, after the lead is here: the bucket is private.
+  // Nothing is asked for a lead with no files (every ClickUp lead), so opening a lead costs nothing more.
+  const paths = useMemo(() => detail.activities.flatMap(a => (a.files ?? []).map(f => f.path)), [detail.activities])
+  const signed = useQuery({
+    queryKey: [SALES_KEY, 'file-links', detail.lead.id, paths.join('|')],
+    enabled: paths.length > 0 && !filling,
+    staleTime: 240_000,
+    queryFn: async () => {
+      const { data, error } = await work.supabase.storage.from(LEAD_FILES_BUCKET).createSignedUrls(paths, 300)
+      if (error) throw error
+      const links: Record<string, string> = {}
+      for (const x of data ?? []) if (x.path && x.signedUrl) links[x.path] = x.signedUrl
+      return links
+    },
+  })
+  const links = signed.data ?? {}
 
   return (
     <div className={s.mRight} aria-label="Activity">
@@ -585,7 +607,7 @@ function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPoste
           {query && <span className={s.mNone}>{shown.length} found</span>}
         </div>
       )}
-      {canWrite && <Composer lead={detail.lead} work={work} focus={focusLog} menu={menu} setMenu={setMenu} onPosted={onPosted} />}
+      {canWrite && <Composer lead={detail.lead} work={work} focus={focusLog} onPosted={onPosted} />}
       <div className={s.mFeed}>
         {filling && !loadFailed && <p className={s.mNone} role="status">Loading the activity…</p>}
         {loadFailed && (
@@ -610,6 +632,7 @@ function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPoste
                         {e.due && <span className={`${s.mTag} ${s.mTagDue}`}>Follow-up {dayShort(e.due)}</span>}
                       </div>
                     )}
+                    {e.files.length > 0 && <FileList files={e.files} links={links} />}
                   </div>
                 </div>
               ) : (
@@ -639,25 +662,35 @@ function ActivitySide({ detail, work, canWrite, focusLog, menu, setMenu, onPoste
   )
 }
 
-function Composer({ lead, work, focus, menu, setMenu, onPosted }: {
-  lead: WorkLead; work: LeadWork; focus: boolean; menu: Menu; setMenu: (m: Menu) => void; onPosted: () => void
+/**
+ * The update box (owner, 2026-11-13; files 2026-11-15): the words, the quick notes, and the files. A file can be picked with
+ * Attach files, dropped on the box or pasted (a screenshot, or files copied in a folder); each uploads at once and shows as a
+ * chip with its state. Post waits for the uploads, and a failed one has to be retried or removed. An update that is only files
+ * says "Shared 2 files." The follow-up is changed at the top of the popup, so the box has no date of its own.
+ */
+function Composer({ lead, work, focus, onPosted }: {
+  lead: WorkLead; work: LeadWork; focus: boolean; onPosted: () => void
 }) {
   const [text, setText] = useState('')
   // A quick note the person tapped; two of them carry a meaning the database keeps (a try nobody answered, a quotation).
   const [quick, setQuick] = useState<string | null>(null)
   const [tag, setTag] = useState<CommentTag | null>(null)
-  const [due, setDue] = useState(() => nextWorkingDay(work.today))
   const [saving, setSaving] = useState(false)
-  const wrap = useCloseOnOutside(menu === 'next', () => setMenu(null))
+  const [dropping, setDropping] = useState(false)
+  const files = useLeadFiles(work.supabase, lead.id)
   const box = useRef<HTMLTextAreaElement>(null)
+  const picker = useRef<HTMLInputElement>(null)
   useEffect(() => { if (focus) box.current?.focus() }, [focus])
-  const ready = text.trim() !== '' && !saving
-  const why = followUpChoices(work.today).find(c => c.date === due)?.why.toLowerCase() ?? (isSunday(due) ? 'a Sunday, picked by you' : 'picked by you')
+  const withFiles = files.ready.length > 0
+  const ready = (text.trim() !== '' || withFiles) && !files.uploading && !files.failed && !saving
+  // The follow-up is changed at the top of the popup (owner, 2026-11-15), so posting keeps a date still ahead and moves a late,
+  // due-today or missing one to the next working day.
+  const due = dueAfterUpdate(lead, work.today)
   const notResponding = tag === 'not_responding'
   // What posting does besides saving the words, when it is not obvious.
   const hint = notResponding
     ? `Counts as a try, not a contact.${lead.stage === 'new' ? ' The lead moves from New to Under Process.' : ''}`
-    : lead.stage === 'new' && text.trim() !== '' ? 'Posting this moves the lead from New to Under Process.' : null
+    : lead.stage === 'new' && (text.trim() !== '' || withFiles) ? 'Posting this moves the lead from New to Under Process.' : null
 
   function type(next: string) {
     setText(next)
@@ -679,12 +712,15 @@ function Composer({ lead, work, focus, menu, setMenu, onPosted }: {
     if (!ready) return
     setSaving(true)
     try {
-      const r = await addComment(work.supabase, lead.id, { note: text.trim(), tag, nextDue: due })
+      const r = await addComment(work.supabase, lead.id, {
+        note: text.trim() || noteForFiles(files.ready.length), tag, nextDue: due, files: files.ready,
+      })
       // The screen reads itself again in the background: nothing here waits for it.
       void work.refresh()
       work.said(`Saved. Next follow-up ${dayShort(r.lead.next_due_on ?? due)}.`, r.activity_id)
       if (notResponding && (r.streak ?? 0) >= 3) work.threeTries(r.lead)
-      setText(''); setQuick(null); setTag(null); setDue(nextWorkingDay(work.today))
+      setText(''); setQuick(null); setTag(null)
+      files.finish()
       onPosted()
     } catch (e) {
       work.fail(e)
@@ -694,8 +730,22 @@ function Composer({ lead, work, focus, menu, setMenu, onPosted }: {
     }
   }
 
+  const hasFiles = (e: React.DragEvent) => e.dataTransfer.types.includes('Files')
   return (
-    <section className={s.mCompose} aria-label="Write an update">
+    <section
+      className={s.mCompose} aria-label="Write an update" data-dropping={dropping ? '1' : '0'}
+      onDragEnter={e => { if (hasFiles(e)) { e.preventDefault(); setDropping(true) } }}
+      onDragOver={e => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy' } }}
+      onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false) }}
+      onDrop={e => { if (hasFiles(e)) { e.preventDefault(); setDropping(false); files.add(Array.from(e.dataTransfer.files)) } }}
+      onPaste={e => {
+        // Files copied in a folder, or a screenshot: they become attachments, and no file name is pasted as text.
+        const pasted = Array.from(e.clipboardData?.items ?? []).filter(i => i.kind === 'file').map(i => i.getAsFile()).filter((f): f is File => f !== null)
+        if (pasted.length === 0) return
+        e.preventDefault()
+        files.add(pasted)
+      }}
+    >
       <textarea
         ref={box} rows={2} maxLength={4000} aria-label="Write an update" placeholder="Write an update: what happened with this client?"
         value={text} onChange={e => type(e.target.value)}
@@ -706,17 +756,93 @@ function Composer({ lead, work, focus, menu, setMenu, onPosted }: {
           <button key={n.key} type="button" className={s.mChip} aria-pressed={quick === n.key} onClick={() => tap(n)}>{n.label}</button>
         ))}
       </div>
+      <FileChips items={files.items} onRetry={files.retry} onRemove={files.remove} />
+      {files.refusal && (
+        <p className={s.mFileErr} role="alert">{files.refusal}<button type="button" className={s.linkBtn} onClick={files.dismissRefusal}>OK</button></p>
+      )}
       {hint && <p className={s.mHint}>{hint}</p>}
       <div className={s.mFoot}>
-        <div ref={wrap} className={`${s.mRel} ${s.mNext}`}>
-          <CalendarDays aria-hidden="true" />
-          <span>Follow up <b>{dayShort(due)}</b> <small>{why}</small></span>
-          <button type="button" className={s.linkBtn} aria-haspopup="menu" aria-expanded={menu === 'next'} onClick={() => setMenu(menu === 'next' ? null : 'next')}>Change</button>
-          {menu === 'next' && <FollowUpMenu today={work.today} value={due} onPick={day => { setDue(day); setMenu(null) }} />}
+        <div className={s.mFootL}>
+          <button type="button" className={s.nLink} onClick={() => picker.current?.click()}><Paperclip aria-hidden="true" />Attach files</button>
+          <span className={s.mKbd}>or drop or paste them here</span>
+          <input
+            ref={picker} type="file" multiple hidden accept={LEAD_FILE_ACCEPT} aria-label="Choose files to attach"
+            onChange={e => { files.add(Array.from(e.target.files ?? [])); e.target.value = '' }}
+          />
         </div>
-        <span className={s.mKbd}>Ctrl + Enter</span>
-        <button type="button" className={s.mPost} disabled={!ready} onClick={() => void post()}>{saving ? 'Saving…' : 'Post update'}</button>
+        <div className={s.mFootR}>
+          <span className={s.mKbd}>Ctrl + Enter</span>
+          <button
+            type="button" className={s.mPost} disabled={!ready} onClick={() => void post()}
+            title={files.uploading ? 'Waiting for the files to upload' : files.failed ? 'Retry or remove the file that did not upload' : undefined}
+          >
+            {saving ? 'Saving…' : files.uploading ? 'Uploading…' : 'Post update'}
+          </button>
+        </div>
       </div>
+      {dropping && <div className={s.mDrop} aria-hidden="true"><Paperclip />Drop to attach</div>}
     </section>
+  )
+}
+
+/** The files being attached, one chip each: a picture or an icon, the name, the size (or what went wrong), and what can be done. */
+export function FileChips({ items, onRetry, onRemove }: { items: readonly QueuedFile[]; onRetry: (id: string) => void; onRemove: (id: string) => void }) {
+  if (items.length === 0) return null
+  return (
+    <ul className={s.mFiles} aria-label="Files to attach">
+      {items.map(f => (
+        <li key={f.id} className={s.mFile} data-status={f.status}>
+          {f.preview
+            // eslint-disable-next-line @next/next/no-img-element -- a blob: URL of the file just picked; there is nothing to optimise
+            ? <img className={s.mFileThumb} src={f.preview} alt="" />
+            : <span className={s.mFileIc} aria-hidden="true"><KindIcon kind={fileKind(f.type)} /></span>}
+          <span className={s.mFileName} title={f.name}>{f.name}</span>
+          <span className={s.mFileMeta}>{f.status === 'failed' ? f.error : formatBytes(f.size)}</span>
+          {f.status === 'uploading' && <LoaderCircle className={s.mSpin} role="img" aria-label="Uploading" />}
+          {f.status === 'failed' && (
+            <button type="button" className={s.mFileBtn} aria-label={`Try ${f.name} again`} title="Try again" onClick={() => onRetry(f.id)}><RotateCw aria-hidden="true" /></button>
+          )}
+          <button type="button" className={s.mFileBtn} aria-label={`Remove ${f.name}`} title="Remove" onClick={() => onRemove(f.id)}><X aria-hidden="true" /></button>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** The icon of a kind of file, where a picture cannot be drawn. */
+function KindIcon({ kind }: { kind: FileKind }) {
+  if (kind === 'image') return <ImageIcon />
+  if (kind === 'sheet') return <FileSpreadsheet />
+  if (kind === 'slides') return <Presentation />
+  return <FileText />
+}
+
+/**
+ * The files of one update, under its words: pictures as small squares, everything else as a chip with its name and size. Both
+ * open in a new tab through a link that is signed for five minutes (the bucket is private); until the links have come, the
+ * squares and chips are there without one.
+ */
+export function FileList({ files, links }: { files: readonly LeadFile[]; links: Readonly<Record<string, string>> }) {
+  return (
+    <div className={s.mAtt}>
+      {files.map(f => {
+        const href = links[f.path]
+        const label = `${f.name}, ${formatBytes(f.size)}`
+        if (canPreview(f.type)) {
+          return href
+            ? (
+              <a key={f.id} className={s.mAttImg} href={href} target="_blank" rel="noopener noreferrer" title={label}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- a short-lived signed URL of a private file */}
+                <img src={href} alt={f.name} loading="lazy" decoding="async" />
+              </a>
+            )
+            : <span key={f.id} className={`${s.mAttImg} ${s.mAttWait}`} role="img" aria-label={`${label}, loading`} />
+        }
+        const inner = <><span className={s.mFileIc} aria-hidden="true"><KindIcon kind={fileKind(f.type)} /></span><span className={s.mFileName}>{f.name}</span><span className={s.mFileMeta}>{formatBytes(f.size)}</span></>
+        return href
+          ? <a key={f.id} className={s.mAttFile} href={href} target="_blank" rel="noopener noreferrer" title={label}>{inner}</a>
+          : <span key={f.id} className={`${s.mAttFile} ${s.mAttWait}`} title={label}>{inner}</span>
+      })}
+    </div>
   )
 }

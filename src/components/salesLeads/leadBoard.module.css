@@ -230,7 +230,8 @@
 .stHeat { display: flex; height: var(--ctl); border: 1px solid #CFC8BF; border-radius: 9px; background: #fff; overflow: hidden; }
 .stHeat button { flex: 1 1 0; min-width: 0; padding: 0 8px; border: 0; background: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font: 500 13px var(--boe-font-body); color: #4C5352; cursor: pointer; }
 .stHeat button + button { border-left: 1px solid #E4DED7; }
-.stHeat button:hover:not(:disabled) { background: #FAF8F5; }
+/* Not the selected one: its charcoal stays, or its white words would vanish on a light hover. */
+.stHeat button:hover:not(:disabled):not([aria-pressed="true"]) { background: #FAF8F5; }
 .stHeat button:disabled { cursor: default; }
 .stHeat button[aria-pressed="true"] { background: #303536; color: #fff; font-weight: 600; }
 
@@ -319,11 +320,7 @@
 .mChip:hover { border-color: #B9472E; color: #963B27; }
 .mChip[aria-pressed="true"] { border-color: #B9472E; background: #F8EAE4; color: #963B27; font-weight: 600; }
 .mHint { margin: 0 14px 10px; padding: 6px 10px; border-radius: 8px; background: #FBF1D9; color: #6B4A00; font-size: 12px; }
-.mFoot { display: flex; align-items: center; gap: 10px; padding: 9px 14px; border-top: 1px solid #ECE7E0; }
-.mNext { flex: 1; display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: #4C5352; min-width: 0; flex-wrap: wrap; }
-.mNext > svg { width: 14px; height: 14px; color: #686D6C; flex: 0 0 auto; }
-.mNext b { color: #303536; font-weight: 600; }
-.mNext small { color: #686D6C; font-size: 12px; }
+.mFoot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 10px; padding: 9px 14px; border-top: 1px solid #ECE7E0; }
 .mKbd { font-size: 11.5px; color: #686D6C; white-space: nowrap; }
 .mPost { height: 36px; padding: 0 16px; border: 0; border-radius: 9px; background: #B9472E; color: #fff; font: 600 13px var(--boe-font-body); cursor: pointer; white-space: nowrap; }
 .mPost:hover:not(:disabled) { background: #A33E27; }
@@ -352,6 +349,35 @@
 .mSys b { font-weight: 600; }
 .mSys small { color: #686D6C; font-size: 12px; }
 .mFeed > .mNone, .mFeed > .linkBtn, .mFeed > .clickup { margin: 12px 18px; }
+
+/* Files on an update (owner, 2026-11-15). In the update box: a chip for each file being attached, with its state; a dashed veil
+   while files are dragged over the box. In the feed: pictures as small squares and other files as chips, under the words. */
+.mFootL, .mFootR { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.mFiles { list-style: none; margin: 0; padding: 0 14px 10px; display: flex; flex-wrap: wrap; gap: 6px; }
+.mFile { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; height: 34px; padding: 0 5px 0 5px; border: 1px solid #E4DED7; border-radius: 9px; background: #fff; font-size: 12.5px; }
+.mFile[data-status="failed"] { border-color: #E9B9C1; background: #FBF4F5; }
+.mFileThumb { width: 24px; height: 24px; border-radius: 5px; object-fit: cover; flex: 0 0 auto; }
+.mFileIc { width: 24px; height: 24px; border-radius: 5px; background: #F1EEE9; color: #4C5352; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.mFileIc svg { width: 14px; height: 14px; }
+.mFileName { min-width: 0; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: #303536; }
+.mFileMeta { color: #686D6C; font-size: 12px; white-space: nowrap; }
+.mFile[data-status="failed"] .mFileMeta { color: #A12438; }
+.mFileBtn { width: 24px; height: 24px; border: 0; border-radius: 6px; background: none; color: #686D6C; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; flex: 0 0 auto; }
+.mFileBtn:hover { background: #F1EEE9; color: #303536; }
+.mFileBtn svg { width: 14px; height: 14px; }
+.mSpin { width: 15px; height: 15px; margin: 0 4px; color: #686D6C; flex: 0 0 auto; animation: mSpin .9s linear infinite; }
+@keyframes mSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .mSpin { animation: none; } }
+.mFileErr { margin: 0 14px 10px; padding: 6px 6px 6px 10px; border-radius: 8px; background: #FBE9EC; color: #7A2A36; font-size: 12px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mDrop { position: absolute; inset: 0; z-index: 3; border: 2px dashed #B9472E; border-radius: 12px; background: rgba(248, 234, 228, .94); color: #963B27; display: flex; align-items: center; justify-content: center; gap: 8px; font: 600 14px var(--boe-font-body); pointer-events: none; }
+.mDrop svg { width: 18px; height: 18px; }
+.mAtt { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.mAttImg { width: 84px; height: 84px; display: block; border: 1px solid #E4DED7; border-radius: 8px; background: #F1EEE9; overflow: hidden; }
+.mAttImg img { width: 100%; height: 100%; object-fit: cover; display: block; }
+a.mAttImg:hover { border-color: #B9472E; }
+.mAttFile { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; height: 36px; padding: 0 10px 0 6px; border: 1px solid #E4DED7; border-radius: 9px; background: #fff; color: #303536; text-decoration: none; font-size: 12.5px; }
+a.mAttFile:hover { border-color: #B9472E; }
+.mAttWait { opacity: .6; }
 
 /* Shared by the popup's form and the small dialogs */
 .go { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -536,6 +562,12 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .mRHead, .mSearch { padding-left: 12px; padding-right: 12px; }
   .mSearch input { height: 44px; font-size: 16px; }
   .mFoot { flex-wrap: wrap; }
+  .mFootL, .mFootR { flex: 1 1 100%; }
+  .mFile { height: 44px; }
+  .mFileBtn { width: 40px; height: 40px; }
+  .mFileName { max-width: 150px; }
+  .mAttImg { width: 96px; height: 96px; }
+  .mAttFile { height: 44px; }
   .mPost { flex: 1 1 100%; height: 46px; }
   .mPop { width: min(300px, calc(100vw - 48px)); }
   .mIcon { width: 44px; height: 44px; }

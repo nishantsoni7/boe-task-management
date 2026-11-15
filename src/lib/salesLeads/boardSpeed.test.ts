@@ -256,12 +256,70 @@ describe('the popup, as approved on the clickable previews (owner, 2026-11-14 an
     assert.ok(/\.stHeat button\[aria-pressed="true"\] \{ background: #303536; color: #fff;/.test(css))
   })
 
+  // Owner, 2026-11-15, on the live popup: "hovering on the selected temperature makes the text invisible".
+  test('the selected Hot / Warm / Cold keeps its charcoal under the mouse (its white words would vanish on the light hover)', () => {
+    assert.ok(css.includes('.stHeat button:hover:not(:disabled):not([aria-pressed="true"]) { background: #FAF8F5; }'))
+    assert.ok(!css.includes('.stHeat button:hover:not(:disabled) {'), 'no hover rule that also reaches the selected one')
+  })
+
+  test('the update box has no date of its own: the follow-up is changed at the top, and posting keeps a date still ahead', () => {
+    const composer = panel.slice(panel.indexOf('function Composer('))
+    assert.ok(!composer.includes('FollowUpMenu') && !composer.includes('Follow up <b>') && !composer.includes('setDue') && !composer.includes('s.mNext'))
+    assert.ok(composer.includes('const due = dueAfterUpdate(lead, work.today)') && composer.includes('nextDue: due'))
+    assert.ok(panel.includes("type Menu = 'status' | 'due' | null"), 'one menu less')
+    assert.ok(composer.includes('<span className={s.mKbd}>Ctrl + Enter</span>'))
+    assert.ok(!css.includes('.mNext'))
+  })
+
   test('the activity card has a count beside its heading, and its days and updates are headings and rows, not bubbles', () => {
     assert.ok(panel.includes('{!filling && <span className={s.mPill}>{detail.activities.length + detail.events.length}</span>}'))
     assert.ok(/\.mDay \{ position: sticky; top: 0;/.test(css))
     assert.ok(/\.mBubble \{ flex: 1; min-width: 0; \}/.test(css), 'no border, fill or corner on an update')
     assert.ok(/\.mEntry \{[^}]*border-bottom: 1px solid #F1EEE9;/.test(css), 'a thin line under each update')
     assert.ok(panel.includes('s.mAvCu'), 'what ClickUp brought has a grey avatar')
+  })
+
+  // Files on an update (owner, 2026-11-15): Attach files, drag and drop, paste.
+  test('the update box takes files by a button, by drag and drop and by paste, and an update of only files says so', () => {
+    const composer = panel.slice(panel.indexOf('function Composer('), panel.indexOf('function KindIcon('))
+    assert.ok(composer.includes('accept={LEAD_FILE_ACCEPT}') && composer.includes('multiple') && composer.includes('picker.current?.click()'), 'Attach files')
+    assert.ok(composer.includes('files.add(Array.from(e.dataTransfer.files))') && composer.includes('onDrop='), 'drop')
+    assert.ok(composer.includes("i.kind === 'file'") && composer.includes('onPaste=') && composer.includes('e.preventDefault()'), 'paste, with no file name pasted as text')
+    assert.ok(composer.includes('note: text.trim() || noteForFiles(files.ready.length)'), 'only files')
+    assert.ok(composer.includes('(text.trim() !== \'\' || withFiles) && !files.uploading && !files.failed && !saving'), 'Post waits for the uploads and for a retry or a removal')
+    assert.ok(composer.includes('files.finish()'), 'a saved update keeps its files')
+  })
+
+  test('each file in the box shows its state and can be tried again or removed; refusals are said in words', () => {
+    const composer = panel.slice(panel.indexOf('function Composer('), panel.indexOf('function KindIcon('))
+    assert.ok(composer.includes('<FileChips items={files.items} onRetry={files.retry} onRemove={files.remove} />') && composer.includes('files.refusal'))
+    const chips = panel.slice(panel.indexOf('export function FileChips('), panel.indexOf('function KindIcon('))
+    assert.ok(chips.includes('onRetry(f.id)') && chips.includes('onRemove(f.id)') && chips.includes('data-status={f.status}'))
+    assert.ok(/\.mDrop \{[^}]*pointer-events: none;/.test(css), 'the drop veil does not catch the mouse')
+    assert.ok(/@media \(prefers-reduced-motion: reduce\) \{ \.mSpin \{ animation: none; \} \}/.test(css))
+  })
+
+  test('the uploads are taken away when they are removed, and when the box goes without posting them', () => {
+    const hook = read('src/components/salesLeads/useLeadFiles.ts')
+    assert.ok(hook.includes('LEAD_FILES_BUCKET') && hook.includes('.upload(path, file, { contentType: type, upsert: false })'))
+    assert.ok(hook.includes('bucket().remove([it.path])'), 'removing a file takes its object out')
+    assert.ok(hook.includes('gone.current.has(id)') && hook.includes('void bucket().remove([path])'), 'removed while uploading: the upload takes its own object away')
+    assert.ok(hook.includes("client.current.storage.from(LEAD_FILES_BUCKET).remove(paths)"), 'the cleanup when the box goes away')
+    assert.ok(hook.includes('compressImageFile(original)') && hook.includes('mapWithConcurrency(fresh, ATTACHMENT_UPLOAD_CONCURRENCY'))
+  })
+
+  test('the files of an update show under its words through links signed once, only for a lead that has files', () => {
+    assert.ok(panel.includes('createSignedUrls(paths, 300)') && panel.includes('enabled: paths.length > 0 && !filling'))
+    assert.ok(panel.includes('{e.files.length > 0 && <FileList files={e.files} links={links} />}'))
+    assert.ok(panel.includes("...e.files.map(f => f.name)"), 'a search finds a file by its name')
+    const list = panel.slice(panel.indexOf('function FileList('))
+    assert.ok(list.includes('canPreview(f.type)') && list.includes('target="_blank" rel="noopener noreferrer"'))
+  })
+
+  test('files go to the database only when there are some, so a plain update works before the migration is applied', () => {
+    const api = read('src/lib/salesLeads/api.ts')
+    assert.ok(api.includes('...(a.files && a.files.length > 0 ? { p_files: a.files } : {})'))
+    assert.ok(api.includes('export type LeadFile =') && api.includes('files?: LeadFile[]'))
   })
 
   test('on a screen every size grows with the height of the window; a narrow window gives the strip two rows and the buttons their own row', () => {
