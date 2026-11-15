@@ -16,7 +16,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import '@/lib/testing/cssModuleStub'
 import { LineRow } from './ProductLine'
 import { saveDoc, type Header } from '@/lib/quotations/api'
-import type { QuoteLine } from '@/lib/quotations/math'
+import type { QuoteArea, QuoteLine } from '@/lib/quotations/math'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const SCREEN = read('src/components/quotations/BuilderScreen.tsx')
@@ -139,21 +139,48 @@ describe('the suggested price: who sees "Why?" (owner, 15 Nov 2026)', () => {
   })
 })
 
-describe('Quantity and Price share one row on wide screens (owner, 15 Nov 2026)', () => {
-  test('the numbers column is Quantity, Price, then the rest, so the two-column rule can place them', () => {
-    const html = draw(line())
-    const right = html.slice(html.indexOf('class="plRight"'))
-    const at = (s: string) => right.indexOf(s)
-    assert.ok(at('<span>Quantity</span>') > 0 && at('<span>Price ₹ before GST</span>') > at('<span>Quantity</span>'), 'Quantity first, then Price')
-    assert.ok(at('Optional') > at('<span>Price ₹ before GST</span>'), 'Optional and the total come after both')
-    // the first two children are the two fields: nothing may be wedged between them
-    assert.match(right, /^class="plRight"><div class="field"><span>Quantity<\/span>[\s\S]*?<\/div><\/div><label class="field"><span>Price ₹ before GST<\/span>/)
+describe('the numbers panel of a product (owner, 15 Nov 2026)', () => {
+  const area: QuoteArea = { key: 'r', name: 'BOHO ROOM', style: '', multiplier: 56, unit_label: 'rooms' }
+  const HINT = { name: 'Bed', ordered: { last: 7300, last_at: '2026-06-01', min: 2650, max: 11550, count: 39 }, quoted: null }
+  const drawWith = (l: QuoteLine, o: { area?: QuoteArea | null; editable?: boolean; hint?: typeof HINT } = {}) => renderToStaticMarkup(
+    <LineRow l={l} area={o.area ?? null} unit="in" editable={o.editable ?? true} qty={2} total={77000} first last url={p => `https://img.example/${p}`} hint={o.hint}
+      onChange={() => {}} onUpload={() => {}} onImprove={() => {}} onView={() => {}} onRemove={() => {}} onMove={() => {}} onDuplicate={() => {}} />)
+  const panel = (html: string) => html.slice(html.indexOf('class="plRight"'))
+
+  test('its parts come in this order: Quantity and Price, the suggestion, then the footer (Optional, the total, the tools, the piece count)', () => {
+    const right = panel(drawWith(line(), { hint: HINT }))
+    const order = ['class="qp"', '<span>Quantity</span>', '<span>Price before GST</span>', 'class="sug"', 'class="plFoot"', 'Optional', '₹77,000', 'aria-label="Move up"', '2 pieces']
+    const at = order.map(p => right.indexOf(p))
+    assert.ok(at.every(i => i >= 0), `every part is drawn: ${order.filter((_, i) => at[i] < 0).join(', ')}`)
+    assert.deepEqual([...at].sort((a, b) => a - b), at, 'in that order')
   })
-  test('from 1200px the column has two tracks (a flexible quantity box and a 116px price box); everything after the first two spans both', () => {
-    assert.match(CSS, /@media \(min-width: 1200px\) \{\s*\.plRight \{ grid-template-columns: minmax\(0, 1fr\) 116px; align-items: end; \}\s*\.plRight > :nth-child\(n\+3\) \{ grid-column: 1 \/ -1; \}\s*\}/)
+  test('Quantity is one box holding the number and its unit; the rupee sign is inside the price box, not in its label', () => {
+    const right = panel(drawWith(line()))
+    assert.match(right, /<div class="qtyBox"><input aria-label="Quantity" class="qtyIn"[^>]*type="number"[^>]*\/><span class="qtyUnit">pieces<\/span><\/div>/)
+    assert.match(right, /<span class="rupeeBox"><span class="rs" aria-hidden="true">₹<\/span><input aria-label="Unit price \(₹, before GST\)" class="rupeeIn"/)
+    assert.ok(!right.includes('Price ₹ before GST'))
   })
-  test('narrower screens keep their own layout: two equal columns under 1200px, one column on a phone', () => {
-    assert.match(CSS, /@media \(max-width: 1199px\) \{[\s\S]*?\.plRight \{ grid-column: 1 \/ -1; grid-template-columns: 1fr 1fr; align-items: start; \}/)
-    assert.match(CSS, /@media \(max-width: 767px\) \{[\s\S]*?\.plRight \{ grid-template-columns: minmax\(0, 1fr\); \}/)
+  test('in a room type the "per room / in total" choice sits in the same box as the number, not in a box of its own', () => {
+    const right = panel(drawWith(line({ area_key: 'r', qty_mode: 'per_unit' }), { area }))
+    assert.match(right, /<div class="qtyBox"><input aria-label="Quantity per room" class="qtyIn"[\s\S]*?<select aria-label="Quantity is" class="qtySel"[\s\S]*?<option value="per_unit"[^>]*>per (?:<!-- -->)?room<\/option><option value="fixed">in total<\/option><\/select><\/div>/)
+    assert.ok(!right.includes('qtyUnit'))
+  })
+  test('the suggestion card is part of the panel only when there is something to suggest, and a locked quotation has no tools', () => {
+    assert.ok(!drawWith(line()).includes('class="sug"'))
+    const locked = panel(drawWith(line(), { editable: false, hint: HINT }))
+    assert.ok(!locked.includes('plTools') && !locked.includes('aria-label="Move up"'), 'no tools')
+    assert.ok(!locked.includes('sugUse'), 'no Use')
+    assert.ok(locked.includes('class="plFoot"') && locked.includes('2 pieces'), 'the footer still shows the total and the count')
+  })
+  test('the panel is a bordered card as tall as the boxes beside it, with its footer at the bottom', () => {
+    assert.match(rule('.plRight'), /display: flex; flex-direction: column;[^}]*align-self: stretch;[^}]*border: 1px solid var\(--boe-border\); border-radius: 12px;/)
+    assert.match(rule('.plFoot'), /margin: auto -12px 0;[^}]*border-radius: 0 0 11px 11px;/)
+    assert.match(rule('.qp'), /grid-template-columns: 150px minmax\(0, 1fr\);/)
+    assert.match(rule('.qtyIn'), /width: 60px;/)
+    assert.ok(!CSS.includes('nth-child(n+3)'), 'the old two-track rule is gone')
+  })
+  test('under 1200 px the panel sits under the boxes, lined up with them (up to 420 px wide); on a phone it is full width with 44 px controls', () => {
+    assert.match(CSS, /@media \(max-width: 1199px\) \{[\s\S]*?\.plRight \{ grid-column: 2; justify-self: start; width: 100%; max-width: 420px; \}/)
+    assert.match(CSS, /@media \(max-width: 767px\) \{[\s\S]*?\.plRight \{ grid-column: 1; justify-self: stretch; max-width: none; \}\s*\.qtyBox, \.rupeeBox \{ height: 44px; \}\s*\.qtyIn, \.rupeeIn, \.qtySel \{ font-size: 16px; \}\s*\.plTools \.iconBtn \{ width: 44px; height: 44px; \}/)
   })
 })

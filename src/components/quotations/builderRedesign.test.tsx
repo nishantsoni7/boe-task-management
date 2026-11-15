@@ -125,7 +125,7 @@ describe('a product line (layout B)', () => {
     assert.match(html, /<textarea[^>]*aria-label="Material"[^>]*rows="3"/)
     assert.match(html, /<textarea[^>]*aria-label="Remarks \/ customization"[^>]*rows="3"/)
     assert.ok(!/Specification and customization|Note for the client|GST rate|aria-label="GST/i.test(html))
-    assert.ok(html.includes('Price ₹ before GST'))
+    assert.ok(html.includes('Price before GST'), 'the rupee sign is drawn inside the price box, not in the label')
   })
   test('the unit sits inside the dimensions box and in its label, and follows the quotation', () => {
     assert.ok(draw(line()).includes('Dimensions (in)'))

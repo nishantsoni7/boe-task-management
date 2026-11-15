@@ -127,10 +127,30 @@ textarea.t3 { min-height: 86px; }
 .unitWrap .input { padding-right: 34px; }
 .unitTag { position: absolute; right: 10px; top: 0; height: 36px; display: flex; align-items: center; font-size: 12px; font-weight: 600; color: var(--boe-text-muted); pointer-events: none; }
 .intNote { background: none; border: 0; padding: 0; font: 600 12.5px var(--boe-font-body); color: var(--boe-brand-ink); cursor: pointer; text-align: left; }
-.plRight { display: grid; gap: 8px; }
-.qtyRow { display: grid; grid-template-columns: 62px minmax(0, 1fr); gap: 6px; }
-.plTotal { text-align: right; font: 700 16px var(--boe-font-body); font-variant-numeric: tabular-nums; }
-.plTools { display: flex; justify-content: flex-end; }
+/* the numbers panel of a product (owner, 15 Nov 2026): Quantity and Price, the suggestion, then a footer band with Optional, the tools, the total and the piece count.
+   It is as tall as the boxes beside it (the footer sits at the bottom of the row), so a product is no taller than it was without the panel. */
+.plRight { display: flex; flex-direction: column; gap: 6px; align-self: stretch; min-width: 0; padding: 10px 12px 0; border: 1px solid var(--boe-border); border-radius: 12px; background: var(--boe-surface); }
+.qp { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; }
+.qtyBox, .rupeeBox { display: flex; align-items: stretch; height: 38px; border: 1px solid var(--boe-border-input); border-radius: var(--boe-radius-control); background: var(--boe-surface); overflow: hidden; }
+.qtyBox:focus-within, .rupeeBox:focus-within { box-shadow: var(--boe-focus-ring); }
+.qtyIn, .rupeeIn { border: 0; outline: 0; background: transparent; min-width: 0; font: 600 14px var(--boe-font-body); font-variant-numeric: tabular-nums; color: var(--boe-text); }
+.qtyIn { flex: none; width: 60px; padding: 0 6px; text-align: right; }
+.qtyUnit { display: flex; align-items: center; flex: 1; padding: 0 10px; border-left: 1px solid var(--boe-border); background: var(--boe-surface-quiet); font: 12.5px var(--boe-font-body); color: var(--boe-text-muted); white-space: nowrap; }
+.qtySel { flex: 1; min-width: 0; padding: 0 2px 0 8px; border: 0; border-left: 1px solid var(--boe-border); outline: 0; background: var(--boe-surface-quiet); font: 12.5px var(--boe-font-body); color: var(--boe-text-strong); }
+.rs { display: flex; align-items: center; padding-left: 8px; font-weight: 600; color: var(--boe-text-muted); }
+.rupeeIn { flex: 1; padding: 0 8px 0 4px; text-align: right; }
+.rupeeIn::placeholder, .qtyIn::placeholder { font-weight: 400; color: var(--boe-text-muted); }
+.qtyIn:disabled, .rupeeIn:disabled, .qtySel:disabled { color: var(--boe-text-muted); }
+.sug { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; padding: 5px 10px; line-height: 1.3; border-radius: 8px; background: var(--boe-surface-quiet); border: 1px solid var(--boe-border); font-size: 12.5px; color: var(--boe-text-strong); }
+.sugRange { color: var(--boe-text-muted); font-size: 12px; }
+.sugAct { display: inline-flex; justify-content: flex-end; }
+.sugUse { height: 20px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--boe-brand); background: #fff; color: var(--boe-brand-ink); font: 600 12px/1 var(--boe-font-body); cursor: pointer; }
+.sugWhy { border: 0; background: none; padding: 0; color: var(--boe-text-muted); font: 600 12px var(--boe-font-body); text-decoration: underline; cursor: pointer; }
+.plFoot { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px; margin: auto -12px 0; padding: 7px 12px; border-top: 1px solid var(--boe-border); background: var(--boe-surface-quiet); border-radius: 0 0 11px 11px; }
+.plTotal { text-align: right; font: 700 18px var(--boe-font-body); font-variant-numeric: tabular-nums; }
+.plPieces { text-align: right; }
+.plTools { display: flex; justify-content: flex-start; margin-left: -6px; }
+.plTools .iconBtn { width: 24px; height: 24px; }
 .optLab { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--boe-text-strong); cursor: pointer; }
 .optLab input { accent-color: var(--boe-brand); width: 16px; height: 16px; }
 
@@ -187,17 +207,11 @@ textarea.t3 { min-height: 86px; }
 .viewerThumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .viewerThumb[aria-current='true'] { border-color: var(--boe-brand); opacity: 1; }
 
-/* wide screens (owner, 15 Nov 2026): Quantity and Price share one row, 172 + 8 + 116 = the 296px column (the quantity box holds the 62px number and the 104px per-room selector); the suggestion, Optional + total and the tools
-   (every child after the first two) take the full width under it. Narrower screens keep their own rules below. */
-@media (min-width: 1200px) {
-  .plRight { grid-template-columns: minmax(0, 1fr) 116px; align-items: end; }
-  .plRight > :nth-child(n+3) { grid-column: 1 / -1; }
-}
-/* narrower screens: the product's numbers go under its boxes */
+/* narrower screens: the product's numbers panel goes under its boxes, lined up with them */
 @media (max-width: 1199px) {
   .clientGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .pl { grid-template-columns: 180px minmax(0, 1fr); }
-  .plRight { grid-column: 1 / -1; grid-template-columns: 1fr 1fr; align-items: start; }
+  .plRight { grid-column: 2; justify-self: start; width: 100%; max-width: 420px; }
 }
 @media (max-width: 900px) {
   .totGrid { grid-template-columns: minmax(0, 1fr); }
@@ -215,7 +229,10 @@ textarea.t3 { min-height: 86px; }
   .plPicBtn, .plPicEmpty { width: 140px; height: 118px; flex-shrink: 0; }
   .plLinks { gap: 6px; } .plLinks .two { flex-direction: column; gap: 6px; }
   .c5, .c7, .c12 { grid-column: span 12; } .c3, .c4 { grid-column: span 6; }
-  .plRight { grid-template-columns: minmax(0, 1fr); }
+  .plRight { grid-column: 1; justify-self: stretch; max-width: none; }
+  .qtyBox, .rupeeBox { height: 44px; }
+  .qtyIn, .rupeeIn, .qtySel { font-size: 16px; }
+  .plTools .iconBtn { width: 44px; height: 44px; }
   .statusBar { padding: 10px 12px; }
   .desktopOnly { display: none; }
   .mobileOnly { display: block; }
