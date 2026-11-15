@@ -180,8 +180,8 @@ let id
   ok('Admin holds view, create and approve; the functions and grants can be applied again')
 }
 
-{ // 20270722000000: the wooden structure as one priced row, with an optional wood share
-  await db.exec(mig('20270722000000_pricing_training_structure.sql'))
+{ // 20270723000000: the wooden structure as one priced row, with an optional wood share
+  await db.exec(mig('20270723000000_pricing_training_structure.sql'))
   const S = { name: 'Arm chair, cane back', lines: [
     { element: 'Wooden structure', kind: 'structure', material: 'Teak', amount: 4200, wood_amount: 1600, reasoning: 'Frame, arms and legs made in one go' },
     { element: 'Cane back', kind: 'material', amount: 650 },

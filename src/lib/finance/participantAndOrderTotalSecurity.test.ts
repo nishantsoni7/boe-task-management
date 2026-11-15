@@ -1295,7 +1295,7 @@ describe('the applied migrations are frozen', () => {
       // Pricing > Training: three closed tables (cases, lines, messages), their SECURITY DEFINER functions, the actions create and approve on pricing (off by default), and the public bucket pricing-training. Nothing existing replaced.
       '20270720000000_pricing_training.sql',
       // Pricing > Training: kind 'structure' and the nullable wood_amount column on pricing_training_lines; pricing_training_save re-created only to store it.
-      '20270722000000_pricing_training_structure.sql',
+      '20270723000000_pricing_training_structure.sql',
     ])
   })
 
@@ -1819,7 +1819,7 @@ describe('the applied migrations are frozen', () => {
       '20270718000000_order_handoff_review_chain.sql',
       '20270719000000_finance_payment_request_tab_counts.sql',
       '20270720000000_pricing_training.sql',
-      '20270722000000_pricing_training_structure.sql',
+      '20270723000000_pricing_training_structure.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
