@@ -1,7 +1,7 @@
 'use client'
 
-// Pricing > Training: every training case, and who is waiting on whom. A case counts only after someone other
-// than its maker approves it (20270720000000).
+// Pricing > Training: every training case and where it stands. Submitting is what makes a case count; anyone who
+// may teach can change any case later, and it then waits to be resubmitted (20270724000000).
 
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -9,19 +9,11 @@ import { Plus } from 'lucide-react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
-import { fetchAccess, fetchCases, photoUrl, trainingKeys, type CaseRow, type Status, type TrainingError } from '@/lib/pricing/training/api'
+import { shortDate, statusLabel } from '@/lib/pricing/training/doc'
+import { fetchAccess, fetchCases, photoUrl, trainingKeys, type CaseRow, type TrainingError } from '@/lib/pricing/training/api'
 import t from './training.module.css'
 
-export const STATUS: Record<Status, { label: string; badge: string }> = {
-  draft: { label: 'Draft', badge: 'boe-badge-pending' },
-  submitted: { label: 'Waiting for a check', badge: 'boe-badge-waiting' },
-  sent_back: { label: 'Sent back', badge: 'boe-badge-blocked' },
-  approved: { label: 'Approved', badge: 'boe-badge-completed' },
-  rejected: { label: 'Rejected', badge: 'boe-badge-pending' },
-}
-export const shortDate = (iso: string) => new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
-
-type Filter = 'all' | 'forme' | 'mine' | 'sent_back' | 'draft' | 'approved'
+type Filter = 'all' | 'draft' | 'changed' | 'submitted'
 
 export function TrainingList() {
   const supabase = useMemo(() => createClient(), [])
@@ -33,13 +25,11 @@ export function TrainingList() {
 
   const is: Record<Filter, (c: CaseRow) => boolean> = {
     all: () => true,
-    forme: c => !!a?.approve && c.status === 'submitted' && c.created_by !== a.uid,
-    mine: c => c.status === 'submitted' && c.created_by === a?.uid,
-    sent_back: c => c.status === 'sent_back',
-    draft: c => c.status === 'draft',
-    approved: c => c.status === 'approved',
+    draft: c => c.status === 'draft' && c.submit_count === 0,
+    changed: c => c.status === 'draft' && c.submit_count > 0,
+    submitted: c => c.status === 'submitted',
   }
-  const FILTERS: [Filter, string][] = [['all', 'All'], ['forme', 'Waiting for me'], ['mine', 'Mine, waiting for a check'], ['sent_back', 'Sent back'], ['draft', 'Drafts'], ['approved', 'Approved']]
+  const FILTERS: [Filter, string][] = [['all', 'All'], ['draft', 'Saved, not submitted'], ['changed', 'Changed, not resubmitted'], ['submitted', 'Submitted']]
   const shown = rows.filter(is[filter])
   const err = (access.error ?? list.error) as TrainingError | null
 
@@ -48,13 +38,13 @@ export function TrainingList() {
       <div className={t.head}>
         <div>
           <h1 className={t.h1}>Training</h1>
-          <p className={t.sub}>Teach the price of one product at a time. Each case is approved before it counts.</p>
+          <p className={t.sub}>Teach the price of one product at a time. A case counts once it is submitted, and can be changed and resubmitted at any time.</p>
         </div>
         {a?.create && <Link href="/pricing/training/new" className="boe-btn boe-btn-primary"><Plus size={16} aria-hidden /> New case</Link>}
       </div>
 
       {err && <div className={`boe-callout ${err.kind === 'not_set_up' ? 'boe-callout-warning' : 'boe-callout-error'}`} role="alert">{err.message}</div>}
-      {a && !a.create && !a.approve && <div className="boe-callout boe-callout-info">You can read the cases. To teach or check them, ask an admin for Create or Approve on Pricing.</div>}
+      {a && !a.create && <div className="boe-callout boe-callout-info">You can read the cases. To teach or change them, ask an admin for Create on Pricing.</div>}
 
       {list.isSuccess && <>
         <div className={t.chips} role="group" aria-label="Filter cases">
@@ -65,7 +55,7 @@ export function TrainingList() {
         {rows.length === 0 ? (
           <div className="boe-empty">
             <div className="boe-empty-title">No cases yet</div>
-            <p>Start with a photo of a product. You list what its price is made of, and it is approved before it counts.</p>
+            <p>Start with a photo of a product. You list what its price is made of, then submit it.</p>
             {a?.create && <Link href="/pricing/training/new" className="boe-btn boe-btn-primary">Teach the first product</Link>}
           </div>
         ) : shown.length === 0 ? (
@@ -91,7 +81,7 @@ export function TrainingList() {
                     <td className={t.muted}>{shortDate(c.updated_at)}</td>
                     <td className="num">{c.line_count}</td>
                     <td className="num"><b>{formatINR(Number(c.total))}</b></td>
-                    <td><span className={`boe-badge ${STATUS[c.status].badge}`}>{is.forme(c) ? 'Waiting for you' : STATUS[c.status].label}</span></td>
+                    <td><span className={`boe-badge ${statusLabel(c).badge}`}>{statusLabel(c).label}</span>{c.submitted_at && <div className={t.muted}>{shortDate(c.submitted_at)}</div>}</td>
                   </tr>
                 ))}
               </tbody>

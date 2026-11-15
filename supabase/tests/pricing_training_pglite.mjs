@@ -198,4 +198,46 @@ let id
   ok('a wooden structure is one priced row; the wood share is optional and never more than the price')
 }
 
+{ // 20270724000000: submitting is what counts, any teacher may change any case, with a history
+  await db.exec(`create table public.employee_permission_overrides (user_id uuid, module_id uuid, action_id uuid, allowed boolean);
+    insert into public.employee_permission_overrides select '${U.checker}', pm.id, pa.id, true from public.permission_modules pm, public.permission_actions pa where pm.module_key = 'pricing' and pa.action_key = 'approve';`)
+  const before = (await db.query(`select status, count(*)::int n from public.pricing_training_cases group by 1`)).rows
+  assert.ok(before.some((r) => r.status === 'approved'), 'the old statuses are there to convert')
+  await db.exec(mig('20270724000000_pricing_training_submit_counts.sql'))
+  const after = (await db.query(`select status, submit_count, count(*)::int n from public.pricing_training_cases group by 1, 2 order by 1, 2`)).rows
+  assert.deepEqual([...new Set(after.map((r) => r.status))].sort(), ['draft', 'submitted'])
+  assert.ok(after.every((r) => (r.status === 'submitted' ? r.submit_count === 1 : true)))
+  assert.equal((await rpc(U.teacher, 'pricing_training_get', id)).status, 'submitted') // it was approved
+  assert.deepEqual(await rpc(U.checker, 'pricing_training_access'), { uid: U.checker, admin: false, create: true })
+  await fails(U.checker, `select public.pricing_training_decide($1, 'approved', null)`, [id], /does not exist/)
+  assert.equal((await db.query(`select count(*)::int n from public.employee_permission_overrides`)).rows[0].n, 0)
+  assert.equal((await db.query(`select count(*)::int n from public.module_permission_actions mpa join public.permission_actions pa on pa.id = mpa.action_id where pa.action_key = 'approve'`)).rows[0].n, 0)
+
+  // a new case: saved, submitted, nothing to resubmit, changed by somebody else, resubmitted
+  const nid = await rpc(U.teacher, 'pricing_training_save', null, DOC)
+  let c = await rpc(U.teacher, 'pricing_training_get', nid)
+  assert.equal(c.status, 'draft'); assert.equal(c.submit_count, 0); assert.equal(c.may_edit, true)
+  await rpc(U.teacher, 'pricing_training_submit', nid)
+  c = await rpc(U.viewer, 'pricing_training_get', nid)
+  assert.equal(c.status, 'submitted'); assert.equal(c.submit_count, 1); assert.equal(c.submitted_by_name, 'Teacher'); assert.equal(c.may_edit, false)
+  await fails(U.teacher, 'select public.pricing_training_submit($1)', [nid], /nothing has changed/)
+  await rpc(U.checker, 'pricing_training_save', nid, { ...DOC, lines: [{ element: 'Wooden structure', kind: 'structure', amount: 4500, wood_amount: 1700 }] })
+  c = await rpc(U.teacher, 'pricing_training_get', nid)
+  assert.equal(c.status, 'draft'); assert.equal(c.submit_count, 1); assert.equal(c.updated_by_name, 'Checker'); assert.ok(c.submitted_at)
+  await rpc(U.checker, 'pricing_training_submit', nid)
+  c = await rpc(U.teacher, 'pricing_training_get', nid)
+  assert.equal(c.status, 'submitted'); assert.equal(c.submit_count, 2); assert.equal(c.submitted_by_name, 'Checker')
+  assert.deepEqual(c.events.map((e) => e.what).sort(), ['saved', 'saved', 'submitted', 'submitted'])
+  assert.ok(c.events.some((e) => e.what === 'submitted' && Number(e.total) === 4500 && e.created_by_name === 'Checker'))
+  const row = (await rpc(U.viewer, 'pricing_training_list')).find((r) => r.id === nid)
+  assert.equal(row.submit_count, 2); assert.equal(row.submitted_by_name, 'Checker')
+  await fails(U.viewer, 'select public.pricing_training_save($1, $2)', [nid, DOC], /PRICING_TRAINING_FORBIDDEN/)
+  await fails(U.viewer, 'select public.pricing_training_submit($1)', [nid], /PRICING_TRAINING_FORBIDDEN/)
+  await fails(U.viewer, 'select public.pricing_training_message($1, $2)', [nid, 'hello'], /PRICING_TRAINING_FORBIDDEN/)
+  const blank = await rpc(U.teacher, 'pricing_training_save', null, { name: 'Empty', lines: [] })
+  await fails(U.teacher, 'select public.pricing_training_submit($1)', [blank], /at least one element/)
+  await fails(U.teacher, 'select * from public.pricing_training_events', [], /permission denied/)
+  ok('submit is what counts: old statuses converted, anyone who teaches may change and resubmit any case, with a history')
+}
+
 console.log(`all ${checks} checks passed`)

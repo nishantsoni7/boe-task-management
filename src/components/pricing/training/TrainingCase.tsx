@@ -1,7 +1,8 @@
 'use client'
 
 // Pricing > Training: one case. Its maker uploads a photo, corrects what was read from it, lists every element of
-// the price in their own way and sends it for checking; a person holding Approve (the owner or Nitish) approves it, sends it back or rejects it.
+// the price in their own way and submits it. Submitting is what makes a case count; anyone who may teach can change any
+// case later, and it then waits to be resubmitted.
 // Nothing here sets a price anywhere (20270720000000).
 
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -12,9 +13,8 @@ import { AppLink as Link } from '@/components/ui/AppLink'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
-import { KINDS, KIND_LABEL, emptyForm, emptyLine, lineAmount, num, parseReading, problems, readingToLines, structureRest, toLine, totals, usesQuantity, type CaseForm, type Kind, type Line } from '@/lib/pricing/training/doc'
-import { decideCase, fetchAccess, fetchCase, photoUrl, readPhoto, saveCase, sendMessage, submitCase, trainingKeys, uploadPhoto, type TrainingError } from '@/lib/pricing/training/api'
-import { STATUS, shortDate } from './TrainingList'
+import { KINDS, KIND_LABEL, emptyForm, emptyLine, lineAmount, num, parseReading, problems, readingToLines, shortDate, statusLabel, statusText, structureRest, toLine, totals, usesQuantity, type CaseForm, type Kind, type Line } from '@/lib/pricing/training/doc'
+import { fetchAccess, fetchCase, photoUrl, readPhoto, saveCase, sendMessage, submitCase, trainingKeys, uploadPhoto, type TrainingError } from '@/lib/pricing/training/api'
 import t from './training.module.css'
 
 const str = (v: number | null) => (v === null || v === undefined ? '' : String(Number(v)))
@@ -37,7 +37,6 @@ export function TrainingCase() {
   const [notice, setNotice] = useState('')
   const [issues, setIssues] = useState<string[]>([])
   const [removed, setRemoved] = useState<{ line: Line; at: number } | null>(null)
-  const [note, setNote] = useState('')
   const [reply, setReply] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -117,20 +116,8 @@ export function TrainingCase() {
       setDirty(false)
       await qc.invalidateQueries({ queryKey: trainingKeys.list })
       await qc.invalidateQueries({ queryKey: trainingKeys.one(id) })
-      if (send) router.push('/pricing/training')
-      else if (isNew) router.replace(`/pricing/training/${id}`)
-      else setNotice('Saved.')
-    } catch (e) { fail(e) } finally { setBusy('') }
-  }
-
-  async function decide(decision: 'approved' | 'sent_back' | 'rejected') {
-    setError('')
-    if (decision !== 'approved' && !note.trim()) { setError('Write a note saying what should change.'); return }
-    setBusy('decide')
-    try {
-      await decideCase(supabase, routeId, decision, note.trim())
-      await qc.invalidateQueries({ queryKey: trainingKeys.list })
-      router.push('/pricing/training')
+      if (isNew) router.replace(`/pricing/training/${id}`)
+      else setNotice(send ? 'Submitted to the price estimator.' : 'Saved. Submit it when the prices are right.')
     } catch (e) { fail(e) } finally { setBusy('') }
   }
 
@@ -146,7 +133,8 @@ export function TrainingCase() {
   if (isNew && a && !a.create) return <div className={t.wrap}><div className="boe-callout boe-callout-info">To teach a case, ask an admin for Create on Pricing.</div></div>
 
   const reading = form.ai_reading
-  const status = c?.status ?? 'draft'
+  const badge = statusLabel(c ?? { status: 'draft', submit_count: 0 })
+  const unchanged = !!c && c.status === 'submitted' && !dirty
 
   return (
     <div className={t.wrap}>
@@ -155,16 +143,13 @@ export function TrainingCase() {
           <Link href="/pricing/training" className="boe-btn boe-btn-secondary" aria-label="Back to Training"><ArrowLeft size={16} aria-hidden /></Link>
           <div>
             <h1 className={t.h1}>{isNew ? 'New case' : form.name || 'Case'}</h1>
-            <p className={t.sub}>{c ? `#${c.case_no} · taught by ${c.created_by === a?.uid ? 'you' : c.created_by_name ?? 'someone'} · ${shortDate(c.created_at)}` : 'A photo, then what the price is made of, then send it for checking.'}</p>
+            <p className={t.sub}>{c ? `#${c.case_no} · taught by ${c.created_by === a?.uid ? 'you' : c.created_by_name ?? 'someone'} · ${shortDate(c.created_at)}` : 'A photo, then what the price is made of, then submit it.'}</p>
           </div>
         </div>
-        <span className={`boe-badge ${STATUS[status].badge}`}>{c?.may_decide ? 'Waiting for you' : STATUS[status].label}</span>
+        <span className={`boe-badge ${badge.badge}`}>{dirty ? 'Changes not saved' : badge.label}</span>
       </div>
 
-      {c?.status === 'sent_back' && c.decision_note && <div className="boe-callout boe-callout-warning" role="status"><div><span className="boe-callout-title">Sent back by {c.decided_by_name ?? 'the checker'}</span>{c.decision_note}</div></div>}
-      {c?.status === 'rejected' && <div className="boe-callout boe-callout-error" role="status"><div><span className="boe-callout-title">Rejected by {c.decided_by_name ?? 'the checker'}</span>{c.decision_note}</div></div>}
-      {c?.status === 'approved' && <div className="boe-callout boe-callout-success" role="status">Approved by {c.decided_by_name ?? 'the checker'}{c.decided_at ? ` on ${shortDate(c.decided_at)}` : ''}. It is now part of the record the price logic will be built from.</div>}
-      {c?.status === 'submitted' && c.created_by === a?.uid && !c.may_decide && <div className="boe-callout boe-callout-info" role="status">Sent for checking. It waits for someone who may approve cases.</div>}
+      {c && <div className={`boe-callout ${c.status === 'submitted' && !dirty ? 'boe-callout-success' : 'boe-callout-info'}`} role="status">{dirty ? `You have changes that are not saved yet. ${c.submit_count > 0 ? 'After saving, resubmit so the estimator uses the new prices.' : ''}` : statusText(c)}</div>}
       {error && <div className="boe-callout boe-callout-error" role="alert">{error}</div>}
       {notice && <div className="boe-callout boe-callout-info" role="status">{notice}</div>}
       {issues.length > 0 && <div className="boe-callout boe-callout-warning" role="alert"><div><span className="boe-callout-title">Fix these first</span><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{issues.map(x => <li key={x}>{x}</li>)}</ul></div></div>}
@@ -253,27 +238,13 @@ export function TrainingCase() {
         </div>
       </div>
 
-      {c?.may_decide && (
-        <div className={t.card}>
-          <div className={t.cardH}>Your decision</div>
-          <div className={t.cardB}>
-            <label className={t.field}><span className="boe-input-label">Note (needed if you send it back or reject it)</span><textarea className="boe-input" rows={2} value={note} onChange={e => setNote(e.target.value)} placeholder="What should change?" maxLength={2000} /></label>
-            <div className={t.row}>
-              <button type="button" className="boe-btn boe-btn-primary" disabled={busy !== ''} onClick={() => decide('approved')}>Approve</button>
-              <button type="button" className="boe-btn boe-btn-secondary" disabled={busy !== ''} onClick={() => decide('sent_back')}>Send back with a note</button>
-              <button type="button" className="boe-btn boe-btn-danger" disabled={busy !== ''} onClick={() => decide('rejected')}>Reject</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {c && (
         <div className={t.card}>
           <div className={t.cardH}>Questions and answers</div>
           <div className={t.cardB}>
             {c.messages.length === 0 && <p className={t.muted} style={{ margin: 0 }}>Nothing asked yet. Ask about a number here instead of on the phone, so the answer stays with the case.</p>}
             <div>{c.messages.map(m => <div key={m.id} className={t.msg}><span><b>{m.created_by === a?.uid ? 'You' : m.created_by_name ?? 'Someone'}</b> <span className={t.muted}>{shortDate(m.created_at)}</span></span><span>{m.body}</span></div>)}</div>
-            {(a?.create || a?.approve) && <div className={t.row}>
+            {a?.create && <div className={t.row}>
               <input className="boe-input" style={{ flex: 1, minWidth: 180 }} value={reply} onChange={e => setReply(e.target.value)} placeholder="Write a question or an answer" aria-label="Message" maxLength={2000} onKeyDown={e => { if (e.key === 'Enter') post() }} />
               <button type="button" className="boe-btn boe-btn-secondary" disabled={busy !== '' || !reply.trim()} onClick={post}><Send size={16} aria-hidden /> Send</button>
             </div>}
@@ -281,12 +252,21 @@ export function TrainingCase() {
         </div>
       )}
 
+      {c && c.events.length > 0 && (
+        <div className={t.card}>
+          <div className={t.cardH}>History</div>
+          <div className={t.cardB}>
+            <div>{c.events.map((e, i) => <div key={i} className={t.msg}><span><b>{e.what === 'submitted' ? 'Submitted' : 'Saved'}</b> by {e.created_by === a?.uid ? 'you' : e.created_by_name ?? 'someone'} <span className={t.muted}>{shortDate(e.created_at)} · total {formatINR(Number(e.total))}</span></span></div>)}</div>
+          </div>
+        </div>
+      )}
+
       {editable && (
         <div className={t.foot}>
-          <span className={t.muted}>{dirty ? 'Changes not saved yet.' : isNew ? 'Nothing saved yet.' : 'All changes saved.'}</span>
+          <span className={t.muted}>{dirty ? 'Changes not saved yet.' : c ? statusText(c) : 'Nothing saved yet.'}</span>
           <span className={t.spacer} />
-          <button type="button" className="boe-btn boe-btn-secondary" disabled={busy !== ''} onClick={() => save(false)}>{busy === 'save' ? 'Saving…' : 'Save draft'}</button>
-          <button type="button" className="boe-btn boe-btn-primary" disabled={busy !== ''} onClick={() => save(true)}><Send size={16} aria-hidden /> {busy === 'send' ? 'Sending…' : 'Send for checking'}</button>
+          <button type="button" className="boe-btn boe-btn-secondary" disabled={busy !== ''} onClick={() => save(false)}>{busy === 'save' ? 'Saving…' : 'Save'}</button>
+          <button type="button" className="boe-btn boe-btn-primary" disabled={busy !== '' || unchanged} title={unchanged ? 'Nothing has changed since it was submitted' : undefined} onClick={() => save(true)}><Send size={16} aria-hidden /> {busy === 'send' ? 'Submitting…' : c && c.submit_count > 0 ? 'Resubmit to the price estimator' : 'Submit to the price estimator'}</button>
         </div>
       )}
     </div>

@@ -527,8 +527,6 @@ registerModule({
     { actionKey: 'view', displayName: 'View' },
     // Training (20270720000000): teach a case, i.e. list what a product's price is made of and send it for checking.
     { actionKey: 'create', displayName: 'Create' },
-    // Training: check a case (approve, send back or reject), the checker's own included.
-    { actionKey: 'approve', displayName: 'Approve' },
   ],
 })
 

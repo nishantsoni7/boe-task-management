@@ -5,18 +5,19 @@
 
 ## Snapshot
 
-- Commit: `a1121fba` — Changelog: one proof line for Start from a client file (left twice by the rebase)
-- Commits on this branch: 1401
+- Commit: `9e3cda01` — Merge origin/main into feat/training-submit-counts (changelog: both entries kept; inventory regenerated)
+- Commits on this branch: 1402
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
-- Migrations: 464 (first `20260530_create_positions.sql`, latest `20270723000000_pricing_training_structure.sql`)
-- Tables ever created: 259 (dropped at some point: 8)   SQL functions: 1049   Enums: 0
+- Migrations: 465 (first `20260530_create_positions.sql`, latest `20270724000000_pricing_training_submit_counts.sql`)
+- Tables ever created: 260 (dropped at some point: 8)   SQL functions: 1049   Enums: 0
 - Test files: 870   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `a1121fba` 2026-11-15 Changelog: one proof line for Start from a client file (left twice by the rebase)
-- `0caee6bc` 2026-11-15 Quotations scan: the shared structured-output helper, real-file results, migration ledger
-- `d7cc469b` 2026-11-15 Quotations: Start from a client file (migration 20270721000000, apply before merge)
+- `9e3cda01` 2026-11-16 Merge origin/main into feat/training-submit-counts (changelog: both entries kept; inventory regenerated)
+- `85b2e7e3` 2026-11-16 Pricing Training: submitting is what counts, and a case can always be changed (migration 20270724000000, apply before merge)
+- `17a37990` 2026-11-16 Quotations: Start from a client file, read any requirement file into rooms, products and pictures (migration 20270721000000, apply before merge) (#835)
+- `f37ad21e` 2026-11-15 Docs: stamp #830 (AI calls use structured output) as merged 475569ea, deployed 21:46 IST (no SQL) (#831)
 - `0d8f051e` 2026-11-15 Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live (#840)
 - `ca8348f3` 2026-11-15 Docs: stamp the Training wooden structure change (#838) as merged 679f1306, deployed 23:26 IST, migration 20270723000000 applied (no SQL) (#841)
 - `679f1306` 2026-11-15 Pricing Training: the wooden structure is one priced row, with an optional wood share (migration 20270723000000, already applied) (#838)
@@ -38,7 +39,6 @@
 - `f1b7ea2e` 2026-11-15 Control Center: Home and six areas, a searchable directory, no tabs, no pending work (no SQL) (#816)
 - `6d0d0700` 2026-11-15 Docs: stamp #819 (the lead popup's left side with room) as merged d8a02296, deployed 16:44 IST, verified live (no SQL) (#820)
 - `d7d0ae9f` 2026-11-15 Pending work shows on its module's dashboard: change requests on Orders, money to allocate on Finance (no SQL) (#818)
-- `d8a02296` 2026-11-15 Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL) (#819)
 
 ## Pages by top-level area
 
@@ -444,6 +444,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `pricing_learning_lines` — 20270715000000
 - `pricing_learning_pis` — 20270715000000
 - `pricing_training_cases` — 20270720000000
+- `pricing_training_events` — 20270724000000
 - `pricing_training_lines` — 20270720000000
 - `pricing_training_messages` — 20270720000000
 - `push_preferences` — 20270425000000
@@ -505,7 +506,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270619000000_order_handoff_send_to_sales.sql`
 - `20270620000000_pricing_price_book.sql`
 - `20270621000000_pricing_model_v2.sql`
 - `20270622000000_day_close.sql`
@@ -535,6 +535,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270721000000_quotation_line_reference_images.sql`
 - `20270722000000_sales_lead_attachments.sql`
 - `20270723000000_pricing_training_structure.sql`
+- `20270724000000_pricing_training_submit_counts.sql`
 
 ## All SQL function names
 

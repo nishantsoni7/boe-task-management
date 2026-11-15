@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { emptyForm, emptyLine, lineAmount, num, parseReading, problems, readingToLines, saveDoc, structureRest, toLine, totals, type Line } from './doc'
+import { emptyForm, emptyLine, lineAmount, num, parseReading, problems, readingToLines, saveDoc, statusLabel, statusText, structureRest, toLine, totals, type Line } from './doc'
 import { PRODUCT_SYSTEM_PROMPT, PRODUCT_TOOL } from './readPrompt'
 
 const line = (p: Partial<Line>): Line => ({ ...emptyLine(), ...p })
@@ -86,6 +86,25 @@ describe('the wooden structure is one priced row', () => {
     assert.match(PRODUCT_SYSTEM_PROMPT, /only when it is visibly a different material/)
     const rows = readingToLines(parseReading({ category: 'Arm chair', confidence: 90, materials: [{ part: 'Wooden structure', material: 'Teak or sheesham', note: 'Frame, arms, legs', confidence: 40 }, { part: 'Back', material: 'Cane', confidence: 80 }] })!)
     assert.deepEqual(rows.map(r => r.kind), ['structure', 'material'])
+  })
+})
+
+describe('where a case stands', () => {
+  const base = { status: 'draft', submit_count: 0, submitted_at: null, submitted_by_name: null, updated_at: '2026-11-15T12:00:00Z', updated_by_name: 'Owner' }
+  test('saved, submitted, changed after submitting, resubmitted', () => {
+    assert.equal(statusText(base), 'Price saved, not submitted.')
+    assert.equal(statusText({ ...base, status: 'submitted', submit_count: 1, submitted_at: '2026-11-15T13:00:00Z', submitted_by_name: 'Owner' }), 'Price submitted on 15 Nov by Owner.')
+    assert.equal(statusText({ ...base, submit_count: 1, submitted_at: '2026-11-15T13:00:00Z', updated_at: '2026-11-17T05:00:00Z', updated_by_name: 'Nitish' }), 'Price changed on 17 Nov by Nitish, not resubmitted. Last submitted on 15 Nov.')
+    assert.equal(statusText({ ...base, status: 'submitted', submit_count: 3, submitted_at: '2026-11-18T05:00:00Z', submitted_by_name: 'Nitish' }), 'Price resubmitted on 18 Nov by Nitish (submitted 3 times).')
+    assert.equal(statusText({ ...base, status: 'submitted', submit_count: 1, submitted_at: '2026-11-15T20:00:00Z' }), 'Price submitted on 16 Nov.') // 1:30 am IST is the next day
+  })
+  test('the badge follows the same four states', () => {
+    assert.deepEqual([statusLabel({ status: 'draft', submit_count: 0 }).label, statusLabel({ status: 'submitted', submit_count: 1 }).label, statusLabel({ status: 'draft', submit_count: 2 }).label, statusLabel({ status: 'submitted', submit_count: 2 }).label],
+      ['Saved, not submitted', 'Submitted', 'Changed, not resubmitted', 'Resubmitted'])
+  })
+  test('the screens no longer offer approve, send back or reject', () => {
+    for (const f of ['TrainingCase.tsx', 'TrainingList.tsx']) assert.doesNotMatch(readFileSync(`src/components/pricing/training/${f}`, 'utf8'), /decideCase|may_decide|Send back|Reject|Approve/, f)
+    assert.doesNotMatch(readFileSync('src/lib/pricing/training/api.ts', 'utf8'), /pricing_training_decide/)
   })
 })
 

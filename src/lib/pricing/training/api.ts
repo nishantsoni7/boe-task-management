@@ -8,12 +8,13 @@ type Supabase = ReturnType<typeof createClient>
 export const TRAINING_BUCKET = 'pricing-training'
 export const trainingKeys = { access: ['pricing', 'training', 'access'] as const, list: ['pricing', 'training', 'list'] as const, one: (id: string) => ['pricing', 'training', 'case', id] as const }
 
-export type Status = 'draft' | 'submitted' | 'sent_back' | 'approved' | 'rejected'
-export type Access = { uid: string; admin: boolean; create: boolean; approve: boolean }
-export type CaseRow = { id: string; case_no: number; name: string; variant: string | null; status: Status; image_path: string | null; created_by: string; created_by_name: string | null; decided_by_name: string | null; created_at: string; updated_at: string; total: number; line_count: number; sold_price: number | null }
+export type Status = 'draft' | 'submitted'
+export type Access = { uid: string; admin: boolean; create: boolean }
+export type CaseRow = { id: string; case_no: number; name: string; variant: string | null; status: Status; image_path: string | null; created_by: string; created_by_name: string | null; submitted_by_name: string | null; submit_count: number; submitted_at: string | null; created_at: string; updated_at: string; total: number; line_count: number; sold_price: number | null }
 export type SavedLine = { element: string; kind: string; material: string | null; quantity: number | null; unit: string | null; rate: number | null; amount: number; reasoning: string | null; from_ai: boolean; wood_amount: number | null }
 export type Message = { id: string; body: string; created_at: string; created_by: string; created_by_name: string | null }
-export type CaseFull = Omit<CaseRow, 'total' | 'line_count'> & { width_in: number | null; depth_in: number | null; height_in: number | null; notes: string | null; ai_reading: unknown; decision_note: string | null; decided_at: string | null; submitted_at: string | null; may_edit: boolean; may_decide: boolean; lines: SavedLine[]; messages: Message[] }
+export type CaseEvent = { what: 'saved' | 'submitted'; created_at: string; created_by: string; created_by_name: string | null; total: number }
+export type CaseFull = Omit<CaseRow, 'total' | 'line_count'> & { width_in: number | null; depth_in: number | null; height_in: number | null; notes: string | null; ai_reading: unknown; updated_by_name: string | null; may_edit: boolean; lines: SavedLine[]; messages: Message[]; events: CaseEvent[] }
 
 export class TrainingError extends Error {
   constructor(public kind: 'not_set_up' | 'forbidden' | 'invalid' | 'locked' | 'not_found' | 'network' | 'unknown', message: string) { super(message) }
@@ -43,7 +44,7 @@ export const fetchCases = (s: Supabase) => call<CaseRow[]>(() => s.rpc('pricing_
 export const fetchCase = (s: Supabase, id: string) => call<CaseFull>(() => s.rpc('pricing_training_get', { p_id: id }))
 export const saveCase = (s: Supabase, id: string | null, form: CaseForm, lines: readonly Line[]) => call<string>(() => s.rpc('pricing_training_save', { p_id: id, p_doc: saveDoc(form, lines) }))
 export const submitCase = (s: Supabase, id: string) => call<null>(() => s.rpc('pricing_training_submit', { p_id: id }))
-export const decideCase = (s: Supabase, id: string, decision: 'approved' | 'sent_back' | 'rejected', note: string) => call<null>(() => s.rpc('pricing_training_decide', { p_id: id, p_decision: decision, p_note: note || null }))
+
 export const sendMessage = (s: Supabase, id: string, body: string) => call<string>(() => s.rpc('pricing_training_message', { p_id: id, p_body: body }))
 
 export const photoUrl = (s: Supabase, path: string) => s.storage.from(TRAINING_BUCKET).getPublicUrl(path).data.publicUrl
