@@ -12,10 +12,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Plus, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { callerModulePermissions, callerProfile } from '@/hooks/queries/usePermissionContext'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities, type OrdersCapabilities } from '@/lib/permissions/orders'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { formatPaise } from '@/lib/orders/paymentPlan'
 import { ORDER_FILES_BUCKET } from '@/lib/orders/draftsView'
 import { PI_MAX_WORKBOOK_BYTES } from '@/lib/pi/workbookReader'
@@ -38,6 +38,7 @@ const money = (v: number | null) => (v === null ? '—' : formatPaise(Math.round
 export default function BdpiListPage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [caps, setCaps] = useState<OrdersCapabilities | null>(null)
   const [rows, setRows] = useState<Row[] | null>(null)
@@ -72,9 +73,11 @@ export default function BdpiListPage() {
     void (async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
+      // Profile and Orders permissions come from what the Orders guard just read when under 30 s old
+      // (callerProfile / callerModulePermissions, 2026-11-15): two requests fewer beside this page's own.
       const [me, perms] = await Promise.all([
-        supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
-        getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
+        callerProfile(qc, session.user.id).then(data => ({ data })),
+        callerModulePermissions(qc, supabase, session.user.id, 'orders'),
       ])
       if (!live) return
       const meRow = me.data as UserProfile | null
@@ -84,7 +87,7 @@ export default function BdpiListPage() {
       if (c.canViewPaymentPlan) await load()
     })()
     return () => { live = false }
-  }, [supabase, router, load])
+  }, [supabase, qc, router, load])
 
   // A PI is up to 10 MiB and a serverless request body is 4.5 MB, so the file
   // goes straight to private storage and the server reads it there (two calls).

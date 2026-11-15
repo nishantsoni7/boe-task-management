@@ -5,11 +5,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
 import { colors } from '@/lib/tokens'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import type { UserProfile } from '@/lib/types'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import {
   FilterChip,
   FinanceEmpty,
@@ -353,6 +354,7 @@ export default function AllOrdersPage() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const supabase     = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   const loadAwaitingOps = async () => {
     const { data, error } = await supabase
@@ -475,12 +477,10 @@ export default function AllOrdersPage() {
       // The list is scoped by RLS, not by the role being read beside it, so
       // waiting for one before starting the other bought nothing but a second
       // round trip. Neither query changed.
+      // Profile and Orders permissions come from what the Orders guard just read when under 30 s old
+      // (callerProfile / callerModulePermissions, 2026-11-15): one request fewer beside this page's own.
       const [{ data: me }] = await Promise.all([
-        supabase
-          .from('users')
-          .select(USER_PROFILE_COLUMNS)
-          .eq('id', session.user.id)
-          .single(),
+        callerProfile(qc, session.user.id).then(data => ({ data })),
         loadOrders(),
         // Alongside, never after: the badge depends on neither of the other
         // two, and a third round trip in series would delay the whole table

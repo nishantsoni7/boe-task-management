@@ -9,10 +9,10 @@ import { useEffect, useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { callerModulePermissions, callerProfile } from '@/hooks/queries/usePermissionContext'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
-import { getEffectivePermissions } from '@/lib/permissions/resolver'
 import { deriveOrdersCapabilities, type OrdersCapabilities } from '@/lib/permissions/orders'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import type { UserProfile } from '@/lib/types'
 import OrderPaymentPlan from '../../[id]/OrderPaymentPlan'
 
@@ -24,6 +24,7 @@ export default function BdpiPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [caps, setCaps] = useState<OrdersCapabilities | null>(null)
   const [head, setHead] = useState<Head | null>(null)
@@ -36,9 +37,11 @@ export default function BdpiPage() {
     void (async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
+      // Profile and Orders permissions come from what the Orders guard just read when under 30 s old
+      // (callerProfile / callerModulePermissions, 2026-11-15): two requests fewer beside this page's own.
       const [me, perms, read] = await Promise.all([
-        supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
-        getEffectivePermissions(supabase, session.user.id, 'orders').catch(() => []),
+        callerProfile(qc, session.user.id).then(data => ({ data })),
+        callerModulePermissions(qc, supabase, session.user.id, 'orders'),
         supabase.rpc('bdpi_payment_plan_read', { p_bdpi_id: id }),
       ])
       if (!live) return
@@ -53,7 +56,7 @@ export default function BdpiPage() {
       }
     })()
     return () => { live = false }
-  }, [supabase, id, router])
+  }, [supabase, qc, id, router])
 
   const remove = async () => {
     setProblem(null)

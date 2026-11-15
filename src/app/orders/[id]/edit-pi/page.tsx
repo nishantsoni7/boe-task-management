@@ -14,6 +14,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useQueryClient } from '@tanstack/react-query'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
 import { EDIT_PI_LABEL, PiEditor } from '@/components/orders/PiEditor'
 import { EDIT_PI_BLOCKED_NOTE, isOpenRevision } from '@/components/orders/PiVersionsPanel'
@@ -21,7 +23,6 @@ import { useOrderDocumentSubmissions } from '../OrderDocumentSubmissions'
 import { absenceLine, supportingRow } from '@/lib/orders/orderDocumentSubmissions'
 import { editPiReturnHref } from '@/lib/orders/editPiPage'
 import { notifyPiSubmission } from '@/lib/notify'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import type { UserProfile } from '@/lib/types'
 
 type OrderRow = {
@@ -51,6 +52,7 @@ export default function EditOrderPiPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [access, setAccess] = useState<Access>({ kind: 'loading' })
 
@@ -59,8 +61,10 @@ export default function EditOrderPiPage() {
     void (async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
+      // Profile and Orders permissions come from what the Orders guard just read when under 30 s old
+      // (callerProfile / callerModulePermissions, 2026-11-15): one request fewer beside this page's own.
       const [me, orderRes, may] = await Promise.all([
-        supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single(),
+        callerProfile(qc, session.user.id).then(data => ({ data })),
         supabase.from('orders').select('id, display_number, client_name, status, source_order_submission_id').eq('id', id).maybeSingle(),
         supabase.rpc('can_propose_order_pi_edit', { p_order_id: id }),
       ])
@@ -82,7 +86,7 @@ export default function EditOrderPiPage() {
       setAccess({ kind: 'ready', order, submissionId: order.source_order_submission_id })
     })()
     return () => { live = false }
-  }, [supabase, id, router])
+  }, [supabase, qc, id, router])
 
   const ready = access.kind === 'ready' ? access : null
   const docs = useOrderDocumentSubmissions(supabase, ready?.order.id ?? null, ready?.submissionId ?? null)
