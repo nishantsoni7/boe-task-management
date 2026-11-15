@@ -183,6 +183,28 @@ describe('many products', () => {
   })
 })
 
+describe('a product with no picture, and what counts as a room (render of 14 Nov 2026)', () => {
+  test('a product with no picture prints its text only, with no empty frame; one with a picture keeps its frame', () => {
+    const none = html(doc({ lines: [L(1, 'a', 'Wardrobe', { image_path: null })] }))
+    assert.ok(!none.includes('class="ph"'), 'no empty white frame')
+    assert.ok(plain(none).includes('Wardrobe') && plain(none).includes('Ash wood'), 'the text is all there')
+    assert.ok(html(doc({ lines: [L(1, 'a', 'Wardrobe')] })).includes('class="ph"'), 'a picture keeps its frame')
+  })
+  test('the frame is drawn only around a picture: in the source, not as an always-present box with a conditional inside', () => {
+    assert.match(read('src/components/quotations/QuotationDocument.tsx'), /\{l\.image_path \? <div className=\{d\.ph\}><Pic /)
+  })
+  test('a Lobby and Restaurant on the unit "area" is not a room: the headline says forty-six rooms, not forty-seven', () => {
+    const areas: QuoteArea[] = [
+      { key: 'a', name: 'Deluxe Room', style: 'Heritage', multiplier: 40, unit_label: 'rooms' },
+      { key: 'b', name: 'Suite', style: 'Heritage', multiplier: 6, unit_label: 'rooms' },
+      { key: 'c', name: 'Lobby and Restaurant', style: '', multiplier: 1, unit_label: 'area' },
+    ]
+    const t = plain(html(doc({ areas, lines: [L(1, 'a', 'Bed'), L(2, 'b', 'Sofa'), L(3, 'c', 'Reception counter')], project_type: 'resort', lead_time_weeks: 14 })))
+    assert.ok(t.includes('Forty-six rooms'), 'the headline')
+    assert.ok(!t.includes('Forty-seven'))
+  })
+})
+
 describe('print and the saved PDF', () => {
   test('the sheet is A4 on paper, with no page margin, backgrounds kept, and one sheet per page', () => {
     for (const x of ['@page { size: A4; margin: 0; }', 'print-color-adjust: exact', 'width: 210mm', 'break-before: page']) assert.ok(CSS.includes(x), x)

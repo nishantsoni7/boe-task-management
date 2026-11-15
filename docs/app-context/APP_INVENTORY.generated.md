@@ -5,26 +5,30 @@
 
 ## Snapshot
 
-- Commit: `ef3d79c5` — Merge remote-tracking branch 'origin/main' into docs/stamp-lead-popup-793
-- Commits on this branch: 1356
+- Commit: `f38ebcc7` — Merge origin/main into fix/quotation-document-layout (fifth time)
+- Commits on this branch: 1360
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
-- Test files: 855   Next.js 16.2.6, React 19.2.4
+- Test files: 856   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `ef3d79c5` 2026-11-15 Merge remote-tracking branch 'origin/main' into docs/stamp-lead-popup-793
-- `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
-- `be08067b` 2026-11-15 Docs: stamp #793 (lead popup banner and list) as merged a781646e, deployed 08:59 IST, string-verified live (no SQL)
+- `f38ebcc7` 2026-11-15 Merge origin/main into fix/quotation-document-layout (fifth time)
 - `a781646e` 2026-11-15 Sales: lead popup left side gets a next-step banner and one About this client list (no SQL) (#793)
 - `1ff42c1e` 2026-11-14 Docs: stamp #791 (merged 1a395cf4, deployed 22:50 IST) and #780 (merged 33813806, tools installed 20:18 IST) (#794)
 - `b54f6989` 2026-11-14 Docs: stamp #788 (phone popover and pending buttons) as merged d06e6248, deployed 22:33 IST (no SQL) (#790)
 - `1a395cf4` 2026-11-14 Orders: PI review thread inside the operations notice, replies keep their line breaks (no SQL) (#791)
 - `1e80e23c` 2026-11-14 Page speed, part 7: the launcher's badge counts in one call (no SQL) (#789)
+- `c3f21fc5` 2026-11-14 Merge origin/main into fix/quotation-document-layout (fourth time)
+- `cd0d4e5f` 2026-11-14 Docs: stamp the builder polish part A (#784) as merged 2750eb00, deployed 22:17 IST, verified live
 - `d06e6248` 2026-11-14 Orders: on a phone the Main PI Details popover stays inside the card and the pending buttons are 44px (#788)
+- `e487b0c4` 2026-11-14 Merge origin/main into fix/quotation-document-layout (third time)
 - `2750eb00` 2026-11-14 Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL) (#784)
+- `d4b28cda` 2026-11-14 Merge origin/main into fix/quotation-document-layout (second time)
 - `59a8d9e2` 2026-11-14 Docs: stamp page speed part 6 (#785) as merged e4ba4410, deployed 21:39 IST, verified live (no SQL) (#786)
+- `6a76e4bb` 2026-11-14 Merge origin/main into fix/quotation-document-layout
+- `dfa4297b` 2026-11-14 Quotations: three layout fixes in the premium document, found by rendering a sample of the live PDF (no SQL)
 - `e4ba4410` 2026-11-14 Page speed, part 6: the Modules launcher asks for less (no SQL) (#785)
 - `f46df4a0` 2026-11-14 Docs: stamp page speed part 5 (#782) as merged 4c215ba9, deployed 20:56 IST, verified live (no SQL) (#783)
 - `4c215ba9` 2026-11-14 Page speed, part 5: fewer requests at the start of every page; part 3 dropped, measured (no SQL) (#782)
@@ -35,10 +39,6 @@
 - `73a9cc30` 2026-11-14 Orders: every hop between Operations and Sales on a PI passes through the approver (migration 20270718000000, applied) (#776)
 - `61dd1c91` 2026-11-14 Docs: stamp page speed part 1 (#775) as merged 39fadbcf, deployed 19:07 IST, verified live (no SQL) (#778)
 - `39fadbcf` 2026-11-14 Page speed, part 1: every record page prepared and cached, static files kept for a day, page-load audit (no SQL) (#775)
-- `4891ae98` 2026-11-14 Docs: stamp Quotations Import of a PI (#773) as merged 111f4ef6, deployed 13:28 IST (no SQL) (#774)
-- `111f4ef6` 2026-11-14 Quotations: Import brings a BOE PI's price, customization and representative picture (no SQL) (#773)
-- `2adad5f7` 2026-11-14 Docs: stamp the BOE One loader (#770) as merged 3dd0cc93, deployed 12:38 IST (no SQL) (#772)
-- `3dd0cc93` 2026-11-14 Platform: a slow wait shows the BOE One loader over the whole screen (no SQL) (#770)
 
 ## Pages by top-level area
 
@@ -167,7 +167,7 @@
 - `src/lib/pi` — 8 source, 6 test
 - `src/lib/pricing` — 9 source, 5 test
 - `src/lib/push` — 3 source, 1 test
-- `src/lib/quotations` — 16 source, 9 test
+- `src/lib/quotations` — 16 source, 10 test
 - `src/lib/salesLeads` — 15 source, 15 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test

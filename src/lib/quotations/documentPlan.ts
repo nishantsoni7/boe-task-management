@@ -25,8 +25,21 @@ export const countsSeats = (t: ProjectType | null) => t === 'restaurant' || t ==
 
 export type LeadTime = { weeks: number; basis: string }
 
-/** Rooms on the quotation: the sum of the room-type multipliers. */
-export const roomsOf = (areas: readonly Pick<QuoteArea, 'multiplier'>[]): number => areas.reduce((t, a) => t + Math.max(0, Math.floor(Number(a.multiplier) || 0)), 0)
+// The unit box of a room type is free text (a new room type and Import both say "rooms"). These words mean a room a guest can book;
+// "area", "hall", "counter" and the like do not. A blank label counts as "rooms".
+const ROOM_UNIT = /^(room|suite|villa|cottage|cabin|key|chalet|bungalow|tent|unit|apartment)s?$/i
+export const isRoomUnit = (label: string | null | undefined): boolean => ROOM_UNIT.test((label ?? '').trim() || 'rooms')
+
+/**
+ * Rooms on the quotation: the sum of the multipliers of the room types that are really rooms, so a lobby or a restaurant (unit "area")
+ * does not make "47 rooms" of 46. When no room type uses a room word at all, every room type counts, as it always did.
+ * shortcut: a lobby left on the unit "rooms" still counts; upgrade = an explicit "counts as rooms" tick on each room type (a database column).
+ */
+export const roomsOf = (areas: readonly (Pick<QuoteArea, 'multiplier'> & { unit_label?: string | null })[]): number => {
+  const sum = (list: typeof areas) => list.reduce((t, a) => t + Math.max(0, Math.floor(Number(a.multiplier) || 0)), 0)
+  const rooms = areas.filter(a => isRoomUnit(a.unit_label))
+  return sum(rooms.length ? rooms : areas)
+}
 
 export function leadTimeRule(type: ProjectType | null, rooms: number, seats: number | null): LeadTime | null {
   if (countsRooms(type)) {
@@ -126,11 +139,22 @@ export type ProductPage = { area: QuoteArea | null; lines: QuoteLine[]; continue
  * the size and material lines, the remarks (about 52 characters to a line) and the quantity line; a row is as tall as its
  * taller card. The estimate is deliberately a little generous.
  */
-export const PRODUCT_PAGE_UNITS = 104
+export const PRODUCT_PAGE_UNITS = 104 // the page really has 109.2 units of room for the cards (measured 14 Nov 2026), so 5 are kept in reserve
 const PRODUCT_ROW_GAP = 3
+/**
+ * Characters of a product name that fit on one line of a card. MEASURED in the real render (14 Nov 2026): a card is 41 units wide and the
+ * name is set at 2.85 units, so a line holds about 14.4 em: mixed-case names up to 31 characters fit on one line (a 28-character name uses
+ * 95% of it), and capitals are about 30% wider (an upper-case name of 26 characters already wraps). 30 with capitals counted 1.3 never
+ * under-counted a measured name except an all-wide-letter string; it errs on the side of one more line, never fewer.
+ */
+export const NAME_LINE_CHARS = 30
+export const nameLines = (name: string): number => Math.max(1, Math.ceil((name.length + 0.3 * (name.match(/[A-Z]/g) || []).length) / NAME_LINE_CHARS))
+/** A card without a picture draws no frame: the picture and the gap under it are not in its height. */
+export const PICTURE_UNITS = 31.7
 export const cardUnits = (l: QuoteLine): number => {
   const text = 1 + Math.max(1, Math.ceil((l.material || '').length / 52)) + Math.ceil(((l.spec || '').length + (l.size_text || '').length * 0.2) / 52) + Math.ceil((l.client_note || '').length / 52)
-  return 30.3 + 5.6 + 3.5 + (l.name.length > 27 ? 6.4 : 3.2) + text * 2.05 // measured at a picture ratio of .66: an ordinary card is 42.9, one with a two-line name 46.7
+  // measured: an ordinary card with a picture is 46.2, one with a two-line name 49.4 (the estimate is about 2.5 above that)
+  return 30.3 + 5.6 + 3.5 + 3.2 * nameLines(l.name) + text * 2.05 - (l.image_path ? 0 : PICTURE_UNITS)
 }
 export function planProductPages(groups: readonly Group[]): ProductPage[] {
   const pages: ProductPage[] = []
