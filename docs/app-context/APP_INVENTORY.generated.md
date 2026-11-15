@@ -5,16 +5,18 @@
 
 ## Snapshot
 
-- Commit: `cd0d4e5f` — Docs: stamp the builder polish part A (#784) as merged 2750eb00, deployed 22:17 IST, verified live
-- Commits on this branch: 1352
-- Pages (`page.tsx`): 199   API routes (`route.ts`): 210
+- Commit: `c3f21fc5` — Merge origin/main into fix/quotation-document-layout (fourth time)
+- Commits on this branch: 1354
+- Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
-- Test files: 854   Next.js 16.2.6, React 19.2.4
+- Test files: 856   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `c3f21fc5` 2026-11-14 Merge origin/main into fix/quotation-document-layout (fourth time)
 - `cd0d4e5f` 2026-11-14 Docs: stamp the builder polish part A (#784) as merged 2750eb00, deployed 22:17 IST, verified live
+- `d06e6248` 2026-11-14 Orders: on a phone the Main PI Details popover stays inside the card and the pending buttons are 44px (#788)
 - `e487b0c4` 2026-11-14 Merge origin/main into fix/quotation-document-layout (third time)
 - `2750eb00` 2026-11-14 Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL) (#784)
 - `d4b28cda` 2026-11-14 Merge origin/main into fix/quotation-document-layout (second time)
@@ -37,8 +39,6 @@
 - `3dd0cc93` 2026-11-14 Platform: a slow wait shows the BOE One loader over the whole screen (no SQL) (#770)
 - `c705b65e` 2026-11-14 Docs: SEO Rankings heading merged as 93db82c5 (#769) (#771)
 - `93db82c5` 2026-11-14 SEO Rankings: heading no longer says "20" money keywords (#769)
-- `b62262a2` 2026-11-14 Docs: stamp the lead popup, board cards and speed work (#761) as merged 8b64c4d3, deployed 06:04 IST, 20270716000000 applied, with the live measurements (no SQL) (#764)
-- `f0f4c23c` 2026-11-14 Sales: a page frame instead of the full-screen spinner while the permission check runs (no SQL) (#768)
 
 ## Pages by top-level area
 
@@ -113,7 +113,7 @@
 - **impersonation** (3): `/end [POST]`, `/members [GET]`, `/start [POST]`
 - **integrations** (7): `/meta/review [GET]`, `/meta/sync [GET]`, `/minop/partner/punches [GET]`, `/minop/webhook [POST]`, `/minop/webhook/[token] [POST]`, `/seo/decisions [GET]`, `/seo/ingest [POST]`
 - **meetings** (5): `/delete [POST]`, `/import [POST]`, `/import-pi [POST]`, `/import-pi/confirm [POST]`, `/template [GET]`
-- **notifications** (4): ` [DELETE,GET]`, `/[id] [DELETE]`, `/delete-selected [POST]`, `/mark-read [POST]`
+- **notifications** (5): ` [DELETE,GET]`, `/[id] [DELETE]`, `/counts [GET]`, `/delete-selected [POST]`, `/mark-read [POST]`
 - **notify-status-update** (1): ` [POST]`
 - **objections** (2): ` [GET,POST]`, `/review [POST]`
 - **orders** (33): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/dispatch/read-paper [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/number [POST]`, `/[id]/payment-plan/pdf [GET]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/bdpi/[id]/delete [POST]`, `/bdpi/[id]/pdf [GET]`, `/bdpi/[id]/pictures [GET]`, `/bdpi/import [POST]`, `/clickup-drafts [GET]`, `/clickup-drafts/[id] [GET]`, `/clickup-drafts/[id]/files/[fileId] [GET]`, `/clickup-drafts/import [POST]`, `/customize-learning/attempts [GET,PATCH]`, `/customize-learning/examples [GET,PATCH,POST]`, `/customize-learning/rules [GET,PATCH,POST]`, `/fabric-finish/image [POST]`, `/fabric-finish/refresh [POST]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/customization-feedback [POST]`, `/pi-edits/interpret-customization [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
@@ -159,7 +159,7 @@
 - `src/lib/minop` — 13 source, 11 test
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 5 source, 8 test
-- `src/lib/notifications` — 7 source, 23 test
+- `src/lib/notifications` — 9 source, 25 test
 - `src/lib/orders` — 110 source, 170 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/performance` — 0 source, 1 test

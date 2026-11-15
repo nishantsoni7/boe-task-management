@@ -88,9 +88,11 @@ const TONE: Record<WorkspaceTone, { dot: string; text: string }> = {
  * that one is not showing. `id` lets the notification and action-queue links
  * land here.
  */
-export function OrderAttentionBar({ items, actions, id }: {
+export function OrderAttentionBar({ items, actions, reviewThread, id }: {
   items: readonly OrderAttentionItem[]
   actions?: React.ReactNode
+  /** The PI review thread's link, drawn inside the operations-review notice (owner, 14 Nov 2026). */
+  reviewThread?: React.ReactNode
   id?: string
 }) {
   if (items.length === 0) return null
@@ -116,6 +118,7 @@ export function OrderAttentionBar({ items, actions, id }: {
                 <span className="order-notice-sent-comment">“{item.sent.comment}”</span>
               </span>
             )}
+            {item.key === 'operations_review' && reviewThread}
           </div>
           {actions && item.key === actionHost && <div className="order-notice-actions">{actions}</div>}
         </div>

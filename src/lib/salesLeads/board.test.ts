@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  activityTag, bigQuantity, checklistFor, nameWithoutPhone, countryOf, DEAD_REASONS, dueOf, flagOf, followUpChoices, isSunday, lastLabel, marketLabel, nextWorkingDay, parseValue,
+  activityTag, bigQuantity, checklistFor, nameWithoutPhone, countryOf, DEAD_REASONS, dueOf, flagOf, followUpChoices, isSunday, lastLabel, marketLabel, nextStepOf, nextWorkingDay, parseValue,
   PATH_STAGES, QUICK_NOTES, quickMessages, rankMyDay, stageLabel, STAGES, valueLabel, whatsAppLink, whyFirst,
 } from './board'
 import { dayHeading, dayShort, istDayOf, timeLabel } from './format'
@@ -125,6 +125,42 @@ describe('when the next step is due', () => {
   test('a closed lead says how it ended', () => {
     assert.equal(dueOf({ stage: 'converted', next_due_on: null }, TODAY).label, 'Converted')
     assert.equal(dueOf({ stage: 'dead', next_due_on: null, dead_reason: 'price_too_high' }, TODAY).label, 'Price too high')
+  })
+})
+
+// The popup's next-step banner (owner, 2026-11-14, "B + C") says what dueOf says, with the day counts it needs.
+describe('the next-step banner', () => {
+  test('late, today, tomorrow, later and no date', () => {
+    assert.deepEqual(nextStepOf({ stage: 'new', next_due_on: '2026-10-28' }, TODAY), { kind: 'over', date: '2026-10-28', days: 6 })
+    assert.deepEqual(nextStepOf({ stage: 'new', next_due_on: TODAY }, TODAY), { kind: 'today', date: TODAY })
+    assert.deepEqual(nextStepOf({ stage: 'new', next_due_on: '2026-11-04' }, TODAY), { kind: 'soon', date: '2026-11-04', days: 1 })
+    assert.deepEqual(nextStepOf({ stage: 'potential', next_due_on: '2026-11-10' }, TODAY), { kind: 'soon', date: '2026-11-10', days: 7 })
+    assert.deepEqual(nextStepOf({ stage: 'new', next_due_on: null }, TODAY), { kind: 'none' })
+  })
+  test('a parked lead has no deadline until its day comes', () => {
+    assert.deepEqual(nextStepOf({ stage: 'follow_up_later', next_due_on: '2026-12-01' }, TODAY), { kind: 'wakes', date: '2026-12-01' })
+    assert.deepEqual(nextStepOf({ stage: 'follow_up_later', next_due_on: TODAY }, TODAY), { kind: 'today', date: TODAY })
+    assert.equal(nextStepOf({ stage: 'follow_up_later', next_due_on: '2026-11-01' }, TODAY).kind, 'over')
+  })
+  test('a converted or dead lead has no next step, even with a date left on it', () => {
+    assert.deepEqual(nextStepOf({ stage: 'converted', next_due_on: null }, TODAY), { kind: 'closed' })
+    assert.deepEqual(nextStepOf({ stage: 'dead', next_due_on: '2026-10-01', dead_reason: 'price_too_high' }, TODAY), { kind: 'closed' })
+  })
+  test('for every stage and date it agrees with dueOf, so the banner and the board never say different things', () => {
+    const stages = ['new', 'under_process', 'visit_meeting', 'potential', 'negotiation', 'follow_up_later', 'converted', 'dead']
+    for (const stage of stages) {
+      for (const next_due_on of [null, '2026-10-28', TODAY, '2026-11-04', '2026-12-01']) {
+        const lead = { stage, next_due_on }
+        const due = dueOf(lead, TODAY)
+        const expected = stage === 'converted' || stage === 'dead' ? 'closed'
+          : due.label === 'No date' ? 'none'
+          : due.label.startsWith('Wakes') ? 'wakes'
+          : due.tone === 'over' ? 'over'
+          : due.tone === 'today' ? 'today'
+          : 'soon'
+        assert.equal(nextStepOf(lead, TODAY).kind, expected, `${stage} ${next_due_on}`)
+      }
+    }
   })
 })
 

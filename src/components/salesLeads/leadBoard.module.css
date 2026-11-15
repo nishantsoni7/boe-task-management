@@ -180,7 +180,6 @@
 .mPhone { color: #303536; font-weight: 600; font-variant-numeric: tabular-nums; }
 .mDot { color: #CFC8BF; }
 .mStuck { margin-left: 2px; height: 20px; padding: 0 8px; border-radius: 999px; background: #FCEEEF; color: #A12438; font-size: 11.5px; font-weight: 600; display: inline-flex; align-items: center; }
-.mReach { display: flex; gap: 8px; flex: 0 0 auto; }
 .mCall { height: 38px; padding: 0 14px; display: inline-flex; align-items: center; gap: 7px; border: 1px solid #B9472E; border-radius: 10px; background: #B9472E; color: #fff; font: 600 13px var(--boe-font-body); text-decoration: none; }
 .mCall:hover { background: #A33E27; }
 .mCall svg { width: 15px; height: 15px; }
@@ -190,6 +189,9 @@
 .mStatusBtn:disabled { cursor: default; }
 .mStatusBtn[aria-expanded="true"] { border-color: #B9472E; box-shadow: 0 0 0 3px #F8EAE4; }
 .mStatusBtn svg { width: 16px; height: 16px; margin-left: auto; color: #686D6C; }
+/* "Stuck" sits in the button, where it explains the days in the status; the arrow keeps a small gap after it. */
+.mStatusBtn .mStuck { margin-left: auto; }
+.mStatusBtn .mStuck + svg { margin-left: 8px; }
 .mDot8 { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; display: inline-block; }
 .mStatusMenu { position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 6; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; box-shadow: var(--boe-shadow-float); padding: 6px; }
 .mStatusItem { width: 100%; min-height: 38px; display: flex; align-items: center; gap: 9px; padding: 0 10px; border: 0; background: none; border-radius: 8px; font: 500 13px var(--boe-font-body); color: #303536; cursor: pointer; text-align: left; }
@@ -212,53 +214,58 @@
 .nCopy svg { width: 15px; height: 15px; }
 .nCopy[data-done="1"] { color: #276247; }
 
-.nState { border: 1px solid #ECE7E0; border-radius: 14px; background: #FBFAF8; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
-.nPair { display: flex; flex-wrap: wrap; gap: 14px 12px; align-items: flex-end; }
+/* Board status and Hot / Warm / Cold are one quiet row (owner, 2026-11-14, "B + C"): the next-step banner above carries the alarm. */
+.nState { display: flex; flex-direction: column; gap: 12px; }
+.nPair { display: flex; flex-wrap: wrap; gap: 14px 12px; align-items: flex-start; }
 .nPair > .nCell:first-child { flex: 1 1 210px; }
 .nCell { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
-.nKey { margin: 0; display: flex; align-items: baseline; gap: 8px; font: 600 12px var(--boe-font-body); color: #686D6C; text-transform: uppercase; letter-spacing: .05em; }
-.nKey small { font-size: 12px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+.nKey { margin: 0; display: flex; align-items: baseline; gap: 8px; font: 600 13px var(--boe-font-body); color: #4C5352; }
+.nKey small { font-size: 12.5px; font-weight: 400; color: #686D6C; }
 .nHeatSeg { display: inline-flex; height: 44px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; overflow: hidden; }
 .nHeatSeg button { min-width: 66px; padding: 0 12px; border: 0; background: none; display: inline-flex; align-items: center; justify-content: center; gap: 7px; font: 500 13px var(--boe-font-body); color: #4C5352; cursor: pointer; }
 .nHeatSeg button + button { border-left: 1px solid #E4DED7; }
 .nHeatSeg button:hover:not(:disabled) { background: #FAF8F5; }
 .nHeatSeg button:disabled { cursor: default; }
-.nHeatSeg button[aria-pressed="true"] { background: #F8EAE4; color: #963B27; font-weight: 700; box-shadow: inset 0 0 0 1px #E8C4B8; }
-.nDue { width: 100%; height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 12px 0 13px; border: 1px solid #CFC8BF; border-radius: 10px; background: #fff; color: #303536; font: 400 14px var(--boe-font-body); text-align: left; cursor: pointer; }
-.nDue:hover:not(:disabled) { background: #FAF8F5; border-color: #B9472E; }
-.nDue:disabled { cursor: default; }
-.nDue > svg { width: 16px; height: 16px; color: #686D6C; flex: 0 0 auto; }
-.nDue b { font-weight: 600; }
-.nDueNote { font-size: 12.5px; color: #686D6C; }
-.nDueOver { border-color: #F0CDD1; background: #FDF5F6; }
-.nDueOver:hover:not(:disabled) { background: #FCEEEF; border-color: #A12438; }
-.nDueOver .nDueNote { color: #A12438; font-weight: 600; }
-.nGo { margin-left: auto; color: #B9472E; font-weight: 600; font-size: 12.5px; }
-.nHeld { display: flex; align-items: center; gap: 8px; padding-top: 10px; border-top: 1px solid #ECE7E0; font-size: 12.5px; color: #686D6C; }
+/* The selected one is charcoal, like "Updates only", so it never looks like the red of a late follow-up. */
+.nHeatSeg button[aria-pressed="true"] { background: #303536; color: #fff; font-weight: 600; }
+.nHeld { display: inline-flex; align-items: center; gap: 6px; }
 .nHeld b { color: #303536; font-weight: 600; }
-/* Wraps the follow-up and "Held by". On a phone it vanishes, so they stack as before; on a screen it is one row (below). */
-.nRow { display: contents; }
+
+/* The next step (owner, 2026-11-14, "B + C"): the follow-up in words, red when it is late, with Call, WhatsApp and Change date. */
+.nNext { border: 1px solid #E4DED7; border-radius: 14px; background: #FBFAF8; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.nNextOver { border-color: #E9B9C1; background: #FBE9EC; }
+.nNextTop { display: flex; align-items: flex-start; gap: 12px; }
+.nNextIc { width: 34px; height: 34px; border-radius: 50%; border: 1px solid #E4DED7; background: #fff; color: #4C5352; display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; }
+.nNextOver .nNextIc { border-color: transparent; color: #A12438; }
+.nNextIc svg { width: 18px; height: 18px; }
+.nNextText { flex: 1; min-width: 0; }
+.nNextTitle { margin: 0; font: 700 15px/1.3 var(--boe-font-heading); color: #303536; }
+.nNextOver .nNextTitle { color: #6E1F2B; }
+.nNextSub { margin: 2px 0 0; font-size: 13px; color: #686D6C; }
+.nNextOver .nNextSub { color: #7A2A36; }
+.nNextAct { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.nNextAct .mRel { margin-left: auto; }
+.nNextAct .mPop { left: auto; right: 0; }
 
 .nSec { display: flex; flex-direction: column; gap: 10px; }
 .nHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 26px; }
 .nH { margin: 0; font: 600 14px var(--boe-font-heading); color: #303536; }
-.nEdit { margin-right: -7px; }
-.nReq { margin: 0; padding: 12px 14px; border-radius: 12px; background: #FAF8F5; font-size: 14.5px; line-height: 1.55; color: #303536; white-space: pre-wrap; overflow-wrap: anywhere; }
-.nReq.nNone { background: none; border: 1px dashed #CFC8BF; font-size: 13px; color: #686D6C; }
-.nTiles { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 10px; }
-.nTile { display: flex; flex-direction: column; gap: 5px; min-width: 0; padding: 10px 14px 11px; border: 1px solid #ECE7E0; border-radius: 12px; background: #fff; }
-.nVal { font-size: 14px; font-weight: 500; color: #303536; overflow-wrap: anywhere; }
-.nBig { font: 700 22px/1.2 var(--boe-font-heading); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
-.nAsk { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.nAsk span { font-size: 14px; color: #686D6C; }
-.nHelp { margin: 0; font-size: 12px; line-height: 1.35; color: #686D6C; }
-.nFacts { margin: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px 16px; }
-.nFacts > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.nFacts dt { font: 600 12px var(--boe-font-body); color: #686D6C; text-transform: uppercase; letter-spacing: .05em; }
-.nFacts dd { margin: 0; font-size: 14px; font-weight: 500; color: #303536; overflow-wrap: anywhere; }
-.nFacts .nWide { grid-column: 1 / -1; }
-.nFacts dd.nNone, .nVal.nNone { color: #686D6C; font-weight: 400; font-size: 13px; }
-.nFactsSec { padding-top: 16px; border-top: 1px solid #ECE7E0; }
+/* About this client (owner, 2026-11-14, "B + C"): the requirement and the facts in one list, one Edit details button. */
+.nEditBtn { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border: 1px solid #CFC8BF; border-radius: 9px; background: #fff; color: #303536; font: 600 13px var(--boe-font-body); cursor: pointer; }
+.nEditBtn:hover { background: #FAF8F5; border-color: #B9472E; }
+.nEditBtn svg { width: 14px; height: 14px; color: #B9472E; }
+.nMissing { height: 20px; padding: 0 8px; border-radius: 999px; background: #FAF0DA; color: #805B0D; font: 600 12px var(--boe-font-body); display: inline-flex; align-items: center; }
+.nProps { margin: 0; border: 1px solid #ECE7E0; border-radius: 12px; background: #fff; overflow: hidden; }
+.nProps > div { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 11px 14px; }
+.nProps > div + div { border-top: 1px solid #ECE7E0; }
+.nProps dt { font: 500 13px var(--boe-font-body); color: #686D6C; }
+.nProps dd { margin: 0; font: 500 14px var(--boe-font-body); color: #303536; overflow-wrap: anywhere; }
+.nProps dd.nPre { white-space: pre-wrap; }
+.nProps dd.nNone { color: #686D6C; font-weight: 400; font-size: 13px; }
+.nProps dd small { display: block; margin-top: 2px; font-size: 12px; font-weight: 400; color: #686D6C; }
+.nMail { display: inline-flex; align-items: center; gap: 6px; color: #963B27; text-decoration: none; }
+.nMail:hover { text-decoration: underline; }
+.nMail svg { width: 14px; height: 14px; flex: 0 0 auto; color: #686D6C; }
 
 /* The date menu, shared by the follow-up chip and the update box */
 .mPop { position: absolute; left: 0; top: calc(100% + 8px); z-index: 5; width: 280px; background: #fff; border: 1px solid #E4DED7; border-radius: 12px; box-shadow: var(--boe-shadow-float); padding: 6px; }
@@ -499,7 +506,6 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .mWho { flex-direction: column; }
   .mStatusBtn { height: 48px; }
   .mStatusItem { min-height: 44px; }
-  .mReach { width: 100%; }
   .mCall, .mWa { flex: 1; justify-content: center; height: 46px; }
   .mChip { height: 40px; }
   .mCompose { margin: 0 12px 10px; }
@@ -519,14 +525,13 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
 
 /* The left side on a phone: full-width controls, 44px and larger touch targets, the two tiles stacked. */
 @media (max-width: 767px) {
-  .nState { padding: 14px; }
+  .nNext { padding: 14px; }
   .nPair > .nCell { flex: 1 1 100%; }
   .nHeatSeg { width: 100%; height: 48px; }
   .nHeatSeg button { flex: 1; }
-  .nDue { height: 48px; }
   .nCopy { height: 44px; padding: 0 10px; }
-  .nTiles { grid-template-columns: minmax(0, 1fr); }
-  .nEdit { height: 44px; }
+  .nEditBtn { height: 44px; }
+  .nProps > div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 }
 
 /* The left side, compact on a screen (owner, 2026-11-14: it was too big, and the whole of it should show with no scroll bar). Smaller
@@ -534,10 +539,9 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
    requirement fits a laptop-height popup. The phone keeps the larger, finger-sized controls above. Type here: 19 px name; 13 px values;
    12 px buttons and notes; 10.5 px capital labels. A lead with more than fits still scrolls (the left side keeps overflow-y: auto). */
 @media (min-width: 768px) {
-  .mLeft { padding: 14px 18px; gap: 12px; }
+  .mLeft { padding: 14px 18px; gap: 10px; }
   .mWho { gap: 10px; }
   .mName { font-size: 19px; letter-spacing: -0.01em; }
-  .mReach { gap: 6px; }
   .mCall, .mWa { height: 32px; padding: 0 11px; gap: 6px; border-radius: 8px; font-size: 12.5px; }
   .mCall svg, .mWa svg { width: 14px; height: 14px; }
   .nMeta { margin-top: 2px; gap: 0; }
@@ -548,43 +552,38 @@ textarea.input { height: auto; min-height: 66px; padding: 10px 12px; line-height
   .nSub { font-size: 12px; }
   .mStuck { height: 18px; padding: 0 7px; font-size: 11px; }
 
-  .nState { padding: 10px 12px; gap: 8px; border-radius: 12px; }
   .nPair { gap: 8px 10px; }
   .nPair > .nCell:first-child { flex-basis: 170px; }
   .nCell { gap: 4px; }
-  .nKey { gap: 6px; font-size: 10.5px; letter-spacing: .04em; }
-  .nKey small { font-size: 11px; }
+  .nKey { gap: 6px; font-size: 12px; }
+  .nKey small { font-size: 11.5px; }
+  .nNext { padding: 8px 12px; gap: 6px; border-radius: 12px; }
+  .nNextTop { gap: 10px; }
+  .nNextIc { width: 28px; height: 28px; }
+  .nNextIc svg { width: 15px; height: 15px; }
+  .nNextTitle { font-size: 13.5px; }
+  .nNextSub { margin-top: 1px; font-size: 12px; }
+  .nNextAct { gap: 6px; }
+  .nNextAct .linkBtn { padding: 3px 6px; font-size: 12px; }
   .mStatusBtn { height: 32px; padding: 0 10px; gap: 8px; border-radius: 8px; font-size: 13px; }
   .mStatusBtn svg { width: 14px; height: 14px; }
   .nHeatSeg { height: 32px; border-radius: 8px; }
   .nHeatSeg button { min-width: 0; padding: 0 9px; gap: 6px; font-size: 12px; }
-  .nRow { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 10px; }
-  .nRow > .nCell { flex: 1 1 230px; }
-  .nDue { height: 32px; padding: 0 10px; gap: 7px; border-radius: 8px; font-size: 13px; }
-  .nDue > svg { width: 14px; height: 14px; }
-  .nDueNote, .nGo { font-size: 12px; }
-  .nHeld { height: 32px; padding-top: 0; border-top: 0; gap: 6px; font-size: 12px; }
-  .mAvSm { width: 20px; height: 20px; font-size: 9px; }
+  .mAvSm { width: 18px; height: 18px; font-size: 8.5px; }
 
   .nSec { gap: 6px; }
   .nHead { min-height: 20px; }
   .nH { font-size: 13px; }
-  .nHead .nEdit { margin-right: -6px; padding: 3px 6px; font-size: 12px; }
-  .nReq { padding: 8px 10px; border-radius: 8px; font-size: 13px; line-height: 1.4; }
-  .nReq.nNone { font-size: 12px; }
-  .nTiles { gap: 8px; }
-  .nTile { gap: 2px; padding: 6px 10px 7px; border-radius: 8px; }
-  .nVal { font-size: 13px; }
-  .nBig { font-size: 17px; }
-  .nAsk span { font-size: 13px; }
-  .nAsk .linkBtn { padding: 2px 6px; font-size: 12px; }
-  .nHelp { font-size: 11px; line-height: 1.3; }
-  .nFactsSec { padding-top: 8px; }
-  .nFacts { gap: 6px 12px; }
-  .nFacts > div { gap: 1px; }
-  .nFacts dt { font-size: 10.5px; letter-spacing: .04em; }
-  .nFacts dd { font-size: 13px; }
-  .nFacts dd.nNone, .nVal.nNone { font-size: 12px; }
+  .nEditBtn { height: 26px; padding: 0 8px; gap: 6px; border-radius: 7px; font-size: 12px; }
+  .nEditBtn svg { width: 12px; height: 12px; }
+  .nMissing { height: 17px; padding: 0 6px; font-size: 11px; }
+  .nProps { border-radius: 8px; }
+  .nProps > div { grid-template-columns: 92px minmax(0, 1fr); gap: 10px; padding: 5px 10px; }
+  .nProps dt { font-size: 12px; }
+  .nProps dd { font-size: 13px; line-height: 1.4; }
+  .nProps dd.nNone { font-size: 12px; }
+  .nProps dd small { margin-top: 1px; font-size: 11px; line-height: 1.3; }
+  .nMail svg { width: 12px; height: 12px; }
 
   /* Edit details: the same, so the whole form shows too. */
   .detailsEdit { gap: 8px; }

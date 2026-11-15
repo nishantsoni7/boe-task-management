@@ -203,7 +203,7 @@ import {
   evidenceObjectPath,
   type PersistedApprovalEvent,
 } from '@/lib/orders/orderApprovals'
-import { PiReviewThread } from './PiReviewThread'
+import { PiReviewThreadLink } from './PiReviewThread'
 import { buildReviewThread } from '@/lib/orders/piReviewThread'
 import {
   ApproveRevisionModal,
@@ -3547,6 +3547,17 @@ export default function OrderDetailPage() {
         <OrderAttentionBar
           id={operationsReviewOpen ? OPERATIONS_REVIEW_ANCHOR : undefined}
           items={attention}
+          // THE REVIEW THREAD (20270718000000): one line inside the operations notice, the full loop in a popup.
+          reviewThread={
+            <PiReviewThreadLink
+              entries={reviewThread.entries}
+              rounds={reviewThread.rounds}
+              holder={chainHolder}
+              holderSince={reviewThread.entries.length > 0 ? fmtDateTime(reviewThread.entries[reviewThread.entries.length - 1].atIso) : null}
+              formatWhen={fmtDateTime}
+              orderNumber={order.display_number}
+            />
+          }
           actions={operationsDecisionOffered || respondOffered || sendBackOffered || forwardOffered || operationsLockedForSales ? (
             <>
               {operationsLockedForSales && (
@@ -3588,16 +3599,6 @@ export default function OrderDetailPage() {
               )}
             </>
           ) : undefined}
-        />
-
-        {/* THE REVIEW THREAD (20270718000000): who holds the PI now and every hop of the loop, by round. */}
-        <PiReviewThread
-          entries={reviewThread.entries}
-          rounds={reviewThread.rounds}
-          holder={chainHolder}
-          holderSince={reviewThread.entries.length > 0 ? fmtDateTime(reviewThread.entries[reviewThread.entries.length - 1].atIso) : null}
-          formatWhen={fmtDateTime}
-          defaultOpen={chainHolder !== null}
         />
 
         <OrderStatusStrip

@@ -12562,12 +12562,13 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-notice-icon { display: inline-flex; flex: 0 0 auto; }
 .order-notice-text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 220px; }
 .order-notice-title { font-size: 15px; font-weight: 600; }
-.order-notice-detail { font-size: 13px; font-weight: 400; opacity: .85; }
+/* pre-line: a reply or a reason keeps the writer's own line breaks (owner, 14 Nov 2026). */
+.order-notice-detail { font-size: 13px; font-weight: 400; opacity: .85; white-space: pre-line; }
 /* The approver's "sent back to the salesperson": its own green-edged line under Operations' reason (2026-11-12). */
 .order-notice-sent { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; padding: 8px 12px; border-radius: 8px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(21, 128, 61, 0.35); color: #14532D; }
 .order-notice-sent-head { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
 .order-notice-sent-head svg { color: #15803D; flex: 0 0 auto; }
-.order-notice-sent-comment { font-size: 13px; font-weight: 400; overflow-wrap: anywhere; }
+.order-notice-sent-comment { font-size: 13px; font-weight: 400; overflow-wrap: anywhere; white-space: pre-line; }
 /* Operations' decision while the PI is with Sales: a plain note where the buttons were (2026-11-12). */
 .order-notice-locked { max-width: 320px; font-size: 13px; font-weight: 600; line-height: 1.4; }
 .order-notice-actions { margin-left: auto; flex: 0 0 auto; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }

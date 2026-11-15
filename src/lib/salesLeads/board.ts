@@ -269,6 +269,29 @@ export function dueOf(lead: Dated, today: string): { label: string; tone: Tone }
   return { label: shortDay(lead.next_due_on), tone: 'plain' }
 }
 
+/**
+ * What the lead popup's "next step" banner says (owner, 2026-11-14): the cases of `dueOf`, in the same order, with the day
+ * counts the banner needs. A converted or dead lead has no next step, so the popup draws no banner for it.
+ */
+export type NextStep =
+  | { kind: 'over'; date: string; days: number }
+  | { kind: 'today'; date: string }
+  | { kind: 'soon'; date: string; days: number }
+  | { kind: 'wakes'; date: string }
+  | { kind: 'none' }
+  | { kind: 'closed' }
+
+export function nextStepOf(lead: Dated, today: string): NextStep {
+  if (lead.stage === 'converted' || lead.stage === 'dead') return { kind: 'closed' }
+  if (!lead.next_due_on) return { kind: 'none' }
+  const days = daysBetween(today, lead.next_due_on)
+  // A parked lead has no deadline, only a day it comes back (as in dueOf).
+  if (lead.stage === 'follow_up_later' && days > 0) return { kind: 'wakes', date: lead.next_due_on }
+  if (days < 0) return { kind: 'over', date: lead.next_due_on, days: -days }
+  if (days === 0) return { kind: 'today', date: lead.next_due_on }
+  return { kind: 'soon', date: lead.next_due_on, days }
+}
+
 type Clocked = {
   stuck: boolean
   first_attempt_at: string | null
