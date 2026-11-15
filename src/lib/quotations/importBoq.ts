@@ -26,6 +26,8 @@ export type ImportRow = {
   /** Rupees per piece before GST, whole rupees; null when the file has no price column or the cell is empty. */
   price: number | null
   note: string
+  /** A salesperson's side note from a column with no heading beside Customization ("Price given was for 30 pieces"); goes to the line's Internal note, never to the client. */
+  internalNote: string
   /** Index into the pictures read from the same file (Excel only). */
   picture: number | null
   doubtful: ImportField[]
@@ -39,7 +41,8 @@ type Col = 'sno' | 'name' | 'size' | 'qty' | 'room' | 'material' | 'finish' | 's
 // Header words, compared after lower-casing and dropping everything but letters and digits ("Qty (Nos.)" → "qtynos").
 // A heading matches a key when it STARTS with one of its words. Order matters: the first key that matches wins.
 const HEADERS: [Col, string[]][] = [
-  ['sno', ['srno', 'sno', 'slno', 'serial', 'itemno']], // never bare 'no': it would take "Notes"
+  // never bare 'no': it would take "Notes". A PI's "Code" (SB04-B012) is the line's serial: a row that has one is a product, never a room title.
+  ['sno', ['srno', 'sno', 'slno', 'serial', 'itemno', 'code']],
   ['note', ['remark', 'notes', 'note', 'comment']],
   ['picture', ['image', 'photo', 'picture', 'pic', 'referenceimage', 'refimage', 'reference']],
   ['qty', ['qty', 'quantity', 'nos', 'noofunits', 'units', 'totalqty', 'count']],
@@ -128,6 +131,16 @@ export function readGrid(grid: Cell[][], pictureRows: ReadonlyMap<number, number
     if (c.name !== undefined && (c.qty !== undefined || c.size !== undefined)) { headerRow = r; cols = c; break }
   }
 
+  // Columns with no heading right after Customization / Remarks hold side notes. shortcut: a heading merged across two
+  // columns also leaves its second column headless, so that text lands in the Internal note (never printed); fine until a
+  // BOQ is seen that does it, then pass the sheet's merges in.
+  const sideCols: number[] = []
+  const lastText = Math.max(cols.custom ?? -1, cols.note ?? -1)
+  if (headerRow !== null && lastText >= 0) {
+    const head = grid[headerRow] ?? []
+    for (let c = lastText + 1; c < head.length && !text(head[c]); c++) sideCols.push(c)
+  }
+
   const rows: ImportRow[] = []
   let room = ''
   let rooms: number | null = null
@@ -170,6 +183,7 @@ export function readGrid(grid: Cell[][], pictureRows: ReadonlyMap<number, number
       name, size, material: text(at('material')), finish: text(at('finish')),
       spec: [text(at('spec')), text(at('custom'))].filter(Boolean).join('\n'),
       qty: placed.qty, qtyMode: placed.qtyMode, price, note: text(at('note')),
+      internalNote: sideCols.map(c => text(row[c])).filter(t => /[a-z]/i.test(t)).join('\n'),
       picture: pictureRows.get(r + 1) ?? null, doubtful, source: `Row ${r + 1}`,
     })
   }
@@ -210,7 +224,7 @@ export function parseBoqReading(raw: unknown): ImportRow[] {
     const page = Number(r.page)
     return [{
       id: rid(), include: true, room, rooms, name, size: str(r.size, 120), material: str(r.material, 200), finish: str(r.finish, 120),
-      spec: str(r.spec, 500), qty: placed.qty, qtyMode: placed.qtyMode, price: null, note: str(r.note, 300), picture: null, doubtful,
+      spec: str(r.spec, 500), qty: placed.qty, qtyMode: placed.qtyMode, price: null, note: str(r.note, 300), internalNote: '', picture: null, doubtful,
       source: Number.isInteger(page) && page > 0 ? `Page ${page}` : '',
     }]
   })
@@ -243,7 +257,7 @@ export function addToQuote(rows: readonly ImportRow[], areas: readonly QuoteArea
       key: newKey(), area_key, name: r.name.trim().slice(0, 160), size_text: r.size.slice(0, 80), spec: [r.spec.trim(), r.note.trim()].filter(Boolean).join('\n').slice(0, 1600),
       material: r.material.slice(0, 120), finish: r.finish.slice(0, 120), category: '',
       qty_mode: area_key ? r.qtyMode : 'fixed', qty: Math.min(100000, Math.round((r.qty ?? 1) * 100) / 100) || 1, unit_price: r.price, tax_rate: 18,
-      image_path: picturePaths.get(r.id) ?? null, is_optional: false, client_note: '', internal_note: '', // the file's own note joins the Remarks text: the builder has no separate note for the client (20270714000000)
+      image_path: picturePaths.get(r.id) ?? null, is_optional: false, client_note: '', internal_note: r.internalNote.slice(0, 1000), // the file's own note joins the Remarks text: the builder has no separate note for the client (20270714000000)
     }
   })
   return { areas: outAreas, lines }
