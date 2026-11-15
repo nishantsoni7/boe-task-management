@@ -4,17 +4,19 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search, ArrowRight, User, Building2 } from 'lucide-react'
 import { useAdminMembers, useDepartments } from '@/hooks/queries/useControlCenterData'
-import { MAIN_PATH, NAV_SECTIONS, searchSections } from '@/lib/controlCenter/navModel'
+import { COMMON_JOBS, MAIN_PATH, sectionById, searchSections } from '@/lib/controlCenter/navModel'
+import { recentSectionIds } from '@/lib/controlCenter/recent'
 import cc from './controlCenter.module.css'
 
-// "Find anything" — one box that reaches every screen, every employee and every
+// Search — one box that reaches every setting, every employee and every
 // department in the Control Center.
 //
 // It exists because an administrator who does not know which group a setting
 // lives in should not have to learn the map first. Typing "password", "next
 // order number", "delete test order" or somebody's name lands on the right
 // screen (or the right person's record) in two keystrokes. With nothing typed
-// it doubles as the full directory.
+// it offers the screens opened lately in this tab and the jobs done most often;
+// the full directory is Home.
 //
 // Employees and departments come from the same cached lists the rest of the
 // Control Center reads, and are only requested once the box is first opened
@@ -22,7 +24,7 @@ import cc from './controlCenter.module.css'
 
 type Hit = {
   key: string
-  group: 'Go to' | 'People' | 'Departments'
+  group: 'Recent' | 'Common jobs' | 'Settings' | 'People' | 'Departments'
   label: string
   sub?: string
   hub?: string
@@ -40,6 +42,8 @@ export function FindAnything({ onClose }: { onClose: () => void }) {
   const [cursor, setCursor] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const activeRef = useRef<HTMLButtonElement>(null)
+  // Read once, when the box opens: it mounts on open, so this is "lately" at that moment.
+  const [recent] = useState(() => recentSectionIds())
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
@@ -48,11 +52,21 @@ export function FindAnything({ onClose }: { onClose: () => void }) {
     const deptName = (key: string | null | undefined) =>
       depts?.find(d => d.department_key === key)?.department_name
 
-    const screens = (q ? searchSections(q) : [...NAV_SECTIONS]).map<Hit>(s => ({
-      key: `s:${s.id}`, group: 'Go to', label: s.label, sub: s.description, hub: s.hub.label,
+    if (!q) {
+      const lately = recent
+        .map(id => sectionById(id))
+        .filter((s): s is NonNullable<typeof s> => !!s)
+        .map<Hit>(s => ({ key: `r:${s.id}`, group: 'Recent', label: s.label, sub: s.description, hub: s.hub.label, href: s.href, icon: 'arrow' }))
+      const jobs = COMMON_JOBS.map<Hit>(j => {
+        const s = sectionById(j.sectionId)
+        return { key: `j:${j.id}`, group: 'Common jobs', label: j.label, sub: s ? `${s.hub.label} › ${s.label}` : undefined, href: j.href, icon: 'arrow' }
+      })
+      return [...lately, ...jobs]
+    }
+    const screens = searchSections(q).map<Hit>(s => ({
+      key: `s:${s.id}`, group: 'Settings', label: s.label, sub: s.description, hub: s.hub.label,
       href: s.href, icon: 'arrow',
     }))
-    if (!q) return screens
 
     const words = q.split(/\s+/)
     const people = (members ?? [])
@@ -80,7 +94,7 @@ export function FindAnything({ onClose }: { onClose: () => void }) {
     // person and no screen. A name rarely matches both.
     return screens.length > 0 && people.length === 0 ? [...screens, ...departments]
       : [...people, ...screens, ...departments]
-  }, [query, members, depts])
+  }, [query, members, depts, recent])
 
   useEffect(() => { activeRef.current?.scrollIntoView({ block: 'nearest' }) }, [cursor])
 
@@ -103,7 +117,7 @@ export function FindAnything({ onClose }: { onClose: () => void }) {
         className={cc.findBox}
         role="dialog"
         aria-modal="true"
-        aria-label="Find anything in the Control Center"
+        aria-label="Search the Control Center"
         onClick={e => e.stopPropagation()}
         onKeyDown={onKeyDown}
       >
@@ -112,8 +126,8 @@ export function FindAnything({ onClose }: { onClose: () => void }) {
           <input
             ref={inputRef}
             className={cc.findInput}
-            placeholder="Find a screen, a person or a department…"
-            aria-label="Find anything"
+            placeholder="Search settings, people or departments"
+            aria-label="Search"
             value={query}
             onChange={e => { setQuery(e.target.value); setCursor(0) }}
           />

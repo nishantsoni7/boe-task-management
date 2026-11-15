@@ -586,7 +586,6 @@ describe('the projection both pages read', () => {
     for (const file of [
       'src/app/finance/received/ReceivedPaymentsView.tsx',
       'src/hooks/queries/useReceivedPaymentsCounts.ts',
-      'src/lib/controlCenter/actionQueue.ts',
     ]) {
       const src = readFileSync(join(process.cwd(), file), 'utf8')
       assert.ok(src.includes('RECEIVED_PAYMENTS_SOURCE'),

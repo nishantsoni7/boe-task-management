@@ -18,7 +18,7 @@ const WORK = read('src/hooks/queries/useForYouWork.ts')
 const ADMIN = read('src/components/controlCenter/ForYouSettings.tsx')
 const MINE = read('src/components/modules/ForYouChoicesCard.tsx')
 const ACCOUNT = read('src/app/account/page.tsx')
-const SHELL = read('src/components/layout/ControlCenterLayout.tsx')
+const NAV = read('src/lib/controlCenter/navModel.ts')
 
 describe('the migration', () => {
   test('both tables are RLS-protected and grant nothing else', () => {
@@ -133,9 +133,11 @@ describe('the column', () => {
 })
 
 describe('Control Center', () => {
-  test('is a hub of its own, with a heading and an icon', () => {
-    assert.match(SHELL, /\[`\$\{MAIN_PATH\}\/for-you`\]: \{\s+title: 'For you',/)
-    assert.match(SHELL, /'for-you': SlidersHorizontal/)
+  test('is a setting of Staff experience, with its own page, name and description', () => {
+    // Since 2026-11-15 it is one of four settings under "Staff experience", not an area of its own.
+    assert.match(NAV, /id: 'for-you', label: 'For you column', href: `\$\{MAIN_PATH\}\/for-you`,/)
+    assert.match(NAV, /label: 'Staff experience',/)
+    assert.match(NAV, /right-hand column on Modules/)
   })
 
   test('saves through the one door, and puts it back if refused', () => {

@@ -5,20 +5,26 @@
 
 ## Snapshot
 
-- Commit: `93c26ff5` — Docs: stamp #819 (the lead popup's left side with room) as merged d8a02296, deployed 16:44 IST, verified live (no SQL)
-- Commits on this branch: 1378
-- Pages (`page.tsx`): 199   API routes (`route.ts`): 211
+- Commit: `7d19282b` — Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
+- Commits on this branch: 1384
+- Pages (`page.tsx`): 198   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
-- Test files: 861   Next.js 16.2.6, React 19.2.4
+- Test files: 863   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `93c26ff5` 2026-11-15 Docs: stamp #819 (the lead popup's left side with room) as merged d8a02296, deployed 16:44 IST, verified live (no SQL)
+- `7d19282b` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
+- `d7d0ae9f` 2026-11-15 Pending work shows on its module's dashboard: change requests on Orders, money to allocate on Finance (no SQL) (#818)
+- `3ba2ef47` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
 - `d8a02296` 2026-11-15 Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL) (#819)
+- `65beb47f` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
 - `0177f067` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
+- `164b7b0c` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
 - `82a446dc` 2026-11-15 Pricing: a unit glued to its number ("180cm") is read as the unit, not as inches (no SQL) (#817)
 - `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
+- `4704838a` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
+- `3fcad29e` 2026-11-15 Control Center: Home and six areas, a searchable directory, no tabs, no pending work (no SQL)
 - `c65a3d36` 2026-11-15 Docs: master instruction sheet asks for a Doors check before changing who may do, see or be told something (#813)
 - `80841c38` 2026-11-15 Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL) (#812)
 - `cebad468` 2026-11-15 Pricing: sizes read by their labels, and the reason for an unseen finish worded right (no SQL) (#811)
@@ -33,18 +39,12 @@
 - `cc40fd5d` 2026-11-15 Docs: stamp page speed part 9 (#801) as merged 90c60493, deployed 11:13 IST, verified live (no SQL) (#802)
 - `90c60493` 2026-11-15 Page speed, part 9: the other Orders pages reuse the guard's profile and permissions (no SQL) (#801)
 - `a10410c5` 2026-11-15 Docs: stamp the premium document layout fixes (#787) as merged 80091824, deployed 09:28 IST, verified live (no SQL) (#797)
-- `e6663b40` 2026-11-15 Phones: Team Today no longer scrolls sideways, the Access page fits, Lead Master's Auto-allot switch wraps (#799)
-- `9fc1f782` 2026-11-15 Docs: stamp page speed part 8 (#796) as merged 27deb4f7, deployed 09:50 IST, verified live (no SQL) (#798)
-- `27deb4f7` 2026-11-15 Page speed, part 8: the launcher's attendance answers join the one request (no SQL) (#796)
-- `80091824` 2026-11-15 Quotations: three layout fixes in the premium document, found by rendering a sample of the live PDF (no SQL) (#787)
-- `69402b1a` 2026-11-15 Docs: stamp #793 (lead popup banner and list) as merged a781646e, deployed 08:59 IST, string-verified live (no SQL) (#795)
-- `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
 
 ## Pages by top-level area
 
 - **(root)** (1): `/`
 - **account** (1): `/account`
-- **admin** (15): `/admin/control-center`, `/admin/control-center/action-queue`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/day-close`, `/admin/control-center/for-you`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/review-rankings`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
+- **admin** (14): `/admin/control-center`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/day-close`, `/admin/control-center/for-you`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/review-rankings`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
 - **announcements** (2): `/announcements`, `/announcements/[id]`
 - **assets-access** (3): `/assets-access`, `/assets-access/[id]`, `/assets-access/notifications`
 - **attendance** (14): `/attendance`, `/attendance/correction-log`, `/attendance/employees`, `/attendance/employees/[id]`, `/attendance/holidays`, `/attendance/minop`, `/attendance/minop/incoming`, `/attendance/monthly-review`, `/attendance/monthly-review/[userId]`, `/attendance/notifications`, `/attendance/records`, `/attendance/requests`, `/attendance/today`, `/attendance/upload`
@@ -146,7 +146,7 @@
 - `src/lib/attendance` — 20 source, 14 test
 - `src/lib/auth` — 1 source, 1 test
 - `src/lib/boeCredits` — 6 source, 9 test
-- `src/lib/controlCenter` — 2 source, 1 test
+- `src/lib/controlCenter` — 2 source, 2 test
 - `src/lib/customerReviews` — 30 source, 41 test
 - `src/lib/dayClose` — 6 source, 5 test
 - `src/lib/errors` — 1 source, 1 test

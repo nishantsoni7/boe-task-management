@@ -424,7 +424,7 @@ describe('Link and Unlink are gone from every active Finance surface', () => {
   test('no interface tells a reader to link or unlink a payment', () => {
     // Copy, not code — the two are separate failures and this is the one a
     // user would actually see.
-    for (const path of [...SURFACES, 'src/app/admin/control-center/action-queue/page.tsx', 'src/lib/controlCenter/actionQueue.ts']) {
+    for (const path of SURFACES) {
       const code = stripComments(readFileSync(join(process.cwd(), path), 'utf8'))
       for (const phrase of ['Link / Unlink', 'Link to an Order', 'Link suspense', 'Unlinking', 'Managed by Link']) {
         assert.equal(code.includes(phrase), false, `${path} must not say "${phrase}"`)
@@ -440,18 +440,6 @@ describe('Link and Unlink are gone from every active Finance surface', () => {
       assert.equal(code.includes(".rpc('link_finance_payment_to_order"), false, path)
       assert.equal(code.includes(".rpc('unlink_finance_payment_from_order"), false, path)
     }
-  })
-
-  test('the Action Queue generates ONLY action=allocate', () => {
-    const queue = readFileSync(join(process.cwd(), 'src/lib/controlCenter/actionQueue.ts'), 'utf8')
-    assert.equal(queue.includes('action=link'), false, 'the old deep link is gone')
-    assert.ok(queue.includes('action=allocate'), 'and it points at allocation instead')
-    assert.ok(queue.includes("actionLabel: 'Allocate suspense payment'"),
-      'and says so in the row the reader clicks')
-    // Every action= this file emits, whatever the category.
-    const emitted = [...stripComments(queue).matchAll(/action=([a-z]+)/g)].map(m => m[1])
-    assert.deepEqual([...new Set(emitted)], ['allocate'],
-      'no other action parameter may be generated from this queue')
   })
 
   test('NOTHING in the app generates an action=link URL', () => {

@@ -13,11 +13,13 @@ import { Pin, PinOff } from 'lucide-react'
 const KEY = 'boe.sidebar.pinned'
 const EVENT = 'boe-sidebar-pin-change'
 
-function read(): boolean {
+// `fallback` is what a browser that has never chosen gets. A stored choice, either way, always wins.
+function read(fallback = false): boolean {
   try {
-    return window.localStorage.getItem(KEY) === '1'
+    const stored = window.localStorage.getItem(KEY)
+    return stored === null ? fallback : stored === '1'
   } catch {
-    return false
+    return fallback
   }
 }
 
@@ -30,12 +32,15 @@ function subscribe(onChange: () => void) {
   }
 }
 
-/** [pinned, toggle]. The server render and the first client render are unpinned. */
-export function useSidebarPinned(): [boolean, () => void] {
-  const pinned = useSyncExternalStore(subscribe, read, () => false)
+/**
+ * [pinned, toggle]. The server render and the first client render are unpinned. A module whose menu is
+ * the map people must read first (the Control Center) passes `fallback = true`: open until somebody unpins it.
+ */
+export function useSidebarPinned(fallback = false): [boolean, () => void] {
+  const pinned = useSyncExternalStore(subscribe, () => read(fallback), () => false)
   const toggle = () => {
     try {
-      window.localStorage.setItem(KEY, read() ? '0' : '1')
+      window.localStorage.setItem(KEY, read(fallback) ? '0' : '1')
     } catch {
       // Storage blocked (private window): the rail simply stays unpinned.
     }
