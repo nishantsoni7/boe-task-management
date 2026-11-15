@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `d7d0ae9f` — Pending work shows on its module's dashboard: change requests on Orders, money to allocate on Finance (no SQL) (#818)
-- Commits on this branch: 1378
+- Commit: `5474f246` — Pricing: heights alone are not a footprint, and a labelled size in feet is read (no SQL)
+- Commits on this branch: 1379
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `5474f246` 2026-11-15 Pricing: heights alone are not a footprint, and a labelled size in feet is read (no SQL)
 - `d7d0ae9f` 2026-11-15 Pending work shows on its module's dashboard: change requests on Orders, money to allocate on Finance (no SQL) (#818)
 - `d8a02296` 2026-11-15 Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL) (#819)
 - `0177f067` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
@@ -38,7 +39,6 @@
 - `27deb4f7` 2026-11-15 Page speed, part 8: the launcher's attendance answers join the one request (no SQL) (#796)
 - `80091824` 2026-11-15 Quotations: three layout fixes in the premium document, found by rendering a sample of the live PDF (no SQL) (#787)
 - `69402b1a` 2026-11-15 Docs: stamp #793 (lead popup banner and list) as merged a781646e, deployed 08:59 IST, string-verified live (no SQL) (#795)
-- `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
 
 ## Pages by top-level area
 
