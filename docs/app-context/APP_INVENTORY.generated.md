@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `3f7824d8` — Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL) (#834)
-- Commits on this branch: 1393
+- Commit: `39494d25` — Pricing Training: the wooden structure is one priced row, with an optional wood share (migration 20270722000000)
+- Commits on this branch: 1394
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 462 (first `20260530_create_positions.sql`, latest `20270722000000_pricing_training_structure.sql`)
 - Tables ever created: 258 (dropped at some point: 8)   SQL functions: 1045   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `39494d25` 2026-11-15 Pricing Training: the wooden structure is one priced row, with an optional wood share (migration 20270722000000)
 - `3f7824d8` 2026-11-15 Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL) (#834)
 - `1d7fcac4` 2026-11-15 Pricing Training: a failed photo reading says why, and can be tried again (no SQL) (#828)
 - `8442b3e6` 2026-11-15 Docs: stamp the "New update" mark (#832) as merged d23cd7e4, deployed 21:57 IST (no SQL) (#833)
@@ -38,7 +39,6 @@
 - `80841c38` 2026-11-15 Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL) (#812)
 - `cebad468` 2026-11-15 Pricing: sizes read by their labels, and the reason for an unseen finish worded right (no SQL) (#811)
 - `4e866120` 2026-11-15 Quotations: Quantity and Price share one row on a product from 1200 px (no SQL) (#809)
-- `4760d62e` 2026-11-15 Docs: stamp page speed part 11 (#807) as merged bb407054, migration 20270719000000 applied, verified live (#808)
 
 ## Pages by top-level area
 
