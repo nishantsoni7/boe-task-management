@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `e1bb2991` — Merge remote-tracking branch 'origin/main' into fix/quotation-line-qty-price-row
-- Commits on this branch: 1370
+- Commit: `0d3b784a` — Docs: regenerate the app inventory after merging main
+- Commits on this branch: 1371
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `0d3b784a` 2026-11-15 Docs: regenerate the app inventory after merging main
 - `e1bb2991` 2026-11-15 Merge remote-tracking branch 'origin/main' into fix/quotation-line-qty-price-row
 - `a9715795` 2026-11-15 Quotations: Quantity and Price share one row on a product from 1200 px (no SQL)
 - `bb407054` 2026-11-15 Page speed, part 11: the Payment Requests badges in one call (migration 20270719000000 applied) (#807)
@@ -38,7 +39,6 @@
 - `1e80e23c` 2026-11-14 Page speed, part 7: the launcher's badge counts in one call (no SQL) (#789)
 - `d06e6248` 2026-11-14 Orders: on a phone the Main PI Details popover stays inside the card and the pending buttons are 44px (#788)
 - `2750eb00` 2026-11-14 Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL) (#784)
-- `59a8d9e2` 2026-11-14 Docs: stamp page speed part 6 (#785) as merged e4ba4410, deployed 21:39 IST, verified live (no SQL) (#786)
 
 ## Pages by top-level area
 
