@@ -24,7 +24,13 @@ export type QuoteLine = {
   is_optional: boolean
   client_note: string
   internal_note: string
+  /** Its other pictures (20270721000000): a swatch, a drawing, another reference. Internal: never on the client's copy. */
+  references?: LineRef[]
 }
+
+export type LineRef = { path: string; kind: 'swatch' | 'drawing' | 'reference'; note?: string }
+/** The database allows 8 (quotation_line_refs_ok). */
+export const MAX_LINE_REFS = 8
 
 export type GstMode = 'igst' | 'cgst_sgst'
 

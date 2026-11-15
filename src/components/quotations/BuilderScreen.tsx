@@ -26,6 +26,7 @@ import {
 import { CLOSING, DEFAULT_CLIENT_NOTE, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS } from '@/lib/quotations/terms'
 import { needsYou, PRICE_CARD_ID, REQUEST_CARD_ID } from '@/lib/quotations/needsYou'
 import { ImportDialog } from './ImportDialog'
+import { WANTS } from '@/lib/quotations/importBoq'
 import { StatusPill } from './ListScreen'
 import { StudioDialog } from './StudioDialog'
 import { VersionsCard } from './VersionsCard'
@@ -372,7 +373,7 @@ export default function BuilderScreen() {
             ))}
           </span>
           {editable && <button className={`${s.btn} ${s.btnSm}`} onClick={() => { const k = newKey(); setAreas(p => [...p, { key: k, name: `Room type ${p.length + 1}`, style: '', multiplier: 1, unit_label: 'rooms' }]); setLines(p => [...p, blankLine(k, startRate)]); touch() }}><Plus size={14} aria-hidden /> Room type</button>}
-          {editable && profile && <button className={`${s.btn} ${s.btnSm}`} onClick={() => setImporting(true)}><FileUp size={14} aria-hidden /> Import client file</button>}
+          {editable && profile && <button className={`${s.btn} ${s.btnSm} ${base?.request && !lines.some(l => l.name.trim()) ? s.btnPrimary : ''}`} onClick={() => setImporting(true)}><FileUp size={14} aria-hidden /> Import client file</button>}
         </div>
         {groups.map((g, gi) => (g.area || g.lines.length > 0 || areas.length === 0) && (
           <div key={g.area?.key ?? `none${gi}`}>
@@ -486,13 +487,14 @@ export default function BuilderScreen() {
       </div>
 
       {importing && profile && (
-        <ImportDialog supabase={supabase} userId={profile.id} areas={areas} onClose={() => setImporting(false)}
+        <ImportDialog supabase={supabase} userId={profile.id} areas={areas} requestId={base?.request?.id} onClose={() => setImporting(false)}
           onAdd={(nextAreas, added) => { setAreas(nextAreas); setLines(p => [...p.filter(l => l.name.trim() || l.unit_price !== null), ...added.map(l => ({ ...l, tax_rate: startRate }))]); touch(); setImporting(false); const priced = added.filter(l => l.unit_price !== null).length; setMsg({ tone: 'ok', text: `Added ${added.length} products${priced ? `, ${priced} with their price` : ''}. Check them${priced < added.length ? ', add the missing prices' : ''}, then Save.` }) }} />
       )}
       {studioFor && profile && (() => {
         const line = lines.find(x => x.key === studioFor)
         return line?.image_path ? (
           <StudioDialog supabase={supabase} userId={profile.id} path={line.image_path} url={p => pictureUrl(supabase, p)} onClose={() => setStudioFor(null)}
+            wants={line.spec.split('\n').find(t => t.startsWith(WANTS))?.slice(WANTS.length)} swatch={line.references?.find(r => r.kind === 'swatch')?.path}
             onUse={p => { updLine(line.key, { image_path: p }); setStudioFor(null); setMsg({ tone: 'ok', text: 'Picture changed. Save to keep it.' }) }} />
         ) : null
       })()}

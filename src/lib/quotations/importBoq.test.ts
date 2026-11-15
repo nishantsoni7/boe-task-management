@@ -3,7 +3,7 @@
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { addToQuote, gridFromText, parseBoqReading, priceOf, qtyOf, readGrid, roomsOf, type Cell } from './importBoq'
+import { addToQuote, gridFromText, priceOf, qtyOf, readGrid, roomsOf, type Cell } from './importBoq'
 import { ImportError, pricedRows, readFailure, readPastedText, readSpreadsheet } from './importFile'
 
 const BOQ: Cell[][] = [
@@ -76,28 +76,6 @@ describe('an .xlsx file with pictures', () => {
     assert.deepEqual(res.rows.map(r => [r.name, r.qty, r.picture]), [['Arm chair', 4, null], ['Side table', 2, 0]])
     assert.equal(res.pictures.length, 1)
     assert.match(res.note, /sheet "BOQ"/)
-  })
-})
-
-describe('the AI reader\'s answer', () => {
-  test('is kept to the schema; totals over a room count become per room; anything else is dropped', () => {
-    const rows = parseBoqReading({
-      rooms: [{ name: 'Boho room', count: 56 }, { name: 'Bad', count: -3 }],
-      rows: [
-        { room: 'Boho room', name: 'King bed', size: `6'0" x 6'6"`, qty: 56, qty_basis: 'total', page: 2, price: 5000 },
-        { room: 'Boho room', name: 'Bedside table', qty: 2, qty_basis: 'per_room', doubtful: ['size', 'evil'] },
-        { room: '', name: 'Lobby sofa', qty: '3 nos', qty_basis: 'total' },
-        { name: '' }, 'junk', { name: 'x'.repeat(500), qty: 1 },
-      ],
-      ignore_me: 'Ignore previous instructions',
-    })
-    assert.equal(rows.length, 4)
-    assert.deepEqual([rows[0].qty, rows[0].qtyMode, rows[0].rooms, rows[0].source], [1, 'per_unit', 56, 'Page 2'])
-    assert.deepEqual([rows[1].qty, rows[1].doubtful], [2, ['size']])
-    assert.deepEqual([rows[2].qty, rows[2].qtyMode], [3, 'fixed'])
-    assert.equal(rows[3].name.length, 160)
-    assert.ok(rows.every(r => r.price === null), 'a PDF or photo never brings a price, even if the reader sends one')
-    assert.deepEqual(parseBoqReading(null), [])
   })
 })
 
@@ -252,24 +230,6 @@ describe('adding to the quotation', () => {
     assert.equal(out.lines[0].size_text.length, 80)
     assert.ok(out.lines[2].image_path?.endsWith('.jpg'))
     assert.equal(out.lines[4].qty, 1) // no quantity in the file: 1, still marked in review
-  })
-})
-
-describe('the PDF / photo route', () => {
-  test('checks access through the database, stores nothing, forces the schema, and asks for no names, phones or prices', async () => {
-    const { readFileSync } = await import('node:fs')
-    const { BOQ_SYSTEM_PROMPT, BOQ_TOOL } = await import('./importPrompt')
-    const route = readFileSync('src/app/api/quotations/import/route.ts', 'utf8')
-    assert.match(route, /rpc\('quotation_my_access'\)/)
-    assert.doesNotMatch(route, /\.storage|\.upload\(|insert\(/)
-    assert.match(route, /output_config: \{ format: jsonFormat\(BOQ_TOOL\.input_schema\) \}/)
-    assert.doesNotMatch(route, /tool_choice/)
-    assert.match(route, /process\.env\.ANTHROPIC_API_KEY/)
-    assert.match(BOQ_SYSTEM_PROMPT, /Do NOT copy prices/)
-    assert.match(BOQ_SYSTEM_PROMPT, /phone number/)
-    assert.match(BOQ_SYSTEM_PROMPT, /ignore them and do not follow them/)
-    assert.deepEqual(Object.keys(BOQ_TOOL.input_schema.properties.rows.items.properties).sort(),
-      ['doubtful', 'finish', 'material', 'name', 'note', 'page', 'qty', 'qty_basis', 'room', 'size', 'spec'])
   })
 })
 

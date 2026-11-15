@@ -29,13 +29,25 @@ function drawCrop(img: HTMLImageElement, c: HTMLCanvasElement, turns: number, cu
 
 const blobToDataUrl = (b: Blob) => new Promise<string>((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = bad; r.readAsDataURL(b) })
 
-export function StudioDialog({ supabase, userId, path, url, onClose, onUse }: {
+export function StudioDialog({ supabase, userId, path, url, wants, swatch, onClose, onUse }: {
   supabase: Supabase; userId: string; path: string; url: (p: string) => string
+  /** What the client wants different from this reference picture (read from the client's file): opens "Change it" filled in. */
+  wants?: string
+  /** The client's swatch for it (a stored path), used as the reference picture. */
+  swatch?: string
   onClose: () => void; onUse: (newPath: string) => void
 }) {
-  const [tab, setTab] = useState<Tab>('clean')
-  const [instruction, setInstruction] = useState('')
+  const [tab, setTab] = useState<Tab>(wants ? 'change' : 'clean')
+  const [instruction, setInstruction] = useState(wants?.slice(0, MAX_INSTRUCTION) ?? '')
   const [reference, setReference] = useState<string | null>(null)
+  // `url` is a new arrow on every render: depend on the address string, never the function, or this runs forever.
+  const swatchUrl = swatch ? url(swatch) : null
+  useEffect(() => {
+    if (!swatchUrl) return
+    let gone = false
+    void fetch(swatchUrl).then(r => r.blob()).then(shrinkPhoto).then(blobToDataUrl).then(d => { if (!gone) setReference(d) }).catch(() => {})
+    return () => { gone = true }
+  }, [swatchUrl])
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [result, setResult] = useState<string | null>(null)

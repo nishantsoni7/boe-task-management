@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Copy, ImagePlus, Maximize2, Trash2 } from 'lucide-react'
 import { formatINR } from '@/lib/currency'
 import type { PriceHint } from '@/lib/quotations/api'
-import { sizeInInches, type DimensionUnit, type QuoteArea, type QuoteLine } from '@/lib/quotations/math'
+import { sizeInInches, type DimensionUnit, type LineRef, type QuoteArea, type QuoteLine } from '@/lib/quotations/math'
 import type { ModelSuggestion } from '@/lib/pricing/model'
 import { PriceHintLine } from './PricingDesk'
 import { Pic } from './Pic'
@@ -18,6 +18,7 @@ import s from './quotations.module.css'
  * There is no Finish box (owner, 13 Nov 2026: not needed). `finish` stays in the line's data, stored and re-sent on every save,
  * because the database rewrites the lines and a missing key would wipe it; words typed into Material and Remarks still reach the price model.
  */
+export const REF_LABEL: Record<LineRef['kind'], string> = { swatch: 'Swatch', drawing: 'Drawing', reference: 'Reference' }
 export function LineRow({ l, area, unit, editable, qty, total, first, last, url, onChange, onUpload, onImprove, onView, hint, model, feedbackCtx, onRemove, onMove, onDuplicate }: {
   l: QuoteLine; area: QuoteArea | null; unit: DimensionUnit; editable: boolean; qty: number; total: number; first: boolean; last: boolean
   url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onImprove: () => void; onView: () => void
@@ -45,6 +46,18 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
               <button type="button" className={s.improve} onClick={() => fileRef.current?.click()}>Replace</button>
               <button type="button" className={s.plRm} onClick={() => onChange({ image_path: null })}>Remove</button>
             </span>
+          </div>
+        )}
+        {!!l.references?.length && (
+          // The client's swatch, drawing or other reference, kept from the file (internal: never on the client's copy).
+          <div className={s.plRefs} aria-label="Other pictures from the client's file">
+            {l.references.map((r, i) => (
+              <span key={r.path} className={s.plRef} title={[REF_LABEL[r.kind], r.note].filter(Boolean).join(': ')}>
+                <a href={url(r.path)} target="_blank" rel="noreferrer"><Pic className={s.plRefImg} src={url(r.path)} alt={REF_LABEL[r.kind]} /></a>
+                <span className={s.plRefKind}>{REF_LABEL[r.kind]}</span>
+                {editable && <button type="button" className={s.plRefRm} aria-label={`Remove this ${REF_LABEL[r.kind].toLowerCase()}`} onClick={() => onChange({ references: l.references!.filter((_, j) => j !== i) })}>×</button>}
+              </span>
+            ))}
           </div>
         )}
       </div>
