@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `261f2440` — Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL)
-- Commits on this branch: 1371
+- Commit: `662d619d` — Docs: stamp PR #812 in the changelog, the 01 row and dossier 29
+- Commits on this branch: 1373
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `662d619d` 2026-11-15 Docs: stamp PR #812 in the changelog, the 01 row and dossier 29
+- `0c87f289` 2026-11-15 Docs: regenerate the app inventory
 - `261f2440` 2026-11-15 Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL)
 - `4e866120` 2026-11-15 Quotations: Quantity and Price share one row on a product from 1200 px (no SQL) (#809)
 - `4760d62e` 2026-11-15 Docs: stamp page speed part 11 (#807) as merged bb407054, migration 20270719000000 applied, verified live (#808)
@@ -37,8 +39,6 @@
 - `b54f6989` 2026-11-14 Docs: stamp #788 (phone popover and pending buttons) as merged d06e6248, deployed 22:33 IST (no SQL) (#790)
 - `1a395cf4` 2026-11-14 Orders: PI review thread inside the operations notice, replies keep their line breaks (no SQL) (#791)
 - `1e80e23c` 2026-11-14 Page speed, part 7: the launcher's badge counts in one call (no SQL) (#789)
-- `d06e6248` 2026-11-14 Orders: on a phone the Main PI Details popover stays inside the card and the pending buttons are 44px (#788)
-- `2750eb00` 2026-11-14 Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL) (#784)
 
 ## Pages by top-level area
 
