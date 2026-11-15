@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `85b2e7e3` — Pricing Training: submitting is what counts, and a case can always be changed (migration 20270724000000, apply before merge)
-- Commits on this branch: 1400
+- Commit: `9e3cda01` — Merge origin/main into feat/training-submit-counts (changelog: both entries kept; inventory regenerated)
+- Commits on this branch: 1402
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 465 (first `20260530_create_positions.sql`, latest `20270724000000_pricing_training_submit_counts.sql`)
 - Tables ever created: 260 (dropped at some point: 8)   SQL functions: 1049   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
+- `9e3cda01` 2026-11-16 Merge origin/main into feat/training-submit-counts (changelog: both entries kept; inventory regenerated)
 - `85b2e7e3` 2026-11-16 Pricing Training: submitting is what counts, and a case can always be changed (migration 20270724000000, apply before merge)
+- `17a37990` 2026-11-16 Quotations: Start from a client file, read any requirement file into rooms, products and pictures (migration 20270721000000, apply before merge) (#835)
 - `f37ad21e` 2026-11-15 Docs: stamp #830 (AI calls use structured output) as merged 475569ea, deployed 21:46 IST (no SQL) (#831)
 - `0d8f051e` 2026-11-15 Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live (#840)
 - `ca8348f3` 2026-11-15 Docs: stamp the Training wooden structure change (#838) as merged 679f1306, deployed 23:26 IST, migration 20270723000000 applied (no SQL) (#841)
@@ -37,8 +39,6 @@
 - `f1b7ea2e` 2026-11-15 Control Center: Home and six areas, a searchable directory, no tabs, no pending work (no SQL) (#816)
 - `6d0d0700` 2026-11-15 Docs: stamp #819 (the lead popup's left side with room) as merged d8a02296, deployed 16:44 IST, verified live (no SQL) (#820)
 - `d7d0ae9f` 2026-11-15 Pending work shows on its module's dashboard: change requests on Orders, money to allocate on Finance (no SQL) (#818)
-- `d8a02296` 2026-11-15 Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL) (#819)
-- `0177f067` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
 
 ## Pages by top-level area
 
