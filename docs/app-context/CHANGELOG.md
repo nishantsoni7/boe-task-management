@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-15 — Sales: lead popup polish, the selected temperature stays readable on hover and the update box is shorter (branch `feat/lead-popup-polish`; PR number added after it is opened) · no SQL
+## 2026-11-15 — Sales: lead popup polish, the selected temperature stays readable on hover and the update box is shorter (branch `feat/lead-popup-polish`, PR #836 open; the merge SHA is added at the stamp) · no SQL
 - **Owner request** (two screenshots of the live popup, after #829): (1) hovering the selected temperature made its text invisible; (2) the first quick note should read "Not responding", and the follow-up date should leave the update box because it is already at the top, to save height without looking cluttered or compact; (3) attachments on updates (planned apart: it needs a migration).
 - **What.** The hover rule no longer reaches the selected temperature (it had more weight than the selected rule, so the button went light under the mouse). The first quick note is labelled "Not responding" (it still writes "Client not responding." with the same tag), so the four notes fit in one row. The update box lost its follow-up line: its footer is "Ctrl + Enter to post" and Post update. Dossier 28, rule 42.
 - **One behaviour decision, said to the owner.** Posting an update used to move the follow-up to the next working day unless a date was picked in the box. With no date in the box, a date still ahead is kept (`dueAfterUpdate`), so one chosen at the top (Change date saves at once) is not undone by the post; a late, due-today or missing date still goes to the next working day.
