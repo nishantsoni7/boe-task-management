@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { emptyForm, emptyLine, lineAmount, num, parseReading, problems, readingToLines, saveDoc, toLine, totals, type Line } from './doc'
+import { emptyForm, emptyLine, lineAmount, num, parseReading, problems, readingToLines, saveDoc, structureRest, toLine, totals, type Line } from './doc'
 import { PRODUCT_SYSTEM_PROMPT, PRODUCT_TOOL } from './readPrompt'
 
 const line = (p: Partial<Line>): Line => ({ ...emptyLine(), ...p })
@@ -53,12 +53,39 @@ describe('a training case: what is sent to the database, and read back', () => {
     const doc = saveDoc({ ...emptyForm(), name: '  Chair ', width_in: '16', sold_price: '6,260' },
       [line({ element: ' Frame wood ', material: 'Teak', quantity: '0.81', unit: 'cu ft', rate: '2900', from_ai: true }), line({ element: 'Carpenter', kind: 'labour', amount: '650' })])
     assert.equal(doc.name, 'Chair'); assert.equal(doc.width_in, 16); assert.equal(doc.depth_in, null); assert.equal(doc.sold_price, 6260); assert.equal(doc.variant, null)
-    assert.deepEqual(doc.lines[0], { element: 'Frame wood', kind: 'material', material: 'Teak', quantity: 0.81, unit: 'cu ft', rate: 2900, amount: 2349, reasoning: null, from_ai: true })
-    assert.deepEqual(doc.lines[1], { element: 'Carpenter', kind: 'labour', material: null, quantity: null, unit: null, rate: null, amount: 650, reasoning: null, from_ai: false })
+    assert.deepEqual(doc.lines[0], { element: 'Frame wood', kind: 'material', material: 'Teak', quantity: 0.81, unit: 'cu ft', rate: 2900, amount: 2349, reasoning: null, from_ai: true, wood_amount: null })
+    assert.deepEqual(doc.lines[1], { element: 'Carpenter', kind: 'labour', material: null, quantity: null, unit: null, rate: null, amount: 650, reasoning: null, from_ai: false, wood_amount: null })
     const back = doc.lines.map(toLine)
     assert.equal(back[0].amount, ''); assert.equal(back[0].quantity, '0.81'); assert.equal(lineAmount(back[0]), 2349)
     assert.equal(back[1].amount, '650'); assert.equal(lineAmount(back[1]), 650)
     assert.equal(toLine({ ...doc.lines[1], kind: 'gift' }).kind, 'other')
+  })
+})
+
+describe('the wooden structure is one priced row', () => {
+  const chair = { ...emptyForm(), name: 'Arm chair' }
+  test('one price is enough; an optional wood share leaves labour and hardware', () => {
+    const whole = line({ element: 'Wooden structure', kind: 'structure', amount: '4200' })
+    assert.equal(structureRest(whole), null)
+    assert.deepEqual(problems(chair, [whole], true), [])
+    const split = line({ element: 'Wooden structure', kind: 'structure', material: 'Teak', amount: '4200', wood: '1,600' })
+    assert.equal(structureRest(split), 2600)
+    assert.equal(saveDoc(chair, [split]).lines[0].wood_amount, 1600)
+    assert.equal(totals([split]).byKind.structure, 4200)
+    const back = toLine({ ...saveDoc(chair, [split]).lines[0] })
+    assert.equal(back.wood, '1600'); assert.equal(back.kind, 'structure'); assert.equal(structureRest(back), 2600)
+  })
+  test('a wood share must be a number, never more than the structure price, and only a structure row carries one', () => {
+    assert.deepEqual(problems(chair, [line({ element: 'Wooden structure', kind: 'structure', amount: '4200', wood: 'half' })], false), ['Element 1: the wood share must be a number.'])
+    assert.deepEqual(problems(chair, [line({ element: 'Wooden structure', kind: 'structure', amount: '4200', wood: '5000' })], false), ['Element 1: the wood share is more than the structure price.'])
+    assert.equal(saveDoc(chair, [line({ element: 'Cane', kind: 'material', amount: '400', wood: '100' })]).lines[0].wood_amount, null)
+    assert.equal(structureRest(line({ element: 'Cane', kind: 'material', amount: '400', wood: '100' })), null)
+  })
+  test('the reader is told to record the wooden structure once, and that row arrives as a structure row', () => {
+    assert.match(PRODUCT_SYSTEM_PROMPT, /The wooden structure is ONE part/)
+    assert.match(PRODUCT_SYSTEM_PROMPT, /only when it is visibly a different material/)
+    const rows = readingToLines(parseReading({ category: 'Arm chair', confidence: 90, materials: [{ part: 'Wooden structure', material: 'Teak or sheesham', note: 'Frame, arms, legs', confidence: 40 }, { part: 'Back', material: 'Cane', confidence: 80 }] })!)
+    assert.deepEqual(rows.map(r => r.kind), ['structure', 'material'])
   })
 })
 

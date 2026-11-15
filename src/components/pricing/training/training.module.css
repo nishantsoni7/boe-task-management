@@ -30,6 +30,8 @@
 .field { display: grid; gap: 4px; min-width: 0; }
 .el { border-top: 1px solid #E4DED7; padding: 14px 16px; display: grid; gap: 10px; }
 .elGrid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 2fr) minmax(0, 1fr) minmax(0, .9fr) minmax(0, 1fr) minmax(0, 1.1fr) auto; gap: 10px; align-items: end; }
+.split { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); gap: 12px; align-items: end; }
+.split p { margin: 0 0 10px; }
 .amount { font: 700 15px var(--boe-font-heading); font-variant-numeric: tabular-nums; text-align: right; min-height: 40px; display: flex; align-items: center; justify-content: flex-end; }
 .fromAi { font: 600 11px var(--boe-font-body); padding: 1px 7px; border-radius: 6px; background: #EAF0F8; color: #335A86; }
 .iconBtn { width: 40px; height: 40px; border-radius: 8px; border: 1px solid #CFC8BF; background: #fff; color: #686D6C; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `709a747b` — Sales: files on a lead's update, by button, drag and drop and paste (migration 20270722000000, apply before merge) (#839)
-- Commits on this branch: 1395
+- Commit: `2da144e3` — Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live
+- Commits on this branch: 1396
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
-- Migrations: 462 (first `20260530_create_positions.sql`, latest `20270722000000_sales_lead_attachments.sql`)
+- Migrations: 463 (first `20260530_create_positions.sql`, latest `20270723000000_pricing_training_structure.sql`)
 - Tables ever created: 259 (dropped at some point: 8)   SQL functions: 1048   Enums: 0
 - Test files: 869   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `2da144e3` 2026-11-15 Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live
 - `709a747b` 2026-11-15 Sales: files on a lead's update, by button, drag and drop and paste (migration 20270722000000, apply before merge) (#839)
 - `894aea2d` 2026-11-15 Docs: stamp the Training photo-read fix (#828) as merged 1d7fcac4, deployed 22:34 IST (no SQL) (#837)
 - `3f7824d8` 2026-11-15 Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL) (#834)
@@ -38,7 +39,6 @@
 - `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
 - `c65a3d36` 2026-11-15 Docs: master instruction sheet asks for a Doors check before changing who may do, see or be told something (#813)
 - `80841c38` 2026-11-15 Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL) (#812)
-- `cebad468` 2026-11-15 Pricing: sizes read by their labels, and the reason for an unseen finish worded right (no SQL) (#811)
 
 ## Pages by top-level area
 
@@ -505,7 +505,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270617000000_quotation_pricing_desk.sql`
 - `20270618000000_quotation_reports.sql`
 - `20270619000000_order_handoff_send_to_sales.sql`
 - `20270620000000_pricing_price_book.sql`
@@ -535,6 +534,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270719000000_finance_payment_request_tab_counts.sql`
 - `20270720000000_pricing_training.sql`
 - `20270722000000_sales_lead_attachments.sql`
+- `20270723000000_pricing_training_structure.sql`
 
 ## All SQL function names
 
