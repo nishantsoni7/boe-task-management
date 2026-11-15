@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-15 — Quotations: Import reads the right tab of a PI (price, customization, pictures come across again), and the suggested price is one line with a "Why?" popup for the Pricing module's people (PR #805) · no SQL
+## 2026-11-15 — Quotations: Import reads the right tab of a PI (price, customization, pictures come across again), and the suggested price is one line with a "Why?" popup for the Pricing module's people (PR #805, squash-merged 12:39 IST as `e4f0c6e2`, deployed 12:41 IST, verified live) · no SQL
 - **Owner report.** A BOE PI (`Santosh Hotel & Restaurant.xlsx`, five tabs) imported with name, size, material and quantity only, and the suggested-price block was "extremely messy"; asked for a minimal line, the details in a popup and a way for the owner and Nitish to correct the logic.
 - **Cause.** The importer kept the tab with the most products. The PI's Master tab read one short (a product with no quantity yet was taken for a room title because the "Code" column was not a serial number) and a helper tab with no BOE price won, bringing a stray picture too. Dossier 29 section 15.
 - **Import.** `pricedRows()` in `importFile.ts` ranks tabs by products with a BOE price, then by count; `code` is a serial-number heading in `importBoq.ts`; text in a headless column after Customization / Remarks becomes the line's Internal note (`ImportRow.internalNote`). On the real file: Master, 13 products, 11 priced, 11 with customization, 3 side notes, 13 correct pictures.
