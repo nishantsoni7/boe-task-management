@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `0177f067` — Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
-- Commits on this branch: 1376
+- Commit: `014747b4` — Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL)
+- Commits on this branch: 1377
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `014747b4` 2026-11-15 Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL)
 - `0177f067` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
 - `82a446dc` 2026-11-15 Pricing: a unit glued to its number ("180cm") is read as the unit, not as inches (no SQL) (#817)
 - `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
@@ -38,7 +39,6 @@
 - `69402b1a` 2026-11-15 Docs: stamp #793 (lead popup banner and list) as merged a781646e, deployed 08:59 IST, string-verified live (no SQL) (#795)
 - `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
 - `a781646e` 2026-11-15 Sales: lead popup left side gets a next-step banner and one About this client list (no SQL) (#793)
-- `1ff42c1e` 2026-11-14 Docs: stamp #791 (merged 1a395cf4, deployed 22:50 IST) and #780 (merged 33813806, tools installed 20:18 IST) (#794)
 
 ## Pages by top-level area
 
