@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `cd8d6358` — Pricing Training: submitting is what counts, and a case can always be changed (migration 20270724000000, apply before merge) (#843)
-- Commits on this branch: 1402
+- Commit: `890b9f3b` — Pricing: the wood list with rates, and the wood picked on a structure row (migration 20270725000000)
+- Commits on this branch: 1403
 - Pages (`page.tsx`): 208   API routes (`route.ts`): 212
 - Migrations: 466 (first `20260530_create_positions.sql`, latest `20270725000000_pricing_woods.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1052   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `890b9f3b` 2026-11-16 Pricing: the wood list with rates, and the wood picked on a structure row (migration 20270725000000)
 - `cd8d6358` 2026-11-16 Pricing Training: submitting is what counts, and a case can always be changed (migration 20270724000000, apply before merge) (#843)
 - `b53b86f9` 2026-11-16 Docs: stamp #835 (Start from a client file) as merged 17a37990, deployed 00:06 IST, migration 20270721000000 applied (#842)
 - `17a37990` 2026-11-16 Quotations: Start from a client file, read any requirement file into rooms, products and pictures (migration 20270721000000, apply before merge) (#835)
@@ -38,7 +39,6 @@
 - `8bcc1aa3` 2026-11-15 Pricing: heights alone are not a footprint, and a labelled size in feet is read (no SQL) (#822)
 - `f1b7ea2e` 2026-11-15 Control Center: Home and six areas, a searchable directory, no tabs, no pending work (no SQL) (#816)
 - `6d0d0700` 2026-11-15 Docs: stamp #819 (the lead popup's left side with room) as merged d8a02296, deployed 16:44 IST, verified live (no SQL) (#820)
-- `d7d0ae9f` 2026-11-15 Pending work shows on its module's dashboard: change requests on Orders, money to allocate on Finance (no SQL) (#818)
 
 ## Pages by top-level area
 
