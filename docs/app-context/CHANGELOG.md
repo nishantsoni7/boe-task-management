@@ -4,7 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-15 — Quotations: Quantity and Price share one row on a product (wide screens) (PR #809) · no SQL
+## 2026-11-15 — Quotations: the Quantity / Price section of a product is a neat numbers panel (PR pending) · no SQL
+- **Owner ask.** After the one-row version: it "does not look neat"; redesign the section to look neat and professional. A preview was shared and approved ("Yes, build it").
+- **Change.** `ProductLine.tsx`, `PricingDesk.tsx`, `quotations.module.css`: one bordered card with a Quantity box (the number and "pieces", or the per-room selector, in one box), a Price box (the rupee sign inside, label "Price before GST"), the suggestion as a small card ("Suggested ₹X" + Use, "Range" + Why?) and a footer band (Optional and the tools; the total and the piece count). It replaces the two-track rule of #809. Under 1200 px the panel sits under the boxes, up to 420 px wide; on a phone it is full width with 44 px controls. Dossier 29 section 16.
+- **Measured.** Real component and stylesheet with the app's real fonts: 237 px per product with a suggestion, the same as after #809 and 43 px under main before it; the panel is as tall as the boxes (200 px). Earlier previews of this work had fallen back to the browser's font; the numbers were re-measured.
+- **Tests.** `builderPolish.test.tsx`: six panel tests replace the three of #809; `learning.dom.test.tsx` and `builderRedesign.test.tsx` follow the new card and label.
+
+## 2026-11-15 — Quotations: Quantity and Price share one row on a product, and Product / Material and Dimensions / Remarks share widths (PR #809, squash-merged 14:36 IST as `4e866120`, deployed 14:38 IST, verified live) · no SQL
 - **Owner ask.** From a screenshot of an imported product: Quantity and Price in one row, their total below, to save vertical space.
 - **Change.** `quotations.module.css`: from 1200 px the numbers column is 296 px (was 250) and `.plRight` has two tracks, so Quantity (with "pieces" or the per-room selector) and "Price ₹ before GST" share row one and every later child (suggestion, Optional + total, tools) spans both. Under 1200 px and on a phone nothing changes. Dossier 29 section 16.
 - **Measured.** Real `LineRow`, real stylesheet, 1200 / 1280 / 1440 / 1920 px: a product with a suggestion is 242 px tall, was 285 (43 px, 15%); no overflow; the Product and Dimensions boxes are 46 px narrower.

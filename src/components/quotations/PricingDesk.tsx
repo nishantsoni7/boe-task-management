@@ -26,11 +26,11 @@ type Supabase = ReturnType<typeof createClient>
 type WhyCtx = { line: FeedbackLine; clientType: string | null; quotationId: string | null; isDesk: boolean }
 
 /**
- * The suggested price, kept to one line for everyone: "Suggested ₹4,790 (₹3,800–₹6,050)  Use", or "Last ordered ₹7,300  Use" when
- * only history is known (owner, 15 Nov 2026: the old block was "extremely messy"). How it was worked out, the history, and the
- * way to correct the logic sit behind "Why?", which only people who pass `feedback` see (the builder gives it to holders of the
- * Pricing module: Admin, or granted per person). Hiding is a need-to-see filter, not a security boundary: the model is fitted
- * in the browser from the shared price pool.
+ * The suggested price as a small card for everyone: "Suggested ₹4,790" with a Use button and, under it, "Range ₹3,800–₹6,050"; or
+ * "Last ordered ₹7,300" with Use when only history is known (owner, 15 Nov 2026: the old block was "extremely messy"). How it was
+ * worked out, the history, and the way to correct the logic sit behind "Why?", which only people who pass `feedback` see (the
+ * builder gives it to holders of the Pricing module: Admin, or granted per person). Hiding is a need-to-see filter, not a
+ * security boundary: the model is fitted in the browser from the shared price pool.
  */
 export function PriceHintLine({ hint, model, price, editable, onUse, feedback }: {
   hint?: PriceHint; model?: ModelSuggestion | null; price: number | null; editable: boolean; onUse: (p: number) => void
@@ -41,13 +41,21 @@ export function PriceHintLine({ hint, model, price, editable, onUse, feedback }:
   const o = hint?.ordered ?? null
   const sug = model ?? (hint?.points ? suggestPrice(hint.points) : null)
   const last = sug ? sug.price : o ? Number(o.last) : Number(hint!.quoted!.last)
+  const range = !!sug && sug.low !== sug.high
   return (
-    <div className={`${s.small} ${s.muted}`} style={{ lineHeight: 1.35 }}>
-      {sug
-        ? <>Suggested <b>{formatINR(sug.price)}</b>{sug.low !== sug.high && <> ({formatINR(sug.low)}–{formatINR(sug.high)})</>}</>
-        : o ? <>Last ordered <b>{formatINR(Number(o.last))}</b></> : <>Last quoted <b>{formatINR(Number(hint!.quoted!.last))}</b></>}
-      {editable && price !== last && <> <button type="button" className={s.linkBtn} onClick={() => onUse(last)}>Use</button></>}
-      {feedback && <> <button type="button" className={s.linkBtn} onClick={() => setWhy(true)} aria-haspopup="dialog">Why?</button></>}
+    <div className={s.sug}>
+      <span>
+        {sug
+          ? <>Suggested <b>{formatINR(sug.price)}</b></>
+          : o ? <>Last ordered <b>{formatINR(Number(o.last))}</b></> : <>Last quoted <b>{formatINR(Number(hint!.quoted!.last))}</b></>}
+      </span>
+      <span className={s.sugAct}>{editable && price !== last && <button type="button" className={s.sugUse} onClick={() => onUse(last)}>Use</button>}</span>
+      {(range || feedback) && (
+        <>
+          <span className={s.sugRange}>{range && <>Range {formatINR(sug!.low)}–{formatINR(sug!.high)}</>}</span>
+          <span className={s.sugAct}>{feedback && <button type="button" className={s.sugWhy} onClick={() => setWhy(true)} aria-haspopup="dialog">Why?</button>}</span>
+        </>
+      )}
       {why && feedback && <PriceWhy ctx={feedback} hint={hint} model={model} sug={sug} onClose={() => setWhy(false)} />}
     </div>
   )
