@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `121c5a70` — Docs: stamp the lead popup polish with its pull request number (#836)
-- Commits on this branch: 1393
+- Commit: `178958bd` — Merge origin/main into feat/lead-popup-polish (changelog: both entries kept; inventory regenerated)
+- Commits on this branch: 1395
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 461 (first `20260530_create_positions.sql`, latest `20270720000000_pricing_training.sql`)
 - Tables ever created: 258 (dropped at some point: 8)   SQL functions: 1045   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `178958bd` 2026-11-15 Merge origin/main into feat/lead-popup-polish (changelog: both entries kept; inventory regenerated)
+- `1d7fcac4` 2026-11-15 Pricing Training: a failed photo reading says why, and can be tried again (no SQL) (#828)
 - `121c5a70` 2026-11-15 Docs: stamp the lead popup polish with its pull request number (#836)
 - `a1385195` 2026-11-15 Sales: lead popup polish, the selected temperature stays readable on hover and the update box is shorter (no SQL)
 - `8442b3e6` 2026-11-15 Docs: stamp the "New update" mark (#832) as merged d23cd7e4, deployed 21:57 IST (no SQL) (#833)
@@ -37,8 +39,6 @@
 - `c65a3d36` 2026-11-15 Docs: master instruction sheet asks for a Doors check before changing who may do, see or be told something (#813)
 - `80841c38` 2026-11-15 Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL) (#812)
 - `cebad468` 2026-11-15 Pricing: sizes read by their labels, and the reason for an unseen finish worded right (no SQL) (#811)
-- `4e866120` 2026-11-15 Quotations: Quantity and Price share one row on a product from 1200 px (no SQL) (#809)
-- `4760d62e` 2026-11-15 Docs: stamp page speed part 11 (#807) as merged bb407054, migration 20270719000000 applied, verified live (#808)
 
 ## Pages by top-level area
 
