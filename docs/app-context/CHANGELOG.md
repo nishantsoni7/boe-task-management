@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-15 — Quotations: Quantity and Price share one row on a product (wide screens) (PR #809) · no SQL
+- **Owner ask.** From a screenshot of an imported product: Quantity and Price in one row, their total below, to save vertical space.
+- **Change.** `quotations.module.css`: from 1200 px the numbers column is 296 px (was 250) and `.plRight` has two tracks, so Quantity (with "pieces" or the per-room selector) and "Price ₹ before GST" share row one and every later child (suggestion, Optional + total, tools) spans both. Under 1200 px and on a phone nothing changes. Dossier 29 section 16.
+- **Measured.** Real `LineRow`, real stylesheet, 1200 / 1280 / 1440 / 1920 px: a product with a suggestion is 242 px tall, was 285 (43 px, 15%); no overflow; the Product and Dimensions boxes are 46 px narrower.
+- **Columns.** Product and Material are 5 of 12, Dimensions and Remarks 7 of 12 (`ProductLine.tsx`: the two classes swapped; it was 7 and 5 over 5 and 7). A 40-character size no longer clips in Dimensions; a product name over about 38 characters now scrolls in its box.
+- **Tests.** `builderPolish.test.tsx` +3 and the widths.
+
 ## 2026-11-15 — Quotations: Import reads the right tab of a PI (price, customization, pictures come across again), and the suggested price is one line with a "Why?" popup for the Pricing module's people (PR #805, squash-merged 12:39 IST as `e4f0c6e2`, deployed 12:41 IST, verified live) · no SQL
 - **Owner report.** A BOE PI (`Santosh Hotel & Restaurant.xlsx`, five tabs) imported with name, size, material and quantity only, and the suggested-price block was "extremely messy"; asked for a minimal line, the details in a popup and a way for the owner and Nitish to correct the logic.
 - **Cause.** The importer kept the tab with the most products. The PI's Master tab read one short (a product with no quantity yet was taken for a room title because the "Code" column was not a serial number) and a helper tab with no BOE price won, bringing a stray picture too. Dossier 29 section 15.

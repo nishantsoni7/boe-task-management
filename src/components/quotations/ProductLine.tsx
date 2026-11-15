@@ -12,7 +12,8 @@ import s from './quotations.module.css'
 
 /**
  * One product on the builder (layout B, owner-approved 13 Nov 2026): its picture (click to see it large), the boxes, and the
- * numbers. GST is not here: a quotation has one GST rate, in the totals (each product still stores it).
+ * numbers. The boxes form two columns (owner, 15 Nov 2026): Product above Material (5 of 12), Dimensions above Remarks (7 of 12).
+ * GST is not here: a quotation has one GST rate, in the totals (each product still stores it).
  * There is no Finish box (owner, 13 Nov 2026: not needed). `finish` stays in the line's data, stored and re-sent on every save,
  * because the database rewrites the lines and a missing key would wipe it; words typed into Material and Remarks still reach the price model.
  */
@@ -47,8 +48,8 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
         )}
       </div>
       <div className={s.plMid}>
-        <label className={`${s.field} ${s.c7}`}><span>Product</span><input aria-label="Product name" className={s.input} style={{ fontWeight: 600 }} placeholder="Product name, e.g. Bed" value={l.name} onChange={e => onChange({ name: e.target.value })} disabled={!editable} /></label>
-        <label className={`${s.field} ${s.c5}`}><span>Dimensions ({unit})</span>
+        <label className={`${s.field} ${s.c5}`}><span>Product</span><input aria-label="Product name" className={s.input} style={{ fontWeight: 600 }} placeholder="Product name, e.g. Bed" value={l.name} onChange={e => onChange({ name: e.target.value })} disabled={!editable} /></label>
+        <label className={`${s.field} ${s.c7}`}><span>Dimensions ({unit})</span>
           <span className={s.unitWrap}><input aria-label="Dimensions" className={s.input} placeholder="e.g. 83 × 68 × 18" value={l.size_text} onChange={e => onChange({ size_text: e.target.value })} disabled={!editable} /><span className={s.unitTag} aria-hidden>{unit}</span></span>
           {inches && <span className={`${s.small} ${s.muted} ${s.num}`}>= {inches.join(' × ')} in</span>}
         </label>

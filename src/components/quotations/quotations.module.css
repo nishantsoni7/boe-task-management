@@ -108,7 +108,7 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .mult { width: 74px; text-align: center; }
 
 /* one product: picture, the boxes, and the numbers */
-.pl { display: grid; grid-template-columns: 180px minmax(0, 1fr) 250px; gap: 20px; padding: 18px 16px; border-top: 1px solid var(--boe-surface-sunken); align-items: start; }
+.pl { display: grid; grid-template-columns: 180px minmax(0, 1fr) 296px; gap: 20px; padding: 18px 16px; border-top: 1px solid var(--boe-surface-sunken); align-items: start; }
 .pl:nth-of-type(even) { background: var(--boe-surface-quiet); }
 .plPic { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .plPicBtn { position: relative; width: 160px; height: 135px; padding: 0; border: 1px solid var(--boe-border); border-radius: 10px; background: #fff; cursor: zoom-in; overflow: hidden; display: block; }
@@ -187,6 +187,12 @@ textarea.t3 { min-height: 86px; }
 .viewerThumb img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .viewerThumb[aria-current='true'] { border-color: var(--boe-brand); opacity: 1; }
 
+/* wide screens (owner, 15 Nov 2026): Quantity and Price share one row, 172 + 8 + 116 = the 296px column (the quantity box holds the 62px number and the 104px per-room selector); the suggestion, Optional + total and the tools
+   (every child after the first two) take the full width under it. Narrower screens keep their own rules below. */
+@media (min-width: 1200px) {
+  .plRight { grid-template-columns: minmax(0, 1fr) 116px; align-items: end; }
+  .plRight > :nth-child(n+3) { grid-column: 1 / -1; }
+}
 /* narrower screens: the product's numbers go under its boxes */
 @media (max-width: 1199px) {
   .clientGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
