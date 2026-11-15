@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `5c0060ce` — Docs: regenerate the app inventory after merging main
-- Commits on this branch: 1379
+- Commit: `0177f067` — Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
+- Commits on this branch: 1376
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,13 +14,10 @@
 
 ## Latest 25 commits
 
-- `5c0060ce` 2026-11-15 Docs: regenerate the app inventory after merging main
-- `568d9102` 2026-11-15 Merge remote-tracking branch 'origin/main' into docs/stamp-quotation-numbers-panel
+- `0177f067` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
+- `82a446dc` 2026-11-15 Pricing: a unit glued to its number ("180cm") is read as the unit, not as inches (no SQL) (#817)
 - `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
-- `2b693e29` 2026-11-15 Docs: regenerate the app inventory after merging main
-- `507f297a` 2026-11-15 Merge remote-tracking branch 'origin/main' into docs/stamp-quotation-numbers-panel
 - `c65a3d36` 2026-11-15 Docs: master instruction sheet asks for a Doors check before changing who may do, see or be told something (#813)
-- `da99f098` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL)
 - `80841c38` 2026-11-15 Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL) (#812)
 - `cebad468` 2026-11-15 Pricing: sizes read by their labels, and the reason for an unseen finish worded right (no SQL) (#811)
 - `4e866120` 2026-11-15 Quotations: Quantity and Price share one row on a product from 1200 px (no SQL) (#809)
@@ -39,6 +36,9 @@
 - `27deb4f7` 2026-11-15 Page speed, part 8: the launcher's attendance answers join the one request (no SQL) (#796)
 - `80091824` 2026-11-15 Quotations: three layout fixes in the premium document, found by rendering a sample of the live PDF (no SQL) (#787)
 - `69402b1a` 2026-11-15 Docs: stamp #793 (lead popup banner and list) as merged a781646e, deployed 08:59 IST, string-verified live (no SQL) (#795)
+- `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
+- `a781646e` 2026-11-15 Sales: lead popup left side gets a next-step banner and one About this client list (no SQL) (#793)
+- `1ff42c1e` 2026-11-14 Docs: stamp #791 (merged 1a395cf4, deployed 22:50 IST) and #780 (merged 33813806, tools installed 20:18 IST) (#794)
 
 ## Pages by top-level area
 
