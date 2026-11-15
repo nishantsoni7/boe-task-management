@@ -221,8 +221,12 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
   },
   pricing: {
     group: 'Sales',
-    blurb: 'Coming soon.',
-    levels: { on: 'Open Pricing, which shows a Coming soon page for now.' },
+    blurb: 'The price book, and Training where the price of a product is taught.',
+    levels: {
+      viewer: 'Open Pricing: read the price book and the training cases.',
+      contributor: 'Viewer, plus teach a training case and send it for checking.',
+      manager: 'Contributor, plus check training cases, their own included: approve, send back or reject.',
+    },
     authorities: {},
   },
   quotations: {

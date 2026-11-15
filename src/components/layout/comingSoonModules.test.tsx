@@ -29,7 +29,7 @@ const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace
 const MODULES = [
   { key: 'sales', title: 'Sales', actions: ['view', 'view_all', 'create', 'edit', 'assign'] },
   { key: 'marketing', title: 'Marketing', actions: ['view', 'edit'] },
-  { key: 'pricing', title: 'Pricing', actions: ['view'] },
+  { key: 'pricing', title: 'Pricing', actions: ['view', 'create', 'approve'] },
 ]
 const MIGRATION = read('supabase/migrations/20270515000000_register_sales_marketing_pricing_modules.sql')
 const MARKETING_MIGRATION = read('supabase/migrations/20270522000000_marketing_meta_edit_action.sql')

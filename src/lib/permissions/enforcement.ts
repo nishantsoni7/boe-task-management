@@ -157,11 +157,13 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
     detail: 'View (your own leads) is enforced in the screen and in the database. View All (every lead, read only), Create (add a lead), Edit (correct its details) and Assign (allot a lead and step in on it) are enforced in the database functions.',
   },
 
-  // Coming soon module: no table, function or API route yet, so `view` has only one thing to decide, and the
-  // launcher card and ModuleGuard decide it. Entry: src/app/pricing/layout.tsx.
+  // Pricing: the price book is read-only functions behind module_entry_open('pricing'). Training (20270720000000)
+  // is three closed tables; every read and write is a SECURITY DEFINER function that calls pricing_training_actor():
+  // `create` is checked in pricing_training_save / _submit and the photo upload, `approve` in pricing_training_decide,
+  // which does not refuse the checker's own case (owner, 15 Nov 2026). Entry: src/app/pricing/layout.tsx via ModuleGuard.
   pricing: {
     state: 'enforced',
-    detail: 'View opens the module, which shows a Coming soon page for now.',
+    detail: 'View is enforced in the screen and in the database. Create (teach a training case) and Approve (check a case, your own included) are enforced in the database functions.',
   },
 
   // Marketing, Meta Ads: every read is RLS on the meta_* tables (module_entry_open('marketing')). Browsers cannot
