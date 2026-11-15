@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `e6c43951` — Docs: regenerate the app inventory
+- Commit: `6c117d22` — Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
 - Commits on this branch: 1374
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
@@ -14,10 +14,10 @@
 
 ## Latest 25 commits
 
-- `e6c43951` 2026-11-15 Docs: regenerate the app inventory
-- `662d619d` 2026-11-15 Docs: stamp PR #812 in the changelog, the 01 row and dossier 29
-- `0c87f289` 2026-11-15 Docs: regenerate the app inventory
-- `261f2440` 2026-11-15 Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL)
+- `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
+- `c65a3d36` 2026-11-15 Docs: master instruction sheet asks for a Doors check before changing who may do, see or be told something (#813)
+- `80841c38` 2026-11-15 Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL) (#812)
+- `cebad468` 2026-11-15 Pricing: sizes read by their labels, and the reason for an unseen finish worded right (no SQL) (#811)
 - `4e866120` 2026-11-15 Quotations: Quantity and Price share one row on a product from 1200 px (no SQL) (#809)
 - `4760d62e` 2026-11-15 Docs: stamp page speed part 11 (#807) as merged bb407054, migration 20270719000000 applied, verified live (#808)
 - `bb407054` 2026-11-15 Page speed, part 11: the Payment Requests badges in one call (migration 20270719000000 applied) (#807)
