@@ -49,4 +49,4 @@ export const BOQ_TOOL = {
   },
 } as const
 
-export const BOQ_INSTRUCTION = 'Read this document and record every product in it by calling the record_boq tool.'
+export const BOQ_INSTRUCTION = 'Read this document and record every product in it, as JSON in the required format.'
