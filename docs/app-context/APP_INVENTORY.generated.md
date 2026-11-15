@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `6d25d8aa` — Sales: the lead popup is a status strip and two cards, on the lines of Quotation Details (no SQL)
-- Commits on this branch: 1388
+- Commit: `ab586a16` — Docs: stamp the lead popup strip change with its pull request number (#829)
+- Commits on this branch: 1389
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 461 (first `20260530_create_positions.sql`, latest `20270720000000_pricing_training.sql`)
 - Tables ever created: 258 (dropped at some point: 8)   SQL functions: 1045   Enums: 0
-- Test files: 866   Next.js 16.2.6, React 19.2.4
+- Test files: 867   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `ab586a16` 2026-11-15 Docs: stamp the lead popup strip change with its pull request number (#829)
 - `6d25d8aa` 2026-11-15 Sales: the lead popup is a status strip and two cards, on the lines of Quotation Details (no SQL)
 - `c696e68f` 2026-11-15 Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
 - `431cd0c2` 2026-11-15 Pricing: Training, where the price of a product is taught element by element (migration 20270720000000, apply before merge) (#826)
@@ -38,7 +39,6 @@
 - `27d52de1` 2026-11-15 Docs: stamp #805 (Import reads the right tab; one-line suggested price) as merged e4f0c6e2, deployed 12:41 IST, verified live (no SQL) (#806)
 - `e4f0c6e2` 2026-11-15 Quotations: Import reads the right tab of a PI; suggested price is one line with a Why? popup (no SQL) (#805)
 - `cec40927` 2026-11-15 Docs: stamp page speed part 10 (#803) as merged 5c6f2118, deployed 12:07 IST, verified live (no SQL) (#804)
-- `5c6f2118` 2026-11-15 Page speed, part 10: the Attendance pages reuse the guard's profile row (no SQL) (#803)
 
 ## Pages by top-level area
 
@@ -142,6 +142,7 @@
 
 ## Library folders (src/lib)
 
+- `src/lib/ai` — 1 source, 1 test
 - `src/lib/assets` — 19 source, 17 test
 - `src/lib/attachments` — 1 source, 1 test
 - `src/lib/attendance` — 20 source, 14 test

@@ -28,8 +28,9 @@ function provider(replies: (Response | Error)[]) {
   return { calls, fetchImpl }
 }
 
+// Structured output: the answer is a text block holding the JSON (a forced tool call is refused by Sonnet 5.5, 15 Nov 2026).
 const toolAnswer = (input: unknown) =>
-  new Response(JSON.stringify({ content: [{ type: 'tool_use', name: 'judge_chat', input }] }), { status: 200 })
+  new Response(JSON.stringify({ content: [{ type: 'text', text: JSON.stringify(input) }], stop_reason: 'end_turn' }), { status: 200 })
 
 describe('what the judge reads', () => {
   test('one JSON block with the name, earlier and new messages: never a phone number', () => {
@@ -93,14 +94,17 @@ describe('what the judge answers', () => {
 })
 
 describe('asking the provider', () => {
-  test('the answer comes from the forced tool call, with the model first in the list', async () => {
+  test('the answer is structured JSON in the judge schema, with the model first in the list', async () => {
     const p = provider([toolAnswer({ verdict: 'other', category: 'transport', reason: 'Offers truck transport' })])
     const v = await judgeChat(chat('We provide trucks pan India'), { apiKey: 'test-key', fetchImpl: p.fetchImpl, models: ['m-1', 'm-2'] })
     assert.deepEqual(v, { kind: 'other', category: 'transport', reason: 'Offers truck transport', via: 'ai' })
     assert.equal(p.calls.length, 1)
     assert.equal(p.calls[0].url, 'https://api.anthropic.com/v1/messages')
     assert.equal(p.calls[0].body.model, 'm-1')
-    assert.deepEqual(p.calls[0].body.tool_choice, { type: 'tool', name: 'judge_chat' })
+    assert.equal(p.calls[0].body.tool_choice, undefined)
+    const format = (p.calls[0].body.output_config as { format: { type: string; schema: { properties: object } } }).format
+    assert.equal(format.type, 'json_schema')
+    assert.deepEqual(Object.keys(format.schema.properties).sort(), ['category', 'reason', 'verdict'])
   })
 
   test('a model this key does not have (404) moves on to the next', async () => {

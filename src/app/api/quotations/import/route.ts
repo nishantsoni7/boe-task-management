@@ -14,6 +14,7 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
+import { answerJson, jsonFormat } from '@/lib/ai/structuredOutput'
 import { BOQ_INSTRUCTION, BOQ_SYSTEM_PROMPT, BOQ_TOOL } from '@/lib/quotations/importPrompt'
 
 export const runtime = 'nodejs'
@@ -73,7 +74,7 @@ export async function POST(req: NextRequest) {
     ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data } }
     : { type: 'image', source: { type: 'base64', media_type: file.type === 'image/jpg' ? 'image/jpeg' : file.type, data } }
 
-  type Answer = { content?: { type: string; input?: unknown }[]; stop_reason?: string }
+  type Answer = { content?: { type: string; text?: string }[]; stop_reason?: string }
   let answer: Answer | null = null
   let lastStatus = 0
   let timedOut = false
@@ -85,7 +86,7 @@ export async function POST(req: NextRequest) {
         signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
         headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
-          model, max_tokens: 16000, system: BOQ_SYSTEM_PROMPT, tools: [BOQ_TOOL], tool_choice: { type: 'tool', name: BOQ_TOOL.name },
+          model, max_tokens: 16000, system: BOQ_SYSTEM_PROMPT, output_config: { format: jsonFormat(BOQ_TOOL.input_schema) },
           messages: [{ role: 'user', content: [source, { type: 'text', text: BOQ_INSTRUCTION }] }],
         }),
       })
@@ -103,9 +104,9 @@ export async function POST(req: NextRequest) {
     if (lastStatus === 429 || lastStatus === 529) return reply({ ok: false, error: 'The reading service is busy. Try again in a minute.' }, 503)
     return reply({ ok: false, error: 'Could not read the file right now. Try again.' }, 502)
   }
-  const input = answer.content?.find(c => c.type === 'tool_use')?.input
+  // A very long BOQ can run past the answer limit, and then its JSON is incomplete: say so instead of a partial list.
+  if (answer.stop_reason === 'max_tokens') return reply({ ok: false, error: 'This file is too long to read in one go. Send fewer pages, or the Excel file.' }, 200)
+  const input = answerJson(answer)
   if (!input) return reply({ ok: false, error: 'No products could be read from this file.' }, 200)
-  // A very long BOQ can run past the answer limit: say so, so nobody takes a partial list for the whole.
-  const note = answer.stop_reason === 'max_tokens' ? 'Only the first part of this file could be read. Import the rest separately (fewer pages).' : undefined
-  return reply({ ok: true, reading: input, note })
+  return reply({ ok: true, reading: input })
 }
