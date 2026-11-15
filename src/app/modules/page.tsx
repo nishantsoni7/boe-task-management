@@ -194,6 +194,7 @@ export default function BoeOsHomePage() {
   // may preview at all. See src/hooks/queries/useDisplaySubject.ts.
   const {
     ready: permsReady,
+    displayReady: permsDisplayReady,
     subjectRole,
     subjectProfile,
     subjectPermissionsByModule: subjectPermissions,
@@ -856,7 +857,14 @@ export default function BoeOsHomePage() {
   // primary-key lookup on a two-column table, issued in parallel with the two
   // above, and `isLoading` — not `isPending` — so a signed-out visitor, whose
   // query never runs, is not held here forever.
-  const loading = !permsReady || modVisPending || orderLoading
+  //
+  // PAINTED FROM A SAVED COPY WHEN THERE IS ONE (2026-11-15, persisted cache). The cards are drawn from
+  // `permsDisplayReady` (any answer: the copy saved at the last visit, or a fresh one), so a revisit shows the
+  // launcher at once and the fresh answer replaces it a moment later (a card the person has lost disappears then).
+  // Everything that FETCHES or DECIDES still waits for `permsReady` (an answer from this visit): the redirect
+  // to /login, every count and every For you read are gated on it above, and a module's own guard re-checks
+  // access when it opens.
+  const loading = !permsDisplayReady || modVisPending || orderLoading
 
   return (
     <DailyQuoteLoader>

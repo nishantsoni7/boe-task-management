@@ -430,9 +430,19 @@ describe('the launcher agrees with the guards', () => {
     // A card that appears before the gate has an answer is an unauthorized flash
     // — and, since the card is clickable, an invitation to a route that will
     // then bounce. The launcher holds the whole screen instead.
+    //
+    // Since 2026-11-15 (persisted cache, owner-approved) "an answer" includes the person's OWN saved answer
+    // from their last visit (displayReady): the launcher still holds the screen until there is SOME answer, and
+    // paints a revisit at once; the fresh answer replaces it and a module's own guard re-checks on opening. What
+    // must NOT change: nothing is drawn with no answer at all, and everything that fetches, redirects or decides
+    // still waits for `permsReady`, an answer fetched in this visit (pinned in src/lib/queryPersist).
     assert.ok(
-      launcher.includes('const loading = !permsReady || modVisPending'),
-      'the launcher must hold the screen until the gate has an answer',
+      launcher.includes('const loading = !permsDisplayReady || modVisPending'),
+      'the launcher must hold the screen until the gate has an answer (saved or fresh)',
+    )
+    assert.ok(
+      launcher.includes('if (permsReady && userId === null) router.push'),
+      'a signed-out visitor is still sent to /login only on a fresh answer',
     )
     const render = launcher.slice(launcher.indexOf('return ('))
     assert.ok(
