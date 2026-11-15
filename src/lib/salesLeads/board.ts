@@ -358,6 +358,17 @@ export function lastLabel(lead: { last_activity_at: string | null; last_kind: st
   return days <= 0 ? `${what} today` : days === 1 ? `${what} yesterday` : `${what} ${days} d ago`
 }
 
+/**
+ * The last update in parts, for the status strip of the lead popup (owner, 2026-11-15): how long ago in words, the day it was
+ * (null when nobody has written on the lead), and what it was ("Update", "Call"). `lastLabel` says the same in one line.
+ */
+export function lastOf(lead: { last_activity_at: string | null; last_kind: string | null }, today: string): { ago: string; day: string | null; kind: string } {
+  if (!lead.last_activity_at) return { ago: 'No contact yet', day: null, kind: '' }
+  const day = lead.last_activity_at.slice(0, 10)
+  const days = daysBetween(day, today)
+  return { ago: days <= 0 ? 'Today' : days === 1 ? 'Yesterday' : `${days} days ago`, day, kind: kindLabel(lead.last_kind ?? '') }
+}
+
 export const whenFrom = (today: string, days: number) => istAddDays(today, days)
 
 export function quickMessages(sender: string): { label: string; text: string }[] {

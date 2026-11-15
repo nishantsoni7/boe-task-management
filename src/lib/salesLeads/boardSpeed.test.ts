@@ -154,109 +154,130 @@ describe('the card (owner, 2026-11-14): name, number, Hot / Warm / Cold, next fo
   })
 })
 
-describe('the popup, as approved on the clickable preview (owner, 2026-11-14)', () => {
+describe('the popup, as approved on the clickable previews (owner, 2026-11-14 and 2026-11-15)', () => {
+  const part = (from: string, to: string) => panel.slice(panel.indexOf(from), panel.indexOf(to))
+  const strip = part('function Strip(', 'function ClientCard(')
+  const card = part('function ClientCard(', '// ── Right:')
+  const menu = part('function StatusMenu(', 'const plural')
+  const screen = css.slice(css.indexOf('@media (min-width: 768px) {\n  .modal {'))
+
   test('Updates only is the first button and is on when the popup opens; All is second', () => {
     assert.ok(panel.includes('const [updatesOnly, setUpdatesOnly] = useState(true)'))
     assert.ok(panel.indexOf('onClick={() => setUpdatesOnly(true)}>Updates only</button>') < panel.indexOf('onClick={() => setUpdatesOnly(false)}>All</button>'))
   })
 
-  test('the left side is in the order who, what to do next, where it stands, then the facts', () => {
-    const at = (s: string) => panel.indexOf(s)
-    assert.ok(at('<Who ') < at('<NextStep ') && at('<NextStep ') < at('<StateBox ') && at('<StateBox ') < at('<Details '))
-    for (const label of ['Next step', 'Where this lead stands', 'About this client']) assert.ok(panel.includes(`aria-label="${label}"`), label)
-  })
-
-  test('the number is beside the name with Copy, and the facts do not repeat it', () => {
-    assert.ok(panel.includes('className={s.nPhoneLine}') && panel.includes('aria-label="Copy number"'))
-    const view = panel.slice(panel.indexOf('<section className={s.nSec} aria-label="About this client">'))
-    assert.ok(!view.includes('<dt>Phone') && !view.includes('<dt>Type of client') && !view.includes('<dt>Quantity'), 'no Phone, Type of client or Quantity row')
-    assert.ok(view.includes('<dt>Location</dt>') && view.includes('<dt>Source</dt>') && view.includes('<dt>Email</dt>'))
-  })
-
-  test('Type of client and Quantity are no longer shown but are still in Edit details', () => {
-    assert.ok(panel.includes('htmlFor="fact-type">Type of client') && panel.includes("text('quantity', 'Quantity')"))
-  })
-
-  test('Board status and Hot / Warm / Cold are one row; Held by is under the name and Stuck is in the status button', () => {
-    const part = (from: string, to: string) => panel.slice(panel.indexOf(from), panel.indexOf(to))
-    assert.ok(panel.includes('className={s.nState}') && panel.includes('className={s.nHeatSeg}'))
-    const who = part('function Who(', 'const HEAT_CLASS')
-    assert.ok(who.includes('className={s.nHeld}') && who.includes('Held by'), 'Held by is in Who')
-    const state = part('function StateBox(', 'function StatusMenu(')
-    assert.ok(!state.includes('Held by') && !state.includes('Next follow-up'), 'the follow-up and Held by left the status row')
-    const menu = part('function StatusMenu(', 'const plural')
-    assert.ok(menu.includes('{lead.stuck && <span className={s.mStuck}>Stuck</span>}'), 'Stuck is in the status button')
-    assert.ok(!who.includes('mStuck'))
-  })
-
   test('the activity is read again in the background while it loads, and a failed load says so', () => {
     assert.ok(panel.includes('Loading the activity…') && panel.includes('The activity could not be loaded.'))
   })
-})
 
-// "B + C" (owner, 2026-11-14): a next-step banner with Call, WhatsApp and Change date, and one list, "About this client".
-describe('the next-step banner and the list of facts (owner, 2026-11-14, "B + C")', () => {
-  const part = (from: string, to: string) => panel.slice(panel.indexOf(from), panel.indexOf(to))
-  const who = part('function Who(', 'const HEAT_CLASS')
-  const next = part('function NextStep(', 'function FollowUpMenu(')
-  const details = part('function Details(', '// ── Right:')
-
-  test('Call and WhatsApp are at the end of the number\'s row, not in the follow-up card, only for somebody who can work an open lead', () => {
-    assert.ok(who.includes('telHref(lead.phone)') && who.includes('work.openWhatsApp(lead)') && who.includes('className={s.nReach}'))
-    assert.ok(who.indexOf('className={s.nPhoneLine}') < who.indexOf('className={s.nReach}'), 'the buttons are in the number\'s row')
-    assert.ok(who.includes("const reach = canWork && step.kind !== 'closed'") && who.includes('{reach && ('), 'read-only and closed leads have no buttons')
-    assert.ok(who.includes("step.kind === 'over' || step.kind === 'today' ? 'Call now' : 'Call'"))
-    assert.ok(!next.includes('telHref') && !next.includes('openWhatsApp'), 'the follow-up card has no Call or WhatsApp')
-    assert.ok(next.includes("if (step.kind === 'closed') return null"), 'a converted or dead lead has no follow-up card')
-  })
-
-  test('the follow-up card and the status row are one group, with a gap that stretches before and after it', () => {
+  // "Neat and easy to scan" (owner, 2026-11-15), on the lines of Quotation Details: one strip, then two cards.
+  test('the popup is a status strip, then the client card and the activity card', () => {
     const body = part('function PanelBody(', '/** A menu in the popup closes')
-    assert.ok(/<Who [^>]*\/>\s*<i className=\{s\.nGap\} aria-hidden="true" \/>\s*<div className=\{s\.nGroup\}>\s*<NextStep [^>]*\/>\s*<StateBox [\s\S]*?\/>\s*<\/div>\s*<i className=\{s\.nGap\} aria-hidden="true" \/>\s*<Details /.test(body))
+    const at = (x: string) => body.indexOf(x)
+    assert.ok(at('<Strip ') > 0 && at('<Strip ') < at('<ClientCard ') && at('<ClientCard ') < at('<ActivitySide'))
+    for (const label of ['Where this lead stands', 'Client', 'Activity']) assert.ok(panel.includes(`aria-label="${label}"`), label)
+    assert.ok(!panel.includes('function Who(') && !panel.includes('function StateBox(') && !panel.includes('function NextStep(') && !panel.includes('function Details('), 'the old pieces are gone')
   })
 
-  test('Edit details and Change date are links with no box, at least 28px tall, and "N not set" is a note beside the heading', () => {
-    assert.ok(!panel.includes('nEditBtn') && !css.includes('.nEditBtn'), 'the boxed button is gone')
-    assert.ok(details.includes('className={s.nLink} onClick={edit}><Pencil aria-hidden="true" />Edit details</button>'))
-    assert.ok(next.includes('className={s.nLink}') && next.includes('<ChevronDown aria-hidden="true" />'))
+  test('the strip has the next follow-up, the last update, the Board status and Hot / Warm / Cold, in that order, and no Held by', () => {
+    const at = (x: string) => strip.indexOf(x)
+    const cells = ['>Next follow-up</div>', '>Last update</div>', 'Board status{since', '>Temperature</div>'].map(at)
+    assert.ok(cells[0] > 0 && cells[0] < cells[1] && cells[1] < cells[2] && cells[2] < cells[3], 'in that order')
+    assert.ok(strip.includes('<StatusMenu ') && strip.includes('TEMPERATURES.map') && strip.includes("lastOf(lead, work.today)"))
+    assert.ok(!strip.includes('Held by') && !strip.includes('telHref') && !strip.includes('openWhatsApp'), 'who and how to reach them are in the card')
+    assert.ok(/\.strip \{[^}]*grid-template-columns: minmax\(0, 1\.3fr\) minmax\(0, \.9fr\) minmax\(0, 1\.3fr\) minmax\(0, 1\.15fr\)/.test(css))
+  })
+
+  test('how the follow-up stands is said in words as well as in colour, and shown with an icon', () => {
+    for (const words of ['`${plural(step.days)} late`', "'Tomorrow'", "'Parked until then'", "'No follow-up date'", "'None needed'"]) assert.ok(strip.includes(words), words)
+    for (const icon of ['TriangleAlert', 'Clock', 'CircleCheck', 'Ban', 'CalendarDays']) assert.ok(strip.includes(icon), icon)
+    assert.ok(/\.stripLate \{ --acc: #B42332; background: #FBE9EC; \}/.test(css) && /\.stripToday \{ --acc: #C98A1E;/.test(css) && /\.stripOk \{ --acc: #276247; \}/.test(css) && /\.stripWon \{/.test(css))
+    assert.ok(/\.strip \{[^}]*border-left: 3px solid var\(--acc\)/.test(css), 'the accent is on the left edge, as on Quotation Details')
+  })
+
+  test('Change date is a link with no box in the strip, at least 28px tall (40 and 44 on a phone), and opens the follow-up menu', () => {
+    assert.ok(strip.includes('className={s.nLink}') && strip.includes('<ChevronDown aria-hidden="true" />') && strip.includes('<FollowUpMenu '))
+    assert.ok(strip.includes("setMenu(open ? null : 'due')"))
     assert.ok(/\.nLink \{[^}]*min-height: 28px;[^}]*border: 0;[^}]*background: none;/.test(css), 'a link, 28px tall')
-    assert.ok(/\.nLink \{ min-height: 44px;/.test(css), 'a finger-sized target on a phone')
+    assert.ok(/\.stSub \.nLink \{ min-height: 40px;/.test(css) && /\.cHead \.nLink \{ min-height: 44px;/.test(css), 'a finger-sized target on a phone')
     assert.ok(/\.nCopy \{ height: 28px;/.test(css), 'Copy is no shorter than 28px on a screen')
-    assert.ok(details.includes('<h3 className={s.nH}>About this client</h3>') && details.indexOf('<h3 className={s.nH}>') < details.indexOf('{notSet} not set') && details.indexOf('{notSet} not set') < details.indexOf('className={s.nLink} onClick={edit}'))
   })
 
-  test('Email comes before Source in the list', () => {
-    assert.ok(details.indexOf('<dt>Email</dt>') < details.indexOf('<dt>Source</dt>'))
+  test('a converted or dead lead has no follow-up and says how to reopen it; somebody who can only read it has no controls', () => {
+    assert.ok(strip.includes("step.kind !== 'closed'") && strip.includes('Pick a status to reopen it'))
+    assert.ok(strip.includes('canWork && step.kind') && strip.includes('disabled={!canWork}'))
+    assert.ok(menu.includes('disabled={!canWork}') && menu.includes('{canWork && <ChevronDown aria-hidden="true" />}'))
   })
 
-  test('on a screen every size grows with the height of the window, the gaps between groups stretch, and a narrow window gives the buttons their own row', () => {
-    const screen = css.slice(css.indexOf('@media (min-width: 768px) {\n  .mLeft {'))
-    assert.ok(screen.includes('@media (min-width: 768px) {'), 'the screen block is there')
-    for (const name of ['padY', 'gGrp', 'gIn', 'rowY', 'btn', 'ctl', 'name']) assert.ok(new RegExp(`--${name}: clamp\\(`).test(screen), `--${name} follows the height of the window`)
-    assert.ok(/\.nGap \{ display: block; flex: 1 1 var\(--gGrp\); min-height: var\(--gGrp\); max-height: calc\(var\(--gGrp\) \+ var\(--gMore\)\); \}/.test(screen), 'a gap never shrinks below its size and stretches only into spare room')
-    assert.ok(/\.nGap \{ display: none; \}/.test(css), 'no stretch on a phone')
-    assert.ok(/@media \(min-width: 768px\) and \(max-width: 1080px\) \{\s*\.nReach \{ flex: 1 1 100%; margin-left: 0; \}/.test(css))
+  test('Call and WhatsApp are at the end of the number\'s row in the client card, only for somebody who can work an open lead', () => {
+    assert.ok(card.includes('telHref(lead.phone)') && card.includes('work.openWhatsApp(lead)') && card.includes('className={s.nReach}'))
+    assert.ok(card.indexOf('className={s.cReach}') < card.indexOf('className={s.nReach}'), 'the buttons are in the number\'s row')
+    assert.ok(card.includes('const reach = canWork && !closed') && card.includes('{reach && ('), 'read-only and closed leads have no buttons')
+    assert.ok(card.includes("step.kind === 'over' || step.kind === 'today' ? 'Call now' : 'Call'"))
   })
 
-  test('a late follow-up is said in words and shown with an alert, not only in red', () => {
-    assert.ok(next.includes('`Follow-up was due ${dayShort(step.date)}`') && next.includes('`${plural(step.days)} late`'))
-    assert.ok(next.includes('<TriangleAlert />') && next.includes('s.nNextOver'))
+  test('the client card: name, who holds it and the market, the number with Copy, the requirement, then the facts with a label over each', () => {
+    const at = (x: string) => card.indexOf(x)
+    assert.ok(at('<h2 className={s.mName}>') < at('Held by') && at('Held by') < at('className={s.cReach}') && at('className={s.cReach}') < at('<div className={s.eyebrow}>Requirement</div>'))
+    for (const [a, b] of [['Project value', 'Needed by'], ['Needed by', 'Location'], ['Location', 'Source'], ['Source', 'Email']]) assert.ok(at(`<dt className={s.eyebrow}>${a}</dt>`) < at(`<dt className={s.eyebrow}>${b}</dt>`), `${a} before ${b}`)
+    assert.ok(card.includes('aria-label="Copy number"') && card.includes('<span className={s.cTag}>{marketLabel(lead)}</span>'))
+    assert.ok(!card.includes('<dt>Phone') && !card.includes('Type of client</dt>') && !card.includes('Quantity</dt>'), 'no Phone, Type of client or Quantity row')
   })
 
-  test('Change date opens the follow-up menu, which opens from the right so it stays inside the popup', () => {
-    assert.ok(next.includes("setMenu(open ? null : 'due')") && next.includes('<FollowUpMenu '))
-    assert.ok(/\.nNextAct \.mPop \{ left: auto; right: 0; \}/.test(css))
+  test('Source is in the client card and in the top bar (owner, 2026-11-15: not visible on top alone)', () => {
+    assert.ok(card.includes('sourceLabel(lead.source)'))
+    assert.ok(panel.includes('sourceLabel(detail.data.lead.source)'))
   })
 
-  test('the facts are one list with one Edit details link; the count of what is not set is beside the heading', () => {
-    assert.equal(details.split('aria-label="About this client"').length - 1, 1)
-    assert.ok(!details.includes('aria-label="Requirement"') && !details.includes('aria-label="Client details"'))
-    assert.ok(details.includes('{notSet} not set') && details.includes('{canWork && ('), 'Edit details only for somebody who can work the lead')
-    for (const row of ['Requirement', 'Project value', 'Needed by', 'Location', 'Source', 'Email']) assert.ok(details.includes(`<dt>${row}</dt>`), row)
-    assert.ok(details.includes('href={`mailto:${lead.email}`}'))
+  test('Edit details is a link with a pencil at the top of the card, with "N not set" beside it, only for somebody who can work the lead', () => {
+    assert.ok(!panel.includes('nEditBtn') && !css.includes('.nEditBtn'), 'the boxed button is gone')
+    assert.ok(card.includes('{!editing && canWork && <button type="button" className={s.nLink} onClick={edit}><Pencil aria-hidden="true" />Edit details</button>}'))
+    assert.ok(card.indexOf('{notSet} not set') < card.indexOf('>Edit details</button>') && card.indexOf('>Edit details</button>') < card.indexOf('<h2 className={s.mName}>'))
+  })
+
+  test('Type of client and Quantity are not shown but are still in Edit details', () => {
+    assert.ok(card.includes('htmlFor="fact-type">Type of client') && card.includes("text('quantity', 'Quantity')"))
+  })
+
+  test('the email is a mailto link', () => {
+    assert.ok(card.includes('href={`mailto:${lead.email}`}'))
+  })
+
+  test('the requirement is written in paragraphs: a blank line is a small gap, not a whole empty line', () => {
+    assert.ok(card.includes('lead.requirement.split(/\\n{2,}/)'))
+    assert.ok(/\.cReq \+ \.cReq \{ margin-top: 5px; \}/.test(css) && /\.cReq \{[^}]*white-space: pre-wrap/.test(css))
+  })
+
+  test('Stuck is in the status button', () => {
+    assert.ok(menu.includes('{lead.stuck && <span className={s.mStuck}>Stuck</span>}'))
   })
 
   test('a selected Hot / Warm / Cold is charcoal, so it never looks like the red of a late follow-up', () => {
-    assert.ok(/\.nHeatSeg button\[aria-pressed="true"\] \{ background: #303536; color: #fff;/.test(css))
+    assert.ok(/\.stHeat button\[aria-pressed="true"\] \{ background: #303536; color: #fff;/.test(css))
+  })
+
+  test('the activity card has a count beside its heading, and its days and updates are headings and rows, not bubbles', () => {
+    assert.ok(panel.includes('{!filling && <span className={s.mPill}>{detail.activities.length + detail.events.length}</span>}'))
+    assert.ok(/\.mDay \{ position: sticky; top: 0;/.test(css))
+    assert.ok(/\.mBubble \{ flex: 1; min-width: 0; \}/.test(css), 'no border, fill or corner on an update')
+    assert.ok(/\.mEntry \{[^}]*border-bottom: 1px solid #F1EEE9;/.test(css), 'a thin line under each update')
+    assert.ok(panel.includes('s.mAvCu'), 'what ClickUp brought has a grey avatar')
+  })
+
+  test('on a screen every size grows with the height of the window; a narrow window gives the strip two rows and the buttons their own row', () => {
+    assert.ok(screen.includes('@media (min-width: 768px) {'), 'the screen block is there')
+    for (const name of ['g', 'sp', 'padY', 'padX', 'cg', 'name', 'ctl', 'btn', 'stripY', 'fgap']) assert.ok(new RegExp(`--${name}: clamp\\(`).test(screen), `--${name} follows the height of the window`)
+    assert.ok(/\.client \{ flex: 1 0 auto;/.test(css), 'the client card stretches to its column and never shrinks below its content')
+    assert.ok(/@media \(min-width: 768px\) and \(max-width: 1080px\) \{\s*\.strip \{ grid-template-columns: minmax\(0, 1fr\) minmax\(0, 1fr\); \}/.test(css))
+    assert.ok(/\.nReach \{ flex: 1 1 100%; margin-left: 0; \}/.test(css))
+  })
+
+  test('on a phone the two sides are two tabs, the strip scrolls with the client, and its cells stack', () => {
+    const phone = css.slice(css.indexOf('/* The lead popup fills the screen'))
+    assert.ok(phone.includes('.modal[data-tab="details"] .mBody { display: block; overflow-y: auto; }'))
+    assert.ok(phone.includes('.modal[data-tab="details"] .mRight, .modal[data-tab="activity"] .strip, .modal[data-tab="activity"] .mLeft { display: none; }'))
+    assert.ok(phone.includes('.mPop { width: min(300px, calc(100vw - 48px)); }'), 'the date menu stays inside the screen')
+    assert.ok(/\.stCell:nth-child\(n\+3\) \{ grid-column: 1 \/ -1;/.test(css), 'status and temperature each have a row')
+    assert.ok(/\.stHeat \{ height: 48px; \}/.test(css) && /\.nReach > \* \{ flex: 1; height: 46px; \}/.test(css), 'finger-sized controls')
   })
 })
