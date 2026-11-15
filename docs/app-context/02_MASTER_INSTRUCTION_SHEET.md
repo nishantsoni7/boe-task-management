@@ -49,6 +49,7 @@ Documents and memories age. Before planning, re-verify, for the area you will to
 - **Callers:** `grep -rn "<symbol>" src` across pages, API routes, components, lib and tests — including tests that pin source text.
 - **Permissions:** the module-access key and the RLS policies for each table you will read or write.
 - **Notifications:** does the change need a new `notifications.type`? That column is a Postgres enum — the migration must land *before* the code that inserts it.
+- **Doors (when the request changes who may do, see, or be told something):** list every path that grants that capability *today*, found from the effect and not from the screen the owner mentioned: each RPC / `SECURITY DEFINER` function that performs it; each trigger that fires it or notifies someone (latest definition wins); each list or view function and RLS policy that exposes it; each API route; each screen, queue or card that offers it. Hiding a button is not closing a door. Example (Order 547, 14 Nov): the exchange bypassed the approver through three doors — `respond_order_handoff_clarification` (the reply), the `order_operations_handoff_notify` trigger (the flag notice) and `my_flagged_pis()` (the flag card); a screen-only fix would have left all three open.
 - **Open PRs / other sessions:** `gh pr list --state open`, `git worktree list`, and the session list — a parallel session may hold the same branch name or the same files.
 - Record every place a document disagreed with the code; you will fix the document in Phase 7.
 
@@ -58,7 +59,7 @@ Produce a plan containing **all** of:
 
 1. **Goal in one sentence** and who uses it (role, device — most staff use phones).
 2. **Journey first:** the user's steps, the screens, the empty / loading / error states. For non-trivial UI, two or three concept options with trade-offs and a recommendation.
-3. **Impact map (from Phase 2):** modules, tables, RPCs, routes, components, permissions, notifications, caches, tests that this touches. Anything not on this map is out of scope.
+3. **Impact map (from Phase 2):** modules, tables, RPCs, routes, components, permissions, notifications, caches, tests that this touches. Anything not on this map is out of scope. **For any change to who may do, see or be told something, add a Doors table:** one row per door from Phase 2 — door · who can use it today · decision (close / change / keep) · where it is enforced (database, route or screen). A door marked "keep" goes to the owner in item 8. A door nobody has checked is listed as "not checked", never left out.
 4. **Data design:** new/changed tables, columns, constraints (including money in integer paise / whole-rupee rules where relevant), RLS, RPCs (`SECURITY DEFINER` + fixed `search_path`; see `docs/security/`), indexes. New migration filenames with unique 14-digit timestamps later than the latest one.
 5. **Permission design:** which module-access key, who gets it by default (answer is usually "nobody until granted"), and how it is enforced server-side *and* in the database.
 6. **Rollout order:** the exact sequence (migration → code → …) and the rollback for each step.
