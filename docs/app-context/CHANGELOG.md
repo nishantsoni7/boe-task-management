@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-15 — Quotations: Quantity and Price share one row on a product (wide screens) (PR pending) · no SQL
+## 2026-11-15 — Quotations: Quantity and Price share one row on a product (wide screens) (PR #809) · no SQL
 - **Owner ask.** From a screenshot of an imported product: Quantity and Price in one row, their total below, to save vertical space.
 - **Change.** `quotations.module.css`: from 1200 px the numbers column is 296 px (was 250) and `.plRight` has two tracks, so Quantity (with "pieces" or the per-room selector) and "Price ₹ before GST" share row one and every later child (suggestion, Optional + total, tools) spans both. Under 1200 px and on a phone nothing changes. Dossier 29 section 16.
 - **Measured.** Real `LineRow`, real stylesheet, 1200 / 1280 / 1440 / 1920 px: a product with a suggestion is 242 px tall, was 285 (43 px, 15%); no overflow; the Product and Dimensions boxes are 46 px narrower.
