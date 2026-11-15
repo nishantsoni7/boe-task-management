@@ -201,11 +201,41 @@ describe('the next-step banner and the list of facts (owner, 2026-11-14, "B + C"
   const next = part('function NextStep(', 'function FollowUpMenu(')
   const details = part('function Details(', '// ── Right:')
 
-  test('Call and WhatsApp left the name row and are in the banner, only for somebody who can work an open lead', () => {
-    assert.ok(!who.includes('telHref') && !who.includes('openWhatsApp') && !who.includes('mReach'))
-    assert.ok(next.includes('{canWork && (') && next.indexOf('{canWork && (') < next.indexOf('telHref(lead.phone)'))
-    assert.ok(next.includes('work.openWhatsApp(lead)'))
-    assert.ok(next.includes("if (step.kind === 'closed') return null"), 'a converted or dead lead has no banner')
+  test('Call and WhatsApp are at the end of the number\'s row, not in the follow-up card, only for somebody who can work an open lead', () => {
+    assert.ok(who.includes('telHref(lead.phone)') && who.includes('work.openWhatsApp(lead)') && who.includes('className={s.nReach}'))
+    assert.ok(who.indexOf('className={s.nPhoneLine}') < who.indexOf('className={s.nReach}'), 'the buttons are in the number\'s row')
+    assert.ok(who.includes("const reach = canWork && step.kind !== 'closed'") && who.includes('{reach && ('), 'read-only and closed leads have no buttons')
+    assert.ok(who.includes("step.kind === 'over' || step.kind === 'today' ? 'Call now' : 'Call'"))
+    assert.ok(!next.includes('telHref') && !next.includes('openWhatsApp'), 'the follow-up card has no Call or WhatsApp')
+    assert.ok(next.includes("if (step.kind === 'closed') return null"), 'a converted or dead lead has no follow-up card')
+  })
+
+  test('the follow-up card and the status row are one group, with a gap that stretches before and after it', () => {
+    const body = part('function PanelBody(', '/** A menu in the popup closes')
+    assert.ok(/<Who [^>]*\/>\s*<i className=\{s\.nGap\} aria-hidden="true" \/>\s*<div className=\{s\.nGroup\}>\s*<NextStep [^>]*\/>\s*<StateBox [\s\S]*?\/>\s*<\/div>\s*<i className=\{s\.nGap\} aria-hidden="true" \/>\s*<Details /.test(body))
+  })
+
+  test('Edit details and Change date are links with no box, at least 28px tall, and "N not set" is a note beside the heading', () => {
+    assert.ok(!panel.includes('nEditBtn') && !css.includes('.nEditBtn'), 'the boxed button is gone')
+    assert.ok(details.includes('className={s.nLink} onClick={edit}><Pencil aria-hidden="true" />Edit details</button>'))
+    assert.ok(next.includes('className={s.nLink}') && next.includes('<ChevronDown aria-hidden="true" />'))
+    assert.ok(/\.nLink \{[^}]*min-height: 28px;[^}]*border: 0;[^}]*background: none;/.test(css), 'a link, 28px tall')
+    assert.ok(/\.nLink \{ min-height: 44px;/.test(css), 'a finger-sized target on a phone')
+    assert.ok(/\.nCopy \{ height: 28px;/.test(css), 'Copy is no shorter than 28px on a screen')
+    assert.ok(details.includes('<h3 className={s.nH}>About this client</h3>') && details.indexOf('<h3 className={s.nH}>') < details.indexOf('{notSet} not set') && details.indexOf('{notSet} not set') < details.indexOf('className={s.nLink} onClick={edit}'))
+  })
+
+  test('Email comes before Source in the list', () => {
+    assert.ok(details.indexOf('<dt>Email</dt>') < details.indexOf('<dt>Source</dt>'))
+  })
+
+  test('on a screen every size grows with the height of the window, the gaps between groups stretch, and a narrow window gives the buttons their own row', () => {
+    const screen = css.slice(css.indexOf('@media (min-width: 768px) {\n  .mLeft {'))
+    assert.ok(screen.includes('@media (min-width: 768px) {'), 'the screen block is there')
+    for (const name of ['padY', 'gGrp', 'gIn', 'rowY', 'btn', 'ctl', 'name']) assert.ok(new RegExp(`--${name}: clamp\\(`).test(screen), `--${name} follows the height of the window`)
+    assert.ok(/\.nGap \{ display: block; flex: 1 1 var\(--gGrp\); min-height: var\(--gGrp\); max-height: calc\(var\(--gGrp\) \+ var\(--gMore\)\); \}/.test(screen), 'a gap never shrinks below its size and stretches only into spare room')
+    assert.ok(/\.nGap \{ display: none; \}/.test(css), 'no stretch on a phone')
+    assert.ok(/@media \(min-width: 768px\) and \(max-width: 1080px\) \{\s*\.nReach \{ flex: 1 1 100%; margin-left: 0; \}/.test(css))
   })
 
   test('a late follow-up is said in words and shown with an alert, not only in red', () => {
@@ -218,7 +248,7 @@ describe('the next-step banner and the list of facts (owner, 2026-11-14, "B + C"
     assert.ok(/\.nNextAct \.mPop \{ left: auto; right: 0; \}/.test(css))
   })
 
-  test('the facts are one list with one Edit details button that counts what is not set', () => {
+  test('the facts are one list with one Edit details link; the count of what is not set is beside the heading', () => {
     assert.equal(details.split('aria-label="About this client"').length - 1, 1)
     assert.ok(!details.includes('aria-label="Requirement"') && !details.includes('aria-label="Client details"'))
     assert.ok(details.includes('{notSet} not set') && details.includes('{canWork && ('), 'Edit details only for somebody who can work the lead')
