@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `507f297a` — Merge remote-tracking branch 'origin/main' into docs/stamp-quotation-numbers-panel
-- Commits on this branch: 1375
+- Commit: `568d9102` — Merge remote-tracking branch 'origin/main' into docs/stamp-quotation-numbers-panel
+- Commits on this branch: 1378
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `568d9102` 2026-11-15 Merge remote-tracking branch 'origin/main' into docs/stamp-quotation-numbers-panel
+- `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
+- `2b693e29` 2026-11-15 Docs: regenerate the app inventory after merging main
 - `507f297a` 2026-11-15 Merge remote-tracking branch 'origin/main' into docs/stamp-quotation-numbers-panel
 - `c65a3d36` 2026-11-15 Docs: master instruction sheet asks for a Doors check before changing who may do, see or be told something (#813)
 - `da99f098` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL)
@@ -36,9 +39,6 @@
 - `80091824` 2026-11-15 Quotations: three layout fixes in the premium document, found by rendering a sample of the live PDF (no SQL) (#787)
 - `69402b1a` 2026-11-15 Docs: stamp #793 (lead popup banner and list) as merged a781646e, deployed 08:59 IST, string-verified live (no SQL) (#795)
 - `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
-- `a781646e` 2026-11-15 Sales: lead popup left side gets a next-step banner and one About this client list (no SQL) (#793)
-- `1ff42c1e` 2026-11-14 Docs: stamp #791 (merged 1a395cf4, deployed 22:50 IST) and #780 (merged 33813806, tools installed 20:18 IST) (#794)
-- `b54f6989` 2026-11-14 Docs: stamp #788 (phone popover and pending buttons) as merged d06e6248, deployed 22:33 IST (no SQL) (#790)
 
 ## Pages by top-level area
 
