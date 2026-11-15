@@ -12,6 +12,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Not done.** A real upload, drop or paste against Supabase, and a real phone: they need the migration applied. Deviation from the plan: a picture opens full size in a new tab, there is no lightbox.
 - **Order.** 1. The owner applies `20270722000000` (`supabase db push --dry-run` first: only this file may be pending); 2. merge; 3. the owner tries it signed in. The code sends `p_files` only when there are files, so a plain update never breaks in between.
 
+
 ## 2026-11-15 — Sales: lead popup polish, the selected temperature stays readable on hover and the update box is shorter (branch `feat/lead-popup-polish`, PR #836 open; the merge SHA is added at the stamp) · no SQL
 - **Owner request** (two screenshots of the live popup, after #829): (1) hovering the selected temperature made its text invisible; (2) the first quick note should read "Not responding", and the follow-up date should leave the update box because it is already at the top, to save height without looking cluttered or compact; (3) attachments on updates (planned apart: it needs a migration).
 - **What.** The hover rule no longer reaches the selected temperature (it had more weight than the selected rule, so the button went light under the mouse). The first quick note is labelled "Not responding" (it still writes "Client not responding." with the same tag), so the four notes fit in one row. The update box lost its follow-up line: its footer is "Ctrl + Enter to post" and Post update. Dossier 28, rule 42.
@@ -21,7 +22,8 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Not done.** Attachments. Not seen signed in. No migration, no backup step. Rollback: revert the PR.
 
 
-## 2026-11-15 — Pricing Training: a failed photo reading says why, and can be tried again (branch `fix/training-photo-read`, NOT MERGED) · no SQL
+
+## 2026-11-15 — Pricing Training: a failed photo reading says why, and can be tried again (PR #828, squash-merged 15 Nov 2026 22:32 IST as `1d7fcac4`, deployed 22:34 IST) · no SQL
 - **Owner report (15 Nov, 21:25 IST).** The first real photo was not read: "Could not read the photo right now". That sentence was the catch-all, so the cause could not be seen, and the only way to retry was to upload again.
 - **Fix.** `POST /api/pricing/training/read` now returns the reading service's own answer (status, error type, first 200 characters of its message; never a key) in the sentence shown. A new button on the Photo card, "Read the materials from the photo" / "Read the photo again", reads the saved photo without a new upload. Auto-adding the materials as editable rows was already built and is unchanged: it happens whenever a reading succeeds and no element is listed yet.
 - **Cause, found since (PR #830, live 15 Nov 21:46 IST).** Sonnet 5.5 and Opus 5.5 refuse a forced `tool_choice`; the route now asks for structured output (`src/lib/ai/structuredOutput.ts`). This change keeps its value: a future refusal names itself on screen, and a draft whose photo was not read can be read without uploading again.
