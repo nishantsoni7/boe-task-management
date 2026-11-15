@@ -57,8 +57,19 @@ import {
   type PendingChange,
 } from '@/lib/orders/operationsDashboard'
 import { RevenueSection } from '@/components/orders/dashboard/RevenueSection'
+import { BACK_WITH_OPERATIONS_NOTE } from '@/lib/orders/backWithOperations'
 
 const DECISIONS: readonly ChangeDecision[] = ['can_do', 'cannot_do', 'discuss']
+
+/** An order that has come back to Operations (owner, 2026-11-15): the Confirmed Orders list's blue "New update". */
+function NewUpdateTag() {
+  return (
+    <span className="ops-new">
+      <span className="order-update-dot" aria-hidden="true" />
+      {BACK_WITH_OPERATIONS_NOTE}
+    </span>
+  )
+}
 
 function DecisionIcon({ d }: { d: ChangeDecision }) {
   if (d === 'can_do') return <Check size={14} strokeWidth={2.4} aria-hidden="true" />
@@ -76,8 +87,9 @@ function OrderLink({ orderId, children }: { orderId: string; children: ReactNode
 
 // ── One revised PI, answered line by line ───────────────────────────────────
 
-function PendingChangeCard({ item, supabase, onAnswered, readOnlyReason }: {
+function PendingChangeCard({ item, isNew, supabase, onAnswered, readOnlyReason }: {
   item: PendingChange
+  isNew: boolean
   supabase: SupabaseClient
   onAnswered: () => void
   readOnlyReason: string | null
@@ -116,6 +128,7 @@ function PendingChangeCard({ item, supabase, onAnswered, readOnlyReason }: {
           <OrderLink orderId={item.orderId}>{item.displayNumber}</OrderLink>
           <span className="ops-change-client">{item.clientName || 'Client not recorded'}</span>
           <span className="ops-chip">PI V{item.versionNumber}</span>
+          {isNew ? <NewUpdateTag /> : null}
         </div>
         <span className="ops-change-when">
           Approved {formatInstantIst(item.approvedAt)}{item.approvedByName ? ` by ${item.approvedByName}` : ''}
@@ -217,8 +230,9 @@ function PendingChangeCard({ item, supabase, onAnswered, readOnlyReason }: {
   )
 }
 
-export function ChangesToReview({ items, supabase, onAnswered, readOnlyReason }: {
+export function ChangesToReview({ items, backWithOps, supabase, onAnswered, readOnlyReason }: {
   items: PendingChange[]
+  backWithOps: ReadonlySet<string>
   supabase: SupabaseClient
   onAnswered: () => void
   readOnlyReason: string | null
@@ -233,7 +247,7 @@ export function ChangesToReview({ items, supabase, onAnswered, readOnlyReason }:
           <p className="ops-note">{CHANGES_STAY_ALIGNED_NOTE}</p>
           <div className="ops-changes">
             {items.map(i => (
-              <PendingChangeCard key={i.handoffId} item={i} supabase={supabase} onAnswered={onAnswered} readOnlyReason={readOnlyReason} />
+              <PendingChangeCard key={i.handoffId} item={i} isNew={backWithOps.has(i.orderId)} supabase={supabase} onAnswered={onAnswered} readOnlyReason={readOnlyReason} />
             ))}
           </div>
         </>
@@ -295,7 +309,7 @@ export function OperationsResponses({ responses, title = 'Operations responses' 
 // appear only for a reason that has orders behind it. Nothing is computed here beyond layout: who an
 // order waits on, and since when, are the database's answers.
 
-function NotAlignedSection({ summary, read }: { summary: DashboardSummary; read: OperationsRead }) {
+function NotAlignedSection({ summary, read, backWithOps }: { summary: DashboardSummary; read: OperationsRead; backWithOps: ReadonlySet<string> }) {
   const router = useRouter()
   const [filter, setFilter] = useState<string>('all')
   const rows = summary.notAligned
@@ -346,14 +360,23 @@ function NotAlignedSection({ summary, read }: { summary: DashboardSummary; read:
                 const d = read.orderDetails[r.orderId]
                 const late = lateLabel(d?.dueDate ?? null, read.today)
                 const open = () => router.push(withReturnTo(`/orders/${r.orderId}`, '/orders'))
+                // Back from a correction or a revised PI: marked until Operations acts (backWithOperations.ts).
+                const isNew = backWithOps.has(r.orderId)
                 return (
-                  <tr key={r.orderId} className="ops-na-row" onClick={open}>
+                  <tr key={r.orderId} className="ops-na-row" data-new={isNew ? 'true' : undefined} onClick={open}>
                     <td data-label="Order">
                       <OrderLink orderId={r.orderId}>{r.displayNumber}</OrderLink>
                       <span className="ops-na-client">{r.clientName || 'Client not recorded'}</span>
                     </td>
                     <td data-label="Status">
-                      <span className="ops-status" data-tone={st.tone} title={r.detail ?? undefined}>{st.label}</span>
+                      {isNew ? (
+                        <div className="ops-na-status">
+                          <span className="ops-status" data-tone={st.tone} title={r.detail ?? undefined}>{st.label}</span>
+                          <NewUpdateTag />
+                        </div>
+                      ) : (
+                        <span className="ops-status" data-tone={st.tone} title={r.detail ?? undefined}>{st.label}</span>
+                      )}
                     </td>
                     <td data-label="Salesperson" className="ops-na-sp">{d?.salesperson ?? '—'}</td>
                     <td data-label="Due" className="ops-na-due">
@@ -422,9 +445,11 @@ function OrdersVsDispatchesSection({ read }: { read: OperationsRead }) {
 
 type OpsTab = 'changes' | 'aligned'
 
-export function OperationsDashboardView({ summary, read, supabase, onAnswered, readOnlyReason }: {
+export function OperationsDashboardView({ summary, read, backWithOps, supabase, onAnswered, readOnlyReason }: {
   summary: DashboardSummary
   read: OperationsRead
+  /** Orders that have come back to Operations (lib/orders/backWithOperations.ts): marked "New update". */
+  backWithOps: ReadonlySet<string>
   supabase: SupabaseClient
   onAnswered: () => void
   readOnlyReason: string | null
@@ -466,9 +491,9 @@ export function OperationsDashboardView({ summary, read, supabase, onAnswered, r
         </div>
         <div id={`ops-panel-${active}`} role="tabpanel" aria-labelledby={`ops-tab-${active}`} className="ops-tab-panel">
           {active === 'changes' ? (
-            <ChangesToReview items={read.pending} supabase={supabase} onAnswered={onAnswered} readOnlyReason={readOnlyReason} />
+            <ChangesToReview items={read.pending} backWithOps={backWithOps} supabase={supabase} onAnswered={onAnswered} readOnlyReason={readOnlyReason} />
           ) : (
-            <NotAlignedSection summary={summary} read={read} />
+            <NotAlignedSection summary={summary} read={read} backWithOps={backWithOps} />
           )}
         </div>
       </section>

@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `ab586a16` — Docs: stamp the lead popup strip change with its pull request number (#829)
-- Commits on this branch: 1389
+- Commit: `31906fa7` — Merge origin/main into feat/lead-popup-strip (changelog: both entries kept; inventory regenerated)
+- Commits on this branch: 1391
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 461 (first `20260530_create_positions.sql`, latest `20270720000000_pricing_training.sql`)
 - Tables ever created: 258 (dropped at some point: 8)   SQL functions: 1045   Enums: 0
-- Test files: 867   Next.js 16.2.6, React 19.2.4
+- Test files: 868   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `31906fa7` 2026-11-15 Merge origin/main into feat/lead-popup-strip (changelog: both entries kept; inventory regenerated)
+- `475569ea` 2026-11-15 AI calls: structured output instead of a forced tool (no SQL) (#830)
 - `ab586a16` 2026-11-15 Docs: stamp the lead popup strip change with its pull request number (#829)
 - `6d25d8aa` 2026-11-15 Sales: the lead popup is a status strip and two cards, on the lines of Quotation Details (no SQL)
 - `c696e68f` 2026-11-15 Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
@@ -37,8 +39,6 @@
 - `4760d62e` 2026-11-15 Docs: stamp page speed part 11 (#807) as merged bb407054, migration 20270719000000 applied, verified live (#808)
 - `bb407054` 2026-11-15 Page speed, part 11: the Payment Requests badges in one call (migration 20270719000000 applied) (#807)
 - `27d52de1` 2026-11-15 Docs: stamp #805 (Import reads the right tab; one-line suggested price) as merged e4f0c6e2, deployed 12:41 IST, verified live (no SQL) (#806)
-- `e4f0c6e2` 2026-11-15 Quotations: Import reads the right tab of a PI; suggested price is one line with a Why? popup (no SQL) (#805)
-- `cec40927` 2026-11-15 Docs: stamp page speed part 10 (#803) as merged 5c6f2118, deployed 12:07 IST, verified live (no SQL) (#804)
 
 ## Pages by top-level area
 
@@ -162,7 +162,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 5 source, 8 test
 - `src/lib/notifications` — 9 source, 25 test
-- `src/lib/orders` — 110 source, 170 test
+- `src/lib/orders` — 110 source, 171 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test

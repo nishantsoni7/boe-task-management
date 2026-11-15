@@ -48,11 +48,12 @@ import {
   buildPendencyOverviews,
   type CurrentApprovalRow, type OpenPendencyRow, type OrderPendencyOverview,
 } from '@/lib/orders/pendencyOverview'
-import { loadPiChangeMarkers, type PiChangeMarker } from '@/lib/orders/piChangeMarker'
+import {
+  BACK_WITH_OPERATIONS_BADGE, BACK_WITH_OPERATIONS_NOTE, backWithOperationsFor, loadOrdersBackWithOperations,
+} from '@/lib/orders/backWithOperations'
 import { AdvanceCell } from './AdvanceCell'
 import { FactoryCell } from './FactoryCell'
 import { PendenciesPopup, PendencyCell } from './PendenciesPopup'
-import { PiChangePill } from './PiChangePill'
 import { SortHeader } from './SortHeader'
 import { PhoneChips, PhoneFilterSheet, PhoneSearchBox, showResultsLabel } from '@/components/ui/PhoneFilters'
 
@@ -344,12 +345,12 @@ export default function AllOrdersPage() {
    */
   const [dispatch, setDispatch] = useState<Map<string, DispatchProgress>>(new Map())
   /**
-   * WHICH ORDERS HAVE A PI CHANGE WAITING FOR SOMEBODY (Operations' request, 2026-11-14): the
-   * marker under Factory Status. It is state, the same for everybody who can open the Order, and it
-   * goes only when the person it waits on decides. Until the reads land, or if one fails, nothing is
-   * drawn. The rule is in lib/orders/piChangeMarker.ts.
+   * WHICH ORDERS HAVE COME BACK TO OPERATIONS (owner, 2026-11-15): the blue "New update" row, shown to
+   * the Operations team only (`backWithOperationsFor`, applied as `returnedToMe` below). It is state,
+   * not an unread notice: it stays until Operations accepts, rejects or sends the order back. Until the
+   * read lands, or if it fails, nothing is drawn. The rule is in lib/orders/backWithOperations.ts.
    */
-  const [piChanges, setPiChanges] = useState<Map<string, PiChangeMarker>>(new Map())
+  const [backWithOps, setBackWithOps] = useState<ReadonlySet<string>>(new Set())
 
   const router       = useRouter()
   const searchParams = useSearchParams()
@@ -456,8 +457,8 @@ export default function AllOrdersPage() {
     setDispatch(error ? new Map() : parseDispatchProgress(data))
   }
 
-  const loadPiChanges = async () => {
-    setPiChanges(await loadPiChangeMarkers(supabase))
+  const loadBackWithOps = async () => {
+    setBackWithOps(await loadOrdersBackWithOperations(supabase))
   }
 
   const pendencyOverviews = useMemo(
@@ -466,6 +467,7 @@ export default function AllOrdersPage() {
       : new Map<string, OrderPendencyOverview>(),
     [orders, pendencyReads],
   )
+  const returnedToMe = backWithOperationsFor(profile?.team, backWithOps)
 
   useEffect(() => {
     const init = async () => {
@@ -489,8 +491,8 @@ export default function AllOrdersPage() {
         loadPendencies(),
         loadAdvance(),
         loadDispatch(),
-        // The PI-change marker: two small reads, beside the others, so no extra wait.
-        loadPiChanges(),
+        // The "New update" mark for orders back with Operations: one small read, beside the others.
+        loadBackWithOps(),
         // The operations queue, only when it was asked for. Beside the
         // others, so the filtered list costs no extra wait.
         opsFilter === 'awaiting' ? loadAwaitingOps() : Promise.resolve(),
@@ -641,7 +643,7 @@ export default function AllOrdersPage() {
       /* Refresh re-reads these: a reader who has just opened an Order in
          another tab expects its badge to be gone when they come back, and a
          payment verified meanwhile to count in its Advance. */
-      onRefresh={async () => { await Promise.all([loadOrders(), loadUnread(), loadAdvance(), loadDispatch(), loadPiChanges()]) }}
+      onRefresh={async () => { await Promise.all([loadOrders(), loadUnread(), loadAdvance(), loadDispatch(), loadBackWithOps()]) }}
     >
       {deletedBanner && (
         <div style={{
@@ -933,9 +935,10 @@ export default function AllOrdersPage() {
                   </li>
                 )
               }
-              const piChange = piChanges.get(o.id)
+              // An unread notice, or an order that has come back to Operations: the same blue words.
+              const cardLabel = updateLabel ?? (returnedToMe.has(o.id) ? BACK_WITH_OPERATIONS_BADGE : null)
               return (
-                <li key={o.id} className={`orders-list-card${updateLabel ? ' has-update' : ''}${piChange ? ` has-pi-change has-pi-change--${piChange.tone}` : ''}`}>
+                <li key={o.id} className={`orders-list-card${cardLabel ? ' has-update' : ''}`}>
                   {/* THREE LINES (owner, 2026-11-04): code and value; client
                       and advance; where it is in the factory, when it is due,
                       what is pending. The code's link covers the whole card. */}
@@ -960,14 +963,13 @@ export default function AllOrdersPage() {
                         <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />
                       </span>
                     )}
-                    {updateLabel && (
+                    {cardLabel && (
                       <span className="order-update-badge">
                         <span className="order-update-dot" aria-hidden="true" />
-                        {updateLabel}
+                        {cardLabel}
                       </span>
                     )}
                   </div>
-                  {piChange && <div className="orders-list-card-pichange"><PiChangePill marker={piChange} /></div>}
                 </li>
               )
             })}
@@ -1031,10 +1033,11 @@ export default function AllOrdersPage() {
                   // notification rows, so another recipient opening the Order
                   // leaves this badge exactly where it is.
                   const updates = unread.get(o.id) ?? 0
-                  const updateNote = unreadUpdateNote(updates)
                   const cancelled = o.status === 'cancelled'
-                  // A cancelled Order is a gap in the sequence: nothing is waiting on it.
-                  const piChange = cancelled ? undefined : piChanges.get(o.id)
+                  // The same blue words for an order that has come back to Operations, which stays until
+                  // Operations acts. A cancelled Order is a gap in the sequence: nothing is waiting on it.
+                  const updateNote = unreadUpdateNote(updates)
+                    ?? (!cancelled && returnedToMe.has(o.id) ? BACK_WITH_OPERATIONS_NOTE : null)
                   return (
                     <tr
                       key={o.id}
@@ -1044,7 +1047,7 @@ export default function AllOrdersPage() {
                          irritating in a list somebody reads all day, so the
                          animation is on the small dot in the note and nowhere
                          else. */
-                      className={[updateNote && 'has-update', piChange && `has-pi-change has-pi-change--${piChange.tone}`, cancelled && 'orders-gap-row'].filter(Boolean).join(' ') || undefined}
+                      className={[updateNote && 'has-update', cancelled && 'orders-gap-row'].filter(Boolean).join(' ') || undefined}
                     >
                       <td className="fin-ordno orders-code-cell" style={{ fontWeight: updateNote ? 800 : undefined }}>
                         <span className="orders-code-line">
@@ -1089,7 +1092,6 @@ export default function AllOrdersPage() {
                           </td>
                           <td className="orders-after-value">
                             <FactoryCell view={withSalesOrders.has(o.id) ? WITH_SALES_FACTORY_VIEW : factoryView(o, dispatch.get(o.id))} />
-                            {piChange && <PiChangePill marker={piChange} />}
                           </td>
                           <td>
                             <PendencyCell overview={pendencyOverviews.get(o.id)} onOpen={() => setPendencyPopup(o.id)} />

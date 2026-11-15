@@ -159,7 +159,8 @@ describe('the not-aligned table', () => {
   test('the screen draws the table from the summary and the details, and the row opens the order', () => {
     const view = read('src/components/orders/dashboard/OperationsDashboardView.tsx')
     assert.match(view, /read\.orderDetails\[r\.orderId\]/)
-    assert.match(view, /className="ops-na-row" onClick=\{open\}/)
+    // data-new (2026-11-15) sits between the class and the click: the row is still what opens the order.
+    assert.match(view, /className="ops-na-row" data-new=\{isNew \? 'true' : undefined\} onClick=\{open\}/)
     assert.match(view, /withReturnTo\(`\/orders\/\$\{r\.orderId\}`, '\/orders'\)/)
   })
 })
