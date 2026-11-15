@@ -704,4 +704,40 @@ ok('revisions to win counts the versions of every confirmed quotation in the per
   ok('the owner\'s after-apply query runs: four columns, every client copy has its keys and never the lead-time reason')
 }
 
+// ── 20270721000000: extra pictures on a line (swatch, drawing, reference) ──
+await db.exec(mig('20270721000000_quotation_line_reference_images.sql'))
+{
+  const P = n => `00000000-0000-0000-0000-0000000000b2/${String(n).repeat(8)}-1111-1111-1111-111111111111.jpg`
+  const refs = [{ path: P(1), kind: 'swatch', note: 'Green velvet' }, { path: P(2), kind: 'drawing' }]
+  const id = await rpc(U.sales, 'quotation_create', { client_name: 'Scan Hotel' })
+  const header = { client_name: 'Scan Hotel', valid_days: 7, gst_mode: 'igst' }
+  const chair = { name: 'C1 Dining chair', qty_fixed: 20, tax_rate: 18, reference_images: refs }
+  const table = { name: 'T1 Table', qty_fixed: 5, tax_rate: 18 }
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, { ...table, reference_images: [] }] })
+  const g1 = await rpc(U.sales, 'quotation_get', id)
+  assert.deepEqual(g1.lines.map(l => l.reference_images), [refs, []])
+  ok('save stores the extra pictures of each line and quotation_get returns them')
+
+  // A tab opened before the migration sends no reference_images: the line at the same place with the same name keeps its own.
+  const { reference_images: _drop, ...oldChair } = chair
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [oldChair, table] })
+  assert.deepEqual((await rpc(U.sales, 'quotation_get', id)).lines.map(l => l.reference_images), [refs, []])
+  // Renamed or moved without the key: nothing to match, so no pictures (never somebody else's).
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [table, oldChair] })
+  assert.deepEqual((await rpc(U.sales, 'quotation_get', id)).lines.map(l => l.reference_images), [[], []])
+  ok('a save without the key keeps a line\'s pictures only when the same line sits in the same place')
+
+  for (const bad of [[{ path: '../../etc.jpg', kind: 'swatch' }], [{ path: P(1), kind: 'logo' }], [{ path: P(1), kind: 'swatch', url: 'x' }],
+    [{ path: P(1), kind: 'swatch', note: 'n'.repeat(201) }], Array.from({ length: 9 }, () => ({ path: P(3), kind: 'reference' })), { path: P(1) }]) {
+    await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [id, { header, areas: [], lines: [{ ...chair, reference_images: bad }] }], /QUOTATION_INVALID/)
+  }
+  ok('a foreign path, an unknown kind, an extra key, a long note, more than 8 pictures or a non-list are refused')
+
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair] })
+  const tok = await rpc(U.sales, 'quotation_share', id, true)
+  const pub = (await as(null, `select public.quotation_public($1) as r`, [tok], 'anon')).rows[0].r
+  assert.ok(pub.lines.every(l => !('reference_images' in l)), 'the client copy never carries them')
+  ok('the client link and the frozen version do not carry the extra pictures')
+}
+
 console.log(`all ${checks} checks passed`)

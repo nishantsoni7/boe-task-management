@@ -4,16 +4,18 @@ import { PriceQueue } from './PricingDesk'
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, ImageIcon, Plus, Search } from 'lucide-react'
+import { FileText, FileUp, ImageIcon, Plus, Search } from 'lucide-react'
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
 import { formatINR } from '@/lib/currency'
 import { istDateOf } from '@/lib/istDate'
 import {
-  CLIENT_TYPES, STATUS_LABEL, createQuotation, errorText, fetchList, pictureUrl, quotationKeys, type ListRow, type QuotationStatus,
+  CLIENT_TYPES, STATUS_LABEL, createQuotation, errorText, fetchList, fetchQuotation, pictureUrl, quotationKeys, saveDoc, saveQuotation,
+  type ListRow, type QuotationStatus,
 } from '@/lib/quotations/api'
-import { SUPPLY_STATES, formatDateIN } from '@/lib/quotations/math'
+import { SUPPLY_STATES, formatDateIN, gstModeForState } from '@/lib/quotations/math'
+import { ImportDialog } from './ImportDialog'
 import s from './quotations.module.css'
 import { Pic } from './Pic'
 
@@ -30,6 +32,8 @@ export default function ListScreen() {
   const [scope, setScope] = useState<'mine' | 'all'>('mine')
   const [filter, setFilter] = useState<StatusFilter>('open')
   const [q, setQ] = useState('')
+  const [fromFile, setFromFile] = useState(false)
+  const qc = useQueryClient()
 
   const listQ = useQuery({ queryKey: quotationKeys.list(scope), queryFn: () => fetchList(supabase, scope), enabled: accessLoaded, staleTime: 20_000 })
   const rows = useMemo(() => listQ.data ?? [], [listQ.data])
@@ -53,7 +57,12 @@ export default function ListScreen() {
     <QuotationsLayout
       profile={profile} access={access} onSignOut={signOut}
       title="Quotations" subtitle={listQ.isSuccess ? `${counts.open} open · ${formatINR(openValue)} before GST` : undefined}
-      actions={access.create ? <button className={`${s.btn} ${s.btnPrimary}`} onClick={() => router.push('/quotations?new=1')}><Plus size={16} /> New quotation</button> : undefined}
+      actions={access.create ? (
+        <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className={s.btn} onClick={() => setFromFile(true)} disabled={!profile}><FileUp size={16} aria-hidden /> Start from a client file</button>
+          <button className={`${s.btn} ${s.btnPrimary}`} onClick={() => router.push('/quotations?new=1')}><Plus size={16} /> New quotation</button>
+        </span>
+      ) : undefined}
     >
       <div className={s.wrap}>
         {notSetUp && <div className={`${s.notice} ${s.noticeWarn}`}><b>Quotations is being set up.</b> Its database part has not been applied yet. Once it is, this page fills in by itself.</div>}
@@ -98,6 +107,18 @@ export default function ListScreen() {
         )}
       </div>
       {showNew && <NewQuotation onClose={closeNew} onCreated={id => router.push(`/quotations/${id}`)} create={data => createQuotation(supabase, data)} />}
+      {fromFile && profile && (
+        <ImportDialog supabase={supabase} userId={profile.id} areas={[]} start onClose={() => setFromFile(false)}
+          onAdd={async (areas, lines, info) => {
+            // The quotation, then its rooms and products in one save; the builder opens on it to be checked and priced.
+            const id = await createQuotation(supabase, { client_name: info.client_name.trim(), project_name: info.project_name.trim() || undefined, supply_state: info.supply_state || undefined, source: 'Client file' })
+            const q = await fetchQuotation(supabase, id)
+            const header = { ...q.header, gst_mode: info.supply_state ? gstModeForState(info.supply_state) : q.header.gst_mode, project_type: info.project_type || q.header.project_type }
+            await saveQuotation(supabase, id, saveDoc(header, areas, lines, q.updated_at))
+            await qc.invalidateQueries({ queryKey: ['quotations', 'list'] })
+            router.push(`/quotations/${id}`)
+          }} />
+      )}
     </QuotationsLayout>
   )
 }

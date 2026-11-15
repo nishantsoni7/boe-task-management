@@ -1,6 +1,6 @@
 import type { createClient } from '@/lib/supabase/client'
 import { toJpeg } from '@/lib/inventory/images'
-import { toDimensionUnit, type DimensionUnit, type GstMode, type QtyMode, type QuoteArea, type QuoteLine } from './math'
+import { toDimensionUnit, type DimensionUnit, type GstMode, type LineRef, type QtyMode, type QuoteArea, type QuoteLine } from './math'
 
 // Thin typed wrappers over the database functions of 20270614000000. No API route in between: every function
 // reads auth.uid() itself, so the browser's own session is the identity. The client link uses the same client
@@ -142,7 +142,7 @@ type DbLine = {
   id?: string; area_id: string | null; name: string; size_text: string | null; spec?: string | null; material: string | null
   finish: string | null; category?: string | null; qty_per_unit: number | string | null; qty_fixed: number | string | null
   unit_price: number | string | null; tax_rate: number | string; image_path: string | null; is_optional: boolean
-  client_note: string | null; internal_note?: string | null
+  client_note: string | null; internal_note?: string | null; reference_images?: LineRef[] | null
 }
 
 export function toAreas(rows: DbArea[]): QuoteArea[] {
@@ -159,6 +159,7 @@ export function toLines(rows: DbLine[]): QuoteLine[] {
       unit_price: l.unit_price === null || l.unit_price === undefined ? null : Number(l.unit_price),
       tax_rate: Number.isFinite(Number(l.tax_rate)) ? Number(l.tax_rate) : 18, image_path: l.image_path, is_optional: !!l.is_optional,
       client_note: l.client_note ?? '', internal_note: l.internal_note ?? '',
+      ...(Array.isArray(l.reference_images) && l.reference_images.length ? { references: l.reference_images } : {}),
     }
   })
 }
@@ -208,7 +209,7 @@ export function saveDoc(header: Header, areas: QuoteArea[], lines: QuoteLine[], 
       area_key: l.area_key, name: l.name, size_text: l.size_text, spec: l.spec, material: l.material, finish: l.finish,
       category: l.category, qty_per_unit: l.qty_mode === 'per_unit' ? l.qty : null, qty_fixed: l.qty_mode === 'fixed' ? l.qty : null,
       unit_price: l.unit_price, tax_rate: l.tax_rate, image_path: l.image_path, is_optional: l.is_optional,
-      client_note: l.client_note, internal_note: l.internal_note,
+      client_note: l.client_note, internal_note: l.internal_note, reference_images: l.references ?? [],
     })),
   }
 }
