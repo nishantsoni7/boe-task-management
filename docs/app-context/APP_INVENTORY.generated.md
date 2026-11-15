@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `0caee6bc` — Quotations scan: the shared structured-output helper, real-file results, migration ledger
-- Commits on this branch: 1400
+- Commit: `a1121fba` — Changelog: one proof line for Start from a client file (left twice by the rebase)
+- Commits on this branch: 1401
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 464 (first `20260530_create_positions.sql`, latest `20270723000000_pricing_training_structure.sql`)
 - Tables ever created: 259 (dropped at some point: 8)   SQL functions: 1049   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `a1121fba` 2026-11-15 Changelog: one proof line for Start from a client file (left twice by the rebase)
 - `0caee6bc` 2026-11-15 Quotations scan: the shared structured-output helper, real-file results, migration ledger
 - `d7cc469b` 2026-11-15 Quotations: Start from a client file (migration 20270721000000, apply before merge)
 - `0d8f051e` 2026-11-15 Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live (#840)
@@ -38,7 +39,6 @@
 - `6d0d0700` 2026-11-15 Docs: stamp #819 (the lead popup's left side with room) as merged d8a02296, deployed 16:44 IST, verified live (no SQL) (#820)
 - `d7d0ae9f` 2026-11-15 Pending work shows on its module's dashboard: change requests on Orders, money to allocate on Finance (no SQL) (#818)
 - `d8a02296` 2026-11-15 Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL) (#819)
-- `0177f067` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
 
 ## Pages by top-level area
 
