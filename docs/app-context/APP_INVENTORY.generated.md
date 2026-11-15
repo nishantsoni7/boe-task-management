@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `511e06a5` — Merge origin/main into feat/pricing-training (changelog: both entries kept; inventory regenerated)
-- Commits on this branch: 1386
+- Commit: `c696e68f` — Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
+- Commits on this branch: 1387
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 461 (first `20260530_create_positions.sql`, latest `20270720000000_pricing_training.sql`)
 - Tables ever created: 258 (dropped at some point: 8)   SQL functions: 1045   Enums: 0
@@ -14,8 +14,9 @@
 
 ## Latest 25 commits
 
-- `511e06a5` 2026-11-15 Merge origin/main into feat/pricing-training (changelog: both entries kept; inventory regenerated)
-- `e742a51e` 2026-11-15 Pricing: Training, where the price of a product is taught element by element (migration 20270720000000, apply before merge)
+- `c696e68f` 2026-11-15 Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
+- `431cd0c2` 2026-11-15 Pricing: Training, where the price of a product is taught element by element (migration 20270720000000, apply before merge) (#826)
+- `2e4bc210` 2026-11-15 Control Center: a switch for price approval on quotations (no SQL) (#825)
 - `5bc3c8aa` 2026-11-15 Docs: stamp #821 (the six Control Center screens with real routes) as merged 826ea9c6, deployed 19:15 IST, verified live (no SQL) (#823)
 - `b5a94539` 2026-11-15 Page speed, part 12: a saved copy of the launcher, profile and task list, so a revisit paints at once (no SQL) (#810)
 - `826ea9c6` 2026-11-15 Control Center step 2: the six ?tab= screens get real routes, old addresses redirect (no SQL) (#821)
@@ -38,7 +39,6 @@
 - `cec40927` 2026-11-15 Docs: stamp page speed part 10 (#803) as merged 5c6f2118, deployed 12:07 IST, verified live (no SQL) (#804)
 - `5c6f2118` 2026-11-15 Page speed, part 10: the Attendance pages reuse the guard's profile row (no SQL) (#803)
 - `9220572d` 2026-11-15 Docs: stamp #799 (phone fixes from the 390 px sweep) as merged e6663b40, deployed 10:38 IST, verified live (no SQL) (#800)
-- `cc40fd5d` 2026-11-15 Docs: stamp page speed part 9 (#801) as merged 90c60493, deployed 11:13 IST, verified live (no SQL) (#802)
 
 ## Pages by top-level area
 
