@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `55d45672` — Merge remote-tracking branch 'origin/main' into fix/quotation-import-and-price-hint
-- Commits on this branch: 1366
+- Commit: `d9b78590` — Merge remote-tracking branch 'origin/main' into fix/quotation-import-and-price-hint
+- Commits on this branch: 1370
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
@@ -14,6 +14,10 @@
 
 ## Latest 25 commits
 
+- `d9b78590` 2026-11-15 Merge remote-tracking branch 'origin/main' into fix/quotation-import-and-price-hint
+- `84270d73` 2026-11-15 Docs: stamp PR #805 in the changelog, the 01 row and dossier 29
+- `12d6cd2f` 2026-11-15 Docs: regenerate the app inventory after merging main
+- `cec40927` 2026-11-15 Docs: stamp page speed part 10 (#803) as merged 5c6f2118, deployed 12:07 IST, verified live (no SQL) (#804)
 - `55d45672` 2026-11-15 Merge remote-tracking branch 'origin/main' into fix/quotation-import-and-price-hint
 - `3c895bfb` 2026-11-15 Quotations: Import reads the right tab of a PI, and the suggested price is one line with a "Why?" popup (no SQL)
 - `5c6f2118` 2026-11-15 Page speed, part 10: the Attendance pages reuse the guard's profile row (no SQL) (#803)
@@ -35,10 +39,6 @@
 - `d06e6248` 2026-11-14 Orders: on a phone the Main PI Details popover stays inside the card and the pending buttons are 44px (#788)
 - `2750eb00` 2026-11-14 Quotations: builder polish, part A: bigger uncropped pictures, no Finish box, Client beside Share, Terms beside History, client Excel (no SQL) (#784)
 - `59a8d9e2` 2026-11-14 Docs: stamp page speed part 6 (#785) as merged e4ba4410, deployed 21:39 IST, verified live (no SQL) (#786)
-- `e4ba4410` 2026-11-14 Page speed, part 6: the Modules launcher asks for less (no SQL) (#785)
-- `f46df4a0` 2026-11-14 Docs: stamp page speed part 5 (#782) as merged 4c215ba9, deployed 20:56 IST, verified live (no SQL) (#783)
-- `4c215ba9` 2026-11-14 Page speed, part 5: fewer requests at the start of every page; part 3 dropped, measured (no SQL) (#782)
-- `fe677095` 2026-11-14 Docs: stamp the premium client quotation document (#777) as merged e0d4fe4c, deployed 20:08 IST, migration 20270717000000 applied (#781)
 
 ## Pages by top-level area
 
