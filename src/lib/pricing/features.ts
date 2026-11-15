@@ -129,8 +129,7 @@ function sidesOf(list: Found[]): number[] | null {
 
 /** Labelled sizes. `undefined`: read the text the plain way (no label gives a footprint); `null`: labelled, but the footprint
  *  is not given (only a length, or a seat height); a number: two labelled sides (or a diameter), in square inches. */
-function labelledPlan(t: string): number | null | undefined {
-  if (FEET.test(t)) return undefined
+function labelledPlan(t: string, inches = false): number | null | undefined {
   const label: Found[] = [] // label then number: "Length - 72", "Breadth- 24", "Seating Height 18"
   for (const m of t.matchAll(/\b([a-z]+)\s*[-:=.]?\s*(\d+(?:\.\d+)?)/gi)) {
     const role = roleOf(m[1])
@@ -148,20 +147,31 @@ function labelledPlan(t: string): number | null | undefined {
   if (!pair) {
     // Only a height is labelled ("24 x 18 x 30h"): the plain way. One side labelled and the other numbers not (`L 72*24*30`): the plain way too.
     // One side labelled and nothing else to read (`Length - 56 Standard Seating Height - 18`): no footprint is given.
+    // Only heights labelled and nothing else to read ("Seat height 18, arm height 24"): no footprint either, two heights are not two sides.
     const claimed = new Set([...label, ...number].map(f => f.at))
-    if (![...label, ...number].some(f => PLAN_ROLES.includes(f.role))) return undefined
     const nums = (t.match(NUMBER) ?? []).map(Number)
+    if (claimed.size > 0 && nums.length === claimed.size) return null
+    if (![...label, ...number].some(f => PLAN_ROLES.includes(f.role))) return undefined
     if (nums.length - claimed.size < 2) return null
     // A length written first ("L 72*24*30") names the order L x B x H: the first two numbers are the footprint.
     const lone = [...label, ...number].find(f => PLAN_ROLES.includes(f.role))
-    return lone?.role === 'length' && lone.value === nums[0] ? footprint([nums[0], nums[1]], t) : undefined
+    return lone?.role === 'length' && lone.value === nums[0] && !inches ? footprint([nums[0], nums[1]], t) : undefined
   }
-  return footprint(pair, t)
+  return footprint(pair, t, inches)
 }
 
-/** Square inches of two sides written in the unit the text uses (millimetres, centimetres, or inches). */
-function footprint(pair: number[], t: string): number | null {
-  const unit = MM.test(t) || Math.max(...pair) > 300 ? 1 / 25.4 : CM.test(t) ? 1 / 2.54 : 1
+/** Feet written out as inches, so a labelled size in feet reads like one in inches: "6 ft" → "72", `6'6"` → "78". */
+function feetAsInches(t: string): string {
+  const n = (ft: string, inch = '0') => String(Number(ft) * 12 + Number(inch))
+  return t
+    .replace(/(\d+(?:\.\d+)?)\s*(?:['’]|ft\b|feet\b)[\s.-]*(\d+(?:\.\d+)?)\s*(?:"|”|''|in(?:ch(?:es)?)?\b)/gi, (_, ft, inch) => n(ft, inch)) // 4'-6", 7'.6"
+    .replace(/(\d+(?:\.\d+)?)['’](\d+(?:\.\d+)?)(?![\d.])/g, (_, ft, inch) => n(ft, inch))
+    .replace(/(\d+(?:\.\d+)?)\s*(?:['’]|ft\b|feet\b)/gi, (_, ft) => n(ft))
+}
+
+/** Square inches of two sides written in the unit the text uses (millimetres, centimetres, or inches; `inches` when it is known). */
+function footprint(pair: number[], t: string, inches = false): number | null {
+  const unit = inches ? 1 : MM.test(t) || Math.max(...pair) > 300 ? 1 / 25.4 : CM.test(t) ? 1 / 2.54 : 1
   const area = pair[0] * unit * pair[1] * unit
   return area >= 4 && area <= 100_000 ? area : null
 }
@@ -170,7 +180,8 @@ function footprint(pair: number[], t: string): number | null {
 export function planAreaOf(text: string | null | undefined): number | null {
   const t = String(text ?? '').trim()
   if (!t) return null
-  const labelled = labelledPlan(t)
+  // A size in feet with labels ("Length 6 ft Width 3 ft") is read like one in inches; feet with no label keep the plain reading below.
+  const labelled = FEET.test(t) ? labelledPlan(feetAsInches(t), true) : labelledPlan(t)
   if (labelled !== undefined) return labelled
   const dims = dimensionsInches(t)
   if (!dims) return null

@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b7fafb95` — Merge remote-tracking branch 'origin/main' into feat/control-center-routes
-- Commits on this branch: 1391
+- Commit: `a9dee8e6` — Docs: stamp #816 (merged f1b7ea2e) and this change (#821) in the CHANGELOG and the Control Center dossier
+- Commits on this branch: 1392
 - Pages (`page.tsx`): 204   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `a9dee8e6` 2026-11-15 Docs: stamp #816 (merged f1b7ea2e) and this change (#821) in the CHANGELOG and the Control Center dossier
 - `b7fafb95` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-routes
 - `f1b7ea2e` 2026-11-15 Control Center: Home and six areas, a searchable directory, no tabs, no pending work (no SQL) (#816)
 - `16237d73` 2026-11-15 Merge remote-tracking branch 'origin/feat/control-center-redesign' into feat/control-center-routes
@@ -38,7 +39,6 @@
 - `4e866120` 2026-11-15 Quotations: Quantity and Price share one row on a product from 1200 px (no SQL) (#809)
 - `4760d62e` 2026-11-15 Docs: stamp page speed part 11 (#807) as merged bb407054, migration 20270719000000 applied, verified live (#808)
 - `bb407054` 2026-11-15 Page speed, part 11: the Payment Requests badges in one call (migration 20270719000000 applied) (#807)
-- `27d52de1` 2026-11-15 Docs: stamp #805 (Import reads the right tab; one-line suggested price) as merged e4f0c6e2, deployed 12:41 IST, verified live (no SQL) (#806)
 
 ## Pages by top-level area
 

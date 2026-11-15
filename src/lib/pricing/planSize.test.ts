@@ -31,6 +31,40 @@ describe('the footprint of a size as PIs write it', () => {
     assert.equal(planAreaOf('as per ref image'), null)
   })
 
+  test('heights alone are not a footprint; a marked height beside two plain numbers still leaves the footprint', () => {
+    assert.equal(planAreaOf('Seat height 18, arm height 24'), null)
+    assert.equal(planAreaOf('Height - 30, Seating Height - 18'), null)
+    assert.equal(planAreaOf('18h 24h'), null)
+    assert.equal(planAreaOf(`Seat height 1'6", back height 3'`), null)
+    near(planAreaOf('24 x 18 x 30h'), 24 * 18)
+    near(planAreaOf('20 x 22, Seat Height 18'), 20 * 22)
+  })
+
+  test('a labelled size in feet is read like one in inches', () => {
+    near(planAreaOf('Length 6 ft Width 3 ft'), 72 * 36)
+    near(planAreaOf('Length - 6 feet, Breadth - 2.5 feet, Height - 3 ft'), 72 * 30)
+    near(planAreaOf(`Length 6'6" Width 3' Height 2'6"`), 78 * 36)
+    near(planAreaOf(`L 6' x W 3' x H 2.5'`), 72 * 36)
+    near(planAreaOf('Length 6 ft 6 in Width 3 ft'), 78 * 36)
+    near(planAreaOf('Diameter 3 ft'), 36 * 36)
+    near(planAreaOf('Length 30 ft Width 2 ft'), 360 * 24) // 360 inches stays inches, not millimetres
+    assert.equal(planAreaOf('Length 6 ft, Seating Height 18'), null)
+    near(planAreaOf(`6'0" x 6'6"`), 72 * 78) // feet with no label: the plain reading, as before
+    near(planAreaOf(`6'0" x 6'6" x 1'6"`), 72 * 78)
+    near(planAreaOf('6 ft x 3 ft'), 72 * 36)
+  })
+
+  test('feet as the real PIs write them: a hyphen or dot between feet and inches, and a lone length in feet is no footprint', () => {
+    near(planAreaOf(`size -7'L*4'W*3'H`), 84 * 48)
+    near(planAreaOf(`L-6'-10" D -2'-6"`), 82 * 30)
+    near(planAreaOf(`4 seater 3'-6"dia *2'-6"H`), 42 * 42)
+    near(planAreaOf(`3'6" Dia*2'6" Height`), 42 * 42)
+    near(planAreaOf(`Size -2'-2"dia *1'6"H backrest height -3'-0"`), 26 * 26)
+    near(planAreaOf('Standard Dimensions 16"H 3 ft dia'), 36 * 36)
+    assert.equal(planAreaOf(`7'.6" Length Should Be divided -3'+4'.6"`), null)
+    near(planAreaOf('24 x 24 inch height 30 inch'), 24 * 30) // not every number is a height: the plain reading, as before
+  })
+
   test('shapes seen in the owner\'s real PIs: a lone height mark, W / D / H in millimetres, an "L" in front of plain numbers, a mattress, a seater count', () => {
     near(planAreaOf('24 x 18x30h'), 24 * 18)
     near(planAreaOf('size -24 x 18x30h'), 24 * 18)
