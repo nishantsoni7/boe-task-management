@@ -26,10 +26,16 @@ describe('navigation model', () => {
     }
   })
 
-  test('the sidebar is short: Home and six areas, holding nineteen settings', () => {
+  test('the sidebar is short: Home and six areas, holding twenty settings', () => {
     assert.equal(NAV_HUBS.length, 7)
     assert.deepEqual(NAV_HUBS.map(h => h.id), ['home', 'people', 'access', 'orders', 'sales', 'staff', 'data'])
-    assert.equal(SETTINGS.length, 19)
+    assert.equal(SETTINGS.length, 20)
+  })
+
+  test('Quotation price approval is findable and opens its own page, in Sales', () => {
+    assert.equal(searchSections('price approval')[0]?.id, 'quotation-price-approval')
+    assert.equal(searchSections('disable price approval')[0]?.id, 'quotation-price-approval')
+    assert.equal(activeHub({ pathname: `${MAIN_PATH}/quotation-price-approval`, tab: null })?.id, 'sales')
   })
 
   test('only Data & Safety is a danger area, and the setting that cannot be undone says so', () => {

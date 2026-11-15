@@ -1,12 +1,13 @@
 'use client'
 
 // Phase 5, the pricing desk: the price hint under each product's price, the price-approval card on a quotation,
-// and, on the list, the desk's "Waiting for price approval" list and the administrator's limits.
+// and, on the list, the desk's "Waiting for price approval" list.
+// The on/off switch and the limits live in the Control Center (Sales > Quotation price approval).
 
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AppLink as Link } from '@/components/ui/AppLink'
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { BadgeCheck } from 'lucide-react'
 import type { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
@@ -16,7 +17,7 @@ import type { ModelSuggestion } from '@/lib/pricing/model'
 import { SuggestionFeedback, type FeedbackLine } from '@/components/pricing/learning/SuggestionFeedback'
 import { istDateOf } from '@/lib/istDate'
 import {
-  errorText, fetchPriceQueue, fetchPriceSettings, savePriceSettings,
+  fetchPriceQueue,
   type PriceHint, type PriceReason, type PriceState,
 } from '@/lib/quotations/api'
 import s from './quotations.module.css'
@@ -174,45 +175,6 @@ export function PriceQueue({ supabase }: { supabase: Supabase }) {
             ))}
           </tbody>
         </table>
-      </div>
-    </div>
-  )
-}
-
-/** The two limits; an administrator changes them, everyone else reads them. Empty = off. */
-export function PriceLimits({ supabase }: { supabase: Supabase }) {
-  const qc = useQueryClient()
-  const q = useQuery({ queryKey: ['quotations', 'price-settings'], queryFn: () => fetchPriceSettings(supabase), retry: false })
-  const [edit, setEdit] = useState<{ d: string; p: string } | null>(null)
-  const [err, setErr] = useState('')
-  if (!q.data || !q.data.may_change) return null
-  const v = q.data
-  const show = (x: number | null, unit: string) => (x === null ? 'off' : `${Number(x)}${unit}`)
-  const save = async () => {
-    setErr('')
-    try {
-      await savePriceSettings(supabase, edit!.d.trim() === '' ? null : Number(edit!.d), edit!.p.trim() === '' ? null : Number(edit!.p))
-      setEdit(null); await qc.invalidateQueries({ queryKey: ['quotations'] })
-    } catch (e) { setErr(errorText(e)) }
-  }
-  return (
-    <div className={s.card}>
-      <div className={s.cardBody} style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
-        {edit === null ? (
-          <>
-            <div className={s.small}><b>Price approval</b> is needed above a {show(v.max_discount_pct, '%')} discount, or below {show(v.min_price_pct, '%')} of the last ordered price.</div>
-            <button className={`${s.btn} ${s.btnSm}`} onClick={() => setEdit({ d: v.max_discount_pct === null ? '' : String(Number(v.max_discount_pct)), p: v.min_price_pct === null ? '' : String(Number(v.min_price_pct)) })}>Change limits</button>
-          </>
-        ) : (
-          <>
-            <label className={s.field}><span>Discount above (%)</span><input id="lim-d" className={s.input} style={{ width: 110 }} inputMode="decimal" value={edit.d} onChange={e => setEdit({ ...edit, d: e.target.value })} placeholder="off" /></label>
-            <label className={s.field}><span>Price below (% of last ordered)</span><input id="lim-p" className={s.input} style={{ width: 110 }} inputMode="decimal" value={edit.p} onChange={e => setEdit({ ...edit, p: e.target.value })} placeholder="off" /></label>
-            <button className={`${s.btn} ${s.btnPrimary} ${s.btnSm}`} onClick={save}>Save limits</button>
-            <button className={`${s.btn} ${s.btnSm}`} onClick={() => setEdit(null)}>Cancel</button>
-            <span className={`${s.small} ${s.muted}`}>Leave empty to switch that check off.</span>
-          </>
-        )}
-        {err && <div className={`${s.notice} ${s.noticeBad}`}>{err}</div>}
       </div>
     </div>
   )

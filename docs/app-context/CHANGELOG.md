@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-15 — Control Center: a switch for price approval on quotations (branch `feat/quotation-price-approval-switch`; PR number added at the stamp) · no SQL
+- **Owner ask.** "Want to disable this price approval option currently": the price estimate is not strong enough yet, so no quotation should be held for approval until there is enough data and the model has trained itself well.
+- **What.** New setting Control Center › Sales › Quotation price approval (`/admin/control-center/quotation-price-approval`, `QuotationPriceApprovalSetting.tsx`). On / Off. Off writes both limits empty through the existing `quotation_price_settings_set` (administrators only, enforced in the database); `quotation_price_check` then asks for nothing, so the Price approval card disappears, the client link and Confirm → PI never wait, and the desk list empties. On starts from the owner's 5% and 90% and lets the administrator change them.
+- **Moved.** The limits editor (`PriceLimits`, "Change limits") left the Quotations list and now lives on this page; the list keeps the desk's "Waiting for price approval" card.
+- **Owner choice: no flag, no SQL.** "Off" is "both limits empty", so switching off forgets the limits and switching on starts again at 5% and 90%. A remembered on/off flag would need a table change, a backup and an apply step; the owner chose the simple way. A quotation already waiting stops waiting (its earlier requests and answers stay in the append-only log); a client link already on is untouched.
+- **Not changed.** Suggested prices, the Why? popup and the Price learning pages.
+- **Proof.** `priceApprovalSwitch.test.ts` (2), `navModel.test.ts` (twenty settings, the new section is findable and sits in Sales), `quotations_pglite.mjs` (empty limits give `not_needed` and `blocked = false`, already covered). Navigation now has 20 settings.
+
 ## 2026-11-15 — Control Center redesign, step 2: the six ?tab= screens get real routes (PR #821, squash-merged 19:13 IST as `826ea9c6`, deployed 19:15 IST, old addresses verified live) · no SQL
 - **Owner ask.** "Start step 2: real routes for tab pages" (the second half of the Control Center redesign). Follows step 1 (#816) and the pending-work change (#818), both merged.
 - **Why.** Departments, the four Order screens and Sales team were `?tab=` views of one 1,490-line page: no address of their own, and every sidebar switch replaced the history entry, so Back skipped them.
