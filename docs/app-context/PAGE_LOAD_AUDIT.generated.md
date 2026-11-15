@@ -8,7 +8,7 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 
 - Pages: 199; source files read: 1623.
 - Served: 163 static, 35 prepared and cached, 1 by a server function on every open.
-- Client pages: 147; pages that read data without the shared query cache: 43 of 179.
+- Client pages: 147; pages that read data without the shared query cache: 57 of 179.
 - Reads with no limit: 343 in 62 pages; fetch-all loops in 36 pages; select("*") in 10; polling in 37. (Pages import their module shell directly, so "own code" and these counts include the shell: compare pages of one module with each other, not across modules.)
 
 ## Heaviest pages by data calls
@@ -83,20 +83,20 @@ How to read the columns: **Served** is `static` (a file from the edge), `prepare
 | `/assets-access` | static | client | 450 KB / 41 | 42 (20/20/2) | - | 9 | - | - | - |
 | `/assets-access/[id]` | prepared | client | 406 KB / 39 | 33 (18/13/2) | - | 9 | - | - | - |
 | `/assets-access/notifications` | static | client | 444 KB / 40 | 7 (7/0/0) | - | 3 | - | - | - |
-| `/attendance` | static | client | 198 KB / 36 | 16 (10/3/3) | 1 | 3 | - | - | - |
-| `/attendance/correction-log` | static | client | 210 KB / 36 | 10 (4/3/3) | 1 | - | - | - | - |
-| `/attendance/employees` | static | client | 179 KB / 32 | 12 (4/3/5) | 1 | - | - | - | - |
-| `/attendance/employees/[id]` | prepared | client | 182 KB / 34 | 10 (4/3/3) | 1 | - | - | - | - |
-| `/attendance/holidays` | static | client | 162 KB / 32 | 11 (4/3/4) | 1 | - | - | - | - |
-| `/attendance/minop` | static | client | 164 KB / 32 | 9 (4/3/2) | 1 | - | - | - | - |
-| `/attendance/minop/incoming` | static | client | 209 KB / 37 | 11 (4/3/4) | 1 | - | - | - | - |
-| `/attendance/monthly-review` | static | client | 413 KB / 50 | 11 (4/3/4) | 1 | - | - | - | - |
-| `/attendance/monthly-review/[userId]` | prepared | client | 215 KB / 38 | 10 (4/3/3) | 1 | - | - | - | - |
-| `/attendance/notifications` | static | client | 463 KB / 46 | 12 (8/3/1) | 1 | 3 | - | - | - |
-| `/attendance/records` | static | client | 180 KB / 34 | 11 (5/3/3) | 1 | 1 | - | - | - |
-| `/attendance/requests` | static | client | 223 KB / 41 | 11 (4/3/4) | 1 | - | - | - | - |
-| `/attendance/today` | static | client | 178 KB / 33 | 15 (10/3/2) | 1 | 3 | - | - | - |
-| `/attendance/upload` | static | client | 185 KB / 30 | 11 (4/3/4) | 1 | - | - | - | - |
+| `/attendance` | static | client | 175 KB / 32 | 10 (7/0/3) | - | 3 | - | - | - |
+| `/attendance/correction-log` | static | client | 187 KB / 32 | 4 (1/0/3) | - | - | - | - | - |
+| `/attendance/employees` | static | client | 156 KB / 28 | 6 (1/0/5) | - | - | - | - | - |
+| `/attendance/employees/[id]` | prepared | client | 159 KB / 30 | 4 (1/0/3) | - | - | - | - | - |
+| `/attendance/holidays` | static | client | 139 KB / 28 | 5 (1/0/4) | - | - | - | - | - |
+| `/attendance/minop` | static | client | 141 KB / 28 | 3 (1/0/2) | - | - | - | - | - |
+| `/attendance/minop/incoming` | static | client | 186 KB / 33 | 5 (1/0/4) | - | - | - | - | - |
+| `/attendance/monthly-review` | static | client | 390 KB / 46 | 5 (1/0/4) | - | - | - | - | - |
+| `/attendance/monthly-review/[userId]` | prepared | client | 192 KB / 34 | 4 (1/0/3) | - | - | - | - | - |
+| `/attendance/notifications` | static | client | 443 KB / 43 | 7 (6/0/1) | - | 3 | - | - | - |
+| `/attendance/records` | static | client | 157 KB / 30 | 5 (2/0/3) | - | 1 | - | - | - |
+| `/attendance/requests` | static | client | 200 KB / 37 | 5 (1/0/4) | - | - | - | - | - |
+| `/attendance/today` | static | client | 155 KB / 29 | 9 (7/0/2) | - | 3 | - | - | - |
+| `/attendance/upload` | static | client | 162 KB / 26 | 5 (1/0/4) | - | - | - | - | - |
 | `/coming-soon` | static | client | 6 KB / 2 | 0 (0/0/0) | - | - | - | - | - |
 | `/customer-reviews` | static | client | 340 KB / 42 | 16 (9/2/5) | 2 | 2 | - | - | - |
 | `/customer-reviews/[id]` | function | server | 0 KB / 1 | 0 (0/0/0) | - | - | - | - | - |

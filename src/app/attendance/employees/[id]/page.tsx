@@ -3,10 +3,11 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
@@ -81,6 +82,7 @@ export default function EmployeeDetailPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   useEffect(() => {
     const init = async () => {
@@ -93,11 +95,7 @@ export default function EmployeeDetailPage() {
       // fields arrive through an admin-verified service-role route instead.
       // attendance_records likewise comes from an API, to bypass RLS.
       const [{ data: me }, empRes] = await Promise.all([
-        supabase
-          .from('users')
-          .select(USER_PROFILE_COLUMNS)
-          .eq('id', session.user.id)
-          .single(),
+        callerProfile(qc, session.user.id).then(data => ({ data })),
         fetch(`/api/admin/employee-profile?employee_id=${id}`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         }),

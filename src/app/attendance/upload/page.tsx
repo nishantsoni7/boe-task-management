@@ -3,11 +3,12 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { AppLink as Link } from '@/components/ui/AppLink'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Notice, ui } from '@/components/attendancePayroll/ui'
 import styles from './upload.module.css'
 
@@ -209,17 +210,14 @@ export default function AttendanceUploadPage() {
   const fileRef = useRef<HTMLInputElement>(null)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
       setToken(session.access_token)
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: me } = await callerProfile(qc, session.user.id).then(data => ({ data }))
       setProfile(me as UserProfile)
       setLoading(false)
     }

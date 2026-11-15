@@ -16,10 +16,11 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { RequestQueue } from '@/components/attendanceRequests/RequestQueue'
 import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 
@@ -37,6 +38,7 @@ function AttendanceRequestsScreen() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   const getToken = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession()
@@ -47,12 +49,12 @@ function AttendanceRequestsScreen() {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-      const { data: prof } = await supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
+      const { data: prof } = await callerProfile(qc, session.user.id).then(data => ({ data }))
       if (!prof) { router.push('/login'); return }
       setProfile(prof)
     }
     void init()
-  }, [supabase, router])
+  }, [supabase, qc, router])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()

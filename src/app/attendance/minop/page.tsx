@@ -10,10 +10,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Badge, Notice, StateBlock, StatusFilter, ui, type Tone } from '@/components/attendancePayroll/ui'
 import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import { RefreshCw } from 'lucide-react'
@@ -139,6 +140,7 @@ export default function MinopDiagnosticsPage() {
 
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   const load = async (tok: string) => {
     setFetching(true)
@@ -161,8 +163,7 @@ export default function MinopDiagnosticsPage() {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-      const { data: prof } = await supabase
-        .from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
+      const { data: prof } = await callerProfile(qc, session.user.id).then(data => ({ data }))
       if (!prof) { router.push('/coming-soon'); return }
       setProfile(prof as UserProfile)
       setToken(session.access_token)
