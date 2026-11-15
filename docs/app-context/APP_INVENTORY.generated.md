@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `662d619d` — Docs: stamp PR #812 in the changelog, the 01 row and dossier 29
-- Commits on this branch: 1373
+- Commit: `e6c43951` — Docs: regenerate the app inventory
+- Commits on this branch: 1374
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
-- Test files: 860   Next.js 16.2.6, React 19.2.4
+- Test files: 861   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `e6c43951` 2026-11-15 Docs: regenerate the app inventory
 - `662d619d` 2026-11-15 Docs: stamp PR #812 in the changelog, the 01 row and dossier 29
 - `0c87f289` 2026-11-15 Docs: regenerate the app inventory
 - `261f2440` 2026-11-15 Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL)
@@ -38,7 +39,6 @@
 - `1ff42c1e` 2026-11-14 Docs: stamp #791 (merged 1a395cf4, deployed 22:50 IST) and #780 (merged 33813806, tools installed 20:18 IST) (#794)
 - `b54f6989` 2026-11-14 Docs: stamp #788 (phone popover and pending buttons) as merged d06e6248, deployed 22:33 IST (no SQL) (#790)
 - `1a395cf4` 2026-11-14 Orders: PI review thread inside the operations notice, replies keep their line breaks (no SQL) (#791)
-- `1e80e23c` 2026-11-14 Page speed, part 7: the launcher's badge counts in one call (no SQL) (#789)
 
 ## Pages by top-level area
 
@@ -165,7 +165,7 @@
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
-- `src/lib/pricing` — 9 source, 5 test
+- `src/lib/pricing` — 9 source, 6 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/quotations` — 16 source, 10 test
 - `src/lib/salesLeads` — 15 source, 15 test
