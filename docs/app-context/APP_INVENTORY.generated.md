@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `164b7b0c` — Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
-- Commits on this branch: 1378
+- Commit: `65beb47f` — Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
+- Commits on this branch: 1380
 - Pages (`page.tsx`): 198   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `65beb47f` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
+- `0177f067` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
 - `164b7b0c` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
 - `82a446dc` 2026-11-15 Pricing: a unit glued to its number ("180cm") is read as the unit, not as inches (no SQL) (#817)
 - `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
@@ -37,8 +39,6 @@
 - `9fc1f782` 2026-11-15 Docs: stamp page speed part 8 (#796) as merged 27deb4f7, deployed 09:50 IST, verified live (no SQL) (#798)
 - `27deb4f7` 2026-11-15 Page speed, part 8: the launcher's attendance answers join the one request (no SQL) (#796)
 - `80091824` 2026-11-15 Quotations: three layout fixes in the premium document, found by rendering a sample of the live PDF (no SQL) (#787)
-- `69402b1a` 2026-11-15 Docs: stamp #793 (lead popup banner and list) as merged a781646e, deployed 08:59 IST, string-verified live (no SQL) (#795)
-- `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
 
 ## Pages by top-level area
 
