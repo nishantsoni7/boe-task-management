@@ -303,7 +303,7 @@
 .saveBarList li { margin: 1px 0; }
 
 @media (max-width: 1023px) {
-  .layout { grid-template-columns: 1fr; }
+  .layout { grid-template-columns: minmax(0, 1fr); } /* plain 1fr cannot shrink below its content: 399px at 390 */
   .panel { position: static; max-height: 300px; }
   .headerStats { width: 100%; }
   .mrow { grid-template-columns: 1fr; }

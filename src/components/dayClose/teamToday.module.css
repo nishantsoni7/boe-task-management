@@ -58,7 +58,8 @@
 .roster { padding: 0; overflow: hidden; }
 .rosterHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; padding: 16px 18px 12px; }
 .counts { display: flex; flex-wrap: wrap; gap: 6px; }
-.scroll { overflow-x: auto; }
+/* position: relative keeps the absolute .srOnly labels inside this scroll box; without it they escaped and made the whole page scroll sideways on a phone (836px at 390). */
+.scroll { overflow-x: auto; position: relative; }
 .table { width: 100%; border-collapse: collapse; min-width: 820px; }
 .table th {
   text-align: left; padding: 10px 12px; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;

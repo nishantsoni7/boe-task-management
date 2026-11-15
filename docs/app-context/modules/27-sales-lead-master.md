@@ -102,3 +102,4 @@ Date filter (2026-11-06): `src/lib/salesLeads/dateRange.test.ts`, `dateRangeMigr
 ## 12. Recheck before changing
 
 Read the LATEST definition of each function (`grep -ln "function public.<name>" supabase/migrations/*`); `src/lib/permissions/modules.ts` (sales block); `supabase migration list --linked` for the apply state; run `src/lib/salesLeads/*.test.ts`, `src/components/salesLeads/salesLeads.test.tsx`, the in-memory Postgres suite, and `npm run permissions:check`.
+- **Auto-allot switch on a phone (2026-11-15, owner: "wrap the auto-allot row on phones"; branch `fix/phone-team-today-and-permissions`, no SQL).** The phone rule had `.whoBar { flex-wrap: nowrap }` with no overflow, so the admin's Auto-allot switch ran off the screen (263..409 at 390 px) and the shell's clip hid it. Now `flex-wrap: wrap`: the switch takes a second line. The row must never scroll (`salesLeads.test.tsx`: it would clip the person panel). Pinned by `src/app/phoneSweepLayout.test.ts`.

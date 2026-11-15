@@ -5,16 +5,17 @@
 
 ## Snapshot
 
-- Commit: `649a187f` — WIP part 8
-- Commits on this branch: 1357
+- Commit: `9fc1f782` — Docs: stamp page speed part 8 (#796) as merged 27deb4f7, deployed 09:50 IST, verified live (no SQL) (#798)
+- Commits on this branch: 1358
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
-- Test files: 857   Next.js 16.2.6, React 19.2.4
+- Test files: 858   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `649a187f` 2026-11-15 WIP part 8
+- `9fc1f782` 2026-11-15 Docs: stamp page speed part 8 (#796) as merged 27deb4f7, deployed 09:50 IST, verified live (no SQL) (#798)
+- `27deb4f7` 2026-11-15 Page speed, part 8: the launcher's attendance answers join the one request (no SQL) (#796)
 - `80091824` 2026-11-15 Quotations: three layout fixes in the premium document, found by rendering a sample of the live PDF (no SQL) (#787)
 - `69402b1a` 2026-11-15 Docs: stamp #793 (lead popup banner and list) as merged a781646e, deployed 08:59 IST, string-verified live (no SQL) (#795)
 - `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
@@ -38,7 +39,6 @@
 - `39fadbcf` 2026-11-14 Page speed, part 1: every record page prepared and cached, static files kept for a day, page-load audit (no SQL) (#775)
 - `4891ae98` 2026-11-14 Docs: stamp Quotations Import of a PI (#773) as merged 111f4ef6, deployed 13:28 IST (no SQL) (#774)
 - `111f4ef6` 2026-11-14 Quotations: Import brings a BOE PI's price, customization and representative picture (no SQL) (#773)
-- `2adad5f7` 2026-11-14 Docs: stamp the BOE One loader (#770) as merged 3dd0cc93, deployed 12:38 IST (no SQL) (#772)
 
 ## Pages by top-level area
 
