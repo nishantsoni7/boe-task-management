@@ -113,7 +113,7 @@ describe('the feedback and correction doorway', () => {
   })
 })
 
-describe('the suggested price on a quotation line: one line for everyone, "Why?" for the Pricing people', () => {
+describe('the suggested price on a quotation line: a small card for everyone, "Why?" for the Pricing people', () => {
   const MODEL: ModelSuggestion = { price: 59700, low: 54600, high: 65400, confidence: 'medium', reasons: ['+18% Teak instead of Mango'], basis: 'the price model for Bed (92 prices)', n: 92, type: 'bed' }
   const HINT = { name: 'x', ordered: { last: 50000, last_at: '2026-01-01', min: 40000, max: 52000, count: 3 }, quoted: { last: 48000, last_at: '2026-02-01' } }
   const ctx = { line: LINE, clientType: null, quotationId: 'q-1', isDesk: false }
@@ -124,9 +124,9 @@ describe('the suggested price on a quotation line: one line for everyone, "Why?"
     return ui
   }
 
-  test('without the Pricing module it is one short line: the price, its range, Use; no reasons, history, confidence or link', () => {
+  test('without the Pricing module it is a small card: the price with a Use button and the range under it; no reasons, history, confidence or link', () => {
     const out = html({ model: MODEL, hint: HINT })
-    assert.match(out, /Suggested[\s\S]*₹59,700[\s\S]*\(₹54,600–₹65,400\)[\s\S]*Use/)
+    assert.match(out, /Suggested <b>₹59,700<\/b>[\s\S]*<button[^>]*class="sugUse"[^>]*>Use<\/button>[\s\S]*Range ₹54,600–₹65,400/)
     for (const gone of [/Why\?/, /Feedback or correct the logic/, /Teak instead of Mango/, /medium/, /Last ordered/, /last quoted/i, /92 prices/]) assert.doesNotMatch(out, gone)
     assert.equal((out.match(/<div/g) ?? []).length, 1, 'one block, not a stack of lines')
   })
