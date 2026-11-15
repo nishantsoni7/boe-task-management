@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-16 — Pricing: the wood list with rates, and the wood picked on a structure row (branch `feat/pricing-woods`, NOT MERGED, migration 20270725000000 NOT APPLIED) · migration `20270725000000_pricing_woods.sql` (a new table: backup first)
+- **Why.** Step 1 of "the estimator uses submitted training cases" (plan agreed with the owner on 16 Nov, defaults accepted). His rule: for another wood, the wood share of a wooden structure changes and the rest stays. For that the app must know each wood and what it costs.
+- **Wood rates page.** Pricing → Wood rates (`/pricing/woods`): each wood with its rate per cubic foot. Anyone with Pricing reads it; Create adds, changes and removes (removal offers Undo). A wood may have no rate yet.
+- **Structure row.** On a Wooden structure row the material box is now "Wood", picked from the list or typed; a typed wood joins the list without a rate when the case is saved. The photo reader no longer fills it: a photo cannot name a wood, so its words go to the note.
+- **Database.** Closed table `pricing_woods` (one row per wood, compared without capitals), `pricing_woods_list`, `pricing_wood_save`, `pricing_wood_remove`. Nothing existing is replaced; safe in either order with the code (without it the page says "being set up").
+- **Not yet.** Nothing reads the rates. Step 2 shows a taught price, and its price in another wood, on a quotation line.
+- **Tests.** `pricing_training_pglite.mjs` (1 new block), `doc.test.ts` (2 new), both ledgers.
+
 ## 2026-11-15 — Pricing Training: submitting is what counts, and a case can always be changed (branch `feat/training-submit-counts`, PR #843 squash-merged 16 Nov 2026 00:37 IST as `cd8d6358`, deployed 00:39 IST; migration 20270724000000 APPLIED by the owner before the merge (history table, new column and status conversion confirmed)) · migration `20270724000000_pricing_training_submit_counts.sql` (alters tables and data: backup first, apply before the merge)
 - **Owner, after pricing the first real case.** He wanted to edit the prices and submit them for the automatic estimator, with editing always available, also after submitting, and the current state always shown. Asked, he chose: **submit is enough** (no approve step) and **he and Nitish may both edit any case**.
 - **Rules now.** Two states, draft and submitted. Anyone holding Create on Pricing may change ANY case at ANY time. Saving a change to a submitted case puts it back to "changed, not resubmitted" until it is submitted again, so a half-changed price never counts. Submitting again with nothing changed is refused.

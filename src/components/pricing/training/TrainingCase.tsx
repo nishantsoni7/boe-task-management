@@ -13,8 +13,8 @@ import { AppLink as Link } from '@/components/ui/AppLink'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
-import { KINDS, KIND_LABEL, emptyForm, emptyLine, lineAmount, num, parseReading, problems, readingToLines, shortDate, statusLabel, statusText, structureRest, toLine, totals, usesQuantity, type CaseForm, type Kind, type Line } from '@/lib/pricing/training/doc'
-import { fetchAccess, fetchCase, photoUrl, readPhoto, saveCase, sendMessage, submitCase, trainingKeys, uploadPhoto, type TrainingError } from '@/lib/pricing/training/api'
+import { KINDS, KIND_LABEL, emptyForm, emptyLine, lineAmount, newWoods, num, parseReading, problems, readingToLines, shortDate, statusLabel, statusText, structureRest, toLine, totals, usesQuantity, type CaseForm, type Kind, type Line } from '@/lib/pricing/training/doc'
+import { fetchAccess, fetchCase, fetchWoods, saveWood, photoUrl, readPhoto, saveCase, sendMessage, submitCase, trainingKeys, uploadPhoto, type TrainingError } from '@/lib/pricing/training/api'
 import t from './training.module.css'
 
 const str = (v: number | null) => (v === null || v === undefined ? '' : String(Number(v)))
@@ -27,6 +27,7 @@ export function TrainingCase() {
   const isNew = routeId === 'new'
 
   const access = useQuery({ queryKey: trainingKeys.access, queryFn: () => fetchAccess(supabase), retry: false })
+  const woods = useQuery({ queryKey: trainingKeys.woods, queryFn: () => fetchWoods(supabase), enabled: access.isSuccess, retry: false })
   const saved = useQuery({ queryKey: trainingKeys.one(routeId), queryFn: () => fetchCase(supabase, routeId), enabled: !isNew && access.isSuccess, retry: false })
 
   const [form, setForm] = useState<CaseForm>(emptyForm)
@@ -112,6 +113,9 @@ export function TrainingCase() {
     setBusy(send ? 'send' : 'save')
     try {
       const id = await saveCase(supabase, isNew ? null : routeId, form, lines)
+      // A wood typed on a structure row joins the wood list (without a rate), so it can be given a rate later.
+      const added = woods.data ? newWoods(lines, woods.data.map(w => w.name)) : []
+      if (added.length) { await Promise.all(added.map(w => saveWood(supabase, w, null).catch(() => null))); await qc.invalidateQueries({ queryKey: trainingKeys.woods }) }
       if (send) await submitCase(supabase, id)
       setDirty(false)
       await qc.invalidateQueries({ queryKey: trainingKeys.list })
@@ -199,13 +203,16 @@ export function TrainingCase() {
         <div className={t.cardH}>What the price is made of
           {editable && <button type="button" className="boe-btn boe-btn-secondary" onClick={addLine}><Plus size={16} aria-hidden /> Add an element</button>}
         </div>
+        <datalist id="training-woods">{(woods.data ?? []).map(w => <option key={w.name} value={w.name} />)}</datalist>
         {lines.length === 0 && <div className={t.cardB}><p className={t.muted} style={{ margin: 0 }}>{editable ? 'List every element in your own way: the wooden structure as one price, then weaving, upholstery, finish, hardware, overhead, margin. Type a quantity and a rate, or just the amount.' : 'No elements.'}</p></div>}
         {editable ? lines.map((l, i) => (
           <div key={i} className={t.el}>
             <div className={t.elGrid}>
               <label className={t.field}><span className="boe-input-label">Element {i + 1} {l.from_ai && <span className={t.fromAi}>from the photo</span>}</span><input className="boe-input" value={l.element} onChange={e => editLine(i, { element: e.target.value })} placeholder="e.g. Wooden structure" maxLength={120} /></label>
               <label className={t.field}><span className="boe-input-label">Kind</span><select className="boe-input" value={l.kind} onChange={e => editLine(i, { kind: e.target.value as Kind })}>{KINDS.map(k => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></label>
-              <label className={t.field}><span className="boe-input-label">Material / what it is</span><input className="boe-input" value={l.material} onChange={e => editLine(i, { material: e.target.value })} maxLength={160} /></label>
+              {l.kind === 'structure'
+                ? <label className={t.field}><span className="boe-input-label">Wood</span><input className="boe-input" list="training-woods" value={l.material} onChange={e => editLine(i, { material: e.target.value })} placeholder="Pick or type a wood" maxLength={40} /></label>
+                : <label className={t.field}><span className="boe-input-label">Material / what it is</span><input className="boe-input" value={l.material} onChange={e => editLine(i, { material: e.target.value })} maxLength={160} /></label>}
               <label className={t.field}><span className="boe-input-label">Quantity</span><input className="boe-input" inputMode="decimal" value={l.quantity} onChange={e => editLine(i, { quantity: e.target.value })} /></label>
               <label className={t.field}><span className="boe-input-label">Unit</span><input className="boe-input" value={l.unit} onChange={e => editLine(i, { unit: e.target.value })} placeholder="cu ft" maxLength={30} /></label>
               <label className={t.field}><span className="boe-input-label">Rate (₹)</span><input className="boe-input" inputMode="decimal" value={l.rate} onChange={e => editLine(i, { rate: e.target.value })} /></label>

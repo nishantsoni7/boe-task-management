@@ -107,7 +107,11 @@ export function parseReading(input: unknown): Reading | null {
 /** The reader's materials as starting rows: named and marked as read from the photo, with no amounts. */
 export function readingToLines(r: Reading): Line[] {
   // The whole wooden structure is one row with one price (it is made in one go); everything else is a material.
-  return r.materials.map(m => ({ ...emptyLine(), element: m.part, kind: /wooden structure/i.test(m.part) ? 'structure' as const : 'material' as const, material: m.material, reasoning: m.note, from_ai: true }))
+  // On the structure row the material box is THE WOOD, picked by a person from the wood list: a photo cannot name
+  // a wood, so what the reader said about it goes into the note and the wood is left empty.
+  return r.materials.map(m => (/wooden structure/i.test(m.part)
+    ? { ...emptyLine(), element: m.part, kind: 'structure' as const, reasoning: [m.material, m.note].filter(Boolean).join('. '), from_ai: true }
+    : { ...emptyLine(), element: m.part, kind: 'material' as const, material: m.material, reasoning: m.note, from_ai: true }))
 }
 
 /** A saved row (numbers) back into a typed row (text). */
@@ -133,4 +137,15 @@ export function statusText(c: CaseState): string {
 export function statusLabel(c: Pick<CaseState, 'status' | 'submit_count'>): { label: string; badge: string } {
   if (c.status === 'submitted') return { label: c.submit_count > 1 ? 'Resubmitted' : 'Submitted', badge: 'boe-badge-completed' }
   return c.submit_count > 0 ? { label: 'Changed, not resubmitted', badge: 'boe-badge-waiting' } : { label: 'Saved, not submitted', badge: 'boe-badge-pending' }
+}
+
+/** The woods named on structure rows that the wood list does not have yet (compared without case or spaces). */
+export function newWoods(lines: readonly Line[], known: readonly string[]): string[] {
+  const have = new Set(known.map(k => k.trim().toLowerCase()))
+  const out = new Map<string, string>()
+  for (const l of lines) {
+    const w = l.material.trim()
+    if (l.kind === 'structure' && w.length >= 2 && w.length <= 40 && !have.has(w.toLowerCase())) out.set(w.toLowerCase(), w)
+  }
+  return [...out.values()]
 }

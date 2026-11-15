@@ -6,7 +6,7 @@ import { parseReading, type CaseForm, type Line, type Reading, saveDoc } from '.
 
 type Supabase = ReturnType<typeof createClient>
 export const TRAINING_BUCKET = 'pricing-training'
-export const trainingKeys = { access: ['pricing', 'training', 'access'] as const, list: ['pricing', 'training', 'list'] as const, one: (id: string) => ['pricing', 'training', 'case', id] as const }
+export const trainingKeys = { access: ['pricing', 'training', 'access'] as const, list: ['pricing', 'training', 'list'] as const, woods: ['pricing', 'woods'] as const, one: (id: string) => ['pricing', 'training', 'case', id] as const }
 
 export type Status = 'draft' | 'submitted'
 export type Access = { uid: string; admin: boolean; create: boolean }
@@ -23,6 +23,8 @@ type RpcError = { message?: string; code?: string } | null
 function classify(e: NonNullable<RpcError>): TrainingError {
   const m = e.message ?? ''
   const said = m.replace(/^.*PRICING_TRAINING_[A-Z_]+:\s*/, '')
+  if (/PRICING_WOODS_FORBIDDEN/.test(m)) return new TrainingError('forbidden', m.replace(/^.*PRICING_WOODS_[A-Z_]+:\s*/, ''))
+  if (/PRICING_WOODS_INVALID/.test(m)) return new TrainingError('invalid', m.replace(/^.*PRICING_WOODS_[A-Z_]+:\s*/, ''))
   if (/PRICING_TRAINING_FORBIDDEN/.test(m)) return new TrainingError('forbidden', said)
   if (/PRICING_TRAINING_LOCKED/.test(m)) return new TrainingError('locked', said)
   if (/PRICING_TRAINING_INVALID/.test(m)) return new TrainingError('invalid', said)
@@ -74,3 +76,8 @@ export async function readPhoto(s: Supabase, jpeg: Blob): Promise<Reading> {
   if (!reading) throw new TrainingError('unknown', 'I could not read this photo. You can still add the materials yourself.')
   return reading
 }
+
+export type Wood = { name: string; rate: number | null; updated_at: string; updated_by_name: string | null }
+export const fetchWoods = (s: Supabase) => call<Wood[]>(() => s.rpc('pricing_woods_list'))
+export const saveWood = (s: Supabase, name: string, rate: number | null) => call<null>(() => s.rpc('pricing_wood_save', { p_name: name, p_rate: rate }))
+export const removeWood = (s: Supabase, name: string) => call<null>(() => s.rpc('pricing_wood_remove', { p_name: name }))
