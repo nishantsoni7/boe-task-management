@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-15 — Phones: Team Today / Team Performance no longer scroll sideways, the Access page fits, and Lead Master's Auto-allot switch wraps (branch `fix/phone-team-today-and-permissions`; the PR number and merge commit are stamped in a docs follow-up after the merge) · no SQL
+- **Owner ask.** "Sweep the other modules at 390px", then "Yes, fix both" for the two defects whose fix was tested.
+- **The sweep.** 154 pages on the live site, each alone in a 390 px frame, listing anything outside the clipped content column plus the page's sideways scroll. 3 real defects, 2 cosmetic bleeds (Marketing stat chips, Inventory save bar), 1 false positive (QR print block). Notes in the side-session notes, not in the repo.
+- **Fix 1.** `src/components/dayClose/teamToday.module.css`: `.scroll` gets `position: relative`, so the roster's absolute `.srOnly` labels stay inside its scroll box. `/tasks/team-today` and `/performance/team` were 836 px wide at 390 and could be dragged sideways; injected on the live page: 375 px, no sideways scroll, table still scrolls in its card.
+- **Fix 2.** `src/app/admin/control-center/permissions/permissions.module.css` (max-width 1023px): `.layout` `1fr` -> `minmax(0, 1fr)`. The Access page was 399 px wide in a 375 px column; injected: 351 px, 0 elements outside.
+- **Test.** `src/app/phoneSweepLayout.test.ts` pins all three rules.
+- **Fix 3 (owner: "wrap the auto-allot row on phones").** `src/components/salesLeads/salesLeads.module.css` phone rule: `.whoBar` `flex-wrap: nowrap` -> `wrap`. The admin's "Auto-allot on" switch was cut off at 263..409 in a 375 px column; it now takes a second line. The row still never scrolls (that would clip the person picker).
+
 ## 2026-11-14 — Quotations: three layout fixes in the premium document (branch `fix/quotation-document-layout`, PR pending) · no SQL
 - **Found by** rendering a sample of the live PDF (15 pages) for the owner; fixed after measuring the real render in headless Edge.
 - **Half-empty product page.** The planner treated a product name over 27 characters as two lines; a mixed-case name of up to 31 characters prints on one (a card is 41 units wide, the name 2.85 units; capitals are about 30% wider). `nameLines()`: 30 characters per line, capitals count 1.3, never fewer lines than the browser drew over 43 measured names. The sample's Deluxe Room (8 products) packs 4 + 4, was 2 / 4 / 2.

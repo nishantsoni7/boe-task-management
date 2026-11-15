@@ -229,13 +229,15 @@ textarea.input { height: auto; min-height: 88px; padding: 10px 12px; line-height
    Lead Master on a phone: the toolbar is the search box and one Filter button
    (Source is in its sheet); the count, the Source select and the Import / Add
    buttons are hidden (Add and Import are behind the header's +). The
-   "Allotted to" chips stay one row that scrolls sideways, 40px tall. */
+   "Allotted to" chips are 40px tall and wrap: the admin's Auto-allot switch
+   takes a second line instead of being cut off (owner, 2026-11-15). The row
+   must not scroll: that would clip the person panel. */
 @media (max-width: 767px) {
   .phoneHide { display: none !important; }
   /* The search box and the Filter button share one row (Phase 1 gives the search the whole row). */
   .wrap :global(.fin-tools) { flex-wrap: nowrap; }
   .wrap :global(.fin-tools .boe-list-search) { flex: 1 1 0; min-width: 0; }
-  .whoBar { padding: 8px 12px; gap: 8px; flex-wrap: nowrap; }
+  .whoBar { padding: 8px 12px; gap: 8px; flex-wrap: wrap; }
   .who { height: 40px; font-size: 13px; padding: 0 10px 0 8px; gap: 6px; }
   .whoAll { padding-left: 10px; }
   /* The chosen person's name gives way ("Mohit Sh…") before the row can run off the screen. */

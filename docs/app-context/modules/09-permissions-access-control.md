@@ -252,3 +252,4 @@ Read-only queries (linked project): `select role,count(*) from role_permissions 
 `select count(*) from employee_permission_overrides where revoked_at is null;`; `select * from pg_policies where policyname like '%_module_entry_gate';` (27);
 `select module_key,is_active from permission_modules;`. Run `npm run permissions:check`, then
 `npx tsx --test src/lib/permissions/*.test.ts`, and `npx tsc --noEmit`.
+- **Access page on a phone (2026-11-15, branch `fix/phone-team-today-and-permissions`, no SQL).** At 390px the directory and the workspace were 399px wide in a 375px column and cut off by the shell's clip: `permissions.module.css` (max-width 1023px) stacked `.layout` with `grid-template-columns: 1fr`, which cannot shrink below its content. Now `minmax(0, 1fr)` (351px at 390, nothing outside). Pinned by `src/app/phoneSweepLayout.test.ts`.
