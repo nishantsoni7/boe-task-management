@@ -162,7 +162,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 5 source, 8 test
 - `src/lib/notifications` — 9 source, 25 test
-- `src/lib/orders` — 110 source, 170 test
+- `src/lib/orders` — 110 source, 171 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test

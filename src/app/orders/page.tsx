@@ -42,6 +42,7 @@ import { useViewAs } from '@/contexts/ViewAsContext'
 import { SalespersonDashboardView } from '@/components/orders/dashboard/SalespersonDashboardView'
 import { OperationsDashboardView, OperationsResponses } from '@/components/orders/dashboard/OperationsDashboardView'
 import { QUEUE_HANDOFF_COLUMNS, ordersWithSales, type QueueHandoff } from '@/lib/orders/operationsHandoff'
+import { loadOrdersBackWithOperations } from '@/lib/orders/backWithOperations'
 import {
   OPS_ERROR_BODY,
   OPS_ERROR_HEADING,
@@ -96,6 +97,9 @@ export default function OrdersDashboardPage() {
   const [summary,     setSummary]     = useState<SummaryState>({ kind: 'loading' })
   const [personal,    setPersonal]    = useState<PersonalState>({ kind: 'loading' })
   const [operations,  setOperations]  = useState<OperationsState>({ kind: 'loading' })
+  // The orders that have come back to Operations (owner, 2026-11-15), for the "New update" mark on the
+  // Operations dashboard. Read only for the Operations team; empty for everybody else and on a failed read.
+  const [backWithOps, setBackWithOps] = useState<ReadonlySet<string>>(new Set())
   const [counts,      setCounts]      = useState<OrderDashboardCounts>(NO_ORDER_DASHBOARD_COUNTS)
   // The owner's "Select an order" control opens the Factory Focus form.
   const [focusFormOpen, setFocusFormOpen] = useState(false)
@@ -139,6 +143,7 @@ export default function OrdersDashboardPage() {
       personalRes,
       summaryRes,
       operationsRes,
+      backRes,
     ] = await Promise.all([
       // THE SALESPERSON'S OWN DASHBOARD (20270228000000): the caller's own orders only, scoped by the
       // database to auth.uid(). { applicable: false } for everybody who is not a salesperson.
@@ -149,9 +154,14 @@ export default function OrdersDashboardPage() {
       // THE OPERATIONS READ (20270401000000): changes waiting for this reader's answer, the answers
       // already given, and Orders / Dispatches by month. One round trip, beside the summary.
       supabase.rpc('operations_orders_dashboard'),
+
+      // WHICH ORDERS HAVE COME BACK TO OPERATIONS: one small read (lib/orders/backWithOperations.ts), in the
+      // same group so the dashboard waits no longer. Only the Operations team is shown the mark.
+      profile?.team === 'operations' ? loadOrdersBackWithOperations(supabase) : Promise.resolve(new Set<string>()),
     ])
 
     if (ticket !== latest.current) return
+    setBackWithOps(backRes)
 
     // A FAILED READ IS AN ERROR, NEVER ZEROS. Only "this function is not on this database yet" leaves
     // the existing dashboard in place; every other failure is shown.
@@ -312,6 +322,7 @@ export default function OrdersDashboardPage() {
           <OperationsDashboardView
             summary={summary.summary}
             read={operations.read}
+            backWithOps={backWithOps}
             supabase={supabase}
             onAnswered={reload}
             readOnlyReason={viewAsUserId ? 'View As is read-only' : null}
