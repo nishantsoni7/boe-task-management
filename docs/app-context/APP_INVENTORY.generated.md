@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `6fc8efb5` — Renumber the Training structure migration to 20270723000000 (#839 took 20270722000000; the SQL is already applied)
-- Commits on this branch: 1397
+- Commit: `2da144e3` — Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live
+- Commits on this branch: 1396
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 463 (first `20260530_create_positions.sql`, latest `20270723000000_pricing_training_structure.sql`)
 - Tables ever created: 259 (dropped at some point: 8)   SQL functions: 1048   Enums: 0
@@ -14,10 +14,9 @@
 
 ## Latest 25 commits
 
-- `6fc8efb5` 2026-11-15 Renumber the Training structure migration to 20270723000000 (#839 took 20270722000000; the SQL is already applied)
-- `9523f756` 2026-11-15 Merge origin/main into feat/training-structure-price (changelog: both entries kept; inventory regenerated)
+- `2da144e3` 2026-11-15 Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live
+- `709a747b` 2026-11-15 Sales: files on a lead's update, by button, drag and drop and paste (migration 20270722000000, apply before merge) (#839)
 - `894aea2d` 2026-11-15 Docs: stamp the Training photo-read fix (#828) as merged 1d7fcac4, deployed 22:34 IST (no SQL) (#837)
-- `39494d25` 2026-11-15 Pricing Training: the wooden structure is one priced row, with an optional wood share (migration 20270722000000)
 - `3f7824d8` 2026-11-15 Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL) (#834)
 - `1d7fcac4` 2026-11-15 Pricing Training: a failed photo reading says why, and can be tried again (no SQL) (#828)
 - `8442b3e6` 2026-11-15 Docs: stamp the "New update" mark (#832) as merged d23cd7e4, deployed 21:57 IST (no SQL) (#833)
@@ -39,6 +38,7 @@
 - `82a446dc` 2026-11-15 Pricing: a unit glued to its number ("180cm") is read as the unit, not as inches (no SQL) (#817)
 - `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
 - `c65a3d36` 2026-11-15 Docs: master instruction sheet asks for a Doors check before changing who may do, see or be told something (#813)
+- `80841c38` 2026-11-15 Quotations: the Quantity / Price section of a product is a neat numbers panel (no SQL) (#812)
 
 ## Pages by top-level area
 
