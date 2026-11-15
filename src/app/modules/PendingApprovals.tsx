@@ -22,6 +22,7 @@ import { AppLink as Link } from '@/components/ui/AppLink'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CalendarClock } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { batchedGet } from '@/components/dayClose/batchedGet'
 import { REQUEST_TYPE_LABEL, requestSummary } from '@/lib/attendance/requests'
 import {
   RequestReviewDrawer,
@@ -63,12 +64,12 @@ export function usePendingApprovalQueue(userId: string | null, enabled: boolean)
     queryKey: pendingApprovalsKey(userId ?? ''),
     enabled: enabled && !!userId,
     queryFn: async () => {
-      const token = await getToken()
-      const res = await fetch('/api/attendance-requests?scope=queue&status=pending', {
-        headers: { authorization: `Bearer ${token ?? ''}` },
-      })
-      if (!res.ok) throw new Error(`queue ${res.status}`)
-      return res.json()
+      // Asked beside the punch strip, the machine's health and the Day Close answers as ONE request
+      // (src/components/dayClose/batchedGet.ts); alone it is this one route, fetched as it always was.
+      // getToken stays for the decision below.
+      const res = await batchedGet('/api/attendance-requests?scope=queue&status=pending')
+      if (res.status < 200 || res.status >= 300) throw new Error(`queue ${res.status}`)
+      return res.body as unknown as QueueResponse
     },
     staleTime: 30_000,
   })

@@ -10,7 +10,7 @@
 // A failed read is no answer: the page draws nothing rather than a guess.
 
 import { useQuery } from '@tanstack/react-query'
-import { createClient } from '@/lib/supabase/client'
+import { batchedGet } from '@/components/dayClose/batchedGet'
 import type { PunchStrip } from '@/lib/minop/punchStrip'
 
 export function usePunchStrip(userId: string | null, enabled: boolean) {
@@ -18,13 +18,12 @@ export function usePunchStrip(userId: string | null, enabled: boolean) {
     queryKey: ['punch-strip', userId],
     enabled: enabled && !!userId,
     queryFn: async () => {
-      const { data: { session } } = await createClient().auth.getSession()
-      const res = await fetch('/api/attendance/my-punch', {
-        headers: { authorization: `Bearer ${session?.access_token ?? ''}` },
-        cache: 'no-store',
-      })
-      if (!res.ok) throw new Error(`my punch ${res.status}`)
-      return res.json()
+      // Asked beside the Day Close and Scoreboard answers (and, for an administrator, the machine's health
+      // and the pending requests) as ONE request (src/components/dayClose/batchedGet.ts); alone it is this
+      // one route, fetched as it always was.
+      const res = await batchedGet('/api/attendance/my-punch')
+      if (res.status < 200 || res.status >= 300) throw new Error(`my punch ${res.status}`)
+      return res.body as unknown as PunchStrip
     },
     staleTime: 30_000,
     refetchInterval: 60_000,

@@ -15,7 +15,13 @@
 import type { Caller } from '@/lib/security/attendancePayrollApiAuth'
 import type { Result } from './server'
 
-export const LAUNCHER_PARTS = ['prompt', 'me', 'vote', 'starSeller'] as const
+// PART 8 (2026-11-14) ADDED THE THREE ATTENDANCE ANSWERS THE LAUNCHER ASKS FOR: `punch` (the punch-in strip,
+// /api/attendance/my-punch, everybody), and for an administrator `machine` (/api/attendance/machine-status)
+// and `queue` (/api/attendance-requests?scope=queue&status=pending). They ride in the same request as
+// the Day Close parts, so an administrator's launcher makes one request for all seven answers and anybody
+// else's one for the punch strip and the Day Close parts. Each of those is its own route's unchanged GET
+// handler (see the route), so who may see what, including the administrator-only refusals, is as before.
+export const LAUNCHER_PARTS = ['prompt', 'me', 'vote', 'starSeller', 'punch', 'machine', 'queue'] as const
 export type LauncherPart = (typeof LAUNCHER_PARTS)[number]
 
 export type LauncherLoaders = Record<LauncherPart, (caller: Caller) => Promise<Result>>
