@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `27d52de1` — Docs: stamp #805 (Import reads the right tab; one-line suggested price) as merged e4f0c6e2, deployed 12:41 IST, verified live (no SQL) (#806)
-- Commits on this branch: 1367
+- Commit: `bb407054` — Page speed, part 11: the Payment Requests badges in one call (migration 20270719000000 applied) (#807)
+- Commits on this branch: 1368
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `bb407054` 2026-11-15 Page speed, part 11: the Payment Requests badges in one call (migration 20270719000000 applied) (#807)
 - `27d52de1` 2026-11-15 Docs: stamp #805 (Import reads the right tab; one-line suggested price) as merged e4f0c6e2, deployed 12:41 IST, verified live (no SQL) (#806)
 - `e4f0c6e2` 2026-11-15 Quotations: Import reads the right tab of a PI; suggested price is one line with a Why? popup (no SQL) (#805)
 - `cec40927` 2026-11-15 Docs: stamp page speed part 10 (#803) as merged 5c6f2118, deployed 12:07 IST, verified live (no SQL) (#804)
@@ -38,7 +39,6 @@
 - `59a8d9e2` 2026-11-14 Docs: stamp page speed part 6 (#785) as merged e4ba4410, deployed 21:39 IST, verified live (no SQL) (#786)
 - `e4ba4410` 2026-11-14 Page speed, part 6: the Modules launcher asks for less (no SQL) (#785)
 - `f46df4a0` 2026-11-14 Docs: stamp page speed part 5 (#782) as merged 4c215ba9, deployed 20:56 IST, verified live (no SQL) (#783)
-- `4c215ba9` 2026-11-14 Page speed, part 5: fewer requests at the start of every page; part 3 dropped, measured (no SQL) (#782)
 
 ## Pages by top-level area
 
