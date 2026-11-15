@@ -174,7 +174,7 @@ export const NAV_HUBS: readonly NavHub[] = [
   {
     id: 'sales',
     label: 'Sales',
-    blurb: 'Who uses Sales, whose leads they can read, and the company WhatsApp number.',
+    blurb: 'Who uses Sales, whose leads they can read, the company WhatsApp number, and price approval on quotations.',
     sections: [
       {
         id: 'sales-team', label: 'Sales team', href: `${MAIN_PATH}/sales-team`,
@@ -189,6 +189,14 @@ export const NAV_HUBS: readonly NavHub[] = [
         short: 'Connect the company number',
         affects: 'The Lead Master', related: ['sales-team'],
         keywords: ['whatsapp', 'company number', 'coexistence', 'meta', 'connect number', 'leads'],
+      },
+      {
+        id: 'quotation-price-approval', label: 'Quotation price approval', href: `${MAIN_PATH}/quotation-price-approval`,
+        description: 'Switch price approval on quotations on or off, and set the discount and price limits that trigger it.',
+        short: 'Switch price approval on or off',
+        affects: 'Every quotation, and the pricing desk', related: ['sales-team', 'by-module'],
+        keywords: ['quotation', 'quotations', 'price approval', 'approve prices', 'pricing desk', 'discount limit',
+          'switch off', 'disable', 'ask for price approval'],
       },
     ],
   },

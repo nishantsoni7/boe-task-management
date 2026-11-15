@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `a5edecfd` — Docs: regenerate the app inventory
+- Commit: `5bc3c8aa` — Docs: stamp #821 (the six Control Center screens with real routes) as merged 826ea9c6, deployed 19:15 IST, verified live (no SQL) (#823)
 - Commits on this branch: 1384
-- Pages (`page.tsx`): 204   API routes (`route.ts`): 211
+- Pages (`page.tsx`): 205   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
-- Test files: 864   Next.js 16.2.6, React 19.2.4
+- Test files: 865   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `a5edecfd` 2026-11-15 Docs: regenerate the app inventory
-- `96819932` 2026-11-15 Docs: stamp #821 (the six Control Center screens with real routes) as merged 826ea9c6, deployed 19:15 IST, verified live (no SQL)
+- `5bc3c8aa` 2026-11-15 Docs: stamp #821 (the six Control Center screens with real routes) as merged 826ea9c6, deployed 19:15 IST, verified live (no SQL) (#823)
+- `b5a94539` 2026-11-15 Page speed, part 12: a saved copy of the launcher, profile and task list, so a revisit paints at once (no SQL) (#810)
 - `826ea9c6` 2026-11-15 Control Center step 2: the six ?tab= screens get real routes, old addresses redirect (no SQL) (#821)
 - `8bcc1aa3` 2026-11-15 Pricing: heights alone are not a footprint, and a labelled size in feet is read (no SQL) (#822)
 - `f1b7ea2e` 2026-11-15 Control Center: Home and six areas, a searchable directory, no tabs, no pending work (no SQL) (#816)
@@ -44,7 +44,7 @@
 
 - **(root)** (1): `/`
 - **account** (1): `/account`
-- **admin** (20): `/admin/control-center`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/day-close`, `/admin/control-center/departments`, `/admin/control-center/for-you`, `/admin/control-center/operations-handoff`, `/admin/control-center/order-notifications`, `/admin/control-center/order-numbering`, `/admin/control-center/order-visibility`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/review-rankings`, `/admin/control-center/sales-team`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
+- **admin** (21): `/admin/control-center`, `/admin/control-center/announcements`, `/admin/control-center/data-management`, `/admin/control-center/day-close`, `/admin/control-center/departments`, `/admin/control-center/for-you`, `/admin/control-center/operations-handoff`, `/admin/control-center/order-notifications`, `/admin/control-center/order-numbering`, `/admin/control-center/order-visibility`, `/admin/control-center/people`, `/admin/control-center/permissions`, `/admin/control-center/permissions/authorities`, `/admin/control-center/permissions/modules`, `/admin/control-center/positions`, `/admin/control-center/quotation-price-approval`, `/admin/control-center/review-rankings`, `/admin/control-center/sales-team`, `/admin/control-center/test-data-cleanup`, `/admin/control-center/whatsapp-connection`, `/admin/members`
 - **announcements** (2): `/announcements`, `/announcements/[id]`
 - **assets-access** (3): `/assets-access`, `/assets-access/[id]`, `/assets-access/notifications`
 - **attendance** (14): `/attendance`, `/attendance/correction-log`, `/attendance/employees`, `/attendance/employees/[id]`, `/attendance/holidays`, `/attendance/minop`, `/attendance/minop/incoming`, `/attendance/monthly-review`, `/attendance/monthly-review/[userId]`, `/attendance/notifications`, `/attendance/records`, `/attendance/requests`, `/attendance/today`, `/attendance/upload`
@@ -168,7 +168,7 @@
 - `src/lib/pricing` — 9 source, 6 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 16 source, 10 test
+- `src/lib/quotations` — 17 source, 11 test
 - `src/lib/salesLeads` — 15 source, 15 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test

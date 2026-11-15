@@ -422,6 +422,7 @@ await fails(U.admin, `select public.quotation_price_settings_set(5, 0)`, [], /QU
 const off = await rpc(U.admin, 'quotation_price_settings_set', null, null)
 assert.deepEqual([off.max_discount_pct, off.min_price_pct], [null, null])
 assert.equal((await rpc(U.sales, 'quotation_get', qp)).price.state, 'not_needed')
+assert.equal((await rpc(U.sales, 'quotation_get', qp)).price.blocked, false)
 await rpc(U.admin, 'quotation_price_settings_set', 5, 90)
 ok('only an administrator sets the limits; empty limits switch approval off')
 
