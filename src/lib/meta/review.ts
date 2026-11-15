@@ -2,6 +2,7 @@
 // own row and leaves every earlier review alone. Nothing here reaches Meta; the sync has already read it.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { answerJson, jsonFormat } from '@/lib/ai/structuredOutput'
 import { istAddDays, istDateOf, istMonthStartOffset, istToday } from '@/lib/istDate'
 import { fetchMetaInsights, fetchMetaStructure, type MetaStructure } from './api'
 import type { MetaInsight } from './report'
@@ -149,8 +150,6 @@ export function supabaseReviewStore(svc: SupabaseClient): ReviewStore {
   }
 }
 
-type Answer = { content?: { type: string; input?: unknown }[] }
-
 export function anthropicAsk(apiKey: string, doFetch: typeof fetch = fetch): Ask {
   return async (system, prompt) => {
     for (const model of MODELS) {
@@ -159,14 +158,13 @@ export function anthropicAsk(apiKey: string, doFetch: typeof fetch = fetch): Ask
         signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
         headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
-          model, max_tokens: MAX_TOKENS, system, tools: [REVIEW_TOOL],
-          tool_choice: { type: 'tool', name: REVIEW_TOOL.name },
+          model, max_tokens: MAX_TOKENS, system,
+          output_config: { format: jsonFormat(REVIEW_TOOL.input_schema) },
           messages: [{ role: 'user', content: prompt }],
         }),
       })
       if (res.ok) {
-        const answer = await res.json() as Answer
-        const input = answer.content?.find(block => block.type === 'tool_use')?.input
+        const input = answerJson(await res.json())
         if (input === undefined) throw new Error('Claude answered without a review.')
         return { input, model }
       }

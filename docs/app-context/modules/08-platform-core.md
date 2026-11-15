@@ -374,6 +374,8 @@ name is "BOE One" (`metadata.title`); every module sidebar header reads "BOE One
 
 ## 9. Known traps / gotchas / unfixed defects
 
+- **Claude: never force a tool (2026-11-15).** Claude Sonnet 5.5 and Opus 5.5 answer `tool_choice: { type: 'tool' | 'any' }` with a 400 (Haiku 5.5 still accepts it). To get JSON back use structured output: `output_config: { format: jsonFormat(schema) }` and `answerJson(answer)` from `src/lib/ai/structuredOutput.ts`; `structuredOutput.test.ts` fails on a forced tool anywhere in `src`. A schema with many optional fields can be refused as "Schema is too complex" after minutes of compiling: make every field required, an empty value meaning "not there". An unforced tool (`tools` without `tool_choice`, as the exhibition, vendor and dispatch-paper scans do) is allowed but does not guarantee a call.
+
 1. `src/lib/permissions/moduleParentGate.test.ts` is a SOURCE-CONTRACT test: it pins `ModuleGuard.tsx` and
    `modules/page.tsx` wiring (three-hop path `ModuleGuard / launcher -> usePermissionContext -> getEffectivePermissionsForUser`)
    and `employee_records -> src/app/admin/members/layout.tsx`. Any edit there breaks it by design - that is why
