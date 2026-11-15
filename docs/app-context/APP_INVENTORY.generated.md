@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `358c2205` — Merge remote-tracking branch 'origin/feat/control-center-redesign' into feat/control-center-routes
-- Commits on this branch: 1384
+- Commit: `b7fafb95` — Merge remote-tracking branch 'origin/main' into feat/control-center-routes
+- Commits on this branch: 1391
 - Pages (`page.tsx`): 204   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,13 @@
 
 ## Latest 25 commits
 
+- `b7fafb95` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-routes
+- `f1b7ea2e` 2026-11-15 Control Center: Home and six areas, a searchable directory, no tabs, no pending work (no SQL) (#816)
+- `16237d73` 2026-11-15 Merge remote-tracking branch 'origin/feat/control-center-redesign' into feat/control-center-routes
+- `09f60302` 2026-11-15 Merge remote-tracking branch 'origin/main' into HEAD
+- `6d0d0700` 2026-11-15 Docs: stamp #819 (the lead popup's left side with room) as merged d8a02296, deployed 16:44 IST, verified live (no SQL) (#820)
+- `7d19282b` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
+- `d7d0ae9f` 2026-11-15 Pending work shows on its module's dashboard: change requests on Orders, money to allocate on Finance (no SQL) (#818)
 - `358c2205` 2026-11-15 Merge remote-tracking branch 'origin/feat/control-center-redesign' into feat/control-center-routes
 - `2adfa271` 2026-11-15 Control Center step 2: the six ?tab= screens get real routes, and the old addresses redirect (no SQL)
 - `3ba2ef47` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
@@ -32,13 +39,6 @@
 - `4760d62e` 2026-11-15 Docs: stamp page speed part 11 (#807) as merged bb407054, migration 20270719000000 applied, verified live (#808)
 - `bb407054` 2026-11-15 Page speed, part 11: the Payment Requests badges in one call (migration 20270719000000 applied) (#807)
 - `27d52de1` 2026-11-15 Docs: stamp #805 (Import reads the right tab; one-line suggested price) as merged e4f0c6e2, deployed 12:41 IST, verified live (no SQL) (#806)
-- `e4f0c6e2` 2026-11-15 Quotations: Import reads the right tab of a PI; suggested price is one line with a Why? popup (no SQL) (#805)
-- `cec40927` 2026-11-15 Docs: stamp page speed part 10 (#803) as merged 5c6f2118, deployed 12:07 IST, verified live (no SQL) (#804)
-- `5c6f2118` 2026-11-15 Page speed, part 10: the Attendance pages reuse the guard's profile row (no SQL) (#803)
-- `9220572d` 2026-11-15 Docs: stamp #799 (phone fixes from the 390 px sweep) as merged e6663b40, deployed 10:38 IST, verified live (no SQL) (#800)
-- `cc40fd5d` 2026-11-15 Docs: stamp page speed part 9 (#801) as merged 90c60493, deployed 11:13 IST, verified live (no SQL) (#802)
-- `90c60493` 2026-11-15 Page speed, part 9: the other Orders pages reuse the guard's profile and permissions (no SQL) (#801)
-- `a10410c5` 2026-11-15 Docs: stamp the premium document layout fixes (#787) as merged 80091824, deployed 09:28 IST, verified live (no SQL) (#797)
 
 ## Pages by top-level area
 

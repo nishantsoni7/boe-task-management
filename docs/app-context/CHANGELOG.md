@@ -4,8 +4,8 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-15 — Control Center redesign, step 2: the six ?tab= screens get real routes (PR pending) · no SQL
-- **Owner ask.** "Start step 2: real routes for tab pages" (the second half of the Control Center redesign). Stacked on step 1 (#816), which must merge first, after #818.
+## 2026-11-15 — Control Center redesign, step 2: the six ?tab= screens get real routes (PR #821) · no SQL
+- **Owner ask.** "Start step 2: real routes for tab pages" (the second half of the Control Center redesign). Follows step 1 (#816) and the pending-work change (#818), both merged.
 - **Why.** Departments, the four Order screens and Sales team were `?tab=` views of one 1,490-line page: no address of their own, and every sidebar switch replaced the history entry, so Back skipped them.
 - **Routes.** `/admin/control-center/departments`, `/order-numbering`, `/order-notifications`, `/operations-handoff`, `/order-visibility`, `/sales-team`. Each is a thin page rendering a component moved out of `page.tsx` unchanged (`DepartmentsTab`, `OrderNumberingTab`, `OrderNotificationsTab`, `OperationsHandoffTab`; `OrderVisibilityTab` and `SalesTeamTab` already were). `page.tsx` is now Home plus the hidden Module Visibility tab (about 370 lines, was 1,490).
 - **Old addresses.** `next.config.ts` redirects each `/admin/control-center?tab=<screen>` to its route (temporary redirects, query values pass through), built from `LEGACY_TAB_REDIRECTS` in `navModel.ts` so the two cannot drift. `?tab=people` and `?tab=modules` still work as before.
@@ -14,7 +14,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Tests.** `navModel.test.ts` (+routes, redirects read from `next.config.ts`), `controlCenterNav.test.ts` (no `replace`, six routes, small main page); pins re-pointed in `membersConsolidation`, `operationsHandoffSchema`, `orderUpdateNotifications`, `orderVisibilityScopes`, `phoneTasksAdmin.render`.
 - **Rollback.** Revert the commit; old `?tab=` addresses then resolve to the pre-step-2 page.
 
-## 2026-11-15 — Control Center redesign, step 1: Home + six areas, a searchable directory, no tabs, no pending work (PR pending) · no SQL
+## 2026-11-15 — Control Center redesign, step 1: Home + six areas, a searchable directory, no tabs, no pending work (PR #816, squash-merged 17:42 IST as `f1b7ea2e`) · no SQL
 - **Owner ask.** "The Control Center has become really confusing ... redesign it so any new person can scan and find the setting", planned and previewed first (artifact), then "build step 1". Rule added in the same conversation: no action items or approvals in the Control Center; they show on their own module's dashboard.
 - **Map.** `navModel.ts` is now Home + six areas (People, Access, Orders, Sales, Staff experience, Data & Safety) and 19 settings, each in exactly one area, each with a directory line, who it affects, related settings and an irreversible flag. Renames: By person / By module (were both called People / Modules), Operations handoff, Order visibility, For you column, Review leaderboard, Test data cleanup, Data management, Task records. Moves: Sales team (Access -> Sales), WhatsApp connection (Records & Data -> Sales), Announcements / For you / Review leaderboard / Day Close & Scoreboard (own hubs -> Staff experience).
 - **Shell.** `ControlCenterLayout.tsx`: sidebar = Home + areas, only the open area shows its pages (rail's own `boe-rail-tree`, folded pages are `inert`); the section tabs are gone; header = breadcrumb (a back link on a phone), title, subtitle from the registry, a Search button; one line under it says what the page affects and what is related. The menu starts pinned open for a browser that never chose (`useSidebarPinned(true)`; stored choice wins; other modules unchanged).

@@ -17,7 +17,7 @@ tools. Admin only. The launcher card "Employee Records" (`employee_records` modu
 ## 2. Status at commit 852e0493
 
 Shipped. Control Center is "complete" (closed by the owner 2026-09-03; reopened only for defects/business needs). Latest change:
-**15 Nov 2026 redesign, step 1 (PR pending): navigation and layout rebuilt, screens' contents untouched.** Nine hubs and the section tabs became Home + six areas (People, Access, Orders, Sales, Staff experience, Data & Safety) holding 19 settings; Home is a searchable directory of every setting; the page header has a breadcrumb and a one-line "Affects / Related" strip; the sidebar opens the pages of the area you are in; the Action Queue left the Control Center (owner: pending work shows on the dashboard of the module that owns it). Earlier: #307 (2026-10-13) six navigation hubs, section tabs, Find anything, useful Home. Not shipped / pending: members area still has two
+**15 Nov 2026 redesign, step 1 (PR #816, `f1b7ea2e`) and step 2 (PR #821): navigation and layout rebuilt, screens' contents untouched.** Nine hubs and the section tabs became Home + six areas (People, Access, Orders, Sales, Staff experience, Data & Safety) holding 19 settings; Home is a searchable directory of every setting; the page header has a breadcrumb and a one-line "Affects / Related" strip; the sidebar opens the pages of the area you are in; the Action Queue left the Control Center (owner: pending work shows on the dashboard of the module that owns it). Earlier: #307 (2026-10-13) six navigation hubs, section tabs, Find anything, useful Home. Not shipped / pending: members area still has two
 legacy surfaces (`/settings/*`), no Phase for delegated people-administration.
 
 ## 3. Pages and API routes
