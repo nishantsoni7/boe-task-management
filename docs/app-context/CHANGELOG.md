@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-15 — Pricing Training: a failed photo reading says why, and can be tried again (branch `fix/training-photo-read`, NOT MERGED) · no SQL
+## 2026-11-15 — Pricing Training: a failed photo reading says why, and can be tried again (PR #828, squash-merged 15 Nov 2026 22:32 IST as `1d7fcac4`, deployed 22:34 IST) · no SQL
 - **Owner report (15 Nov, 21:25 IST).** The first real photo was not read: "Could not read the photo right now". That sentence was the catch-all, so the cause could not be seen, and the only way to retry was to upload again.
 - **Fix.** `POST /api/pricing/training/read` now returns the reading service's own answer (status, error type, first 200 characters of its message; never a key) in the sentence shown. A new button on the Photo card, "Read the materials from the photo" / "Read the photo again", reads the saved photo without a new upload. Auto-adding the materials as editable rows was already built and is unchanged: it happens whenever a reading succeeds and no element is listed yet.
 - **Cause, found since (PR #830, live 15 Nov 21:46 IST).** Sonnet 5.5 and Opus 5.5 refuse a forced `tool_choice`; the route now asks for structured output (`src/lib/ai/structuredOutput.ts`). This change keeps its value: a future refusal names itself on screen, and a draft whose photo was not read can be read without uploading again.
