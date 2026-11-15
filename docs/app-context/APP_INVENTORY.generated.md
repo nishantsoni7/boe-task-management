@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `4704838a` — Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
-- Commits on this branch: 1375
+- Commit: `2adfa271` — Control Center step 2: the six ?tab= screens get real routes, and the old addresses redirect (no SQL)
+- Commits on this branch: 1376
 - Pages (`page.tsx`): 204   API routes (`route.ts`): 211
 - Migrations: 460 (first `20260530_create_positions.sql`, latest `20270719000000_finance_payment_request_tab_counts.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1036   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `2adfa271` 2026-11-15 Control Center step 2: the six ?tab= screens get real routes, and the old addresses redirect (no SQL)
 - `4704838a` 2026-11-15 Merge remote-tracking branch 'origin/main' into feat/control-center-redesign
 - `3fcad29e` 2026-11-15 Control Center: Home and six areas, a searchable directory, no tabs, no pending work (no SQL)
 - `c65a3d36` 2026-11-15 Docs: master instruction sheet asks for a Doors check before changing who may do, see or be told something (#813)
@@ -38,7 +39,6 @@
 - `9c91a0be` 2026-11-15 Docs: stamp page speed part 7 (#789) as merged 1e80e23c, deployed 22:46 IST, verified live (no SQL) (#792)
 - `a781646e` 2026-11-15 Sales: lead popup left side gets a next-step banner and one About this client list (no SQL) (#793)
 - `1ff42c1e` 2026-11-14 Docs: stamp #791 (merged 1a395cf4, deployed 22:50 IST) and #780 (merged 33813806, tools installed 20:18 IST) (#794)
-- `b54f6989` 2026-11-14 Docs: stamp #788 (phone popover and pending buttons) as merged d06e6248, deployed 22:33 IST (no SQL) (#790)
 
 ## Pages by top-level area
 
