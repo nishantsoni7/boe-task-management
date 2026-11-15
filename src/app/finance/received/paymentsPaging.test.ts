@@ -90,10 +90,15 @@ describe('exact counts', () => {
       'one query per view asked for, all issued together')
     assert.ok(counts.includes('views: readonly PaymentView[] = PAYMENT_VIEWS'),
       'and all four by default')
-    // The sidebar draws only "all", so it asks for only "all" — one head query
-    // on every Finance page instead of four, three of which nothing rendered.
-    assert.ok(read('src/components/layout/FinanceLayout.tsx').includes('useReceivedPaymentsCounts(SIDEBAR_COUNTED_VIEWS)'))
-    assert.ok(read('src/components/layout/FinanceLayout.tsx').includes("const SIDEBAR_COUNTED_VIEWS = ['all'] as const"))
+    // The sidebar draws only "all" for everybody, so it asks for only "all" — one head query
+    // on every Finance page instead of four, three of which nothing rendered. A person who can allocate
+    // payments also gets "available" (the money still to allocate), and only that person pays for it.
+    const layout = read('src/components/layout/FinanceLayout.tsx')
+    assert.ok(layout.includes('useReceivedPaymentsCounts(financeCaps.canAllocatePayment ? ALLOCATOR_COUNTED_VIEWS : SIDEBAR_COUNTED_VIEWS)'))
+    assert.ok(layout.includes("const SIDEBAR_COUNTED_VIEWS = ['all'] as const"))
+    assert.ok(layout.includes("const ALLOCATOR_COUNTED_VIEWS = ['all', 'available'] as const"))
+    assert.ok(layout.includes('alertBadge: financeCaps.canAllocatePayment ? receivedCounts.available : undefined'),
+      'the alert count is drawn for allocators only')
     // Each set of views has its own key UNDER the shared prefix, so the one
     // invalidation of RECEIVED_PAYMENTS_COUNTS_KEY still refreshes every one.
     assert.ok(counts.includes('queryKey: [...RECEIVED_PAYMENTS_COUNTS_KEY, ...views]'))

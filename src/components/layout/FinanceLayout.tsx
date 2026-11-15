@@ -78,8 +78,15 @@ export const HANDOVERS_PATH = '/finance/handovers'
  */
 export const FOUNDER_PAYOUTS_PATH = '/finance/founders'
 
-/** The one count the sidebar draws. Module-level, so its identity is stable. */
+/** The one count the sidebar draws for everybody. Module-level, so its identity is stable. */
 const SIDEBAR_COUNTED_VIEWS = ['all'] as const
+
+/**
+ * Whoever can allocate a payment also sees how many confirmed payments still hold money to allocate: the
+ * work that used to be listed only in the Control Center's Action Queue. One more head count (no rows),
+ * asked for nobody else, so a person who cannot act on it pays nothing for it.
+ */
+const ALLOCATOR_COUNTED_VIEWS = ['all', 'available'] as const
 
 type FinanceLayoutProps = {
   profile: UserProfile | null
@@ -130,7 +137,7 @@ export function FinanceLayout({
   // Neutral volume count for the Confirmed Payments entry. Not an unread
   // count: opening the page never changes it.
   // Only "all" is drawn, so only "all" is counted — one head query, not four.
-  const receivedCounts = useReceivedPaymentsCounts(SIDEBAR_COUNTED_VIEWS)
+  const receivedCounts = useReceivedPaymentsCounts(financeCaps.canAllocatePayment ? ALLOCATOR_COUNTED_VIEWS : SIDEBAR_COUNTED_VIEWS)
 
   const handleRefresh = useCallback(async () => {
     if (refreshing) return
@@ -207,9 +214,13 @@ export function FinanceLayout({
   // WHICH ONE IS LIT is activeFinanceNav's decision (src/lib/navigation/
   // moduleNav.ts). It used to be an exact path match, so no sub-route of
   // Confirmed Payments, and not the retired Payments to Verify page, lit anything.
-  const navItems: { label: string; path: string; icon: React.ReactNode; key: FinanceNavKey; badge?: number; alertBadge?: number }[] = [
+  const navItems: { label: string; path: string; icon: React.ReactNode; key: FinanceNavKey; badge?: number; alertBadge?: number; alertLabel?: string }[] = [
     { label: 'Payment Requests',  path: '/finance',              icon: <CheckSquare size={15} strokeWidth={1.8} />, key: 'requests' },
-    { label: 'Confirmed Payments', path: RECEIVED_PAYMENTS_PATH,  icon: <CreditCard size={15} strokeWidth={1.8} />, key: 'confirmed', badge: receivedCounts.all },
+    { label: 'Confirmed Payments', path: RECEIVED_PAYMENTS_PATH,  icon: <CreditCard size={15} strokeWidth={1.8} />, key: 'confirmed', badge: receivedCounts.all,
+      // Work waiting on an allocator, not volume: money with an unallocated balance. Drawn in the alert style
+      // when above zero (it then stands in for the grey total), absent for everybody who cannot allocate.
+      alertBadge: financeCaps.canAllocatePayment ? receivedCounts.available : undefined,
+      alertLabel: 'payments with money still to allocate' },
     // MONEY GOING OUT. Not a third payment section — see EXPENSES_PATH above.
     // No badge: an expense log has no queue and nothing waiting on anybody, so a
     // number beside it would count rows rather than report work.
@@ -275,7 +286,7 @@ export function FinanceLayout({
                    the same fact twice, once as a number and once as the
                    page's own empty state. */
                 typeof item.alertBadge === 'number' && item.alertBadge > 0 ? (
-                  <span className="boe-handover-nav-count boe-nav-count" aria-label={`${item.alertBadge} open`}>{item.alertBadge}</span>
+                  <span className="boe-handover-nav-count boe-nav-count" aria-label={`${item.alertBadge} ${item.alertLabel ?? 'open'}`} title={item.alertLabel ? `${item.alertBadge} ${item.alertLabel}` : undefined}>{item.alertBadge}</span>
                 ) : typeof item.badge === 'number' && item.badge > 0 ? (
                   <span className="boe-nav-count" style={{
                     marginLeft: 'auto', flexShrink: 0,
