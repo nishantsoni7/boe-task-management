@@ -305,8 +305,8 @@ describe('a re-read never throws away what the reader has', () => {
     assert.ok(!src.includes('const found = await loadPaymentDestinations('))
   })
 
-  test('the sidebar counts only the one badge it draws', () => {
-    assert.ok(code(FINANCE_LAYOUT).includes('useReceivedPaymentsCounts(SIDEBAR_COUNTED_VIEWS)'))
+  test('the sidebar counts only the badges it draws: one for everybody, one more for an allocator', () => {
+    assert.ok(code(FINANCE_LAYOUT).includes('useReceivedPaymentsCounts(financeCaps.canAllocatePayment ? ALLOCATOR_COUNTED_VIEWS : SIDEBAR_COUNTED_VIEWS)'))
   })
 
   test('Delete all notifications asks first, like the per-task delete beside it', () => {

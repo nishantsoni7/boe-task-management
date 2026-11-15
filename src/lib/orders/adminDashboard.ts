@@ -88,7 +88,7 @@ export function paymentChip(
 
 // ── One list of decisions ────────────────────────────────────────────────────
 
-export type DecisionKind = 'pi_review' | 'pi_revision' | 'documents' | 'pi_flagged'
+export type DecisionKind = 'pi_review' | 'pi_revision' | 'documents' | 'pi_flagged' | 'change_request'
 
 export type DecisionRow = {
   key: string
@@ -161,6 +161,41 @@ export function flaggedRow(r: FlaggedPi, sent?: SentBack): DecisionRow {
       : r.reply
         ? { tone: 'warn', label: SALES_REPLIED_ROW_LABEL, sub: `${r.replyByName ?? 'Sales'}: “${commentLine(r.reply)}”` }
         : { tone: 'danger', label: flaggedLabel(r), sub: `“${reasonLine(r.reason)}”` },
+  }
+}
+
+/** What the list says when the change-request read failed: said, never read as "nothing is waiting". */
+export const CHANGES_LOAD_FAILED = 'Change requests could not be loaded. Everything else on this list is shown.'
+
+/**
+ * A pending amendment or cancellation raised against a Confirmed Order (order_change_requests,
+ * 20260816000000). Only an acting administrator is asked to decide one, so the list reads it for
+ * nobody else (the table's own policy also returns a requester's own rows, which must never be
+ * offered back to them as a decision). The row opens the Order, whose Change Requests card holds the
+ * Review dialog.
+ */
+export type ChangeRequestSource = {
+  id: string
+  order_id: string
+  order_number_snapshot: string
+  request_type: 'edit' | 'cancel'
+  proposed_total_value: unknown
+  created_at: string
+  order: { client_name: string | null } | null
+}
+
+export function changeRequestRow(r: ChangeRequestSource, byName: string | null): DecisionRow {
+  const cancel = r.request_type === 'cancel'
+  return {
+    key: `chg-${r.id}`, kind: 'change_request', kindLabel: cancel ? 'Cancellation request' : 'Change request',
+    href: withReturnTo(`/orders/${r.order_id}`, '/orders'),
+    // The Order's live client name; the snapshot number stands in only when the join is unavailable.
+    client: r.order?.client_name || 'Client not recorded',
+    ref: `Order ${r.order_number_snapshot}`,
+    by: byName, sinceIso: r.created_at, waitSeconds: 0,
+    // Null for a cancellation, and for an edit that proposes no new total: a dash, never a ₹0 request.
+    value: cancel ? null : toNumber(r.proposed_total_value),
+    chip: { tone: 'info', label: cancel ? 'Cancel this Order' : 'Amend this Order', sub: 'Awaiting your decision' },
   }
 }
 
