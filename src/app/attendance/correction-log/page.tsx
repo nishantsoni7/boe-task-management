@@ -3,10 +3,11 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
 
@@ -95,6 +96,7 @@ export default function CorrectionLogPage() {
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const months   = useMemo(() => monthOptions(), [])
 
   const loadLog = async (tok: string, pg: number, mo: string) => {
@@ -125,11 +127,7 @@ export default function CorrectionLogPage() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
 
-      const { data: prof } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: prof } = await callerProfile(qc, session.user.id).then(data => ({ data }))
 
       // Module access is decided once, by the route guard in
       // src/app/{attendance,payroll}/layout.tsx, through

@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { resolveManagementAccess } from '@/lib/moduleAccess'
 
@@ -10,6 +12,7 @@ export default function AttendanceGuard({ children }: { children: React.ReactNod
   const [authorized, setAuthorized] = useState(false)
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   useEffect(() => {
     const check = async () => {
@@ -17,7 +20,9 @@ export default function AttendanceGuard({ children }: { children: React.ReactNod
       if (!session) { router.replace('/login'); return }
 
       const [{ data: profile }, { data: mod }] = await Promise.all([
-        supabase.from('users').select('id, role, team').eq('id', session.user.id).single(),
+        // The shared profile row (it carries id, role and team): the pages below reuse it instead of reading
+        // the row again (callerProfile, 2026-11-15). Under 30 s old it is reused, otherwise read.
+        callerProfile(qc, session.user.id).then(data => ({ data })),
         supabase
           .from('app_modules')
           .select('visibility_type, allowed_department, allowed_user_ids')

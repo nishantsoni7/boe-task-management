@@ -3,12 +3,13 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { AppLink as Link } from '@/components/ui/AppLink'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { MonthRequestsPanel, DayRequestChips, requestsByDate, type MonthRequest } from '@/components/attendanceRequests/MonthRequests'
 import type { ScoreDayKind } from '@/lib/attendance/attendanceScore'
 import { ui } from '@/components/attendancePayroll/ui'
@@ -102,6 +103,7 @@ export default function EmployeeMonthlyDetailPage() {
   const searchParams = useSearchParams()
   const router       = useRouter()
   const supabase     = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
 
   const userId = params.userId as string
   const year   = parseInt(searchParams.get('year')  ?? '0', 10)
@@ -114,11 +116,7 @@ export default function EmployeeMonthlyDetailPage() {
 
       setToken(session.access_token)
 
-      const { data: me } = await supabase
-        .from('users')
-        .select(USER_PROFILE_COLUMNS)
-        .eq('id', session.user.id)
-        .single()
+      const { data: me } = await callerProfile(qc, session.user.id).then(data => ({ data }))
 
       setProfile(me as UserProfile)
       setLoading(false)

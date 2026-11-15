@@ -9,11 +9,12 @@
 import { Suspense, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { MONTH_NAMES, MonthPicker, Notice, StateBlock, istCurrentYearMonth, ui } from '@/components/attendancePayroll/ui'
 import type { OverviewData } from '@/lib/attendance/attendanceScore'
 import {
@@ -83,6 +84,7 @@ function OverviewScreen() {
   const router = useRouter()
   const params = useSearchParams()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const { refreshKey } = useRefresh()
 
   const asked = monthFromParams(params)
@@ -92,13 +94,13 @@ function OverviewScreen() {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-      const { data: me } = await supabase.from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
+      const { data: me } = await callerProfile(qc, session.user.id).then(data => ({ data }))
       if (!me) { router.push('/login'); return }
       setProfile(me as UserProfile)
       setToken(session.access_token)
     }
     void init()
-  }, [supabase, router])
+  }, [supabase, qc, router])
 
   useEffect(() => {
     if (!token) return

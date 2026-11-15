@@ -11,6 +11,8 @@ import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter } from 'next/navigation'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { Badge, Notice, StateBlock, StatusFilter, ui, type Tone } from '@/components/attendancePayroll/ui'
@@ -20,7 +22,6 @@ import { istAddDays } from '@/lib/istDate'
 import { MACHINE_ATTENDANCE_FROM } from '@/lib/minop/machineDay'
 import { formatPunchMoment, punchLagLabel, type MachineHealth } from '@/lib/minop/machineHealth'
 import type { MachineDayEntry, MachineDayGroup, MachineDayStatus, MachineDayView } from '@/lib/minop/machineDayView'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import styles from './today.module.css'
 
 type Filter = 'all' | MachineDayGroup
@@ -165,14 +166,14 @@ export default function AttendanceTodayPage() {
 
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const { refreshKey } = useRefresh()
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-      const { data: prof } = await supabase
-        .from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
+      const { data: prof } = await callerProfile(qc, session.user.id).then(data => ({ data }))
       if (!prof) { router.push('/coming-soon'); return }
       setProfile(prof as UserProfile)
       setToken(session.access_token)

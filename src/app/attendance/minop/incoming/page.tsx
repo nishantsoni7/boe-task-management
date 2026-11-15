@@ -8,10 +8,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { callerProfile } from '@/hooks/queries/usePermissionContext'
+import { useQueryClient } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { USER_PROFILE_COLUMNS } from '@/lib/users/safeColumns'
 import { Notice, StateBlock, ui } from '@/components/attendancePayroll/ui'
 import { Download, RefreshCw } from 'lucide-react'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
@@ -139,6 +140,7 @@ export default function IncomingMinopDataPage() {
 
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
+  const qc = useQueryClient()
   const requestSeq = useRef(0)
 
   const query = useCallback((extra: Record<string, string> = {}) => {
@@ -176,15 +178,14 @@ export default function IncomingMinopDataPage() {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.push('/login'); return }
-      const { data: prof } = await supabase
-        .from('users').select(USER_PROFILE_COLUMNS).eq('id', session.user.id).single()
+      const { data: prof } = await callerProfile(qc, session.user.id).then(data => ({ data }))
       if (!prof) { router.push('/coming-soon'); return }
       setProfile(prof as UserProfile)
       setToken(session.access_token)
       setLoading(false)
     }
     void init()
-  }, [router, supabase])
+  }, [router, supabase, qc])
 
   // Typing in the search box waits a moment; everything else loads at once.
   useEffect(() => {
