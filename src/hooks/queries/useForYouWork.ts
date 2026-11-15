@@ -191,7 +191,7 @@ export function useForYouWork(on: (key: ForYouItemKey) => boolean, access: ForYo
       item: 'order_change_request',
       cards: (changes.data?.rows ?? []).map(changeRequestCard),
       unread: unread(changes.data),
-      moreHref: '/admin/control-center/action-queue',
+      moreHref: '/orders',
       moreLabel: n => `${n} more ${n === 1 ? 'request' : 'requests'} →`,
       failed: changes.isError,
       failedLabel: 'Order change requests',
