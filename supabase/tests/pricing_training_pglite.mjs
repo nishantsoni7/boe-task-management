@@ -262,4 +262,31 @@ let id
   ok('the wood list: anyone with Pricing reads it, teachers add, change and remove; one row per wood whatever its capitals')
 }
 
+{ // 20270726000000: the library a quotation line picks from
+  await db.exec(mig('20270726000000_pricing_training_library.sql'))
+  await fails(U.nobody, 'select public.pricing_training_library()', [], /PRICING_FORBIDDEN/)
+  await fails(null, 'select public.pricing_training_library()', [], /permission denied/, 'anon')
+  await rpc(U.teacher, 'pricing_wood_save', 'Teak', 4600)              // Sheesham is 2300 from the block above
+  await rpc(U.teacher, 'pricing_wood_save', 'Mango', null)             // no rate: no price in it
+  const doc = { name: 'Library chair', lines: [
+    { element: 'Wooden structure', kind: 'structure', material: 'sheesham', amount: 4500, wood_amount: 2300 },
+    { element: 'Cane back', kind: 'material', amount: 1000 }] }
+  const draft = await rpc(U.teacher, 'pricing_training_save', null, doc)
+  const before = (await rpc(U.viewer, 'pricing_training_library')).cases
+  assert.ok(!before.some((c) => c.id === draft), 'a case that is only saved is not in the library')
+  await rpc(U.teacher, 'pricing_training_submit', draft)
+  const lib = await rpc(U.viewer, 'pricing_training_library')
+  assert.deepEqual(lib.woods, ['Mango', 'Sheesham', 'Teak'])
+  const c = lib.cases.find((x) => x.id === draft)
+  assert.equal(Number(c.total), 5500)
+  assert.deepEqual(c.in_wood, { teak: 7800 })                          // 5500 - 2300 + 2300 x 4600 / 2300
+  assert.equal(c.lines.length, 2)
+  await db.exec(`insert into public.grants values ('${U.nobody}', 'quotations', 'view')`)
+  const sales = (await rpc(U.nobody, 'pricing_training_library')).cases.find((x) => x.id === draft)
+  assert.equal(Number(sales.total), 5500)
+  assert.equal(sales.lines, undefined)                                 // no Pricing access: the price, never its elements
+  assert.ok(!JSON.stringify(sales).includes('4600'), 'no wood rate leaves the database')
+  ok('the library: submitted cases only, the price in another wood, elements only for people with Pricing')
+}
+
 console.log(`all ${checks} checks passed`)
