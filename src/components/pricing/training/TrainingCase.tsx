@@ -12,7 +12,7 @@ import { AppLink as Link } from '@/components/ui/AppLink'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
-import { KINDS, KIND_LABEL, emptyForm, emptyLine, lineAmount, num, parseReading, problems, readingToLines, toLine, totals, usesQuantity, type CaseForm, type Kind, type Line } from '@/lib/pricing/training/doc'
+import { KINDS, KIND_LABEL, emptyForm, emptyLine, lineAmount, num, parseReading, problems, readingToLines, structureRest, toLine, totals, usesQuantity, type CaseForm, type Kind, type Line } from '@/lib/pricing/training/doc'
 import { decideCase, fetchAccess, fetchCase, photoUrl, readPhoto, saveCase, sendMessage, submitCase, trainingKeys, uploadPhoto, type TrainingError } from '@/lib/pricing/training/api'
 import { STATUS, shortDate } from './TrainingList'
 import t from './training.module.css'
@@ -214,11 +214,11 @@ export function TrainingCase() {
         <div className={t.cardH}>What the price is made of
           {editable && <button type="button" className="boe-btn boe-btn-secondary" onClick={addLine}><Plus size={16} aria-hidden /> Add an element</button>}
         </div>
-        {lines.length === 0 && <div className={t.cardB}><p className={t.muted} style={{ margin: 0 }}>{editable ? 'List every element in your own way: wood, weaving, upholstery, finish, hardware, labour, overhead, margin. Type a quantity and a rate, or just the amount.' : 'No elements.'}</p></div>}
+        {lines.length === 0 && <div className={t.cardB}><p className={t.muted} style={{ margin: 0 }}>{editable ? 'List every element in your own way: the wooden structure as one price, then weaving, upholstery, finish, hardware, overhead, margin. Type a quantity and a rate, or just the amount.' : 'No elements.'}</p></div>}
         {editable ? lines.map((l, i) => (
           <div key={i} className={t.el}>
             <div className={t.elGrid}>
-              <label className={t.field}><span className="boe-input-label">Element {i + 1} {l.from_ai && <span className={t.fromAi}>from the photo</span>}</span><input className="boe-input" value={l.element} onChange={e => editLine(i, { element: e.target.value })} placeholder="e.g. Frame wood" maxLength={120} /></label>
+              <label className={t.field}><span className="boe-input-label">Element {i + 1} {l.from_ai && <span className={t.fromAi}>from the photo</span>}</span><input className="boe-input" value={l.element} onChange={e => editLine(i, { element: e.target.value })} placeholder="e.g. Wooden structure" maxLength={120} /></label>
               <label className={t.field}><span className="boe-input-label">Kind</span><select className="boe-input" value={l.kind} onChange={e => editLine(i, { kind: e.target.value as Kind })}>{KINDS.map(k => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></label>
               <label className={t.field}><span className="boe-input-label">Material / what it is</span><input className="boe-input" value={l.material} onChange={e => editLine(i, { material: e.target.value })} maxLength={160} /></label>
               <label className={t.field}><span className="boe-input-label">Quantity</span><input className="boe-input" inputMode="decimal" value={l.quantity} onChange={e => editLine(i, { quantity: e.target.value })} /></label>
@@ -230,6 +230,10 @@ export function TrainingCase() {
               <button type="button" className={t.iconBtn} onClick={() => removeLine(i)} aria-label={`Remove element ${i + 1}`}><Trash2 size={16} aria-hidden /></button>
             </div>
             <label className={t.field}><span className="boe-input-label">How you worked this out</span><input className="boe-input" value={l.reasoning} onChange={e => editLine(i, { reasoning: e.target.value })} placeholder="e.g. Four legs, two rails, back posts, with cutting waste" maxLength={1000} /></label>
+            {l.kind === 'structure' && <div className={t.split}>
+              <label className={t.field}><span className="boe-input-label">Of which wood (₹), optional</span><input className="boe-input" inputMode="decimal" value={l.wood} onChange={e => editLine(i, { wood: e.target.value })} placeholder="The wood alone" /></label>
+              <p className={t.muted} aria-live="polite">{structureRest(l) === null ? 'One price for the whole wooden structure is enough. If you also give the wood alone, the rest is counted as labour and hardware, and a price can be worked out for another wood later.' : structureRest(l)! < 0 ? 'The wood share is more than the structure price.' : `Labour and hardware: ${formatINR(structureRest(l)!)}`}</p>
+            </div>}
           </div>
         )) : lines.map((l, i) => (
           <div key={i} className={t.read}>
@@ -237,6 +241,7 @@ export function TrainingCase() {
             <span className={t.muted}>{KIND_LABEL[l.kind]}</span>
             <span className={t.muted}>{usesQuantity(l) ? `${l.quantity} ${l.unit} × ${formatINR(num(l.rate) ?? 0)}` : 'Amount given'}</span>
             <b className={t.num}>{formatINR(lineAmount(l))}</b>
+            {structureRest(l) !== null && <small>Wood {formatINR(num(l.wood) ?? 0)} · labour and hardware {formatINR(structureRest(l)!)}</small>}
             {l.reasoning && <small>{l.reasoning}</small>}
           </div>
         ))}

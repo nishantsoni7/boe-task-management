@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-15 — Pricing Training: the wooden structure is one priced row, with an optional wood share (branch `feat/training-structure-price`, NOT MERGED, migration 20270723000000 NOT APPLIED) · migration `20270723000000_pricing_training_structure.sql` (alters a table: backup first)
+- **Owner, after the first real case (an arm chair with a cane back).** The reading was good but split the wood into Frame wood, Arms, Legs and Seat base. A chair's wooden structure is made in one go and quoted as ONE structure price, not per cubic foot, because the making is complicated and the labour is high. The wood share is still worth recording, optionally, because for another wood the wood cost changes and the rest stays about the same.
+- **Reader.** The prompt now says the wooden structure is one part named "Wooden structure"; a wooden piece is listed separately only when it is visibly a different material. That row arrives with the new kind.
+- **Elements.** New kind `structure` ("Wooden structure"). On such a row an optional box "Of which wood" records the wood alone; the screen shows the rest as labour and hardware. It is never more than the structure price.
+- **Database.** `pricing_training_lines`: kind check gains `structure`, new nullable `wood_amount` (0 to the amount). `pricing_training_save` re-created only to store it. Safe in either order: the old code ignores the column, the old function ignores the key.
+- **Tests.** `doc.test.ts` (3 new), `pricing_training_pglite.mjs` (1 new block on both migrations), both ledgers.
+
 ## 2026-11-15 — Sales: files on a lead's update, by button, drag and drop and paste (branch `feat/lead-popup-attachments`, PR #839 open) · migration `20270722000000_sales_lead_attachments.sql` (additive; NOT YET APPLIED; apply before the merge)
 - **Owner request** (after the polish): "an option to add single or multiple attachments such as jpg, pdf, png or other standard files ... drag and drop, copy and paste of files". A plan with defaults was approved.
 - **What.** The update box has Attach files, takes dropped files and pasted files or screenshots; each uploads at once and shows as a chip; Post waits for the uploads; an update of only files says "Shared N files." In the feed, pictures are small squares and other files are chips under the update's words, opened through links signed for five minutes. 10 MB per file, 10 per update; photos, PDF, Word, Excel, PowerPoint, CSV, text (no zip, no program). Dossier 28, rule 43.

@@ -11,7 +11,7 @@ export const trainingKeys = { access: ['pricing', 'training', 'access'] as const
 export type Status = 'draft' | 'submitted' | 'sent_back' | 'approved' | 'rejected'
 export type Access = { uid: string; admin: boolean; create: boolean; approve: boolean }
 export type CaseRow = { id: string; case_no: number; name: string; variant: string | null; status: Status; image_path: string | null; created_by: string; created_by_name: string | null; decided_by_name: string | null; created_at: string; updated_at: string; total: number; line_count: number; sold_price: number | null }
-export type SavedLine = { element: string; kind: string; material: string | null; quantity: number | null; unit: string | null; rate: number | null; amount: number; reasoning: string | null; from_ai: boolean }
+export type SavedLine = { element: string; kind: string; material: string | null; quantity: number | null; unit: string | null; rate: number | null; amount: number; reasoning: string | null; from_ai: boolean; wood_amount: number | null }
 export type Message = { id: string; body: string; created_at: string; created_by: string; created_by_name: string | null }
 export type CaseFull = Omit<CaseRow, 'total' | 'line_count'> & { width_in: number | null; depth_in: number | null; height_in: number | null; notes: string | null; ai_reading: unknown; decision_note: string | null; decided_at: string | null; submitted_at: string | null; may_edit: boolean; may_decide: boolean; lines: SavedLine[]; messages: Message[] }
 

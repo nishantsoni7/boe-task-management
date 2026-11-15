@@ -5,26 +5,22 @@
 
 ## Snapshot
 
-- Commit: `d8d2eacf` — Merge origin/main into feat/lead-popup-attachments (#834 landed; module row and dossier take main's text with this branch's text put back; inventory regenerated)
-- Commits on this branch: 1401
+- Commit: `6fc8efb5` — Renumber the Training structure migration to 20270723000000 (#839 took 20270722000000; the SQL is already applied)
+- Commits on this branch: 1397
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
-- Migrations: 462 (first `20260530_create_positions.sql`, latest `20270722000000_sales_lead_attachments.sql`)
+- Migrations: 463 (first `20260530_create_positions.sql`, latest `20270723000000_pricing_training_structure.sql`)
 - Tables ever created: 259 (dropped at some point: 8)   SQL functions: 1048   Enums: 0
 - Test files: 869   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `d8d2eacf` 2026-11-15 Merge origin/main into feat/lead-popup-attachments (#834 landed; module row and dossier take main's text with this branch's text put back; inventory regenerated)
-- `2c64661b` 2026-11-15 Sales: files on a lead's update, by button, drag and drop and paste (migration 20270722000000, apply before merge)
+- `6fc8efb5` 2026-11-15 Renumber the Training structure migration to 20270723000000 (#839 took 20270722000000; the SQL is already applied)
+- `9523f756` 2026-11-15 Merge origin/main into feat/training-structure-price (changelog: both entries kept; inventory regenerated)
+- `894aea2d` 2026-11-15 Docs: stamp the Training photo-read fix (#828) as merged 1d7fcac4, deployed 22:34 IST (no SQL) (#837)
+- `39494d25` 2026-11-15 Pricing Training: the wooden structure is one priced row, with an optional wood share (migration 20270722000000)
 - `3f7824d8` 2026-11-15 Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL) (#834)
-- `355054c7` 2026-11-15 Merge the stamp branch (#834) into feat/lead-popup-polish so the two pull requests no longer collide
-- `5bdc90e2` 2026-11-15 Merge origin/main into docs/stamp-lead-popup-strip-829 (changelog: main's version with the stamp re-applied; inventory regenerated)
-- `178958bd` 2026-11-15 Merge origin/main into feat/lead-popup-polish (changelog: both entries kept; inventory regenerated)
 - `1d7fcac4` 2026-11-15 Pricing Training: a failed photo reading says why, and can be tried again (no SQL) (#828)
-- `121c5a70` 2026-11-15 Docs: stamp the lead popup polish with its pull request number (#836)
-- `a1385195` 2026-11-15 Sales: lead popup polish, the selected temperature stays readable on hover and the update box is shorter (no SQL)
 - `8442b3e6` 2026-11-15 Docs: stamp the "New update" mark (#832) as merged d23cd7e4, deployed 21:57 IST (no SQL) (#833)
-- `8e260853` 2026-11-15 Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL)
 - `29ff4ecd` 2026-11-15 Sales: the lead popup is a status strip and two cards, on the lines of Quotation Details (no SQL) (#829)
 - `d23cd7e4` 2026-11-15 Orders: an order back with Operations is marked "New update" on the list and dashboard (no SQL) (#832)
 - `475569ea` 2026-11-15 AI calls: structured output instead of a forced tool (no SQL) (#830)
@@ -39,6 +35,10 @@
 - `6d0d0700` 2026-11-15 Docs: stamp #819 (the lead popup's left side with room) as merged d8a02296, deployed 16:44 IST, verified live (no SQL) (#820)
 - `d7d0ae9f` 2026-11-15 Pending work shows on its module's dashboard: change requests on Orders, money to allocate on Finance (no SQL) (#818)
 - `d8a02296` 2026-11-15 Sales: the lead popup's left side has room, Call and WhatsApp on the number's row, the follow-up in a card of its own (no SQL) (#819)
+- `0177f067` 2026-11-15 Docs: stamp #812 (the Quantity / Price numbers panel) as merged 80841c38, deployed 15:43 IST, verified live (no SQL) (#814)
+- `82a446dc` 2026-11-15 Pricing: a unit glued to its number ("180cm") is read as the unit, not as inches (no SQL) (#817)
+- `6c117d22` 2026-11-15 Docs: stamp #813 (the Doors rule) in the CHANGELOG (#815)
+- `c65a3d36` 2026-11-15 Docs: master instruction sheet asks for a Doors check before changing who may do, see or be told something (#813)
 
 ## Pages by top-level area
 
@@ -505,7 +505,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270617000000_quotation_pricing_desk.sql`
 - `20270618000000_quotation_reports.sql`
 - `20270619000000_order_handoff_send_to_sales.sql`
 - `20270620000000_pricing_price_book.sql`
@@ -535,6 +534,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270719000000_finance_payment_request_tab_counts.sql`
 - `20270720000000_pricing_training.sql`
 - `20270722000000_sales_lead_attachments.sql`
+- `20270723000000_pricing_training_structure.sql`
 
 ## All SQL function names
 
