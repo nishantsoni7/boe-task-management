@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a10410c5` — Docs: stamp the premium document layout fixes (#787) as merged 80091824, deployed 09:28 IST, verified live (no SQL) (#797)
-- Commits on this branch: 1360
+- Commit: `cc40fd5d` — Docs: stamp page speed part 9 (#801) as merged 90c60493, deployed 11:13 IST, verified live (no SQL) (#802)
+- Commits on this branch: 1362
 - Pages (`page.tsx`): 199   API routes (`route.ts`): 211
 - Migrations: 459 (first `20260530_create_positions.sql`, latest `20270718000000_order_handoff_review_chain.sql`)
 - Tables ever created: 255 (dropped at some point: 8)   SQL functions: 1035   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `cc40fd5d` 2026-11-15 Docs: stamp page speed part 9 (#801) as merged 90c60493, deployed 11:13 IST, verified live (no SQL) (#802)
+- `90c60493` 2026-11-15 Page speed, part 9: the other Orders pages reuse the guard's profile and permissions (no SQL) (#801)
 - `a10410c5` 2026-11-15 Docs: stamp the premium document layout fixes (#787) as merged 80091824, deployed 09:28 IST, verified live (no SQL) (#797)
 - `e6663b40` 2026-11-15 Phones: Team Today no longer scrolls sideways, the Access page fits, Lead Master's Auto-allot switch wraps (#799)
 - `9fc1f782` 2026-11-15 Docs: stamp page speed part 8 (#796) as merged 27deb4f7, deployed 09:50 IST, verified live (no SQL) (#798)
@@ -37,8 +39,6 @@
 - `e0d4fe4c` 2026-11-14 Quotations: the premium client document, Download PDF, project type and lead time (migration 20270717000000) (#777)
 - `1651449f` 2026-11-14 Docs: stamp the PI review chain (#776) as merged 73a9cc30, deployed 19:44 IST (migration 20270718000000 applied 19:27 IST) (#779)
 - `73a9cc30` 2026-11-14 Orders: every hop between Operations and Sales on a PI passes through the approver (migration 20270718000000, applied) (#776)
-- `61dd1c91` 2026-11-14 Docs: stamp page speed part 1 (#775) as merged 39fadbcf, deployed 19:07 IST, verified live (no SQL) (#778)
-- `39fadbcf` 2026-11-14 Page speed, part 1: every record page prepared and cached, static files kept for a day, page-load audit (no SQL) (#775)
 
 ## Pages by top-level area
 
