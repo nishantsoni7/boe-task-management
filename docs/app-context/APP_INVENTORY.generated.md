@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `29ff4ecd` — Sales: the lead popup is a status strip and two cards, on the lines of Quotation Details (no SQL) (#829)
-- Commits on this branch: 1390
+- Commit: `8e260853` — Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL)
+- Commits on this branch: 1391
 - Pages (`page.tsx`): 207   API routes (`route.ts`): 212
 - Migrations: 461 (first `20260530_create_positions.sql`, latest `20270720000000_pricing_training.sql`)
 - Tables ever created: 258 (dropped at some point: 8)   SQL functions: 1045   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `8e260853` 2026-11-15 Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL)
 - `29ff4ecd` 2026-11-15 Sales: the lead popup is a status strip and two cards, on the lines of Quotation Details (no SQL) (#829)
 - `d23cd7e4` 2026-11-15 Orders: an order back with Operations is marked "New update" on the list and dashboard (no SQL) (#832)
 - `475569ea` 2026-11-15 AI calls: structured output instead of a forced tool (no SQL) (#830)
@@ -38,7 +39,6 @@
 - `4760d62e` 2026-11-15 Docs: stamp page speed part 11 (#807) as merged bb407054, migration 20270719000000 applied, verified live (#808)
 - `bb407054` 2026-11-15 Page speed, part 11: the Payment Requests badges in one call (migration 20270719000000 applied) (#807)
 - `27d52de1` 2026-11-15 Docs: stamp #805 (Import reads the right tab; one-line suggested price) as merged e4f0c6e2, deployed 12:41 IST, verified live (no SQL) (#806)
-- `e4f0c6e2` 2026-11-15 Quotations: Import reads the right tab of a PI; suggested price is one line with a Why? popup (no SQL) (#805)
 
 ## Pages by top-level area
 

@@ -78,17 +78,32 @@ export function TrainingCase() {
     try {
       const { path, jpeg } = await uploadPhoto(supabase, a.uid, file)
       edit({ image_path: path, ai_reading: null })
-      setBusy('reading')
-      try {
-        const reading = await readPhoto(supabase, jpeg)
-        setForm(f => ({ ...f, ai_reading: reading, name: f.name || reading.category, variant: f.variant || reading.variant }))
-        setLines(ls => (ls.length === 0 ? readingToLines(reading) : ls))
-        setDirty(true)
-      } catch (e) {
-        // The photo is kept; reading it is a help, not a requirement.
-        setNotice(`${(e as TrainingError)?.message ?? 'The photo could not be read.'} The photo is saved with the case.`)
-      }
+      await read(jpeg)
     } catch (e) { fail(e) } finally { setBusy(''); if (fileRef.current) fileRef.current.value = '' }
+  }
+
+  // Reads the photo and adds what it sees as elements (only when none are listed yet, so nothing typed is lost).
+  async function read(jpeg: Blob) {
+    setBusy('reading')
+    try {
+      const reading = await readPhoto(supabase, jpeg)
+      setForm(f => ({ ...f, ai_reading: reading, name: f.name || reading.category, variant: f.variant || reading.variant }))
+      setLines(ls => (ls.length === 0 ? readingToLines(reading) : ls))
+      setDirty(true)
+    } catch (e) {
+      // The photo is kept; reading it is a help, not a requirement.
+      setNotice(`${(e as TrainingError)?.message ?? 'The photo could not be read.'} The photo is saved with the case.`)
+    }
+  }
+
+  async function readAgain() {
+    if (!form.image_path) return
+    setError(''); setNotice('')
+    try {
+      const res = await fetch(photoUrl(supabase, form.image_path))
+      if (!res.ok) throw new Error('fetch')
+      await read(await res.blob())
+    } catch { setNotice('The saved photo could not be opened to read it again. Choose the photo once more.') } finally { setBusy('') }
   }
 
   async function save(send: boolean) {
@@ -159,6 +174,7 @@ export function TrainingCase() {
           <div className={t.cardH}>Photo{editable && <>
             <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => onPhoto(e.target.files?.[0])} />
             <button type="button" className="boe-btn boe-btn-secondary" disabled={busy !== ''} onClick={() => fileRef.current?.click()}><Camera size={16} aria-hidden /> {form.image_path ? 'Change photo' : 'Add a photo'}</button>
+            {form.image_path && <button type="button" className="boe-btn boe-btn-secondary" disabled={busy !== ''} onClick={readAgain}>{form.ai_reading ? 'Read the photo again' : 'Read the materials from the photo'}</button>}
           </>}</div>
           <div className={t.cardB}>
             <div className={t.photo}>
