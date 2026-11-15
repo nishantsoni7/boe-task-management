@@ -48,7 +48,7 @@ describe('the product picture (item 2)', () => {
     assert.match(rule('.plPicEmpty'), /width: 160px; height: 135px;/)
     assert.match(rule('.plPicImg'), /object-fit: contain;/)
     assert.ok(!/object-fit: cover/.test(rule('.plPicImg')), 'no cover')
-    assert.match(rule('.pl'), /grid-template-columns: 180px minmax\(0, 1fr\) 250px;/, 'the picture column is wide enough for the new frame')
+    assert.match(rule('.pl'), /grid-template-columns: 180px minmax\(0, 1fr\) 296px;/, 'the picture column is wide enough for the new frame; the numbers column is wide enough for Quantity and Price side by side')
   })
   test('on a phone the frame is 140 x 118 (25% over the old 112 x 94) and the pop-up strip does not crop either', () => {
     assert.match(CSS, /@media \(max-width: 767px\) \{[\s\S]*?\.plPicBtn, \.plPicEmpty \{ width: 140px; height: 118px; flex-shrink: 0; \}/)
@@ -133,5 +133,24 @@ describe('the suggested price: who sees "Why?" (owner, 15 Nov 2026)', () => {
     assert.match(SCREEN, /canAccessManagementModule\(\{ role: subject\.subjectRole, moduleKey: 'pricing', isModuleActive: true, permissions: subject\.subjectPermissionsByModule\.get\('pricing'\) \?\? \[\] \}\)/)
     assert.ok(SCREEN.includes('feedbackCtx={seesWhy ? {'), 'a person without Pricing gets no feedbackCtx, so no "Why?" and no form')
     assert.ok(read('src/app/pricing/layout.tsx').includes('moduleKey="pricing"'), 'the module this check mirrors')
+  })
+})
+
+describe('Quantity and Price share one row on wide screens (owner, 15 Nov 2026)', () => {
+  test('the numbers column is Quantity, Price, then the rest, so the two-column rule can place them', () => {
+    const html = draw(line())
+    const right = html.slice(html.indexOf('class="plRight"'))
+    const at = (s: string) => right.indexOf(s)
+    assert.ok(at('<span>Quantity</span>') > 0 && at('<span>Price ₹ before GST</span>') > at('<span>Quantity</span>'), 'Quantity first, then Price')
+    assert.ok(at('Optional') > at('<span>Price ₹ before GST</span>'), 'Optional and the total come after both')
+    // the first two children are the two fields: nothing may be wedged between them
+    assert.match(right, /^class="plRight"><div class="field"><span>Quantity<\/span>[\s\S]*?<\/div><\/div><label class="field"><span>Price ₹ before GST<\/span>/)
+  })
+  test('from 1200px the column has two tracks (a flexible quantity box and a 116px price box); everything after the first two spans both', () => {
+    assert.match(CSS, /@media \(min-width: 1200px\) \{\s*\.plRight \{ grid-template-columns: minmax\(0, 1fr\) 116px; align-items: end; \}\s*\.plRight > :nth-child\(n\+3\) \{ grid-column: 1 \/ -1; \}\s*\}/)
+  })
+  test('narrower screens keep their own layout: two equal columns under 1200px, one column on a phone', () => {
+    assert.match(CSS, /@media \(max-width: 1199px\) \{[\s\S]*?\.plRight \{ grid-column: 1 \/ -1; grid-template-columns: 1fr 1fr; align-items: start; \}/)
+    assert.match(CSS, /@media \(max-width: 767px\) \{[\s\S]*?\.plRight \{ grid-template-columns: minmax\(0, 1fr\); \}/)
   })
 })
