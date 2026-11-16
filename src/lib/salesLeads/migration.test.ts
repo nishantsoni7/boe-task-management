@@ -197,3 +197,58 @@ describe('the app calls what exists', () => {
     }
   })
 })
+
+// 20270728000000 and 20270728000100 (owner, 2026-11-16). The behaviour is proved by running both in the in-memory Postgres
+// (supabase/tests/sales_full_flow_pglite.mjs); these are the source checks that keep the two promises readable.
+describe('the person who adds a lead keeps it (20270728000000)', () => {
+  const KEEPS = read('supabase/migrations/20270728000000_sales_add_lead_keeps_own.sql')
+
+  test('create_sales_lead keeps its signature, so its grants stay, and says how to roll back', () => {
+    assert.ok(KEEPS.includes('create or replace function public.create_sales_lead(\n  p_phone text,\n  p_source text,\n  p_name text default null,'))
+    assert.ok(KEEPS.includes('security definer') && KEEPS.includes('set search_path = public, pg_temp'))
+    assert.ok(/ROLLBACK: re-run the 20270524000000 definition/.test(KEEPS))
+    assert.ok(!/\bdrop\b/i.test(KEEPS.replace(/^--.*$/gm, '')), 'nothing is dropped')
+  })
+
+  test('only somebody who works leads keeps the lead: a Salesperson, or anybody ticked; never an Admin by default', () => {
+    assert.ok(KEEPS.includes('v_keeps := public.sales_lead_can_hold(v_uid)'))
+    assert.ok(KEEPS.includes("u.role <> 'admin'"), 'an Admin keeps a lead only when ticked')
+    assert.ok(KEEPS.includes("resolve_permission(v_uid, 'sales', 'view')"), 'a person who cannot see the lead never holds it')
+    assert.ok(KEEPS.includes("not public.resolve_permission(v_uid, 'sales', 'view_all')") && KEEPS.includes("not public.resolve_permission(v_uid, 'sales', 'assign')"), 'a Manager and a Lead manager do not by default')
+  })
+
+  test('a kept lead is given in the same insert, with the first step the open-lead CHECK needs, and a history line', () => {
+    assert.ok(KEEPS.includes('assigned_to, assigned_at, assigned_by, next_step, next_due_on'))
+    assert.ok(KEEPS.includes("case when v_keeps then 'First call' end, case when v_keeps then v_today end"))
+    assert.ok(KEEPS.includes("values (v_row.id, 'allotted', v_uid, v_uid, clock_timestamp())"))
+    assert.ok(!KEEPS.includes('sales_lead_notify'), 'nobody is told about the lead they added themselves')
+  })
+
+  test('the duplicate look and the conflict clause are as they were', () => {
+    assert.ok(KEEPS.indexOf('select * into v_row from public.sales_leads where phone_e164 = v_phone;') < KEEPS.indexOf('insert into public.sales_leads'))
+    assert.ok(KEEPS.includes('on conflict (phone_e164) do nothing'))
+  })
+})
+
+describe('Potential Clients asks for the requirement only (20270728000100)', () => {
+  const POTENTIAL = read('supabase/migrations/20270728000100_sales_potential_without_value.sql')
+
+  test('the project value is asked from Negotiation on, the requirement still from Potential Clients, never the quantity', () => {
+    assert.ok(POTENTIAL.includes("if v_rank >= 4 and v_row.expected_value_paise is null then v_missing := array_append(v_missing, 'value'); end if;"))
+    assert.ok(!POTENTIAL.includes("if v_rank >= 3 and v_row.expected_value_paise is null then v_missing"), 'the old Potential Clients line is gone')
+    assert.ok(POTENTIAL.includes("if v_rank >= 3 and v_row.requirement is null then v_missing := array_append(v_missing, 'requirement'); end if;"))
+    const fn = POTENTIAL.slice(POTENTIAL.indexOf('create or replace function public.move_sales_lead('), POTENTIAL.indexOf('$$;\n') + 4)
+    assert.ok(!fn.includes("'quantity'"), 'no move asks for the quantity')
+    assert.ok(POTENTIAL.includes("if v_rank = 4 and v_row.timeline is null then") && POTENTIAL.includes("a.kind = 'quotation'"), 'Negotiation still asks for the quotation and the timeline')
+  })
+
+  test('it is the 20270711000000 function with that one line changed, and rolls back to it', () => {
+    const body = (s: string) => s.slice(s.indexOf('create or replace function public.move_sales_lead('), s.indexOf('$$;\n') + 4)
+    const before = body(read('supabase/migrations/20270711000000_sales_value_timeline_gates.sql')).split('\n')
+    const after = body(POTENTIAL).split('\n')
+    assert.equal(after.length, before.length)
+    const changed = after.map((line, i) => (line === before[i] ? null : i)).filter(i => i !== null)
+    assert.equal(changed.length, 2, 'the comment above the line and the line itself')
+    assert.ok(/ROLLBACK: re-run the 20270711000000 definition/.test(POTENTIAL))
+  })
+})

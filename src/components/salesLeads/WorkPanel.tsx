@@ -504,7 +504,7 @@ function ClientCard({ lead, work, canWork, closed }: { lead: WorkLead; work: Lea
                 <dt className={s.eyebrow}>Project value</dt>
                 {lead.expected_value_paise !== null
                   ? <dd>{valueLabel(lead.expected_value_paise)}</dd>
-                  : <dd className={s.cWarn}>Not set<small>Needed for Potential Clients.</small></dd>}
+                  : <dd className={s.cWarn}>Not set<small>Needed for Negotiation.</small></dd>}
               </div>
               <div className={s.cFact}><dt className={s.eyebrow}>Needed by</dt><dd className={lead.timeline ? undefined : s.cNone}>{lead.timeline || 'Not shared'}</dd></div>
               <div className={s.cFact}><dt className={s.eyebrow}>Location</dt><dd className={lead.location ? undefined : s.cNone}>{lead.location || 'Not shared'}</dd></div>
