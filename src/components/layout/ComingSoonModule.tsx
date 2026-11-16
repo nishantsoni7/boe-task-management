@@ -18,7 +18,7 @@ import s from './comingSoonModule.module.css'
 // A module that has grown a second page lists its pages here; the first one keeps the navLabel it was given.
 // Pricing: the Price book, and Training (20270720000000), where a product's price is taught element by element.
 const MORE_PAGES: Record<string, { href: string; label: string }[]> = {
-  pricing: [{ href: '/pricing/training', label: 'Training' }, { href: '/pricing/woods', label: 'Wood rates' }],
+  pricing: [{ href: '/pricing/training', label: 'Training' }, { href: '/pricing/woods', label: 'Wood rates' }, { href: '/pricing/logic', label: 'Price logic' }],
 }
 
 const BADGE_CLASS = `boe-badge boe-badge-waiting ${s.badge}`

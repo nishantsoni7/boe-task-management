@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `fab39501` — Quotations: "This one is different" on a picked taught product (migration 20270727000000) (#850)
-- Commits on this branch: 1410
-- Pages (`page.tsx`): 208   API routes (`route.ts`): 212
+- Commit: `5b38f85d` — Page speed, part 14: PI Drafts joins the saved copy; the saved copy keeps earlier lists (no SQL) (#852)
+- Commits on this branch: 1412
+- Pages (`page.tsx`): 209   API routes (`route.ts`): 212
 - Migrations: 468 (first `20260530_create_positions.sql`, latest `20270727000000_pricing_training_library_parts.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1053   Enums: 0
-- Test files: 872   Next.js 16.2.6, React 19.2.4
+- Test files: 873   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `5b38f85d` 2026-11-16 Page speed, part 14: PI Drafts joins the saved copy; the saved copy keeps earlier lists (no SQL) (#852)
+- `84d526a2` 2026-11-16 Docs: stamp "This one is different" (#850) as merged fab39501, deployed 10:02 IST, migration 20270727000000 applied (no SQL) (#851)
 - `fab39501` 2026-11-16 Quotations: "This one is different" on a picked taught product (migration 20270727000000) (#850)
 - `8b87062e` 2026-11-16 Docs: stamp #848 (swatches and drawings to the PI draft) as merged eaa05402, deployed 09:18 IST (no SQL) (#849)
 - `d26acf88` 2026-11-16 Page speed, part 13: Sales leads and the quotations list join the saved copy (no SQL) (#824)
@@ -37,8 +39,6 @@
 - `29ff4ecd` 2026-11-15 Sales: the lead popup is a status strip and two cards, on the lines of Quotation Details (no SQL) (#829)
 - `d23cd7e4` 2026-11-15 Orders: an order back with Operations is marked "New update" on the list and dashboard (no SQL) (#832)
 - `475569ea` 2026-11-15 AI calls: structured output instead of a forced tool (no SQL) (#830)
-- `c696e68f` 2026-11-15 Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
-- `431cd0c2` 2026-11-15 Pricing: Training, where the price of a product is taught element by element (migration 20270720000000, apply before merge) (#826)
 
 ## Pages by top-level area
 
@@ -70,7 +70,7 @@
 - **orders** (19): `/orders`, `/orders/[id]`, `/orders/[id]/dispatch/[lotId]`, `/orders/[id]/edit-pi`, `/orders/[id]/payment-plan`, `/orders/all`, `/orders/bdpi`, `/orders/bdpi/[id]`, `/orders/clickup`, `/orders/clickup/[id]`, `/orders/clickup/import`, `/orders/customize-learning`, `/orders/drafts`, `/orders/drafts/[submissionId]`, `/orders/drafts/[submissionId]/edit-pi`, `/orders/import`, `/orders/notifications`, `/orders/requests`, `/orders/requests/[id]`
 - **payroll** (10): `/payroll`, `/payroll/credits`, `/payroll/how-it-works`, `/payroll/monthly-review`, `/payroll/monthly-review/[userId]`, `/payroll/notifications`, `/payroll/results/[periodId]`, `/payroll/results/[periodId]/[employeeId]`, `/payroll/results/[periodId]/salary-report`, `/payroll/settings`
 - **performance** (2): `/performance`, `/performance/team`
-- **pricing** (4): `/pricing`, `/pricing/training`, `/pricing/training/[id]`, `/pricing/woods`
+- **pricing** (5): `/pricing`, `/pricing/logic`, `/pricing/training`, `/pricing/training/[id]`, `/pricing/woods`
 - **q** (1): `/q/[token]`
 - **quick-start-guide** (1): `/quick-start-guide`
 - **quotations** (7): `/quotations`, `/quotations/[id]`, `/quotations/[id]/print`, `/quotations/learning`, `/quotations/learning/[id]`, `/quotations/learning/new`, `/quotations/reports`
@@ -167,7 +167,7 @@
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 8 source, 6 test
-- `src/lib/pricing` — 13 source, 8 test
+- `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
 - `src/lib/quotations` — 20 source, 12 test

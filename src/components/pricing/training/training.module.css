@@ -77,3 +77,15 @@
 .diffSet legend { padding: 0 4px; font: 600 13px var(--boe-font-body); color: #686D6C; }
 .diffRow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 40px; font-size: 14px; cursor: pointer; }
 .diffRow input { width: 18px; height: 18px; }
+
+/* Price logic: cases side by side (PriceLogic.tsx). The element column stays put while the cases scroll sideways. */
+.logicScroll { overflow-x: auto; }
+.logic { width: 100%; border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.logic th, .logic td { padding: 8px 12px; border-bottom: 1px solid #E4DED7; text-align: right; vertical-align: middle; white-space: nowrap; }
+.logic thead th { font: 600 12.5px var(--boe-font-body); color: #686D6C; vertical-align: bottom; white-space: normal; min-width: 130px; }
+.logic thead th img { margin: 0 0 4px auto; }
+.logic th:first-child { position: sticky; left: 0; z-index: 1; background: #fff; text-align: left; font-weight: 600; white-space: normal; min-width: 150px; max-width: 220px; }
+.logic tfoot th, .logic tfoot td { border-bottom: 0; }
+.logicCell { min-height: 32px; padding: 2px 6px; margin: -2px -6px; border: 0; border-radius: 6px; background: none; font: inherit; color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.logicCell:hover, .logicCell[aria-expanded='true'] { background: #F4F0E9; }
+.logicVaries { margin-left: 6px; }
