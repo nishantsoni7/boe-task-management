@@ -129,3 +129,21 @@ export const SAMPLE_CASE = {
   talk: { title: 'Sample talk', note: 'One to one', steps: [{ title: 'Open', text: 'Thank them.', say: 'Sample line.' }, { title: 'Decide', text: 'Say it.' }], avoid: ['Sample avoid.'], care: ['Sample care.'] },
   sources: ['Sample source.'],
 } satisfies DiscussionBrief
+
+// The same case with a report for both sides: good things first, then the detail, in the order given here.
+export const SAMPLE_REPORT = {
+  ...SAMPLE_CASE,
+  report: {
+    kicker: 'Sample kicker',
+    title: 'Sample report title',
+    intro: 'Sample intro.',
+    tiles: [{ label: 'Sample tile', value: '1 → 2', note: 'A year ago → now', tone: 'good' }],
+    blocks: [
+      { kind: 'cards', title: 'Sample went well', note: 'Credit first', tone: 'good', items: [{ title: 'Sample win', value: '+10', text: 'Sample win text.', proofs: [{ label: 'Sample win proof', url: 'https://example.com/win', shows: 'Total 10', how: 'Opens for anyone' }] }] },
+      { kind: 'rankings', title: 'Sample rankings in the report' },
+      { kind: 'table', title: 'Sample report table', note: 'Sample table note', head: ['Measure', 'Then', 'Now'], rows: [['Sample measure', '1', '2']], takeaway: 'Sample table takeaway.' },
+      { kind: 'cards', title: 'Sample went wrong', tone: 'bad', items: [{ title: 'Sample miss card', text: 'Sample miss text.', tag: { text: 'Missed', tone: 'bad' } }] },
+      { kind: 'ai' },
+    ],
+  },
+} satisfies DiscussionBrief

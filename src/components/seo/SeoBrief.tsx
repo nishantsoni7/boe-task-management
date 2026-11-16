@@ -6,7 +6,7 @@ import { useSeoAccess } from '@/hooks/useSeoAccess'
 import { fetchLatestBrief } from '@/lib/seo/api'
 import type { DiscussionBrief } from '@/lib/seo/sixMonth'
 import { createClient } from '@/lib/supabase/client'
-import { CaseBrief, Proof } from './SeoBriefCase'
+import { CaseBrief, Proof, ReportBrief } from './SeoBriefCase'
 import { SeoScreen } from './SeoScreen'
 import { Tag } from './SeoSixMonth'
 import s from './sixMonth.module.css'
@@ -16,6 +16,8 @@ const Step = ({ number, title, note }: { number: number; title: string; note?: s
 )
 
 export function BriefBody({ brief }: { brief: DiscussionBrief }) {
+  // A report is shown to both sides, so it takes the page over the owner's case notes.
+  if (brief.report) return <ReportBrief brief={brief} report={brief.report} />
   if (brief.claims) return <CaseBrief brief={brief} />
 
   return (

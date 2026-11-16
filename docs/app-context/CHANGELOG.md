@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-16 — SEO brief: a report layout for both sides of the conversation (PR open, branch `feat/seo-report-layout`) · no migration
+- **Owner ask (meeting day).** Redesign the brief so it can be shown to the SEO person: good things first, then a year of detail, every number with its source, rankings clearly not from personal browsers.
+- **Changed.** A brief with `report` is drawn by `ReportBrief`: an opening with tiles, then blocks in the order the data sets (`cards`, `table`, or the brief’s own rankings, traffic, trend, leads, rivals and AI parts). Headings come from the data, so the owner’s private notes never show. `briefProblem` checks the block kinds and that referenced parts exist.
+- **Proof.** 42 of 42 tests in `sixMonth.test.ts` and `seoScreens.test.tsx` (2 new: the report passes and refuses bad blocks; it draws in order and leaves out the owner notes); `tsc` and eslint clean. A brief without `report` is unchanged.
+
 ## 2026-11-16 — Pricing: the Price logic page (PR #854 squash-merged 16 Nov 2026 11:41 IST as `ad508334`, deployed to production 11:43 IST) · no migration
 - **Why.** The owner asked at the start for the price logic to be "visually visible in a separate section" where he and Nitish can check it and correct it. Plan and defaults accepted on 16 Nov.
 - **What.** Pricing → Price logic (`/pricing/logic`, third entry of `MORE_PAGES`): every SUBMITTED training case as a column (photo, name), one row per element name (capitals ignored), the amount in each cell, totals at the foot. A row is marked "varies" when its highest amount is more than 20% above its lowest. Clicking an amount shows how it was worked out (quantity × rate, material, wood share, the reason) with "Change in Training". A second table gives each case in every wood: taught wood, wood share, and the price per wood (a dash when it cannot be worked out).
