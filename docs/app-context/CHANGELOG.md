@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-16 — HOTFIX: #855 made the app hang on "Loading..." with a saved copy; the restore now runs outside the auth callback (branch `fix/persisted-cache-defer-restore`, PR pending) · no SQL
+- **What happened.** After #855 deployed (11:08 IST), a page opened with a saved copy present stayed on "Loading..." with NO request made (reproduced three times in four on `/orders/drafts` in the owner's Chrome; no console error). Found by the live re-measurement, not by tests.
+- **Cause.** #855 restored the copy inside the `onAuthStateChange` SIGNED_IN callback. auth-js awaits its listeners while initialising, and `getSession()` waits for that initialisation; restoring there made stale queries refetch at once, ask `getSession()`, and wait for the callback that was waiting for them: a deadlock. The rule (Supabase docs): never call back into the client from inside that callback.
+- **Fix.** The restore is deferred with `setTimeout(…, 0)` so the callback returns first (a test pins it). The kill switch `localStorage['boe-qcache-off']='1'` still stops the copy being saved or restored, and clearing the key `boe-qcache:v1` removes a saved one.
+- **Lesson.** Never restore, fetch or call supabase inside the auth callback; measure live after every change to start-up code.
+
 ## 2026-11-16 — Page speed fix: the saved copy was never put back (branch `fix/persisted-cache-restore`, PR pending) · no SQL
 - **Found by measuring live.** With the saved copy on or off (`boe-qcache-off`), PI Drafts drew its rows at the same time (about 700 ms either way), and the launcher cards did not draw earlier either. Parts 12 to 14 were therefore saving a copy and never showing it.
 - **Cause.** auth-js emits SIGNED_IN while it recovers the stored session, before `getSession()` resolves (`_recoverAndRefresh`, GoTrueClient.js). `AuthIdentityBoundary` handled that first event by `persister.attach(id, { restore: false })`, and `attach()` is a no-op for a person already attached, so the seed's later `attach(id)` never restored. The unit tests exercised the persister alone, not this ordering.

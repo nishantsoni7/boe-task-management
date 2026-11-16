@@ -141,6 +141,8 @@ describe('the saved copy is put back whichever auth event arrives first', () => 
     const first = src.slice(src.indexOf('if (lastUserId.current === undefined) {' + String.fromCharCode(10) + '        lastUserId.current = nextUserId'))
     const branch = first.slice(0, first.indexOf('return'))
     assert.ok(branch.includes('persister.attach(nextUserId)'))
+    // never inside the auth callback itself: it deadlocks auth-js (#855 hung the app that way)
+    assert.ok(branch.includes('setTimeout(() => { if (!cancelled) persister.attach(nextUserId) }, 0)'))
     assert.ok(!branch.includes('restore: false'))
   })
 

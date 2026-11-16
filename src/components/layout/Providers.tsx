@@ -156,7 +156,13 @@ function AuthIdentityBoundary({ children }: { children: ReactNode }) {
         // SIGNED_IN while it recovers the stored session), and attach() is a no-op for a person already attached, so
         // attaching without a restore here meant the saved copy was never put back at all. Restoring is safe: it only
         // takes a copy that names this person and is under 12 hours old, and it never replaces newer data in memory.
-        if (nextUserId) persister.attach(nextUserId)
+        //
+        // BUT NOT INSIDE THIS CALLBACK (fix 2026-11-16, after #855 hung the app): auth-js awaits every listener while it
+        // initialises, and getSession() (and so every query that asks who is signed in) waits for that initialisation. A
+        // restore here puts stale queries in the cache, their screens refetch at once and ask getSession(), which waits
+        // for this callback to finish: a deadlock, "Loading..." for ever with no request made. setTimeout lets the
+        // callback finish first. This is the rule in Supabase's own docs: never call back into the client from here.
+        if (nextUserId) setTimeout(() => { if (!cancelled) persister.attach(nextUserId) }, 0)
         return
       }
 
