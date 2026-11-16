@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-16 — SEO brief: a report layout for both sides of the conversation (PR open, branch `feat/seo-report-layout`) · no migration
+## 2026-11-16 — SEO brief: a report layout for both sides of the conversation (PR #860, merged 2026-11-16 12:21 IST as `58aafa55`) · no migration
 - **Owner ask (meeting day).** Redesign the brief so it can be shown to the SEO person: good things first, then a year of detail, every number with its source, rankings clearly not from personal browsers.
 - **Changed.** A brief with `report` is drawn by `ReportBrief`: an opening with tiles, then blocks in the order the data sets (`cards`, `table`, or the brief’s own rankings, traffic, trend, leads, rivals and AI parts). Headings come from the data, so the owner’s private notes never show. `briefProblem` checks the block kinds and that referenced parts exist.
 - **Proof.** 42 of 42 tests in `sixMonth.test.ts` and `seoScreens.test.tsx` (2 new: the report passes and refuses bad blocks; it draws in order and leaves out the owner notes); `tsc` and eslint clean. A brief without `report` is unchanged.
