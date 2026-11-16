@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `3fb5f2e2` — Quotations: "This one is different" on a picked taught product (migration 20270727000000)
-- Commits on this branch: 1407
+- Commit: `fab39501` — Quotations: "This one is different" on a picked taught product (migration 20270727000000) (#850)
+- Commits on this branch: 1410
 - Pages (`page.tsx`): 208   API routes (`route.ts`): 212
 - Migrations: 468 (first `20260530_create_positions.sql`, latest `20270727000000_pricing_training_library_parts.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1053   Enums: 0
@@ -14,7 +14,10 @@
 
 ## Latest 25 commits
 
-- `3fb5f2e2` 2026-11-16 Quotations: "This one is different" on a picked taught product (migration 20270727000000)
+- `fab39501` 2026-11-16 Quotations: "This one is different" on a picked taught product (migration 20270727000000) (#850)
+- `8b87062e` 2026-11-16 Docs: stamp #848 (swatches and drawings to the PI draft) as merged eaa05402, deployed 09:18 IST (no SQL) (#849)
+- `d26acf88` 2026-11-16 Page speed, part 13: Sales leads and the quotations list join the saved copy (no SQL) (#824)
+- `eaa05402` 2026-11-16 Quotations: the client's swatches and drawings go to the PI draft (no SQL) (#848)
 - `465f0aa8` 2026-11-16 Docs: stamp the wood list (#845) as merged 65a81cd2, deployed 01:10 IST, migration 20270725000000 applied (no SQL) (#846)
 - `51f940c8` 2026-11-16 Quotations: pick a taught product on a line and see its taught price (migration 20270726000000) (#847)
 - `65a81cd2` 2026-11-16 Pricing: the wood list with rates, and the wood picked on a structure row (migration 20270725000000) (#845)
@@ -36,9 +39,6 @@
 - `475569ea` 2026-11-15 AI calls: structured output instead of a forced tool (no SQL) (#830)
 - `c696e68f` 2026-11-15 Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
 - `431cd0c2` 2026-11-15 Pricing: Training, where the price of a product is taught element by element (migration 20270720000000, apply before merge) (#826)
-- `2e4bc210` 2026-11-15 Control Center: a switch for price approval on quotations (no SQL) (#825)
-- `5bc3c8aa` 2026-11-15 Docs: stamp #821 (the six Control Center screens with real routes) as merged 826ea9c6, deployed 19:15 IST, verified live (no SQL) (#823)
-- `b5a94539` 2026-11-15 Page speed, part 12: a saved copy of the launcher, profile and task list, so a revisit paints at once (no SQL) (#810)
 
 ## Pages by top-level area
 
