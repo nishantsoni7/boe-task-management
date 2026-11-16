@@ -135,6 +135,30 @@ describe('phase C: the PI Drafts list, and keeping what is saved', () => {
   })
 })
 
+describe('the saved copy is put back whichever auth event arrives first', () => {
+  test('the first-event branch of Providers restores (it used to attach with restore: false and so never restored)', () => {
+    const src = readFileSync(join(process.cwd(), 'src/components/layout/Providers.tsx'), 'utf8').split(String.fromCharCode(13)).join('')
+    const first = src.slice(src.indexOf('if (lastUserId.current === undefined) {' + String.fromCharCode(10) + '        lastUserId.current = nextUserId'))
+    const branch = first.slice(0, first.indexOf('return'))
+    assert.ok(branch.includes('persister.attach(nextUserId)'))
+    assert.ok(!branch.includes('restore: false'))
+  })
+
+  test('attach() restores once and a second attach for the same person is a no-op', () => {
+    const qc = client(), storage = memoryStorage()
+    put(qc, ['permission-context', ME], { role: 'admin' })
+    savePersistedCache(qc, ME, storage, NOW)
+    const fresh = client()
+    const p = createPersister(fresh, storage, { now: () => NOW, schedule: () => 0, cancel: () => {} })
+    p.attach(ME)
+    assert.deepEqual(fresh.getQueryData(['permission-context', ME]), { role: 'admin' })
+    fresh.removeQueries()
+    p.attach(ME)
+    assert.equal(fresh.getQueryData(['permission-context', ME]), undefined)
+    p.detach()
+  })
+})
+
 describe('saving and restoring', () => {
   test('a saved result comes back, a Map included, with its original timestamp (so it is stale and is refetched)', () => {
     const storage = memoryStorage()

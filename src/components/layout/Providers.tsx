@@ -152,7 +152,11 @@ function AuthIdentityBoundary({ children }: { children: ReactNode }) {
       // the identity; there is no earlier user whose data could be lingering.
       if (lastUserId.current === undefined) {
         lastUserId.current = nextUserId
-        if (nextUserId) persister.attach(nextUserId, { restore: false })
+        // RESTORE HERE TOO (fix 2026-11-16): this event usually arrives BEFORE the seed above resolves (auth-js emits
+        // SIGNED_IN while it recovers the stored session), and attach() is a no-op for a person already attached, so
+        // attaching without a restore here meant the saved copy was never put back at all. Restoring is safe: it only
+        // takes a copy that names this person and is under 12 hours old, and it never replaces newer data in memory.
+        if (nextUserId) persister.attach(nextUserId)
         return
       }
 
