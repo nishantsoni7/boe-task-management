@@ -380,6 +380,13 @@
 .counter .proofHow { white-space: normal; }
 .evidence { display: inline-block; margin-top: 12px; }
 .findingNumber { margin: 0; font: 700 15px/1.45 var(--boe-font-heading); color: var(--boe-text); }
+/* Report cards (shared report, 16 Nov 2026): a quiet grid; good and bad blocks are told apart by a thin top rule. */
+.reportCards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; padding: 14px 20px 18px; }
+.reportCard { display: grid; gap: 8px; align-content: start; padding: 14px 16px; border: 1px solid var(--boe-border); border-top-width: 3px; border-radius: 10px; background: var(--boe-surface); min-width: 0; }
+.reportGood { border-top-color: var(--boe-completed-fg); }
+.reportBad { border-top-color: var(--boe-blocked-fg); }
+.reportValue { margin: 0; font: 800 20px/1.2 var(--boe-font-heading); color: var(--boe-text-strong); font-variant-numeric: tabular-nums; }
+.reportCard .proofs { padding: 4px 0 0; border-top: 0; }
 .qClicks { display: block; font-size: 11px; color: var(--boe-text-muted); }
 .planTable td:last-child { white-space: nowrap; }
 

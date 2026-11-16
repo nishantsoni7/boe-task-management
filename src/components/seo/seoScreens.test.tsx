@@ -3,7 +3,7 @@ import { strict as assert } from 'node:assert'
 import { describe, test } from 'node:test'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { SeoData } from '@/lib/seo/report'
-import { SAMPLE_BRIEF, SAMPLE_CASE, SAMPLE_REVIEW } from '@/lib/seo/sixMonthSample'
+import { SAMPLE_BRIEF, SAMPLE_CASE, SAMPLE_REPORT, SAMPLE_REVIEW } from '@/lib/seo/sixMonthSample'
 import { BoardBody } from './SeoBoard'
 import { BriefBody } from './SeoBrief'
 import { axisTicks, positionChange } from './SeoBriefCase'
@@ -133,6 +133,21 @@ describe('the 6-month review and the discussion brief', () => {
     assert.equal(page.includes('Give credit first'), false)
     assert.equal(page.includes(`aria-label="${SAMPLE_BRIEF.proof.title}"`), false)
     assert.ok(page.includes('Sample talk'))
+  })
+
+  test('a brief with a report is drawn as the report: its blocks in its order, its headings, none of the owner notes', () => {
+    const page = html(<BriefBody brief={SAMPLE_REPORT} />)
+    const order = ['Sample kicker', 'Sample report title', 'Sample tile', 'Sample went well', 'Sample win', 'Sample rankings in the report', 'sample keyword', 'Sample report table', 'Sample table takeaway.', 'Sample went wrong', 'Sample miss card', SAMPLE_CASE.proof.title, 'Sample case footnote.']
+    let at = -1
+    for (const text of order) {
+      const next = page.indexOf(text, at + 1)
+      assert.ok(next > at, `"${text}" comes after the part before it`)
+      at = next
+    }
+    for (const note of ['Before you start', 'The one message for this meeting', 'If he says', 'Say:', 'Give credit first', 'Be fair: not on him', SAMPLE_CASE.talk.title, SAMPLE_CASE.claims[0].claim, SAMPLE_CASE.freelance.title]) {
+      assert.equal(page.includes(note), false, `the report leaves out "${note}"`)
+    }
+    assert.ok(/<a [^>]*href="https:\/\/example\.com\/win"[^>]*target="_blank"/.test(page), 'a card proof opens its source in a new tab')
   })
 
   test('the chart axis rounds up to an easy number', () => {
