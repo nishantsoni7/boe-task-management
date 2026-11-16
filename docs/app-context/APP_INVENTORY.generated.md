@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `663cd17b` — Pricing: the watcher, a quoted price against the taught one (migration 20270729000000)
-- Commits on this branch: 1418
+- Commit: `ce3bb873` — Pricing: the watcher, a quoted price against the taught one (migration 20270729000000) (#863)
+- Commits on this branch: 1421
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 212
 - Migrations: 471 (first `20260530_create_positions.sql`, latest `20270729000000_pricing_taught_watcher.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1054   Enums: 0
@@ -14,7 +14,10 @@
 
 ## Latest 25 commits
 
-- `663cd17b` 2026-11-16 Pricing: the watcher, a quoted price against the taught one (migration 20270729000000)
+- `ce3bb873` 2026-11-16 Pricing: the watcher, a quoted price against the taught one (migration 20270729000000) (#863)
+- `d8240a8d` 2026-11-16 SEO report: at most three cards a row, readable proof rows + docs stamp for #860 (#862)
+- `03b1a061` 2026-11-16 Sales: a salesperson keeps the lead they add; Potential Clients no longer asks for the project value (2 migrations) (#861)
+- `58aafa55` 2026-11-16 SEO brief: a report layout for both sides of the conversation (#860)
 - `75f96361` 2026-11-16 Docs: stamp the Price logic page (#854) as merged ad508334, deployed 11:43 IST (no SQL) (#858)
 - `ad508334` 2026-11-16 Pricing: the Price logic page, submitted cases side by side (no SQL) (#854)
 - `53ec4160` 2026-11-16 Revert "Page speed fix: put the saved copy back when SIGNED_IN arrives first (no SQL) (#855)" (#857)
@@ -36,9 +39,6 @@
 - `f37ad21e` 2026-11-15 Docs: stamp #830 (AI calls use structured output) as merged 475569ea, deployed 21:46 IST (no SQL) (#831)
 - `0d8f051e` 2026-11-15 Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live (#840)
 - `ca8348f3` 2026-11-15 Docs: stamp the Training wooden structure change (#838) as merged 679f1306, deployed 23:26 IST, migration 20270723000000 applied (no SQL) (#841)
-- `679f1306` 2026-11-15 Pricing Training: the wooden structure is one priced row, with an optional wood share (migration 20270723000000, already applied) (#838)
-- `709a747b` 2026-11-15 Sales: files on a lead's update, by button, drag and drop and paste (migration 20270722000000, apply before merge) (#839)
-- `894aea2d` 2026-11-15 Docs: stamp the Training photo-read fix (#828) as merged 1d7fcac4, deployed 22:34 IST (no SQL) (#837)
 
 ## Pages by top-level area
 

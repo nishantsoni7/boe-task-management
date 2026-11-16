@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-16 — Pricing: the watcher, a quoted price against the taught one (branch `feat/price-watcher`, NOT MERGED, migration 20270729000000 NOT APPLIED) · migration `20270729000000_pricing_taught_watcher.sql` (alters one CHECK on a table: backup first)
+## 2026-11-16 — Pricing: the watcher, a quoted price against the taught one (PR #863 squash-merged 16 Nov 2026 13:30 IST as `ce3bb873`, deployed to production 13:32 IST; migration 20270729000000 rehearsed in a rolled-back transaction, then APPLIED by the owner after a backup, before the merge (confirmed on the live database, recorded)) · migration `20270729000000_pricing_taught_watcher.sql` (alters one CHECK on a table: backup first)
 - **Why.** The last piece of the owner's first brief: study the prices quoted, ask the person about a variation, and let the logic improve from the answers. Plan and defaults accepted on 16 Nov.
 - **Limit, said to the owner.** Only a line that PICKED a taught product can be compared. Lines without a pick are not watched; old quotations have none.
 - **Ask.** On a quotation line with a picked product, when the price typed is more than 5% from the taught price (in the line wood, with what the line leaves out or adds), the line says how far and which way, and offers "Why?": Quantity discount, Client relationship, Size is different, Material or finish is different, The taught price is wrong, Other, plus an optional note. Never forced: the quotation saves without an answer.
