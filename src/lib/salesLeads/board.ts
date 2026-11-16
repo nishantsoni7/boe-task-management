@@ -194,8 +194,8 @@ export function checklistFor(lead: Facts, quotationSent: boolean): { to: Stage; 
   const items = to === 'under_process'
     ? [item('contact', lead.first_contact_at ? 'Logged' : null)]
     : to === 'potential'
-      // The project value, not the quantity (20270711000000).
-      ? [item('requirement', lead.requirement), item('value', lead.expected_value_paise === null ? null : valueLabel(lead.expected_value_paise))]
+      // The requirement only: not the quantity (20270711000000), and not the project value (20270728000100), often not known yet.
+      ? [item('requirement', lead.requirement)]
       : [
           item('quotation', quotationSent ? 'Sent' : null),
           item('value', lead.expected_value_paise === null ? null : valueLabel(lead.expected_value_paise)),

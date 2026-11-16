@@ -1451,18 +1451,32 @@ await step('Browser users cannot fire the alert job', () =>
 {
   // ── What a move asks for: the project value, never the quantity (20270711000000) ──
   await db.exec(mig('20270711000000_sales_value_timeline_gates.sql'))
+  // Potential Clients stops asking for the value (20270728000100); Negotiation and Converted still do.
+  await db.exec(mig('20270728000100_sales_potential_without_value.sql'))
   const fresh = async phone => {
     const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, [phone])
     await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [L.lead.id, U.ashok])
     await one(U.ashok, `select public.add_sales_lead_comment($1, 'Spoke to him')`, [L.lead.id])
     return L.lead.id
   }
-  await step('Potential Clients asks for the requirement and the project value, not the quantity', async () => {
+  await step('Potential Clients asks for the requirement only: no project value, no quantity', async () => {
     const id = await fresh('+91 97111 00970')
     const r = await move(U.ashok, id, 'potential', 'under_process')
-    must(r.status === 'needs' && r.missing.includes('requirement') && r.missing.includes('value') && !r.missing.includes('quantity'), JSON.stringify(r.missing))
-    await facts(U.ashok, id, { requirement: '40 chairs', expected_value_paise: 400000000 })
-    must((await move(U.ashok, id, 'potential', 'under_process')).status === 'moved', 'with requirement and value, no quantity')
+    must(r.status === 'needs' && r.missing.length === 1 && r.missing[0] === 'requirement', JSON.stringify(r.missing))
+    await facts(U.ashok, id, { requirement: '40 chairs' })
+    const m = await move(U.ashok, id, 'potential', 'under_process')
+    must(m.status === 'moved' && m.lead.expected_value_paise === null, 'moved with the requirement alone: ' + JSON.stringify(m.missing ?? m.status))
+  })
+  await step('A lead that reached Potential Clients without a value is asked for it at Negotiation and at Converted', async () => {
+    const id = await fresh('+91 97111 00974')
+    await facts(U.ashok, id, { requirement: '60 chairs' })
+    must((await move(U.ashok, id, 'potential', 'under_process')).status === 'moved', 'to Potential Clients')
+    const n = await move(U.ashok, id, 'negotiation', 'potential')
+    must(n.status === 'needs' && n.missing.includes('value') && n.missing.includes('timeline') && n.missing.includes('quotation'), JSON.stringify(n.missing))
+    const c = await move(U.ashok, id, 'converted', 'potential')
+    must(c.status === 'needs' && c.missing.includes('value') && !c.missing.includes('requirement'), JSON.stringify(c.missing))
+    await facts(U.ashok, id, { expected_value_paise: 120000000 })
+    must((await move(U.ashok, id, 'converted', 'potential')).status === 'moved', 'with the value it closes')
   })
   await step('Negotiation asks for the quotation and the expected timeline (the value only when still empty), not the quantity', async () => {
     const id = await fresh('+91 97111 00971')
@@ -1480,6 +1494,77 @@ await step('Browser users cannot fire the alert job', () =>
     must((await move(U.ashok, id, 'converted', 'under_process')).status === 'moved', 'converted without a quantity')
     must(!(await scalar(`select position('''quantity''' in pg_get_functiondef('public.move_sales_lead(uuid, text, text, text, text, text, date)'::regprocedure)) > 0`)), 'quantity still asked')
   })
+}
+
+{
+  // ── The person who adds a lead keeps it, when they work leads themselves (20270728000000) ──
+  await db.exec(mig('20270728000000_sales_add_lead_keeps_own.sql'))
+  // Who may add: the dummy Salesperson (unticked since 20270529000000's checks), a Salesperson ticked by default, and a
+  // Manager (View all) who has also been given Create. Taken away again at the end.
+  await db.exec(`insert into public.grants values ('${U.dummy}', 'sales', 'create'), ('${U.ashok}', 'sales', 'create'), ('${U.manager}', 'sales', 'create')`)
+  await one(U.admin, `select public.set_sales_lead_holding($1, false)`, [U.dummy])
+  await one(U.admin, `select public.set_sales_lead_holding($1, null)`, [U.manager])
+  const add = (uid, phone) => one(uid, `select public.create_sales_lead($1, 'website', 'Hotel Keep')`, [phone])
+  const historyOf = async id => (await db.query(`select kind, to_user, actor from public.sales_lead_events where lead_id = $1 order by at, id`, [id])).rows
+  const keptBy = async (lead, who) => {
+    const r = await leadRow(lead.id)
+    must(r.assigned_to === who && r.assigned_by === who && r.assigned_at !== null, 'holder and giver are the adder: ' + JSON.stringify([r.assigned_to, r.assigned_by]))
+    const due = await scalar(`select next_due_on::text from public.sales_leads where id = $1`, [lead.id])
+    must(r.next_step === 'First call' && due === today, 'first call today: ' + r.next_step + ' ' + due)
+    must(r.stage === 'new' && r.created_by === who, 'a New lead, created by the adder')
+    const h = await historyOf(lead.id)
+    must(h.length === 2 && h[0].kind === 'added' && h[1].kind === 'allotted' && h[1].to_user === who && h[1].actor === who, 'history added then allotted: ' + JSON.stringify(h))
+  }
+  const notKept = async lead => {
+    const r = await leadRow(lead.id)
+    must(r.assigned_to === null && r.next_step === null && r.next_due_on === null, 'stays Not allotted: ' + JSON.stringify([r.assigned_to, r.next_step]))
+    must((await historyOf(lead.id)).map(h => h.kind).join() === 'added', 'only the added line')
+  }
+
+  await step('A Salesperson keeps the lead they add, even the unticked test account: holder, first call today, history, no alert', async () => {
+    const before = await notesFor(U.dummy, 'sales_lead_allotted')
+    const r = await add(U.dummy, '+91 97111 01101')
+    must(r.status === 'created' && r.lead.holder_name === 'Test Sales User (DUMMY)' && r.lead.assigned_at, JSON.stringify(r.lead))
+    await keptBy(r.lead, U.dummy)
+    must(await notesFor(U.dummy, 'sales_lead_allotted') === before, 'nobody tells a person about the lead they just added')
+    must(await sees(U.dummy, r.lead.id), 'it is on their own list')
+    const w = await one(U.dummy, `select public.sales_lead_no_answer($1)`, [r.lead.id])
+    must(w.status === 'saved', 'they can work it: ' + JSON.stringify(w))
+  })
+  await step('A Salesperson ticked "Can be given leads" keeps it too, and two people adding one number cannot both win', async () => {
+    const r = await add(U.ashok, '+91 97111 01102')
+    await keptBy(r.lead, U.ashok)
+    const again = await add(U.dummy, '+91 97111 01102')
+    must(again.status === 'duplicate' && again.lead.holder_name === 'Ashok', JSON.stringify(again))
+    must(Number(await scalar(`select count(*) from public.sales_leads where phone_e164 = '+919711101102'`)) === 1, 'one lead')
+  })
+  await step('A Lead manager and an Admin who are not ticked add a lead that stays Not allotted', async () => {
+    await notKept((await add(U.leadmgr, '+91 97111 01103')).lead)
+    await notKept((await add(U.admin, '+91 97111 01104')).lead)
+  })
+  await step('A Manager (View all) who is not ticked adds a lead that stays Not allotted', async () => {
+    await notKept((await add(U.manager, '+91 97111 01105')).lead)
+  })
+  await step('Ticked "Can be given leads", a Lead manager, an Admin and a Manager keep what they add', async () => {
+    for (const [who, phone] of [[U.leadmgr, '+91 97111 01106'], [U.admin, '+91 97111 01107'], [U.manager, '+91 97111 01108']]) {
+      await one(U.admin, `select public.set_sales_lead_holding($1, true)`, [who])
+      await keptBy((await add(who, phone)).lead, who)
+      await one(U.admin, `select public.set_sales_lead_holding($1, null)`, [who])
+    }
+  })
+  await step('A nobody (no Sales job) cannot add at all, and a person who works leads can still be given one by the rule as before', async () => {
+    await expectErr(U.nobody, `select public.create_sales_lead('+91 97111 01109', 'website')`, /SALES_FORBIDDEN/)
+    const L = await add(U.leadmgr, '+91 97111 01110')
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [L.lead.id, U.mohit])
+    must(await scalar(`select assigned_to = $2 from public.sales_leads where id = $1`, [L.lead.id, U.mohit]), 'allotting by hand is unchanged')
+  })
+  await step('The function keeps its grants and its guards', async () => {
+    must(await scalar(`select not has_function_privilege('anon', 'public.create_sales_lead(text, text, text, text, text, text)', 'EXECUTE')
+      and has_function_privilege('authenticated', 'public.create_sales_lead(text, text, text, text, text, text)', 'EXECUTE')`), 'grants')
+    await expectErr(null, `select public.create_sales_lead('+91 97111 01111', 'website')`, /SALES_FORBIDDEN/)
+    await expectErr(U.dummy, `select public.create_sales_lead('12', 'website')`, /valid mobile number/)
+  })
+  await db.exec(`delete from public.grants where action_key = 'create' and user_id in ('${U.dummy}', '${U.ashok}', '${U.manager}')`)
 }
 
 {

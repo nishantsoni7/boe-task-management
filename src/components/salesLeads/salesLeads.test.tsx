@@ -233,6 +233,13 @@ describe('the routes', () => {
     assert.ok(add.includes('createLead('))
   })
 
+  test('the Add lead screen says what happened: a kept lead is on your list, the others wait to be allotted', () => {
+    const add = read('src/components/salesLeads/AddLeadScreen.tsx')
+    assert.ok(add.includes("justSaved.assigned_at ? 'It is on your list, to call today. Add the next one.' : 'It is waiting to be allotted."), 'the banner follows what the database answered')
+    assert.ok(add.includes("canAssign ? 'Only the number and the source are needed. Allot it later, from the list.' : 'Only the number and the source are needed. A salesperson keeps the leads they add.'"), 'only somebody who can allot is told to allot later')
+    assert.ok(add.includes("canAssign ? 'Received today · you allot it from the list' : 'Received today'"))
+  })
+
   test('the list allots through one decision, and asks before changing a name', () => {
     const screen = read('src/components/salesLeads/LeadMasterScreen.tsx')
     assert.ok(screen.includes('allotStep(lead.assigned_to, toId)'))

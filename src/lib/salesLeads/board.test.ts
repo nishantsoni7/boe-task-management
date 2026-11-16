@@ -214,7 +214,7 @@ describe('the stage checklist', () => {
   test('asks for what the database asks for', () => {
     assert.deepEqual(checklistFor({ ...lead, stage: 'new' }, false)?.items.map(i => i.fact), ['contact'])
     assert.equal(checklistFor({ ...lead, stage: 'under_process' }, false), null, 'Visit / Meeting asks for nothing first')
-    assert.deepEqual(checklistFor(lead, false)?.items.map(i => i.fact), ['requirement', 'value'])
+    assert.deepEqual(checklistFor(lead, false)?.items.map(i => i.fact), ['requirement'], 'Potential Clients asks for the requirement only (20270728000100)')
     assert.deepEqual(checklistFor({ ...lead, stage: 'potential' }, false)?.items.map(i => i.fact), ['quotation', 'value', 'timeline'])
   })
   test('the owner\'s stages, in the owner\'s order (2026-11-13)', () => {
@@ -224,7 +224,8 @@ describe('the stage checklist', () => {
     assert.ok(sql.includes("'new', 'under_process', 'visit_meeting', 'potential', 'negotiation', 'follow_up_later', 'converted', 'dead'"))
   })
   test('counts what is left', () => {
-    assert.equal(checklistFor({ ...lead, requirement: 'Chairs' }, false)?.left, 1)
+    assert.equal(checklistFor(lead, false)?.left, 1)
+    assert.equal(checklistFor({ ...lead, requirement: 'Chairs' }, false)?.left, 0, 'the project value is not asked for Potential Clients')
     const check = checklistFor({ ...lead, stage: 'potential', expected_value_paise: 1_40_00_000, timeline: 'March' }, true)
     assert.equal(check?.left, 0)
     assert.equal(check?.items[1].value, '₹ 1.4 L')

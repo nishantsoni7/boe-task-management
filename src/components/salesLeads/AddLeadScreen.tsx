@@ -18,12 +18,13 @@ import { DetailFields, DupCallout, phoneCanSave, PhoneField, SourceField, usePho
 import { SalesFrame } from './SalesFrame'
 import s from './salesLeads.module.css'
 
-// Add lead: the number, where it came from, and whatever else is known. The lead is saved NOT allotted: who gets
-// it is chosen later, from the list. The received date is today in India, filled in by the database.
+// Add lead: the number, where it came from, and whatever else is known. The database gives the lead to the person
+// who adds it when they work leads themselves (a salesperson); otherwise it is saved NOT allotted and chosen later,
+// from the list. This screen only reads the answer. The received date is today in India, filled in by the database.
 
 export function AddLeadScreen() {
   const { ready } = usePermissionContext()
-  const { canCreate } = useSalesAccess()
+  const { canCreate, canAssign } = useSalesAccess()
   const router = useRouter()
   const queryClient = useQueryClient()
   const supabase = useMemo(() => createClient(), [])
@@ -83,7 +84,7 @@ export function AddLeadScreen() {
   if (errors.source) missing.push('a lead source')
   const why = raced || phone.kind === 'taken'
     ? 'Change the number, it is already a lead'
-    : missing.length > 0 ? `Still needed: ${missing.join(' and ')}` : 'Received today · you allot it from the list'
+    : missing.length > 0 ? `Still needed: ${missing.join(' and ')}` : canAssign ? 'Received today · you allot it from the list' : 'Received today'
 
   let body: React.ReactNode
   if (!ready) {
@@ -103,7 +104,7 @@ export function AddLeadScreen() {
           <div className="boe-callout boe-callout-success" role="status" style={{ marginBottom: 14 }}>
             <div>
               <span className="boe-callout-title">Lead #{justSaved.lead_no} saved</span>
-              <span>It is waiting to be allotted. Add the next one, or allot from the list.</span>
+              <span>{justSaved.assigned_at ? 'It is on your list, to call today. Add the next one.' : 'It is waiting to be allotted. Add the next one, or allot from the list.'}</span>
             </div>
           </div>
         )}
@@ -111,7 +112,7 @@ export function AddLeadScreen() {
           <div className={s.panelHead}>
             <div>
               <h2 className={s.panelTitle}>New lead</h2>
-              <div className={s.panelSub}>Only the number and the source are needed. Allot it later, from the list.</div>
+              <div className={s.panelSub}>{canAssign ? 'Only the number and the source are needed. Allot it later, from the list.' : 'Only the number and the source are needed. A salesperson keeps the leads they add.'}</div>
             </div>
             <div className={s.received} title="Filled in automatically. It stands for the day the lead was received.">
               <Lock aria-hidden="true" />
