@@ -4,6 +4,15 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-16 — Pricing: the watcher, a quoted price against the taught one (branch `feat/price-watcher`, NOT MERGED, migration 20270729000000 NOT APPLIED) · migration `20270729000000_pricing_taught_watcher.sql` (alters one CHECK on a table: backup first)
+- **Why.** The last piece of the owner's first brief: study the prices quoted, ask the person about a variation, and let the logic improve from the answers. Plan and defaults accepted on 16 Nov.
+- **Limit, said to the owner.** Only a line that PICKED a taught product can be compared. Lines without a pick are not watched; old quotations have none.
+- **Ask.** On a quotation line with a picked product, when the price typed is more than 5% from the taught price (in the line wood, with what the line leaves out or adds), the line says how far and which way, and offers "Why?": Quantity discount, Client relationship, Size is different, Material or finish is different, The taught price is wrong, Other, plus an optional note. Never forced: the quotation saves without an answer.
+- **Where the answer goes.** Into the line tag (`[Taught case #12; why Quantity discount]`), and as a row of the new kind "Differs from taught price" in Pricing → Price learning → Feedback, with taught price, quoted price, reason and a link to the case. The desk marks it Seen, Done or Declined as with other feedback.
+- **Learn.** Pricing → Price logic has a new card, "How each product is being quoted": per taught product, how many priced lines picked it, how many are within 5%, lower, higher, the reasons given, and every line with no reason (linked to its quotation).
+- **Never automatic.** No taught price is changed by the system; a person changes the case in Training.
+- **Safe in either order.** Before the migration the question still shows and the reason is kept on the line; only the inbox row is refused and the Price logic card stays away.
+- **Checks.** `supabase/tests/pricing_training_pglite.mjs` 14 of 14; `match.test.ts`, `TaughtPrice.test.tsx`; `tsc` and eslint clean; full `npm test` 0 failures. Not seen in a browser.
 ## 2026-11-16 — Pricing: the Price logic page (PR #854 squash-merged 16 Nov 2026 11:41 IST as `ad508334`, deployed to production 11:43 IST) · no migration
 - **Why.** The owner asked at the start for the price logic to be "visually visible in a separate section" where he and Nitish can check it and correct it. Plan and defaults accepted on 16 Nov.
 - **What.** Pricing → Price logic (`/pricing/logic`, third entry of `MORE_PAGES`): every SUBMITTED training case as a column (photo, name), one row per element name (capitals ignored), the amount in each cell, totals at the foot. A row is marked "varies" when its highest amount is more than 20% above its lowest. Clicking an amount shows how it was worked out (quantity × rate, material, wood share, the reason) with "Change in Training". A second table gives each case in every wood: taught wood, wood share, and the price per wood (a dash when it cannot be worked out).

@@ -5,6 +5,8 @@ import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchLibrary, photoUrl, trainingKeys } from '@/lib/pricing/training/api'
+import { sendFeedback, type FeedbackDoc } from '@/lib/pricing/learning/api'
+import type { DiffersReport } from '@/components/pricing/training/TaughtPrice'
 import { Check, ChevronDown, ChevronRight, FileUp, Copy, FileCheck2, FileSpreadsheet, Info, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
 import { draftDetailHref } from '@/lib/orders/draftsView'
 import { conversionProblems, type ConversionProblem } from '@/lib/quotations/piWorkbook'
@@ -90,7 +92,15 @@ export default function BuilderScreen() {
   const poolQ = useQuery({ queryKey: ['quotations', 'pool', id, typeWords], queryFn: () => fetchPool(supabase, typeWords.split(' '), id), enabled: accessLoaded && !notSetUp && typeWords !== '', staleTime: 300_000, retry: false })
   // Pricing > Training: the submitted cases a line can be told it is. Until 20270726000000 is applied the read fails and nothing shows.
   const libraryQ = useQuery({ queryKey: trainingKeys.library, queryFn: () => fetchLibrary(supabase), enabled: accessLoaded && !notSetUp, staleTime: 300_000, retry: false })
-  const taught = useMemo(() => libraryQ.data && { library: libraryQ.data, photo: (p: string) => photoUrl(supabase, p) }, [libraryQ.data, supabase])
+  // The reason for a price that differs from the taught one also goes to the Price learning inbox. If that send fails the reason is
+  // still on the line (in its note), where Pricing > Price logic reads it.
+  const taught = useMemo(() => libraryQ.data && {
+    library: libraryQ.data, photo: (p: string) => photoUrl(supabase, p),
+    differs: (r: DiffersReport, line: FeedbackDoc['line']) => {
+      void sendFeedback(supabase, { source: 'quotation', kind: 'differs_taught', comment: r.note || null, expected_price: r.quoted, line, client_type: null, quotation_id: id,
+        suggestion: { taught: { case_id: r.caseId, case_no: r.caseNo, case_name: r.caseName, price: r.taught, quoted: r.quoted, reason: r.reason } } }).catch(() => {})
+    },
+  }, [libraryQ.data, supabase, id])
   const [importing, setImporting] = useState(false)
   const router = useRouter()
   const dirtyRef = useRef(false)

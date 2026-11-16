@@ -18,7 +18,7 @@ export type TaughtCase = {
 }
 export type Part = { element: string; kind: string; amount: number }
 /** What a line says it is: a case, less the elements it leaves out, plus elements taught on other cases. */
-export type LinePick = { caseNo: number; without: string[]; with: { caseNo: number; element: string }[] }
+export type LinePick = { caseNo: number; without: string[]; with: { caseNo: number; element: string }[]; /** Why the price quoted differs from the taught one, once somebody has said. */ why?: string | null }
 export type LineWords = { name: string; material?: string | null; spec?: string | null; finish?: string | null }
 export type Library = { cases: TaughtCase[]; woods: string[] }
 
@@ -81,6 +81,7 @@ export function readPick(note: string | null | undefined): LinePick | null {
     const add = /^with #(\d+) (.+)$/.exec(bit)
     if (add) pick.with.push({ caseNo: Number(add[1]), element: add[2] })
     else if (bit.startsWith('without ')) pick.without.push(bit.slice(8).trim())
+    else if (bit.startsWith('why ')) pick.why = bit.slice(4).trim()
   }
   return pick
 }
@@ -88,7 +89,7 @@ export function readPick(note: string | null | undefined): LinePick | null {
 export function writePick(note: string | null | undefined, pick: LinePick | null): string {
   const rest = (note ?? '').replace(TAG, '').trim()
   if (!pick) return rest
-  const bits = [`Taught case #${pick.caseNo}`, ...pick.without.map(e => `without ${plain(e)}`), ...pick.with.map(w => `with #${w.caseNo} ${plain(w.element)}`)]
+  const bits = [`Taught case #${pick.caseNo}`, ...pick.without.map(e => `without ${plain(e)}`), ...pick.with.map(w => `with #${w.caseNo} ${plain(w.element)}`), ...(pick.why ? [`why ${plain(pick.why)}`] : [])]
   return [rest, `[${bits.join('; ')}]`].filter(Boolean).join(' ')
 }
 /** The case number picked for a line. */
@@ -124,4 +125,46 @@ export function taughtPrice(c: TaughtCase, line: LineWords, woods: readonly stri
   return inWood !== undefined
     ? { price: Number(inWood), wood, swapped: true, noRate: null }
     : { price: Number(c.total), wood: c.wood, swapped: false, noRate: other ? wood : null }
+}
+
+// ── The watcher (20270729000000): a quoted price against the taught one ──
+/** The reasons offered when a quoted price differs. Written into the tag as they read here. */
+export const REASONS = ['Quantity discount', 'Client relationship', 'Size is different', 'Material or finish is different', 'The taught price is wrong', 'Other'] as const
+/** A quoted price is asked about when it is more than this far from the taught one (owner default, 16 Nov 2026: 5%). */
+export const ASK_ABOVE = 0.05
+
+/** The whole taught price of a pick for a line: the case in the line's wood, with what the line leaves out or adds. */
+export function pickPrice(c: TaughtCase, pick: LinePick, line: LineWords, lib: Library): number {
+  return taughtPrice(c, line, lib.woods).price + adjustment(c, pick, lib.cases).delta
+}
+/** How far a quoted price is from the taught one, or null when it is close enough (or there is nothing to compare). */
+export function difference(quoted: number | null | undefined, taught: number): { amount: number; percent: number; below: boolean } | null {
+  if (!quoted || quoted <= 0 || taught <= 0) return null
+  const gap = quoted - taught
+  if (Math.abs(gap) <= taught * ASK_ABOVE) return null
+  return { amount: Math.abs(gap), percent: Math.round((Math.abs(gap) / taught) * 100), below: gap < 0 }
+}
+
+/** A priced quotation line that picked a taught product, as pricing_taught_quotes sends it. */
+export type TaughtQuote = LineWords & { quotation_id: string; quote_no: string | null; status: string; updated_at: string; owner_name: string | null; unit_price: number; internal_note: string | null }
+export type QuotedSummary = { lines: number; close: number; lower: number; higher: number; reasons: Record<string, number>; unexplained: (TaughtQuote & { taught: number })[] }
+
+/** For every taught case, how the lines that picked it were really priced. Lines whose case is no longer submitted are left out. */
+export function quotedAgainst(lib: Library, quotes: readonly TaughtQuote[]): Map<number, QuotedSummary> {
+  const out = new Map<number, QuotedSummary>()
+  for (const q of quotes) {
+    const pick = readPick(q.internal_note)
+    const c = pick && lib.cases.find(x => x.case_no === pick.caseNo)
+    if (!pick || !c) continue
+    const s = out.get(c.case_no) ?? { lines: 0, close: 0, lower: 0, higher: 0, reasons: {}, unexplained: [] }
+    out.set(c.case_no, s)
+    const taught = pickPrice(c, pick, q, lib)
+    const d = difference(Number(q.unit_price), taught)
+    s.lines++
+    if (!d) { s.close++; continue }
+    if (d.below) s.lower++; else s.higher++
+    if (pick.why) s.reasons[pick.why] = (s.reasons[pick.why] ?? 0) + 1
+    else s.unexplained.push({ ...q, taught })
+  }
+  return out
 }

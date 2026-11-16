@@ -299,4 +299,28 @@ let id
   ok('the library sends the elements a line may leave out: material, labour and other, never structure, overhead or margin')
 }
 
+{ // 20270729000000: the watcher. The tables it touches belong to other migrations, so the least of each stands in here.
+  await db.exec(`
+    create table public.quotations (id uuid primary key default gen_random_uuid(), quote_no text, status text, owner_id uuid, updated_at timestamptz default now());
+    create table public.quotation_lines (id uuid primary key default gen_random_uuid(), quotation_id uuid references public.quotations(id), name text, material text, spec text, finish text, unit_price bigint, internal_note text);
+    create table public.pricing_feedback (id uuid primary key default gen_random_uuid(), kind text not null check (kind in ('too_high', 'too_low', 'wrong_type', 'misread', 'other', 'correction')));
+    alter table public.quotations enable row level security; alter table public.quotation_lines enable row level security; alter table public.pricing_feedback enable row level security;
+    revoke all on public.quotations, public.quotation_lines, public.pricing_feedback from anon, authenticated;
+    insert into public.quotations (id, quote_no, status, owner_id) values ('00000000-0000-0000-0000-00000000aaaa', 'Q-1', 'sent', '${U.teacher}');
+    insert into public.quotation_lines (quotation_id, name, unit_price, internal_note) values
+      ('00000000-0000-0000-0000-00000000aaaa', 'Chair C - 1', 5000, 'Darker [Taught case #7; without Cane back; why Quantity discount]'),
+      ('00000000-0000-0000-0000-00000000aaaa', 'Chair C - 2', 0, '[Taught case #7]'),
+      ('00000000-0000-0000-0000-00000000aaaa', 'Table', 9000, 'no pick here');
+  `)
+  await assert.rejects(() => db.exec("insert into public.pricing_feedback (kind) values ('differs_taught')"), /pricing_feedback_kind_check/)
+  await db.exec(mig('20270729000000_pricing_taught_watcher.sql'))
+  await db.exec("insert into public.pricing_feedback (kind) values ('differs_taught'), ('too_high')")
+  await assert.rejects(() => db.exec("insert into public.pricing_feedback (kind) values ('gift')"), /pricing_feedback_kind_check/)
+  await fails(U.nobody, 'select public.pricing_taught_quotes()', [], /PRICING_TRAINING_FORBIDDEN/)
+  await fails(null, 'select public.pricing_taught_quotes()', [], /permission denied/, 'anon')
+  const q = await rpc(U.viewer, 'pricing_taught_quotes')
+  assert.deepEqual(q.map((x) => [x.quote_no, x.name, Number(x.unit_price), x.owner_name]), [['Q-1', 'Chair C - 1', 5000, 'Teacher']])   // priced lines with a pick only
+  ok('the watcher: feedback accepts differs_taught, and Pricing people read the priced lines that picked a taught product')
+}
+
 console.log(`all ${checks} checks passed`)

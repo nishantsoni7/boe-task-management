@@ -1308,6 +1308,8 @@ describe('the applied migrations are frozen', () => {
       '20270726000000_pricing_training_library.sql',
       // Pricing > Training: pricing_training_library() re-created with `parts` (the elements a quotation line may leave out or borrow). No table changed.
       '20270727000000_pricing_training_library_parts.sql',
+      // Pricing, the watcher: the CHECK on pricing_feedback.kind re-created with 'differs_taught' (no row changed), and the read-only pricing_taught_quotes().
+      '20270729000000_pricing_taught_watcher.sql',
     ])
   })
 
@@ -1838,6 +1840,7 @@ describe('the applied migrations are frozen', () => {
       '20270725000000_pricing_woods.sql',
       '20270726000000_pricing_training_library.sql',
       '20270727000000_pricing_training_library_parts.sql',
+      '20270729000000_pricing_taught_watcher.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
