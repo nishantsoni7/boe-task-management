@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { fetchLibrary, photoUrl, trainingKeys } from '@/lib/pricing/training/api'
 import { Check, ChevronDown, ChevronRight, FileUp, Copy, FileCheck2, FileSpreadsheet, Info, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
 import { draftDetailHref } from '@/lib/orders/draftsView'
 import { conversionProblems, type ConversionProblem } from '@/lib/quotations/piWorkbook'
@@ -87,6 +88,9 @@ export default function BuilderScreen() {
   // Pricing model v2: one pool for every product type on screen, then each line priced for its own parameters.
   const typeWords = useMemo(() => poolWords(hintNames.split('\n').map(productType).filter((t): t is string => !!t)).join(' '), [hintNames])
   const poolQ = useQuery({ queryKey: ['quotations', 'pool', id, typeWords], queryFn: () => fetchPool(supabase, typeWords.split(' '), id), enabled: accessLoaded && !notSetUp && typeWords !== '', staleTime: 300_000, retry: false })
+  // Pricing > Training: the submitted cases a line can be told it is. Until 20270726000000 is applied the read fails and nothing shows.
+  const libraryQ = useQuery({ queryKey: trainingKeys.library, queryFn: () => fetchLibrary(supabase), enabled: accessLoaded && !notSetUp, staleTime: 300_000, retry: false })
+  const taught = useMemo(() => libraryQ.data && { library: libraryQ.data, photo: (p: string) => photoUrl(supabase, p) }, [libraryQ.data, supabase])
   const [importing, setImporting] = useState(false)
   const router = useRouter()
   const dirtyRef = useRef(false)
@@ -396,7 +400,7 @@ export default function BuilderScreen() {
               <LineRow key={l.key} l={l} area={g.area} unit={unit} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
                 first={li === 0} last={li === g.lines.length - 1} url={p => pictureUrl(supabase, p)}
                 onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onImprove={() => setStudioFor(l.key)} onView={() => setViewing(l.key)}
-                hint={hintFor.get(l.name.trim())} model={modelFor.get(l.key)} onRemove={() => removeLine(l.key)}
+                hint={hintFor.get(l.name.trim())} model={modelFor.get(l.key)} taught={taught} onRemove={() => removeLine(l.key)}
                 feedbackCtx={seesWhy ? { clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) } : undefined}
                 onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
             ))}
