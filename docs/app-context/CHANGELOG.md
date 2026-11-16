@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-16 — Quotations: the client's swatches and drawings go to the PI draft (branch `feat/pi-draft-extra-pictures`; PR number added at the stamp) · no SQL
+## 2026-11-16 — Quotations: the client's swatches and drawings go to the PI draft (PR #848, squash-merged 2026-11-16 09:16 IST as `eaa05402` (on the owner's "merge when green"), deployed 09:18 IST (Vercel success on the merge commit)) · no SQL, no backup needed
 - **Owner ask.** "Carry the next process": the first follow-up of Start from a client file, owner chose all three kinds (swatch, drawing, reference).
 - **What.** Confirm → PI draft and Download in PI format put each line's other pictures (`reference_images`, 20270721000000) in the Customization column (K) of its PI row, beside the main picture in E. The PI reader already takes any picture anchored in K as a customization picture of that row, and Orders already stores and shows them (amber "customization" tag), so nothing changes there. Up to 4 across; more on a second line of a taller row.
 - **Size.** The PI upload limit is 10 MB. Extra pictures go on the PI at 800 px (`toJpeg` gained an optional size; default unchanged); main pictures always go; extras are added in product order while all pictures stay under 9 MB (`fitExtras`), and a missing or unreadable extra is left out, never a reason to fail the PI. When any were left out, the builder says how many (and stays on the quotation instead of opening the draft). The quotation keeps the full-size originals; the client's copy still never shows them.
