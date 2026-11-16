@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `65a81cd2` — Pricing: the wood list with rates, and the wood picked on a structure row (migration 20270725000000) (#845)
-- Commits on this branch: 1404
+- Commit: `bcac953b` — Docs: stamp the wood list (#845) as merged 65a81cd2, deployed 01:10 IST, migration 20270725000000 applied (no SQL)
+- Commits on this branch: 1405
 - Pages (`page.tsx`): 208   API routes (`route.ts`): 212
 - Migrations: 467 (first `20260530_create_positions.sql`, latest `20270726000000_pricing_training_library.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1053   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `bcac953b` 2026-11-16 Docs: stamp the wood list (#845) as merged 65a81cd2, deployed 01:10 IST, migration 20270725000000 applied (no SQL)
 - `65a81cd2` 2026-11-16 Pricing: the wood list with rates, and the wood picked on a structure row (migration 20270725000000) (#845)
 - `37e023cc` 2026-11-16 Docs: stamp Training submit-is-what-counts (#843) as merged cd8d6358, deployed 00:39 IST, migration 20270724000000 applied (no SQL) (#844)
 - `cd8d6358` 2026-11-16 Pricing Training: submitting is what counts, and a case can always be changed (migration 20270724000000, apply before merge) (#843)
@@ -38,7 +39,6 @@
 - `b5a94539` 2026-11-15 Page speed, part 12: a saved copy of the launcher, profile and task list, so a revisit paints at once (no SQL) (#810)
 - `826ea9c6` 2026-11-15 Control Center step 2: the six ?tab= screens get real routes, old addresses redirect (no SQL) (#821)
 - `8bcc1aa3` 2026-11-15 Pricing: heights alone are not a footprint, and a labelled size in feet is read (no SQL) (#822)
-- `f1b7ea2e` 2026-11-15 Control Center: Home and six areas, a searchable directory, no tabs, no pending work (no SQL) (#816)
 
 ## Pages by top-level area
 
