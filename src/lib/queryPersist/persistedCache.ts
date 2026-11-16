@@ -61,6 +61,8 @@ const isOwnOpenTaskList = (key: readonly unknown[]) => key[0] !== 'tasks' || (ke
 const SALES_PARTS: ReadonlySet<string> = new Set(['list', 'people', 'board', 'my-day'])
 function isSalesOrQuotationKey(key: readonly unknown[]): boolean {
   if (key[0] === 'sales-leads') return typeof key[1] === 'string' && SALES_PARTS.has(key[1]) && (key[1] !== 'list' || key[key.length - 1] === '')
+  // Phase C: the PI Drafts list (src/app/orders/drafts/page.tsx, PI_DRAFTS_KEY).
+  if (key[0] === 'orders') return key[1] === 'pi-drafts-list' && key.length === 2
   return key[0] === 'quotations' && key[1] === 'list'
 }
 
@@ -123,10 +125,26 @@ export function savePersistedCache(
   try {
     const keep = (q: Query) =>
       q.state.status === 'success'
-      && q.state.data !== undefined
+      && q.state.data != null
       && now - q.state.dataUpdatedAt <= PERSIST_MAX_AGE_MS
       && isPersistableKey(q.queryKey, userId)
     const state = dehydrate(qc, { shouldDehydrateQuery: keep })
+
+    // KEEP WHAT IS ALREADY SAVED BUT NO LONGER IN MEMORY. The in-memory cache forgets a result five minutes after the
+    // last screen using it is gone; saving only what is in memory would then delete a list from the saved copy while
+    // the person is still working elsewhere, and the next day's visit would find nothing. A result still under 12 hours
+    // old that this person saved earlier stays, unless a newer one for the same key is in memory.
+    try {
+      const raw = storage.getItem(PERSIST_KEY)
+      const before = raw ? (JSON.parse(raw, reviver) as Saved) : null
+      if (before && before.v === PERSIST_VERSION && before.owner === userId && Array.isArray(before.state?.queries)) {
+        const inMemory = new Set(state.queries.map(q => q.queryHash))
+        for (const q of before.state.queries) {
+          if (!inMemory.has(q.queryHash) && isPersistableKey(q.queryKey, userId) && q.state.data != null
+            && now - (q.state.dataUpdatedAt ?? 0) <= PERSIST_MAX_AGE_MS) state.queries.push(q)
+        }
+      }
+    } catch { /* an unreadable earlier copy is simply not merged */ }
     if (state.queries.length === 0) { wipePersistedCache(storage); return 0 }
 
     // Over the size cap: drop the biggest results first until it fits.

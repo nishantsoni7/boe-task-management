@@ -35,7 +35,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter } from 'next/navigation'
-import { useQueryClient } from '@tanstack/react-query'
+import { skipToken, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ClipboardCheck, Eye, Trash2, Upload } from 'lucide-react'
 import { PiFormatButton } from '@/components/orders/PiFormatLink'
 import { createClient } from '@/lib/supabase/client'
@@ -141,11 +141,18 @@ function matchesSearch(entry: PiDraftListEntry, q: string): boolean {
     .some(value => (value ?? '').toLowerCase().includes(q))
 }
 
+/**
+ * THE LIST LIVES IN THE SHARED QUERY CACHE (2026-11-16, persisted cache phase C), only so that a saved copy of it
+ * (src/lib/queryPersist/persistedCache.ts) can be shown while the fresh read is on its way. Nothing else changed: the
+ * list is still read, and every refresh and delete still goes through load() and the same routes. The key carries no
+ * person id; the copy is one person's and the cache is cleared whenever the signed-in person changes.
+ */
+const PI_DRAFTS_KEY = ['orders', 'pi-drafts-list'] as const
+
 export default function PiDraftsPage() {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [canCreate, setCanCreate] = useState(false)
   const [canReview, setCanReview] = useState(false)
-  const [entries, setEntries] = useState<PiDraftListEntry[] | null>(null)
   const [failed, setFailed] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
 
@@ -186,6 +193,16 @@ export default function PiDraftsPage() {
   const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
   const qc = useQueryClient()
+
+  // skipToken: this query never fetches by itself; it only holds what load() read (or a restored saved copy).
+  const draftsHeld = useQuery<PiDraftListEntry[] | null>({ queryKey: PI_DRAFTS_KEY, queryFn: skipToken })
+  const entries = draftsHeld.data ?? null
+  const setEntries = useCallback(
+    (next: PiDraftListEntry[] | null | ((current: PiDraftListEntry[] | null) => PiDraftListEntry[])) => {
+      qc.setQueryData<PiDraftListEntry[] | null>(PI_DRAFTS_KEY, current => (typeof next === 'function' ? next(current ?? null) : next))
+    },
+    [qc],
+  )
 
   // The status card and the search, both in the URL (see DRAFTS_LIST_PARAMS).
   // The box shows what is being typed and commits after the shared pause.
@@ -275,7 +292,7 @@ export default function PiDraftsPage() {
     }
 
     setEntries(rows.map(row => describeDraftListEntry(row, formatInr, advance.get(row.id) ?? null)))
-  }, [draftsQuery, supabase])
+  }, [draftsQuery, supabase, setEntries])
 
   useEffect(() => {
     let active = true
@@ -299,27 +316,37 @@ export default function PiDraftsPage() {
       // is under 30 s old: the guard above this page already resolved both, so asking again put two
       // more requests beside the drafts read, and a request waiting beside others finishes later. A
       // page opened after more than 30 s asks the database, exactly as before.
-      const [me, permissions, drafts] = await Promise.all([
+      //
+      // THE CAPABILITIES ARE SET AS SOON AS THEY ARE KNOWN, not when the rows arrive (phase C): the profile and the
+      // permissions are usually the guard's answers from a moment ago, so a saved copy of the list, shown while the
+      // rows are on their way, is drawn with the right buttons and groups from its first frame. The wait count is
+      // unchanged: this is a .then on the identity pair, inside the same one group.
+      const identity = Promise.all([
         callerProfile(qc, session.user.id),
         // Module entry is enforced by the Orders layout above this page, and row
         // visibility by RLS below it. What is resolved here is only whether to
         // offer the "New Order" button — an entry point, not an authority.
         callerModulePermissions(qc, supabase, session.user.id, 'orders'),
+      ]).then(([me, permissions]) => {
+        if (!active) return
+        const caps = deriveOrdersCapabilities(me?.role, permissions)
+        setProfile(me)
+        setActor({
+          userId: session.user.id,
+          // The project's established Admin check, read through the module that
+          // owns it rather than compared to a literal here — and deliberately not
+          // a permission: see submissionDeletion.ts and the migration header.
+          isAdmin: isAdminRole(me?.role),
+        })
+        setCanCreate(caps.canCreateOrder)
+        setCanReview(caps.canApproveOrderSubmission)
+      })
+      const [, drafts] = await Promise.all([
+        identity,
         draftsQuery(),
       ])
-      const caps = deriveOrdersCapabilities(me?.role, permissions)
 
       if (!active) return
-      setProfile(me)
-      setActor({
-        userId: session.user.id,
-        // The project's established Admin check, read through the module that
-        // owns it rather than compared to a literal here — and deliberately not
-        // a permission: see submissionDeletion.ts and the migration header.
-        isAdmin: isAdminRole(me?.role),
-      })
-      setCanCreate(caps.canCreateOrder)
-      setCanReview(caps.canApproveOrderSubmission)
       await load(drafts)
     }
 
@@ -387,7 +414,7 @@ export default function PiDraftsPage() {
       deletingRef.current = false
       setDeleting(false)
     }
-  }, [pendingDelete, load])
+  }, [pendingDelete, load, setEntries])
 
   const closeDeleteDialog = useCallback(() => {
     if (deletingRef.current) return

@@ -92,6 +92,49 @@ describe('phase B: Sales leads and quotations', () => {
   })
 })
 
+describe('phase C: the PI Drafts list, and keeping what is saved', () => {
+  test('the PI Drafts list is saved; nothing else under orders is', () => {
+    assert.equal(isPersistableKey(['orders', 'pi-drafts-list'], ME), true)
+    for (const key of [['orders'], ['orders', 'all'], ['orders', 'pi-drafts-list', 'x'], ['orders', 'dashboard']]) {
+      assert.equal(isPersistableKey(key, ME), false, JSON.stringify(key))
+    }
+  })
+
+  test('a result saved earlier survives the in-memory cache forgetting it, and a newer one replaces it', () => {
+    const qc = client(), storage = memoryStorage()
+    put(qc, ['quotations', 'list', 'mine'], [{ id: 1 }])
+    put(qc, ['orders', 'pi-drafts-list'], [{ id: 'a' }])
+    savePersistedCache(qc, ME, storage, NOW)
+    const later = client() // a new page session: the first list is gone from memory, a newer second one arrives
+    put(later, ['orders', 'pi-drafts-list'], [{ id: 'b' }], NOW + 1000)
+    savePersistedCache(later, ME, storage, NOW + 2000)
+    const back = client()
+    assert.equal(restorePersistedCache(back, ME, storage, NOW + 3000), 2)
+    assert.deepEqual(back.getQueryData(['quotations', 'list', 'mine']), [{ id: 1 }])
+    assert.deepEqual(back.getQueryData(['orders', 'pi-drafts-list']), [{ id: 'b' }])
+  })
+
+  test('an earlier copy is not kept past 12 hours, nor for somebody else', () => {
+    const qc = client(), storage = memoryStorage()
+    put(qc, ['quotations', 'list', 'mine'], [{ id: 1 }])
+    savePersistedCache(qc, ME, storage, NOW)
+    const later = client()
+    put(later, ['sales-leads', 'people'], [{ id: 'p' }], NOW + PERSIST_MAX_AGE_MS + 1000)
+    savePersistedCache(later, ME, storage, NOW + PERSIST_MAX_AGE_MS + 2000)
+    const back = client()
+    restorePersistedCache(back, ME, storage, NOW + PERSIST_MAX_AGE_MS + 3000)
+    assert.equal(back.getQueryData(['quotations', 'list', 'mine']), undefined)
+    assert.deepEqual(back.getQueryData(['sales-leads', 'people']), [{ id: 'p' }])
+  })
+
+  test('the PI Drafts page keeps its key and sets the capabilities as soon as they are known', () => {
+    const page = readFileSync(join(process.cwd(), 'src/app/orders/drafts/page.tsx'), 'utf8')
+    assert.ok(page.includes("const PI_DRAFTS_KEY = ['orders', 'pi-drafts-list'] as const"))
+    assert.ok(page.includes('const identity = Promise.all(['))
+    assert.ok(page.includes('const [, drafts] = await Promise.all(['))
+  })
+})
+
 describe('saving and restoring', () => {
   test('a saved result comes back, a Map included, with its original timestamp (so it is stale and is refetched)', () => {
     const storage = memoryStorage()
