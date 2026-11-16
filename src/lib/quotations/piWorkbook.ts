@@ -25,7 +25,7 @@ export type PiWorkbookInput = {
   dimensionUnit?: DimensionUnit
   areas: readonly QuoteArea[]
   lines: readonly QuoteLine[]
-  /** The picture for each line's image_path, as JPEG bytes. */
+  /** The picture for each line's image_path, and for each of its other pictures (references) that fit, as JPEG bytes. */
   pictures: ReadonlyMap<string, Uint8Array>
   today?: Date
 }
@@ -40,7 +40,33 @@ export type PiLine = {
   costPerPiece: number
   total: number
   imagePath: string | null
+  /** The line's other pictures (the client's swatch, drawing, reference; 20270721000000): customization pictures on the PI. */
+  extraPaths: string[]
 }
+
+/** The PI upload limit is 10 MB (process-draft); the sheet itself and the main pictures need room too. */
+export const PI_PICTURE_BUDGET_BYTES = 9 * 1024 * 1024
+
+/**
+ * Which extra pictures fit: the main pictures always go (the PI refuses a product without one); extras are added in
+ * product order while the pictures stay under the budget, and the rest are left out (counted, so Confirm can say so).
+ */
+export function fitExtras(mainBytes: number, extras: readonly { path: string; bytes: number }[], budget = PI_PICTURE_BUDGET_BYTES):
+  { keep: Set<string>; leftOut: number } {
+  const keep = new Set<string>()
+  let total = mainBytes
+  for (const e of extras) {
+    if (total + e.bytes > budget) continue
+    total += e.bytes
+    keep.add(e.path)
+  }
+  return { keep, leftOut: extras.length - keep.size }
+}
+
+// Extra pictures sit side by side in column K (the PI reader takes any picture anchored in K as a customization
+// picture of that row); four fit across, more go on a second line of a taller row.
+const EXTRA_PX = 72
+const EXTRAS_PER_LINE = 4
 
 export type PiFigures = {
   lines: PiLine[]
@@ -101,6 +127,7 @@ export function piFigures(input: Pick<PiWorkbookInput, 'money' | 'areas' | 'line
       costPerPiece,
       total: r2(quantity * costPerPiece),
       imagePath: l.image_path,
+      extraPaths: (l.references ?? []).map(r => r.path),
     }
   })
   const gross = r2(lines.reduce((s, l) => s + l.total, 0))
@@ -173,12 +200,20 @@ export async function buildPiWorkbook(input: PiWorkbookInput): Promise<Uint8Arra
     ws.getCell(`I${row}`).value = { formula: `C${row}*H${row}`, result: l.total }
     set(`J${row}`, l.sequence)
     set(`K${row}`, l.customization)
-    ws.getRow(row).height = 60
+    const extras = l.extraPaths.flatMap(p => { const b = input.pictures.get(p); return b ? [b] : [] })
+    ws.getRow(row).height = extras.length > EXTRAS_PER_LINE ? 120 : 60
     const bytes = l.imagePath ? input.pictures.get(l.imagePath) : undefined
     if (bytes) {
       const id = wb.addImage({ base64: toBase64(bytes), extension: 'jpeg' })
       ws.addImage(id, { tl: { col: 4.1, row: row - 1 + 0.1 }, ext: { width: 72, height: 72 } })
     }
+    // Column K is 40 characters (about 285 px) wide: each picture starts a quarter of the column further right, so its
+    // anchor stays in K, which is what makes it a customization picture of this row.
+    extras.forEach((b, j) => {
+      const id = wb.addImage({ base64: toBase64(b), extension: 'jpeg' })
+      const across = j % EXTRAS_PER_LINE, down = Math.floor(j / EXTRAS_PER_LINE)
+      ws.addImage(id, { tl: { col: 10 + 0.02 + across * 0.245, row: row - 1 + 0.05 + down * 0.5 }, ext: { width: EXTRA_PX, height: EXTRA_PX } })
+    })
   })
 
   // Footer: labels in G, amounts in I (I115 is always the discount).

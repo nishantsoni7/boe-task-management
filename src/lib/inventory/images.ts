@@ -18,10 +18,10 @@ export function fitWithin(width: number, height: number, maxEdge: number = MAX_E
  * than 1600 px, so every picture is re-drawn on a canvas and saved as a JPEG first. The browser applies the
  * camera's rotation while decoding, so an upright phone shot stays upright.
  */
-export async function toJpeg(file: Blob, quality = 0.86): Promise<Blob> {
+export async function toJpeg(file: Blob, quality = 0.86, maxEdge = MAX_EDGE): Promise<Blob> {
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
   try {
-    const { width, height } = fitWithin(bitmap.width, bitmap.height)
+    const { width, height } = fitWithin(bitmap.width, bitmap.height, maxEdge)
     const canvas = document.createElement('canvas')
     canvas.width = width
     canvas.height = height

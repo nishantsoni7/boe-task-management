@@ -5,7 +5,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseBoePiWorkbook } from '@/lib/pi/masterSheetParser'
-import { buildPiWorkbook, conversionProblems, piFigures, type PiWorkbookInput } from './piWorkbook'
+import { buildPiWorkbook, conversionProblems, fitExtras, piFigures, PI_PICTURE_BUDGET_BYTES, type PiWorkbookInput } from './piWorkbook'
 import type { QuoteArea, QuoteLine } from './math'
 
 const areas: QuoteArea[] = [
@@ -93,6 +93,36 @@ describe('quotation → PI workbook, read back by the real PI parser', () => {
     assert.deepEqual(res.blockingIssues.map(i => i.code), [])
     assert.equal(res.data.products.length, 85)
     assert.equal(res.data.commercial.grandTotal.amount, 85 * 1000 * 1.18)
+  })
+
+  test('a line\'s extra pictures (swatch, drawing, reference) arrive as customization pictures of THAT product, nine across two lines too', async () => {
+    const refs = (k: string, count: number) => Array.from({ length: count }, (_, j) => ({ path: `u/${k}-ref${j}.jpg`, kind: 'swatch' as const }))
+    const lines = [L({}), L({ references: refs('a', 2) }), L({}), L({ references: refs('b', 8) })]
+    const i = input(lines)
+    const pictures = new Map(i.pictures)
+    lines.forEach((l, k) => (l.references ?? []).forEach((r, j) => pictures.set(r.path, fakeJpeg(100 + k * 10 + j))))
+    const res = await parse({ ...i, pictures })
+    assert.deepEqual(res.blockingIssues.map(x => x.code), [])
+    assert.equal(res.data.representativeImages.length, 4, 'the main pictures are untouched')
+    const byRow = new Map<number, number>()
+    for (const c of res.data.customizationImages) byRow.set(c.row, (byRow.get(c.row) ?? 0) + 1)
+    assert.deepEqual([...byRow.entries()].sort((a, b) => a[0] - b[0]), [[33, 2], [35, 8]], 'rows 33 and 35 are products 2 and 4')
+    assert.ok(res.data.customizationImages.every(c => c.format === 'jpeg'))
+  })
+
+  test('an extra picture that was not loaded (or left out) is simply not on the PI; the PI still reads', async () => {
+    const lines = [L({ references: [{ path: 'u/missing.jpg', kind: 'drawing' }] })]
+    const res = await parse(input(lines))
+    assert.deepEqual(res.blockingIssues.map(x => x.code), [])
+    assert.equal(res.data.customizationImages.length, 0)
+  })
+
+  test('extras fit the 10 MB PI: main pictures always, extras in product order while they fit, the rest counted', () => {
+    const extras = [{ path: 'a', bytes: 3 }, { path: 'b', bytes: 5 }, { path: 'c', bytes: 2 }]
+    assert.deepEqual([...fitExtras(4, extras, 10).keep], ['a', 'c'])
+    assert.equal(fitExtras(4, extras, 10).leftOut, 1)
+    assert.equal(fitExtras(20, extras, 10).leftOut, 3, 'main pictures alone over the budget: no extras')
+    assert.equal(PI_PICTURE_BUDGET_BYTES < 10 * 1024 * 1024, true)
   })
 
   test('mixed GST rates give one GST figure that is each rate on its own lines', () => {

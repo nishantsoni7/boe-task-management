@@ -7,7 +7,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { describeSaveFailure, discardUnsavedDraft, WORKBOOK_UPLOAD_MIME, workbookObjectPath } from '@/lib/orders/saveDraftFlow'
 import { classifyError, pictureUrl, type Quotation } from './api'
-import { buildPiWorkbook, piLines } from './piWorkbook'
+import { toJpeg } from '@/lib/inventory/images'
+import { buildPiWorkbook, fitExtras, piLines } from './piWorkbook'
 
 type Supabase = SupabaseClient
 export type PiStage = 'pictures' | 'creating' | 'uploading' | 'verifying' | 'linking'
@@ -16,32 +17,59 @@ export const PI_STAGE_LABEL: Record<PiStage, string> = {
   verifying: 'Orders is checking the PI…', linking: 'Linking it to this quotation…',
 }
 
-export type PiDraftResult = { submissionId: string; draftReference: string | null; linkError: string | null }
+export type PiDraftResult = { submissionId: string; draftReference: string | null; linkError: string | null; extrasLeftOut: number }
 
-/** Every picture the PI needs, as bytes, from the public quotation bucket. Lines without one are skipped. */
-export async function loadPictures(s: Supabase, q: Pick<Quotation, 'lines'>): Promise<Map<string, Uint8Array>> {
-  const paths = [...new Set(piLines(q.lines).map(l => l.image_path).filter((p): p is string => !!p))]
+/** Extra pictures (swatch, drawing, reference) go on the PI at this size: enough to see a fabric or read a drawing. */
+const EXTRA_EDGE_PX = 800
+
+/**
+ * Every picture the PI needs, as bytes, from the public quotation bucket. Main pictures always (a line without one is
+ * skipped; the PI then refuses it as before). Each line's other pictures are made smaller and added while the PI stays
+ * under its upload limit; a missing or unreadable extra is simply left out, never a reason to fail the PI.
+ */
+export async function loadPictures(s: Supabase, q: Pick<Quotation, 'lines'>): Promise<{ pictures: Map<string, Uint8Array>; extrasLeftOut: number }> {
+  const lines = piLines(q.lines)
+  const paths = [...new Set(lines.map(l => l.image_path).filter((p): p is string => !!p))]
   const out = new Map<string, Uint8Array>()
   await Promise.all(paths.map(async p => {
     const res = await fetch(pictureUrl(s, p))
     if (!res.ok) throw new Error('A product picture could not be loaded. Check your connection and try again.')
     out.set(p, new Uint8Array(await res.arrayBuffer()))
   }))
-  return out
+  const extraPaths = [...new Set(lines.flatMap(l => (l.references ?? []).map(r => r.path)))].filter(p => !out.has(p))
+  const extras: { path: string; data: Uint8Array }[] = []
+  const loaded = await Promise.all(extraPaths.map(async path => {
+    try {
+      const res = await fetch(pictureUrl(s, path))
+      return res.ok ? new Uint8Array(await (await toJpeg(await res.blob(), 0.82, EXTRA_EDGE_PX)).arrayBuffer()) : null
+    } catch { return null }
+  }))
+  loaded.forEach((data, i) => { if (data) extras.push({ path: extraPaths[i], data }) })
+  const mainBytes = [...out.values()].reduce((n, b) => n + b.byteLength, 0)
+  const { keep, leftOut } = fitExtras(mainBytes, extras.map(e => ({ path: e.path, bytes: e.data.byteLength })))
+  for (const e of extras) if (keep.has(e.path)) out.set(e.path, e.data)
+  return { pictures: out, extrasLeftOut: leftOut + (extraPaths.length - extras.length) }
 }
 
-export async function piWorkbookFor(s: Supabase, q: Quotation): Promise<Uint8Array> {
+/** The PI workbook, and how many extra pictures had to be left out of it (to say so). */
+export async function piWorkbookFor(s: Supabase, q: Quotation): Promise<{ bytes: Uint8Array; extrasLeftOut: number }> {
   const h = q.header
-  return buildPiWorkbook({
+  const { pictures, extrasLeftOut } = await loadPictures(s, q)
+  const bytes = await buildPiWorkbook({
     quoteNo: q.quote_no, clientName: h.client_name, projectName: h.project_name, contactPhone: h.contact_phone,
     supplyState: h.supply_state, createdByName: q.owner_name, transportNote: h.transport_note,
-    money: h, dimensionUnit: h.dimension_unit, areas: q.areas, lines: q.lines, pictures: await loadPictures(s, q),
+    money: h, dimensionUnit: h.dimension_unit, areas: q.areas, lines: q.lines, pictures,
   })
+  return { bytes, extrasLeftOut }
 }
+
+/** What to tell the person when some of the client's extra pictures did not go on the PI. */
+export const extrasLeftOutText = (n: number) =>
+  `${n} of the client's extra picture${n === 1 ? ' was' : 's were'} left off the PI, to keep it under the 10 MB upload limit (or could not be loaded). They stay on the quotation.`
 
 export async function makePiDraft(s: Supabase, q: Quotation, onStage: (stage: PiStage) => void): Promise<PiDraftResult> {
   onStage('pictures')
-  const bytes = await piWorkbookFor(s, q)
+  const { bytes, extrasLeftOut } = await piWorkbookFor(s, q)
 
   onStage('creating')
   const created = await s.rpc('create_order_submission', { p_client_name: null, p_idempotency_key: crypto.randomUUID() })
@@ -90,6 +118,6 @@ export async function makePiDraft(s: Supabase, q: Quotation, onStage: (stage: Pi
 
   onStage('linking')
   const linked = await s.rpc('quotation_link_pi', { p_id: q.id, p_submission_id: submissionId })
-  if (linked.error) return { submissionId, draftReference: null, linkError: classifyError(linked.error).message }
-  return { submissionId, draftReference: (linked.data as { draft_reference: string | null }).draft_reference, linkError: null }
+  if (linked.error) return { submissionId, draftReference: null, linkError: classifyError(linked.error).message, extrasLeftOut }
+  return { submissionId, draftReference: (linked.data as { draft_reference: string | null }).draft_reference, linkError: null, extrasLeftOut }
 }
