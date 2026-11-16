@@ -289,4 +289,14 @@ let id
   ok('the library: submitted cases only, the price in another wood, elements only for people with Pricing')
 }
 
+{ // 20270727000000: the elements a line may leave out or borrow
+  await db.exec(mig('20270727000000_pricing_training_library_parts.sql'))
+  const sales = (await rpc(U.nobody, 'pricing_training_library')).cases.find((x) => x.name === 'Library chair')
+  assert.deepEqual(sales.parts.map((p) => [p.element, p.kind, Number(p.amount)]), [['Cane back', 'material', 1000]])   // never the structure
+  assert.equal(sales.lines, undefined)
+  assert.deepEqual(sales.in_wood, { teak: 7800 })
+  assert.equal((await rpc(U.viewer, 'pricing_training_library')).cases.find((x) => x.name === 'Library chair').lines.length, 2)
+  ok('the library sends the elements a line may leave out: material, labour and other, never structure, overhead or margin')
+}
+
 console.log(`all ${checks} checks passed`)

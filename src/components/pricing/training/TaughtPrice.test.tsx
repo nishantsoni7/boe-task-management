@@ -31,6 +31,15 @@ describe('taught price on a quotation line', () => {
     assert.ok(html({ note: '[Taught case #12]', c: withLines }).includes('What it is made of'))
   })
 
+  it('shows an adjusted price and what is different, and offers "This one is different" only once the elements arrive', () => {
+    assert.ok(!html({ note: '[Taught case #12]' }).includes('This one is different'))
+    const parts = { ...CHAIR, parts: [{ element: 'Back weaving', kind: 'material', amount: 1000 }] }
+    const h = html({ note: '[Taught case #12; without Back weaving; without Cane seat]', c: parts })
+    assert.ok(h.includes('Taught price, adjusted') && h.includes('4,500') && h.includes('without Back weaving'))
+    assert.ok(h.includes('no longer taught, so not counted: Cane seat') && h.includes('This one is different'))
+    assert.ok(!html({ note: '[Taught case #12]', c: parts, editable: false }).includes('This one is different'))
+  })
+
   it('says so when the picked case is no longer submitted', () => {
     assert.ok(html({ note: '[Taught case #99]' }).includes('Taught product #99 has no submitted price right now'))
   })

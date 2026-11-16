@@ -73,3 +73,7 @@
 .pickCard { display: grid; gap: 4px; align-content: start; text-align: left; padding: 8px; border-radius: 10px; border: 1px solid #E4DED7; background: #fff; font: 13px var(--boe-font-body); color: inherit; cursor: pointer; }
 .pickCard:hover, .pickCard[aria-pressed='true'] { border-color: var(--boe-brand); box-shadow: 0 0 0 1px var(--boe-brand); }
 .pickCard img, .pickNoPhoto { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; background: #F4F0E9; display: grid; place-items: center; color: #686D6C; font-size: 12px; }
+.diffSet { border: 1px solid #E4DED7; border-radius: 10px; padding: 6px 12px 8px; margin: 0; display: grid; gap: 2px; }
+.diffSet legend { padding: 0 4px; font: 600 13px var(--boe-font-body); color: #686D6C; }
+.diffRow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 40px; font-size: 14px; cursor: pointer; }
+.diffRow input { width: 18px; height: 18px; }
