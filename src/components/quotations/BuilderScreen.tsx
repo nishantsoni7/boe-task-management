@@ -8,7 +8,7 @@ import { fetchLibrary, photoUrl, trainingKeys } from '@/lib/pricing/training/api
 import { Check, ChevronDown, ChevronRight, FileUp, Copy, FileCheck2, FileSpreadsheet, Info, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
 import { draftDetailHref } from '@/lib/orders/draftsView'
 import { conversionProblems, type ConversionProblem } from '@/lib/quotations/piWorkbook'
-import { PI_STAGE_LABEL, makePiDraft, piWorkbookFor, type PiStage } from '@/lib/quotations/toPiDraft'
+import { PI_STAGE_LABEL, extrasLeftOutText, makePiDraft, piWorkbookFor, type PiStage } from '@/lib/quotations/toPiDraft'
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
@@ -168,8 +168,11 @@ export default function BuilderScreen() {
     setBusy(true); setMsg(null)
     try {
       const r = await makePiDraft(supabase, base, setPiStage)
-      if (!r.linkError) { router.push(draftDetailHref(r.submissionId)); return }
-      setMsg({ tone: 'warn', text: `The PI draft was made (Orders → PI Drafts), but this quotation could not be linked to it: ${r.linkError}` })
+      // Some of the client's extra pictures did not fit: say so here (and stay) rather than lose the note on the way to the draft.
+      if (!r.linkError && !r.extrasLeftOut) { router.push(draftDetailHref(r.submissionId)); return }
+      setMsg({ tone: 'warn', text: r.linkError
+        ? `The PI draft was made (Orders → PI Drafts), but this quotation could not be linked to it: ${r.linkError}`
+        : `The PI draft was made (Orders → PI Drafts). ${extrasLeftOutText(r.extrasLeftOut)}` })
       await quoteQ.refetch()
     } catch (e) {
       setMsg({ tone: 'bad', text: errorText(e) })
@@ -179,7 +182,8 @@ export default function BuilderScreen() {
     if (!base || busy) return
     setBusy(true)
     try {
-      const bytes = await piWorkbookFor(supabase, base)
+      const { bytes, extrasLeftOut } = await piWorkbookFor(supabase, base)
+      if (extrasLeftOut) setMsg({ tone: 'warn', text: extrasLeftOutText(extrasLeftOut) })
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
       const a = document.createElement('a')
       a.href = url; a.download = `${base.quote_no} PI.xlsx`; a.click()
