@@ -7,7 +7,7 @@ import type { PriceHint } from '@/lib/quotations/api'
 import { sizeInInches, type DimensionUnit, type LineRef, type QuoteArea, type QuoteLine } from '@/lib/quotations/math'
 import type { ModelSuggestion } from '@/lib/pricing/model'
 import { PriceHintLine } from './PricingDesk'
-import { TaughtPrice } from '@/components/pricing/training/TaughtPrice'
+import { TaughtPrice, type DiffersReport } from '@/components/pricing/training/TaughtPrice'
 import type { Library } from '@/lib/pricing/training/match'
 import { Pic } from './Pic'
 import s from './quotations.module.css'
@@ -26,7 +26,7 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
   url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onImprove: () => void; onView: () => void
   hint?: PriceHint; model?: ModelSuggestion | null
   /** Submitted training cases to pick from (Pricing > Training), and where their photos are. */
-  taught?: { library: Library; photo: (path: string) => string }
+  taught?: { library: Library; photo: (path: string) => string; differs?: (r: DiffersReport, line: { name: string; size: string | null; material: string | null; finish: string | null; qty: number }) => void }
   /** Who and what the price feedback is about; given by the builder, which knows the quotation. */
   feedbackCtx?: { clientType: string | null; quotationId: string | null; isDesk: boolean }
   onRemove: () => void; onMove: (d: -1 | 1) => void; onDuplicate: () => void
@@ -97,7 +97,8 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
           </label>
         </div>
         {taught && <TaughtPrice library={taught.library} photo={taught.photo} line={l} note={l.internal_note} price={l.unit_price} editable={editable}
-          onNote={n => onChange({ internal_note: n })} onUse={p => onChange({ unit_price: Math.round(p) })} />}
+          onNote={n => onChange({ internal_note: n })} onUse={p => onChange({ unit_price: Math.round(p) })}
+          onDiffers={taught.differs && (r => taught.differs!(r, { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }))} />}
         <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p) })}
           feedback={feedbackCtx && { line: { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }, ...feedbackCtx }} />
         <div className={s.plFoot}>

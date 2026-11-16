@@ -11,9 +11,9 @@ import { AppLink as Link } from '@/components/ui/AppLink'
 import { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
 import { KIND_LABEL, type Kind } from '@/lib/pricing/training/doc'
-import { fetchAccess, fetchCase, fetchCases, fetchLibrary, photoUrl, trainingKeys, type TrainingError } from '@/lib/pricing/training/api'
+import { fetchAccess, fetchCase, fetchCases, fetchLibrary, fetchTaughtQuotes, photoUrl, trainingKeys, type TrainingError } from '@/lib/pricing/training/api'
 import { logicRows } from '@/lib/pricing/training/logic'
-import { sameElement } from '@/lib/pricing/training/match'
+import { quotedAgainst, sameElement } from '@/lib/pricing/training/match'
 import t from './training.module.css'
 
 export function PriceLogic() {
@@ -21,6 +21,9 @@ export function PriceLogic() {
   const access = useQuery({ queryKey: trainingKeys.access, queryFn: () => fetchAccess(supabase), retry: false })
   const library = useQuery({ queryKey: trainingKeys.library, queryFn: () => fetchLibrary(supabase), enabled: access.isSuccess, retry: false })
   const all = useQuery({ queryKey: trainingKeys.list, queryFn: () => fetchCases(supabase), enabled: access.isSuccess, retry: false })
+  // The watcher: until 20270729000000 is applied this read fails and the section stays away.
+  const quotes = useQuery({ queryKey: trainingKeys.quotes, queryFn: () => fetchTaughtQuotes(supabase), enabled: access.isSuccess, retry: false })
+  const quoted = useMemo(() => library.data && quotes.data ? quotedAgainst(library.data, quotes.data) : null, [library.data, quotes.data])
   const [open, setOpen] = useState<{ id: string; element: string } | null>(null)
   const detail = useQuery({ queryKey: trainingKeys.one(open?.id ?? ''), queryFn: () => fetchCase(supabase, open!.id), enabled: !!open, retry: false })
   const err = (access.error ?? library.error) as TrainingError | null
@@ -95,6 +98,29 @@ export function PriceLogic() {
               <span><Link href={`/pricing/training/${open.id}`}>Change in Training</Link></span>
             </div>
           )}
+        </div>
+      )}
+
+      {cases.length > 0 && quoted && (
+        <div className={t.card}>
+          <div className={t.cardH}>How each product is being quoted</div>
+          <div className={t.cardB}>
+            {cases.map(c => {
+              const q = quoted.get(c.case_no)
+              const why = q ? Object.entries(q.reasons).map(([r, n]) => `${r} (${n})`).join(', ') : ''
+              return (
+                <div key={c.id}>
+                  <b>#{c.case_no} {c.name}</b>{' '}
+                  {!q ? <span className={t.muted}>not picked on any priced quotation line yet</span>
+                    : <span>on {q.lines} {q.lines === 1 ? 'line' : 'lines'}: {q.close} within 5%, {q.lower} lower, {q.higher} higher{why ? ` · reasons given: ${why}` : ''}</span>}
+                  {q?.unexplained.map((u, i) => (
+                    <div key={i} className={t.muted}>No reason given: <Link href={`/quotations/${u.quotation_id}`}>{u.quote_no ?? 'a quotation'}</Link> · {u.name} · quoted {formatINR(Number(u.unit_price))} against {formatINR(u.taught)}{u.owner_name ? ` · ${u.owner_name}` : ''}</div>
+                  ))}
+                </div>
+              )
+            })}
+            <span className={t.muted}>A line counts once it has a price and has picked a taught product. More than 5% away from the taught price, the person quoting is asked why.</span>
+          </div>
         </div>
       )}
 

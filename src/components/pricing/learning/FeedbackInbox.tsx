@@ -46,7 +46,8 @@ export function FeedbackInbox({ supabase }: { supabase: Supabase }) {
 function Row({ r, busy, onSet }: { r: FeedbackRow; busy: boolean; onSet: (status: FeedbackRow['status'], note: string | null) => void }) {
   const [note, setNote] = useState<'done' | 'declined' | null>(null)
   const [text, setText] = useState('')
-  const sg = r.suggestion
+  const td = r.suggestion?.taught ?? null
+  const sg = r.suggestion && !r.suggestion.taught ? r.suggestion : null
   const detail = [r.line_size, r.line_material, r.line_qty ? `${r.line_qty} pcs` : null].filter(Boolean).join(' · ')
   return (
     <div className={l.ib}>
@@ -56,7 +57,8 @@ function Row({ r, busy, onSet }: { r: FeedbackRow; busy: boolean; onSet: (status
         {detail && <small>{detail}</small>}
         <div className={s.small}>
           {sg && <>The model said <b>{formatINR(sg.price)}</b> ({formatINR(sg.low)}–{formatINR(sg.high)}, {sg.confidence})</>}
-          {r.expected_price && <>{sg ? ' · ' : ''}they would quote <b>{formatINR(r.expected_price)}</b></>}
+          {r.expected_price && !td && <>{sg ? ' · ' : ''}they would quote <b>{formatINR(r.expected_price)}</b></>}
+          {td && <>Taught <b>{formatINR(td.price)}</b>, quoted <b>{formatINR(td.quoted)}</b> · reason: <b>{td.reason}</b> · <Link href={`/pricing/training/${td.case_id}`} className={s.linkBtn}>#{td.case_no} {td.case_name}</Link></>}
         </div>
         {sg?.reasons && sg.reasons.length > 0 && <small>It showed: {sg.reasons.join(' · ')}</small>}
         <small style={{ display: 'block' }}>{r.from_name ?? 'Someone'} · {dateIN(r.created_at)}{r.source === 'learning' ? ' · from a blind test' : ''}
