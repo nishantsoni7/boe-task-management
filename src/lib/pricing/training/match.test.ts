@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { adjustment, borrowable, byLikeness, lineWood, pickedCaseNo, readPick, taughtPrice, withPick, writePick, type TaughtCase } from './match'
+import { adjustment, borrowable, byLikeness, difference, lineWood, pickedCaseNo, pickPrice, quotedAgainst, readPick, taughtPrice, withPick, writePick, type TaughtCase, type TaughtQuote } from './match'
 
 const WOODS = ['Sheesham', 'Teak', 'Mango']
 const CHAIR: TaughtCase = { id: 'a', case_no: 12, name: 'Arm chair, cane back', variant: null, image_path: null, total: 5500, wood: 'sheesham', wood_amount: 2300, in_wood: { teak: 7800 } }
@@ -64,5 +64,46 @@ describe('a picked product that is different', () => {
   it('offers from other cases only the elements this case does not have', () => {
     assert.deepEqual(borrowable(A, [A, B]).map(x => x.part.element), ['Brass caps'])
     assert.deepEqual(borrowable(B, [A, B]).map(x => x.part.element), ['Finish; matte [PU]'])
+  })
+})
+
+describe('the watcher: a quoted price against the taught one', () => {
+  const C: TaughtCase = { ...CHAIR, parts: [{ element: 'Back weaving', kind: 'material', amount: 1000 }] }
+  const lib = { cases: [C], woods: WOODS }
+  const quote = (unit_price: number, internal_note: string, material = ''): TaughtQuote => ({ quotation_id: 'q', quote_no: 'Q-1', status: 'sent', updated_at: '2026-11-16', owner_name: 'A', name: 'Chair', material, unit_price, internal_note })
+
+  it('asks only when the price is more than 5% away, and says which way', () => {
+    assert.equal(difference(5500, 5500), null)
+    assert.equal(difference(5225, 5500), null, 'exactly 5% is close enough')
+    assert.deepEqual(difference(4840, 5500), { amount: 660, percent: 12, below: true })
+    assert.deepEqual(difference(6050, 5500), { amount: 550, percent: 10, below: false })
+    assert.equal(difference(null, 5500), null)
+    assert.equal(difference(0, 5500), null)
+  })
+
+  it('keeps the reason in the tag, after the differences', () => {
+    const note = writePick('', { caseNo: 12, without: ['Back weaving'], with: [], why: 'Quantity discount' })
+    assert.equal(note, '[Taught case #12; without Back weaving; why Quantity discount]')
+    assert.deepEqual(readPick(note), { caseNo: 12, without: ['Back weaving'], with: [], why: 'Quantity discount' })
+    assert.equal(writePick(note, { ...readPick(note)!, why: null }), '[Taught case #12; without Back weaving]')
+  })
+
+  it('prices a pick whole: the wood of the line, then what it leaves out', () => {
+    assert.equal(pickPrice(C, readPick('[Taught case #12; without Back weaving]')!, { name: 'Chair', material: 'Teak' }, lib), 6800)
+  })
+
+  it('sums up, per taught product, how the lines that picked it were priced', () => {
+    const s = quotedAgainst(lib, [
+      quote(5500, '[Taught case #12]'),
+      quote(4000, '[Taught case #12; why Quantity discount]'),
+      quote(4000, '[Taught case #12; why Quantity discount]'),
+      quote(7000, '[Taught case #12]'),
+      quote(4500, '[Taught case #12; without Back weaving]'),
+      quote(9999, '[Taught case #77]'),
+      quote(9999, 'no pick'),
+    ]).get(12)!
+    assert.deepEqual([s.lines, s.close, s.lower, s.higher], [5, 2, 2, 1])
+    assert.deepEqual(s.reasons, { 'Quantity discount': 2 })
+    assert.deepEqual(s.unexplained.map(u => [u.unit_price, u.taught]), [[7000, 5500]])
   })
 })

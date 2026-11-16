@@ -8,15 +8,21 @@ import { useState } from 'react'
 import { formatINR } from '@/lib/currency'
 import { useDialogFocus } from '@/components/salesLeads/useDialogFocus'
 import { KIND_LABEL, type Kind } from '@/lib/pricing/training/doc'
-import { adjustment, borrowable, byLikeness, readPick, sameElement, taughtPrice, withPick, writePick, type Library, type LineWords, type LinePick, type TaughtCase } from '@/lib/pricing/training/match'
+import { adjustment, borrowable, byLikeness, difference, readPick, REASONS, sameElement, taughtPrice, withPick, writePick, type Library, type LineWords, type LinePick, type TaughtCase } from '@/lib/pricing/training/match'
 import t from './training.module.css'
 
-export function TaughtPrice({ library, photo, line, note, price, editable, onNote, onUse }: {
+/** What is sent when somebody says why a quoted price differs from the taught one. */
+export type DiffersReport = { caseId: string; caseNo: number; caseName: string; taught: number; quoted: number; reason: string; note: string }
+
+export function TaughtPrice({ library, photo, line, note, price, editable, onNote, onUse, onDiffers }: {
   library: Library; photo: (path: string) => string; line: LineWords; note: string | null | undefined
   price: number | null; editable: boolean; onNote: (note: string) => void; onUse: (p: number) => void
+  onDiffers?: (r: DiffersReport) => void
 }) {
   const [picking, setPicking] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
+  const [reason, setReason] = useState('')
+  const [words, setWords] = useState('')
   const pick = readPick(note)
   const no = pick?.caseNo ?? null
   const c = no === null ? null : library.cases.find(x => x.case_no === no) ?? null
@@ -27,6 +33,14 @@ export function TaughtPrice({ library, photo, line, note, price, editable, onNot
   const adj = c && pick ? adjustment(c, pick, library.cases) : null
   const p = base && adj ? { ...base, price: base.price + adj.delta } : null
   const differs = !!adj && (adj.without.length > 0 || adj.with.length > 0)
+  // The watcher (owner, 16 Nov 2026): more than 5% from the taught price, the person is asked why. Never forced.
+  const gap = p ? difference(price, p.price) : null
+  const say = () => {
+    if (!c || !p || !pick || !reason || price === null) return
+    onNote(writePick(note, { ...pick, why: reason }))
+    onDiffers?.({ caseId: c.id, caseNo: c.case_no, caseName: c.name, taught: p.price, quoted: price, reason, note: words.trim() })
+    setReason(''); setWords('')
+  }
 
   return (
     <div className={t.taught}>
@@ -57,6 +71,22 @@ export function TaughtPrice({ library, photo, line, note, price, editable, onNot
             </details>
           )}
         </>
+      )}
+      {gap && pick && (
+        <div className={t.taughtAsk} role="group" aria-label="Why the price differs from the taught price">
+          <span>{formatINR(gap.amount)} ({gap.percent}%) {gap.below ? 'below' : 'above'} the taught price.{pick.why ? <> Reason: <b>{pick.why}</b></> : !editable ? ' No reason given.' : ''}</span>
+          {editable && pick.why && <button type="button" className={t.taughtLink} onClick={() => onNote(writePick(note, { ...pick, why: null }))}>Change reason</button>}
+          {editable && !pick.why && (
+            <>
+              <select className="boe-input" aria-label="Why does it differ?" value={reason} onChange={e => setReason(e.target.value)}>
+                <option value="">Why?</option>
+                {REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+              {reason && <input className="boe-input" aria-label="A note for the pricing desk (optional)" placeholder="A note (optional)" maxLength={300} value={words} onChange={e => setWords(e.target.value)} />}
+              {reason && <button type="button" className={t.taughtUse} onClick={say}>Save reason</button>}
+            </>
+          )}
+        </div>
       )}
       {no !== null && editable && (
         <span className={t.taughtActs}>

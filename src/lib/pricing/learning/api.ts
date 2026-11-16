@@ -25,7 +25,9 @@ export type LearningPiRow = {
 }
 export type LearningBatch = { batch: LearningBatchRow & { created_by_name: string | null; note: string | null }; pis: LearningPiRow[] }
 
-export type FeedbackKind = 'too_high' | 'too_low' | 'wrong_type' | 'misread' | 'other' | 'correction'
+export type FeedbackKind = 'too_high' | 'too_low' | 'wrong_type' | 'misread' | 'other' | 'correction' | 'differs_taught'
+/** With kind differs_taught (20270729000000): the taught product a line picked, its taught price, and why the quote differs. */
+export type TaughtDiff = { case_id: string; case_no: number; case_name: string; price: number; quoted: number; reason: string }
 export type FeedbackDoc = {
   source: 'quotation' | 'learning'
   kind: FeedbackKind
@@ -33,7 +35,7 @@ export type FeedbackDoc = {
   expected_price: number | null
   line: { name: string; size?: string | null; material?: string | null; finish?: string | null; qty?: number | null }
   client_type: string | null
-  suggestion: { price: number; low: number; high: number; confidence: string; reasons: string[]; basis: string } | null
+  suggestion: { price: number; low: number; high: number; confidence: string; reasons: string[]; basis: string; taught?: undefined } | { taught: TaughtDiff } | null
   quotation_id: string | null
 }
 export type FeedbackRow = {

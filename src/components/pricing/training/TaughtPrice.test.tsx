@@ -40,6 +40,15 @@ describe('taught price on a quotation line', () => {
     assert.ok(!html({ note: '[Taught case #12]', c: parts, editable: false }).includes('This one is different'))
   })
 
+  it('asks why when the price typed is more than 5% from the taught price, and shows the reason once given', () => {
+    assert.ok(!html({ note: '[Taught case #12]', price: 5400 }).includes('the taught price.'), 'close enough: no question')
+    const ask = html({ note: '[Taught case #12]', price: 4840 })
+    assert.ok(ask.includes('660') && ask.includes('(12%) below the taught price.') && ask.includes('Why?') && ask.includes('Quantity discount'))
+    const told = html({ note: '[Taught case #12; why Client relationship]', price: 4840 })
+    assert.ok(told.includes('Reason: <b>Client relationship</b>') && told.includes('Change reason') && !told.includes('Why?'))
+    assert.ok(html({ note: '[Taught case #12]', price: 6050, editable: false }).includes('(10%) above the taught price. No reason given.'))
+  })
+
   it('says so when the picked case is no longer submitted', () => {
     assert.ok(html({ note: '[Taught case #99]' }).includes('Taught product #99 has no submitted price right now'))
   })

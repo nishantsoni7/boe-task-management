@@ -15,5 +15,5 @@ export const dateIN = (v: string) => formatDateIN(v.length > 10 ? istDateOf(v) :
 export const inNum = (n: number) => Math.round(n).toLocaleString('en-IN')
 
 export const KIND_LABEL: Record<string, string> = {
-  too_high: 'Looks too high', too_low: 'Looks too low', wrong_type: 'Wrong kind of product', misread: 'A detail was misread', other: 'Other', correction: 'Correct the logic',
+  too_high: 'Looks too high', too_low: 'Looks too low', wrong_type: 'Wrong kind of product', misread: 'A detail was misread', other: 'Other', correction: 'Correct the logic', differs_taught: 'Differs from taught price',
 }
