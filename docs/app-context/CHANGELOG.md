@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-16 — Quotations: Crop & rotate a picture in the scan review (branch `feat/scan-review-crop`; PR number added at the stamp) · no SQL
+- **Owner ask.** "Carry the next process": the second follow-up of Start from a client file; the owner chose option A, trim and rotate (not redrawing the box on the page).
+- **What.** In the review of Start from a client file / Import client file, each product's picture has a **Crop** button, and each swatch, drawing or reference picture opens Crop when tapped. `CropDialog.tsx` trims each side inward (0-45%) and turns a quarter at a time, with the same drawing as Improve picture → Crop & rotate (`drawCrop` and `Insets` are now exported from `StudioDialog.tsx`, unchanged). "Use this picture" replaces that picture on this device before anything is saved; a picture shared by two rows changes for both. The Crop dialog renders beside the review, not inside its backdrop, so a click outside it never closes the review and loses its rows.
+- **Not fixed by this.** A picture cut too tight (part of the product missing): choose a spare picture, or Replace after adding.
+- **Proof.** tsc, eslint, quotation tests (228). Not seen in a browser or on a phone.
+
 ## 2026-11-16 — Quotations: "This one is different" on a picked taught product (PR #850 squash-merged 16 Nov 2026 10:00 IST as `fab39501`, deployed to production 10:02 IST; migration 20270727000000 APPLIED by the owner before the merge (function confirmed on the live database, recorded)) · migration `20270727000000_pricing_training_library_parts.sql` (one function re-created, no table change: no backup needed)
 - **Why.** Step 3 of "the estimator uses submitted training cases" (plan and defaults accepted by the owner on 16 Nov). With one chair taught, a price cannot be built from nothing; the first real "price from elements" is a taught chair less or plus single elements.
 - **What.** On a line that has picked a taught product, "This one is different" opens a tick list: untick an element of the case to leave it out, tick an element taught on ANOTHER submitted case to add it. The price moves by that element's amount; the line says "Taught price, adjusted" and what is different. It still never fills a price by itself.
