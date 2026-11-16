@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-16 — Quotations: "This one is different" on a picked taught product (branch `feat/taught-adjust`, NOT MERGED, migration 20270727000000 NOT APPLIED) · migration `20270727000000_pricing_training_library_parts.sql` (one function re-created, no table change: no backup needed)
+## 2026-11-16 — Quotations: "This one is different" on a picked taught product (PR #850 squash-merged 16 Nov 2026 10:00 IST as `fab39501`, deployed to production 10:02 IST; migration 20270727000000 APPLIED by the owner before the merge (function confirmed on the live database, recorded)) · migration `20270727000000_pricing_training_library_parts.sql` (one function re-created, no table change: no backup needed)
 - **Why.** Step 3 of "the estimator uses submitted training cases" (plan and defaults accepted by the owner on 16 Nov). With one chair taught, a price cannot be built from nothing; the first real "price from elements" is a taught chair less or plus single elements.
 - **What.** On a line that has picked a taught product, "This one is different" opens a tick list: untick an element of the case to leave it out, tick an element taught on ANOTHER submitted case to add it. The price moves by that element's amount; the line says "Taught price, adjusted" and what is different. It still never fills a price by itself.
 - **Rules (owner defaults).** Anyone who can edit the quotation may adjust. Only material, labour and other elements can be left out or added; the wooden structure, overhead and margin stay as taught. An element's amount cannot be changed on the line: correct the case in Training and resubmit.
