@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-16 — Pricing: the Price logic page (branch `feat/price-logic`, NOT MERGED) · no migration
+## 2026-11-16 — Pricing: the Price logic page (PR #854 squash-merged 16 Nov 2026 11:41 IST as `ad508334`, deployed to production 11:43 IST) · no migration
 - **Why.** The owner asked at the start for the price logic to be "visually visible in a separate section" where he and Nitish can check it and correct it. Plan and defaults accepted on 16 Nov.
 - **What.** Pricing → Price logic (`/pricing/logic`, third entry of `MORE_PAGES`): every SUBMITTED training case as a column (photo, name), one row per element name (capitals ignored), the amount in each cell, totals at the foot. A row is marked "varies" when its highest amount is more than 20% above its lowest. Clicking an amount shows how it was worked out (quantity × rate, material, wood share, the reason) with "Change in Training". A second table gives each case in every wood: taught wood, wood share, and the price per wood (a dash when it cannot be worked out).
 - **Rules (owner defaults).** Only people who may open Pricing (it shows overhead and margin). Submitted cases only; a line says how many are saved but not submitted. Nothing is edited here: a correction is made on the case in Training and resubmitted. On a phone the element column stays put and the cases scroll sideways.
