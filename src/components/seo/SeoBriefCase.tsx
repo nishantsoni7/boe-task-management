@@ -510,3 +510,102 @@ export function CaseBrief({ brief }: { brief: Case }) {
     </div>
   )
 }
+
+type Report = NonNullable<Case['report']>
+type Block = Report['blocks'][number]
+
+/** One report block: its own cards or table, or one of the brief's parts drawn under the report's heading. */
+function ReportBlockView({ block, brief }: { block: Block; brief: Case }) {
+  const panel = (fallback: { title: string; note?: string }, body: ReactNode, label = block.title ?? fallback.title) => (
+    <section className="boe-panel" aria-label={label}><Head title={block.title ?? fallback.title} note={block.note ?? fallback.note} />{body}</section>
+  )
+  switch (block.kind) {
+    case 'cards':
+      return panel({ title: '' }, (
+        <>
+          <div className={s.reportCards}>
+            {(block.items ?? []).map(item => (
+              <article key={item.title} className={`${s.reportCard} ${block.tone === 'good' ? s.reportGood : block.tone === 'bad' ? s.reportBad : ''}`}>
+                <div className={s.claimTop}><h3 className={s.claimTitle}>{item.title}</h3>{item.tag && <Tag tag={item.tag} />}</div>
+                {item.value && <p className={s.reportValue}>{item.value}</p>}
+                <p className={s.small}>{item.text}</p>
+                <Proofs proofs={item.proofs} />
+              </article>
+            ))}
+          </div>
+          {block.takeaway && <Takeaway text={block.takeaway} />}
+          <Proofs proofs={block.proofs} />
+        </>
+      ))
+    case 'table':
+      return panel({ title: '' }, (
+        <>
+          <Table head={block.head ?? []} rows={block.rows ?? []} highlightFirst />
+          {block.takeaway && <Takeaway text={block.takeaway} />}
+          <Proofs proofs={block.proofs} />
+        </>
+      ))
+    case 'rankings':
+      return brief.quarters ? panel(brief.quarters, <Quarters quarters={brief.quarters} />) : null
+    case 'traffic':
+      return brief.traffic ? panel(brief.traffic, <Traffic traffic={brief.traffic} />) : null
+    case 'trend':
+      return brief.trend ? panel(brief.trend, <Trend trend={brief.trend} />) : null
+    case 'leads':
+      return brief.leads ? panel({ title: brief.leads.title, note: 'Not to scale' }, <Leads leads={brief.leads} />) : null
+    case 'rivals':
+      return brief.risers ? panel(brief.risers, (
+        <>
+          <div className={s.risers}>
+            {brief.risers.rows.map(row => (
+              <div key={row.site} className={s.riser}>
+                <div className={s.riseValue}><span className={s.muted}>{row.from}</span> → <b className={s.up}>{row.to}</b></div>
+                <div className={s.strong}>{row.site}</div>
+                <div className={s.small}>{row.text}</div>
+              </div>
+            ))}
+          </div>
+          <Takeaway text={brief.risers.fair} label="In fairness" />
+          <Proofs proofs={brief.risers.proofs} />
+        </>
+      )) : null
+    case 'ai':
+      return brief.proof ? <Proof proof={{ ...brief.proof, title: block.title ?? brief.proof.title, note: block.note ?? brief.proof.note }} /> : null
+    default:
+      return null
+  }
+}
+
+/**
+ * The brief drawn as a report for both sides of the conversation: the opening and its figures, then each block in the
+ * order the brief sets. Every heading comes from the brief, so none of the owner's own notes (how to hold the meeting,
+ * what to say) appear here.
+ */
+export function ReportBrief({ brief, report }: { brief: Case; report: Report }) {
+  return (
+    <div className={s.page}>
+      <section className={`boe-panel ${s.message}`} aria-label={report.title}>
+        <div className={s.heroMain}>
+          <div className={s.kicker}>{report.kicker}</div>
+          <h1 className={s.messageText}>{report.title}</h1>
+          <p className={s.small}>{report.intro}</p>
+          {brief.evidence && (
+            <a href={brief.evidence.url} target="_blank" rel="noopener noreferrer" className={`${s.proofLink} ${s.evidence}`}>{brief.evidence.text}<span className="sr-only"> (opens in a new tab)</span></a>
+          )}
+        </div>
+        {report.tiles && (
+          <div className={s.heroSide}>
+            {report.tiles.map(item => (
+              <div key={item.label} className={s.headline}>
+                <span>{item.label}<small>{item.note}</small></span>
+                <b className={item.tone === 'bad' ? s.down : item.tone === 'good' ? s.up : undefined}>{item.value}</b>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+      {report.blocks.map((block, index) => <ReportBlockView key={`${block.kind}-${index}`} block={block} brief={brief} />)}
+      <p className={s.foot}>{brief.foot}{brief.sources?.length ? ` Sources. ${brief.sources.join(' ')}` : ''}</p>
+    </div>
+  )
+}
