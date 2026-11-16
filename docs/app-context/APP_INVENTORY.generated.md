@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `ce3bb873` — Pricing: the watcher, a quoted price against the taught one (migration 20270729000000) (#863)
-- Commits on this branch: 1421
+- Commit: `0f34e769` — Docs: stamp the salesperson-keeps-the-lead-they-add change (#861) as merged 03b1a061, deployed 12:37 IST (no SQL) (#864)
+- Commits on this branch: 1423
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 212
 - Migrations: 471 (first `20260530_create_positions.sql`, latest `20270729000000_pricing_taught_watcher.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1054   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `0f34e769` 2026-11-16 Docs: stamp the salesperson-keeps-the-lead-they-add change (#861) as merged 03b1a061, deployed 12:37 IST (no SQL) (#864)
+- `acf8dc95` 2026-11-16 Docs: stamp the watcher (#863) as merged ce3bb873, deployed 13:32 IST, migration 20270729000000 applied (no SQL) (#865)
 - `ce3bb873` 2026-11-16 Pricing: the watcher, a quoted price against the taught one (migration 20270729000000) (#863)
 - `d8240a8d` 2026-11-16 SEO report: at most three cards a row, readable proof rows + docs stamp for #860 (#862)
 - `03b1a061` 2026-11-16 Sales: a salesperson keeps the lead they add; Potential Clients no longer asks for the project value (2 migrations) (#861)
@@ -37,8 +39,6 @@
 - `b53b86f9` 2026-11-16 Docs: stamp #835 (Start from a client file) as merged 17a37990, deployed 00:06 IST, migration 20270721000000 applied (#842)
 - `17a37990` 2026-11-16 Quotations: Start from a client file, read any requirement file into rooms, products and pictures (migration 20270721000000, apply before merge) (#835)
 - `f37ad21e` 2026-11-15 Docs: stamp #830 (AI calls use structured output) as merged 475569ea, deployed 21:46 IST (no SQL) (#831)
-- `0d8f051e` 2026-11-15 Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live (#840)
-- `ca8348f3` 2026-11-15 Docs: stamp the Training wooden structure change (#838) as merged 679f1306, deployed 23:26 IST, migration 20270723000000 applied (no SQL) (#841)
 
 ## Pages by top-level area
 
