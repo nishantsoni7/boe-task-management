@@ -4,11 +4,6 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-16 — Page speed fix: the saved copy was never put back (branch `fix/persisted-cache-restore`, PR pending) · no SQL
-- **Found by measuring live.** With the saved copy on or off (`boe-qcache-off`), PI Drafts drew its rows at the same time (about 700 ms either way), and the launcher cards did not draw earlier either. Parts 12 to 14 were therefore saving a copy and never showing it.
-- **Cause.** auth-js emits SIGNED_IN while it recovers the stored session, before `getSession()` resolves (`_recoverAndRefresh`, GoTrueClient.js). `AuthIdentityBoundary` handled that first event by `persister.attach(id, { restore: false })`, and `attach()` is a no-op for a person already attached, so the seed's later `attach(id)` never restored. The unit tests exercised the persister alone, not this ordering.
-- **Fix.** The first-event branch restores (`persister.attach(nextUserId)`). A different person in the same tab still attaches without a restore, after the wipe. Two tests pin the branch and the idempotent attach.
-
 ## 2026-11-16 — Quotations: Crop & rotate a picture in the scan review (branch `feat/scan-review-crop`; PR number added at the stamp) · no SQL
 - **Owner ask.** "Carry the next process": the second follow-up of Start from a client file; the owner chose option A, trim and rotate (not redrawing the box on the page).
 - **What.** In the review of Start from a client file / Import client file, each product's picture has a **Crop** button, and each swatch, drawing or reference picture opens Crop when tapped. `CropDialog.tsx` trims each side inward (0-45%) and turns a quarter at a time, with the same drawing as Improve picture → Crop & rotate (`drawCrop` and `Insets` are now exported from `StudioDialog.tsx`, unchanged). "Use this picture" replaces that picture on this device before anything is saved; a picture shared by two rows changes for both. The Crop dialog renders beside the review, not inside its backdrop, so a click outside it never closes the review and loses its rows.
