@@ -7,6 +7,8 @@ import type { PriceHint } from '@/lib/quotations/api'
 import { sizeInInches, type DimensionUnit, type LineRef, type QuoteArea, type QuoteLine } from '@/lib/quotations/math'
 import type { ModelSuggestion } from '@/lib/pricing/model'
 import { PriceHintLine } from './PricingDesk'
+import { TaughtPrice } from '@/components/pricing/training/TaughtPrice'
+import type { Library } from '@/lib/pricing/training/match'
 import { Pic } from './Pic'
 import s from './quotations.module.css'
 
@@ -19,10 +21,12 @@ import s from './quotations.module.css'
  * because the database rewrites the lines and a missing key would wipe it; words typed into Material and Remarks still reach the price model.
  */
 export const REF_LABEL: Record<LineRef['kind'], string> = { swatch: 'Swatch', drawing: 'Drawing', reference: 'Reference' }
-export function LineRow({ l, area, unit, editable, qty, total, first, last, url, onChange, onUpload, onImprove, onView, hint, model, feedbackCtx, onRemove, onMove, onDuplicate }: {
+export function LineRow({ l, area, unit, editable, qty, total, first, last, url, onChange, onUpload, onImprove, onView, hint, model, feedbackCtx, taught, onRemove, onMove, onDuplicate }: {
   l: QuoteLine; area: QuoteArea | null; unit: DimensionUnit; editable: boolean; qty: number; total: number; first: boolean; last: boolean
   url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onImprove: () => void; onView: () => void
   hint?: PriceHint; model?: ModelSuggestion | null
+  /** Submitted training cases to pick from (Pricing > Training), and where their photos are. */
+  taught?: { library: Library; photo: (path: string) => string }
   /** Who and what the price feedback is about; given by the builder, which knows the quotation. */
   feedbackCtx?: { clientType: string | null; quotationId: string | null; isDesk: boolean }
   onRemove: () => void; onMove: (d: -1 | 1) => void; onDuplicate: () => void
@@ -92,6 +96,8 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
             <span className={s.rupeeBox}><span className={s.rs} aria-hidden>₹</span><input aria-label="Unit price (₹, before GST)" className={s.rupeeIn} type="number" min={0} placeholder="Price" value={l.unit_price ?? ''} onChange={e => onChange({ unit_price: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value))) })} disabled={!editable} /></span>
           </label>
         </div>
+        {taught && <TaughtPrice library={taught.library} photo={taught.photo} line={l} note={l.internal_note} price={l.unit_price} editable={editable}
+          onNote={n => onChange({ internal_note: n })} onUse={p => onChange({ unit_price: Math.round(p) })} />}
         <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p) })}
           feedback={feedbackCtx && { line: { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }, ...feedbackCtx }} />
         <div className={s.plFoot}>

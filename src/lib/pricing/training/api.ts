@@ -6,7 +6,7 @@ import { parseReading, type CaseForm, type Line, type Reading, saveDoc } from '.
 
 type Supabase = ReturnType<typeof createClient>
 export const TRAINING_BUCKET = 'pricing-training'
-export const trainingKeys = { access: ['pricing', 'training', 'access'] as const, list: ['pricing', 'training', 'list'] as const, woods: ['pricing', 'woods'] as const, one: (id: string) => ['pricing', 'training', 'case', id] as const }
+export const trainingKeys = { access: ['pricing', 'training', 'access'] as const, list: ['pricing', 'training', 'list'] as const, woods: ['pricing', 'woods'] as const, library: ['pricing', 'training', 'library'] as const, one: (id: string) => ['pricing', 'training', 'case', id] as const }
 
 export type Status = 'draft' | 'submitted'
 export type Access = { uid: string; admin: boolean; create: boolean }
@@ -81,3 +81,5 @@ export type Wood = { name: string; rate: number | null; updated_at: string; upda
 export const fetchWoods = (s: Supabase) => call<Wood[]>(() => s.rpc('pricing_woods_list'))
 export const saveWood = (s: Supabase, name: string, rate: number | null) => call<null>(() => s.rpc('pricing_wood_save', { p_name: name, p_rate: rate }))
 export const removeWood = (s: Supabase, name: string) => call<null>(() => s.rpc('pricing_wood_remove', { p_name: name }))
+/** Submitted cases for the quotation screen to pick from (20270726000000). Open to Quotations people too. */
+export const fetchLibrary = (s: Supabase) => call<import('./match').Library>(() => s.rpc('pricing_training_library'))
