@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b296d0c2` — Quotations: Crop & rotate a picture in the scan review (no SQL) (#853)
-- Commits on this branch: 1413
+- Commit: `84d526a2` — Docs: stamp "This one is different" (#850) as merged fab39501, deployed 10:02 IST, migration 20270727000000 applied (no SQL) (#851)
+- Commits on this branch: 1411
 - Pages (`page.tsx`): 208   API routes (`route.ts`): 212
 - Migrations: 468 (first `20260530_create_positions.sql`, latest `20270727000000_pricing_training_library_parts.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1053   Enums: 0
@@ -14,8 +14,6 @@
 
 ## Latest 25 commits
 
-- `b296d0c2` 2026-11-16 Quotations: Crop & rotate a picture in the scan review (no SQL) (#853)
-- `5b38f85d` 2026-11-16 Page speed, part 14: PI Drafts joins the saved copy; the saved copy keeps earlier lists (no SQL) (#852)
 - `84d526a2` 2026-11-16 Docs: stamp "This one is different" (#850) as merged fab39501, deployed 10:02 IST, migration 20270727000000 applied (no SQL) (#851)
 - `fab39501` 2026-11-16 Quotations: "This one is different" on a picked taught product (migration 20270727000000) (#850)
 - `8b87062e` 2026-11-16 Docs: stamp #848 (swatches and drawings to the PI draft) as merged eaa05402, deployed 09:18 IST (no SQL) (#849)
@@ -39,6 +37,8 @@
 - `8442b3e6` 2026-11-15 Docs: stamp the "New update" mark (#832) as merged d23cd7e4, deployed 21:57 IST (no SQL) (#833)
 - `29ff4ecd` 2026-11-15 Sales: the lead popup is a status strip and two cards, on the lines of Quotation Details (no SQL) (#829)
 - `d23cd7e4` 2026-11-15 Orders: an order back with Operations is marked "New update" on the list and dashboard (no SQL) (#832)
+- `475569ea` 2026-11-15 AI calls: structured output instead of a forced tool (no SQL) (#830)
+- `c696e68f` 2026-11-15 Docs: stamp Pricing Training (#826) as merged 431cd0c2, deployed 20:46 IST, migration 20270720000000 applied (no SQL) (#827)
 
 ## Pages by top-level area
 
