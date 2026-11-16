@@ -5,15 +5,18 @@
 
 ## Snapshot
 
-- Commit: `75f96361` — Docs: stamp the Price logic page (#854) as merged ad508334, deployed 11:43 IST (no SQL) (#858)
-- Commits on this branch: 1417
+- Commit: `8bed0721` — Docs: the apply steps for 20270728000000/100 are by hand, not db push
+- Commits on this branch: 1420
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 212
-- Migrations: 468 (first `20260530_create_positions.sql`, latest `20270727000000_pricing_training_library_parts.sql`)
+- Migrations: 470 (first `20260530_create_positions.sql`, latest `20270728000100_sales_potential_without_value.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1053   Enums: 0
 - Test files: 873   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `8bed0721` 2026-11-16 Docs: the apply steps for 20270728000000/100 are by hand, not db push
+- `f1a512a2` 2026-11-16 Merge remote-tracking branch 'origin/main' into fix/sales-self-allot-and-potential-value
+- `a1864608` 2026-11-16 Sales: a salesperson keeps the lead they add; Potential Clients no longer asks for the project value
 - `75f96361` 2026-11-16 Docs: stamp the Price logic page (#854) as merged ad508334, deployed 11:43 IST (no SQL) (#858)
 - `ad508334` 2026-11-16 Pricing: the Price logic page, submitted cases side by side (no SQL) (#854)
 - `53ec4160` 2026-11-16 Revert "Page speed fix: put the saved copy back when SIGNED_IN arrives first (no SQL) (#855)" (#857)
@@ -36,9 +39,6 @@
 - `0d8f051e` 2026-11-15 Docs: stamp the lead files change (#839) as merged 709a747b, deployed 23:14 IST, migration applied, verified live (#840)
 - `ca8348f3` 2026-11-15 Docs: stamp the Training wooden structure change (#838) as merged 679f1306, deployed 23:26 IST, migration 20270723000000 applied (no SQL) (#841)
 - `679f1306` 2026-11-15 Pricing Training: the wooden structure is one priced row, with an optional wood share (migration 20270723000000, already applied) (#838)
-- `709a747b` 2026-11-15 Sales: files on a lead's update, by button, drag and drop and paste (migration 20270722000000, apply before merge) (#839)
-- `894aea2d` 2026-11-15 Docs: stamp the Training photo-read fix (#828) as merged 1d7fcac4, deployed 22:34 IST (no SQL) (#837)
-- `3f7824d8` 2026-11-15 Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL) (#834)
 
 ## Pages by top-level area
 
@@ -507,8 +507,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270623000000_quotation_versions.sql`
-- `20270624000000_day_close_in_tasks.sql`
 - `20270625000000_scoreboard.sql`
 - `20270626000000_scoreboard_vote_rating.sql`
 - `20270627000000_scoreboard_monthly_review.sql`
@@ -537,6 +535,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270725000000_pricing_woods.sql`
 - `20270726000000_pricing_training_library.sql`
 - `20270727000000_pricing_training_library_parts.sql`
+- `20270728000000_sales_add_lead_keeps_own.sql`
+- `20270728000100_sales_potential_without_value.sql`
 
 ## All SQL function names
 

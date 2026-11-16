@@ -1308,6 +1308,10 @@ describe('the applied migrations are frozen', () => {
       '20270726000000_pricing_training_library.sql',
       // Pricing > Training: pricing_training_library() re-created with `parts` (the elements a quotation line may leave out or borrow). No table changed.
       '20270727000000_pricing_training_library_parts.sql',
+      // Sales: create_sales_lead re-issued, a salesperson keeps the lead they add. One function, no table or data change.
+      '20270728000000_sales_add_lead_keeps_own.sql',
+      // Sales: move_sales_lead re-issued, Potential Clients no longer asks for the project value. One function, no table or data change.
+      '20270728000100_sales_potential_without_value.sql',
     ])
   })
 
@@ -1838,6 +1842,8 @@ describe('the applied migrations are frozen', () => {
       '20270725000000_pricing_woods.sql',
       '20270726000000_pricing_training_library.sql',
       '20270727000000_pricing_training_library_parts.sql',
+      '20270728000000_sales_add_lead_keeps_own.sql',
+      '20270728000100_sales_potential_without_value.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
