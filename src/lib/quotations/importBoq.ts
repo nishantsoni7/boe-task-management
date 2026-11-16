@@ -47,6 +47,8 @@ export type ImportRow = {
   wanted?: string
   /** A second or later option for the same product: added as an optional line. */
   optional?: boolean
+  /** Seen in a room picture (a render), not listed by the client: the review says to confirm it. */
+  fromPicture?: boolean
 }
 
 export type RowPicture = { picture: number; kind: 'swatch' | 'drawing' | 'reference'; note: string }

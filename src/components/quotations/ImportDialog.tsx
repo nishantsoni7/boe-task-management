@@ -25,7 +25,7 @@ type Supabase = ReturnType<typeof createClient>
 export type StartInfo = { client_name: string; project_name: string; supply_state: string; project_type: string }
 
 const STAGE: Record<ScanProgress['stage'], string> = {
-  pages: 'Preparing the pages', survey: 'Looking over the whole file', read: 'Reading the pages', pictures: 'Cutting out the pictures',
+  pages: 'Preparing the pages', survey: 'Looking over the whole file', read: 'Reading the pages', rooms: 'Finding the furniture in the room pictures', pictures: 'Cutting out the pictures',
 }
 type RequestFile = { id: string; name: string; path: string }
 
@@ -229,6 +229,7 @@ export function ImportDialog({ supabase, userId, areas, requestId, start, onClos
                             <td><input className={s.input} style={{ width: 64, minWidth: 64 }} inputMode="numeric" value={r.rooms ?? ''} onChange={e => upd(r.id, { rooms: Number(e.target.value) || null })} aria-label="Rooms" /></td>
                             <td>
                               <input className={`${s.input} ${doubt(r, 'name')}`} style={{ minWidth: 200 }} value={r.name} onChange={e => upd(r.id, { name: e.target.value })} aria-label="Product" />
+                              {r.fromPicture && <div className={s.scanWants}>Seen in a room picture: confirm with the client</div>}
                               {(r.wanted || !!r.changes?.length) && <div className={s.scanWants}>Client wants: {[r.wanted, ...(r.changes ?? [])].filter(Boolean).join('; ')}</div>}
                               {r.optional && <label className={s.small} style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 3 }}><input type="checkbox" checked onChange={() => upd(r.id, { optional: false })} /> Option (added as optional)</label>}
                             </td>

@@ -55,7 +55,7 @@ export const SURVEY_SCHEMA = closed({
           type: 'object',
           properties: {
             page: { type: 'integer' },
-            kind: { type: 'string', enum: ['cover', 'index', 'floor_plan', 'schedule', 'product', 'drawing', 'photos', 'swatches', 'notes', 'terms', 'price_quote', 'other'] },
+            kind: { type: 'string', enum: ['cover', 'index', 'floor_plan', 'schedule', 'product', 'drawing', 'photos', 'render', 'swatches', 'notes', 'terms', 'price_quote', 'other'], description: 'render = a picture of a furnished room or space (a 3D render or a photo of the room), not a picture of one product.' },
             heading: { type: 'string', description: 'The section, floor or room heading that applies to this page, also when it was set on an earlier page.' },
             products: { type: 'integer', description: 'About how many products this page shows.' },
           },
@@ -146,6 +146,27 @@ export const READ_SCHEMA = closed({
     },
     required: ['rows'],
 }, true)
+
+// Room pictures (16 Nov 2026, owner approved): a file that shows a room only as renders (Babylon's suites) has no list to
+// read, so the reading above finds nothing there. These pages are then read a second time with this prompt, which lists the
+// furniture a person can see. Same answer schema as reading, so the rest of the scan (pictures, review) is unchanged.
+export const FURNITURE_SYSTEM_PROMPT = [
+  'You look at pictures of furnished rooms (3D renders or photos) that a hotel, resort, restaurant, cafe, architect or interior designer sent to a furniture manufacturer in India, for a room that has no product list, and record the furniture the manufacturer would be asked to make.',
+  'Record only loose furniture: chairs, armchairs, lounge chairs, sofas, dining, coffee, side and console tables, beds, bedside tables, stools, bar stools, benches, ottomans, pouffes, desks. Leave out anything built in or not furniture: wardrobes, headboards and panels fixed to a wall, counters, vanities, shelving built into a wall, lights, curtains, rugs, cushions, art, plants, decor and appliances.',
+  'One row per distinct design in the room. The same design seen in several pictures of the same room is ONE row; two designs that differ (another fabric, another shape) are two rows.',
+  'name: a plain description a salesperson can quote from, e.g. "Upholstered lounge chair, curved back, wooden legs". material and finish: what can be seen (wood tone, fabric colour, metal, cane, marble). Leave size empty: a picture gives no measurements. Leave code and price_in_file empty.',
+  'qty: how many of that design can be seen in the clearest picture; qty_text: "seen N in the picture"; qty_basis: per_room. Always list qty in doubtful.',
+  'room: the room or area heading the survey gives these pages.',
+  'picture: the box of that piece in the picture where it is seen most whole and clearest, the whole piece, tight. pictures: other views of the same piece as kind reference, at most two. Leave changes empty.',
+  'Every field must be present. When there is no value, use an empty string, 0 for qty, an empty list, or -1 for swatch.',
+  'When a picture shows no loose furniture, return no rows for it.',
+  NO_PEOPLE,
+  DATA_ONLY,
+].join(' ')
+
+export const furnitureInstruction = (pageNumbers: readonly number[], room: string, survey: string) =>
+  `Survey of the whole document (for context):\n${survey}\n\n` +
+  `Pages ${pageNumbers.join(', ')} are pictures of ${room ? `"${room}"` : 'one room or area'}. Record the loose furniture in them, as JSON in the required format. Give each box on the page it is on.`
 
 export const surveyInstruction = (pages: number) =>
   `These are all ${pages} pages of the document, in order, at small size. Record what kind of document it is, as JSON in the required format.`

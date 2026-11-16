@@ -6,13 +6,13 @@ import type { createClient } from '@/lib/supabase/client'
 import type { ImportRow } from './importBoq'
 import { base64Of, cutPictures, filePages, surveyJpeg, ScanFileError, type ScanPage } from './scanPages'
 import {
-  MAX_SURVEY_PAGES, mergeDuplicates, parseRead, parseSurvey, pictureJobs, readBatches, surveyText, toImportRows,
+  MAX_SURVEY_PAGES, mergeDuplicates, parseRead, parseSurvey, pictureJobs, readBatches, roomPictureBatches, surveyText, toImportRows,
   type ScanRow, type Survey,
 } from './scanReading'
 
 type Supabase = ReturnType<typeof createClient>
 
-export type ScanStage = 'pages' | 'survey' | 'read' | 'pictures'
+export type ScanStage = 'pages' | 'survey' | 'read' | 'rooms' | 'pictures'
 export type ScanProgress = { stage: ScanStage; done: number; total: number }
 /** `pages` keep only their JPEG for the review screen: the file itself is closed once the pictures are cut. */
 export type ScanResult = { rows: ImportRow[]; pictures: Blob[]; note: string; pages: ScanPage[]; survey: Survey | null }
@@ -87,6 +87,28 @@ export async function scanFiles(supabase: Supabase, files: readonly File[], onPr
     await Promise.all(Array.from({ length: Math.min(CONCURRENT_BATCHES, queue.length) }, async () => { for (let b = queue.shift(); b; b = queue.shift()) await readBatch(b) }))
   } catch (e) { close(); throw e }
 
+  // 3b. Room pictures of a room the reading found nothing for (renders only): the loose furniture seen in them, marked.
+  const roomBatches = roomPictureBatches(survey, found.flatMap(f => f.rows), failed)
+  if (roomBatches.length) {
+    const roomTotal = roomBatches.reduce((n, b) => n + b.pages.length, 0)
+    let roomDone = 0
+    onProgress({ stage: 'rooms', done: 0, total: roomTotal })
+    const readRoom = async (b: { room: string; pages: number[] }): Promise<void> => {
+      try {
+        const raw = await post(token, { step: 'furniture', room: b.room, pages: await pagesPayload(pages.filter(p => b.pages.includes(p.n))), survey: context })
+        // The batch is one room: its heading is the room (the reader left it empty or wrote only the floor on Babylon).
+        found.push({ at: b.pages[0], rows: parseRead(raw, b.pages).map(r => ({ ...r, room: b.room || r.room, fromPicture: true })) })
+      } catch (e) {
+        if (e instanceof Refused && [401, 403].includes(e.status)) throw new ScanFileError(e.message)
+        failed.push(...b.pages)
+      } finally { roomDone += b.pages.length; onProgress({ stage: 'rooms', done: roomDone, total: roomTotal }) }
+    }
+    try {
+      const queue = [...roomBatches]
+      await Promise.all(Array.from({ length: Math.min(CONCURRENT_BATCHES, queue.length) }, async () => { for (let b = queue.shift(); b; b = queue.shift()) await readRoom(b) }))
+    } catch (e) { close(); throw e }
+  }
+
   // 4. One list in page order, duplicates merged; a product on a photo with no box of its own gets the whole photo.
   const rows = mergeDuplicates(found.sort((a, b) => a.at - b.at).flatMap(f => f.rows))
   for (const r of rows) if (!r.picture && pages.find(p => p.n === r.page)?.photo) r.picture = { page: r.page, x: 0, y: 0, w: 100, h: 100 }
@@ -99,8 +121,9 @@ export async function scanFiles(supabase: Supabase, files: readonly File[], onPr
 
   const failedNote = failed.length ? ` Page${failed.length > 1 ? 's' : ''} ${failed.sort((a, b) => a - b).join(', ')} could not be read: read the file again, or add those products by hand.` : ''
   const about = survey?.layout ? `${survey.layout} ` : ''
+  const seenNote = rows.some(r => r.fromPicture) ? ' Rooms with no list were read from their pictures: those rows say "Seen in a room picture".' : ''
   const note = rows.length
-    ? `Read ${pages.length} page${pages.length === 1 ? '' : 's'}. ${about}Check every row against its page, especially the marked cells.${failedNote}`
+    ? `Read ${pages.length} page${pages.length === 1 ? '' : 's'}. ${about}Check every row against its page, especially the marked cells.${seenNote}${failedNote}`
     : `No products were found in ${pages.length} page${pages.length === 1 ? '' : 's'}.${failedNote}`
   return { rows: toImportRows(rows, survey, pictureAt), pictures, note, pages, survey }
 }
