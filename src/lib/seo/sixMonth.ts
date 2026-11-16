@@ -98,6 +98,34 @@ export type BriefCase = {
   plan: Titled & { rows: { task: string; who: string; when: string }[]; risks: string[] }
   talk: Titled & { steps: { title: string; text: string; say?: string }[]; avoid: string[]; care: string[] }
   sources: string[]
+  report: BriefReport
+}
+
+/** The brief's own parts a report can draw in its place, by the name the report uses. */
+export const REPORT_PARTS = { rankings: 'quarters', traffic: 'traffic', trend: 'trend', leads: 'leads', rivals: 'risers', ai: 'proof' } as const
+type ReportPart = keyof typeof REPORT_PARTS
+
+/**
+ * A report shown to both sides of the conversation (16 Nov 2026). When a brief has one, the page draws it instead of
+ * the case: the opening, then each block in this order, every heading taken from here and none of the owner's notes.
+ * `cards` and `table` carry their own content; the other kinds draw the brief's own part of that name.
+ */
+export type ReportBlock = Proofs & {
+  kind: 'cards' | 'table' | ReportPart
+  title?: string
+  note?: string
+  tone?: SeoTone
+  items?: { title: string; value?: string; text: string; tag?: SeoTag; proofs?: BriefProof[] }[]
+  head?: string[]
+  rows?: string[][]
+  takeaway?: string
+}
+export type BriefReport = {
+  kicker: string
+  title: string
+  intro: string
+  tiles?: { label: string; value: string; note: string; tone?: SeoTone }[]
+  blocks: ReportBlock[]
 }
 
 export type SixMonthRow = { period_end: string; body: SixMonthReview }
@@ -187,6 +215,15 @@ const BRIEF_SPEC = {
   plan: optional({ ...TITLED, rows: [{ task: 'text', who: 'text', when: 'text' }], risks: ['text'] }),
   talk: optional({ ...TITLED, steps: [{ title: 'text', text: 'text', say: 'text?' }], avoid: ['text'], care: ['text'] }),
   sources: optional(['text']),
+  report: optional({
+    kicker: 'text', title: 'text', intro: 'text',
+    tiles: optional([{ label: 'text', value: 'text', note: 'text', tone: 'tone?' }]),
+    blocks: [{
+      kind: 'text', title: 'text?', note: 'text?', tone: 'tone?',
+      items: optional([{ title: 'text', value: 'text?', text: 'text', tag: optional('tag'), proofs: PROOFS }]),
+      head: optional(['text']), rows: optional([['text']]), takeaway: 'text?', proofs: PROOFS,
+    }],
+  }),
 } satisfies Spec
 
 const TONES: readonly unknown[] = ['good', 'bad', 'wait', 'work', 'pending']
@@ -224,4 +261,18 @@ function problem(value: unknown, spec: Spec, where: string): string | null {
 }
 
 export const sixMonthProblem = (body: unknown) => problem(body, REVIEW_SPEC, '')
-export const briefProblem = (body: unknown) => problem(body, BRIEF_SPEC, '')
+/** A report block must be a kind the page can draw, with the content that kind needs. */
+function reportProblem(body: Record<string, unknown>): string | null {
+  const report = body.report as { blocks: { kind: string; title?: string; items?: unknown[]; head?: unknown[]; rows?: unknown[] }[] } | undefined
+  if (!report) return null
+  for (const [index, block] of report.blocks.entries()) {
+    const where = `report.blocks[${index}]`
+    if (block.kind === 'cards') { if (!block.title || !block.items?.length) return `${where} needs a title and items` }
+    else if (block.kind === 'table') { if (!block.title || !block.head?.length || !block.rows) return `${where} needs a title, head and rows` }
+    else if (block.kind in REPORT_PARTS) { if (body[REPORT_PARTS[block.kind as ReportPart]] === undefined) return `${where} draws ${block.kind}, which the brief does not have` }
+    else return `${where}.kind is not one the page can draw`
+  }
+  return null
+}
+
+export const briefProblem = (body: unknown) => problem(body, BRIEF_SPEC, '') ?? (isObject(body) ? reportProblem(body) : null)

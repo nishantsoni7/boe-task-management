@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `75f96361` — Docs: stamp the Price logic page (#854) as merged ad508334, deployed 11:43 IST (no SQL) (#858)
-- Commits on this branch: 1417
+- Commit: `663cd17b` — Pricing: the watcher, a quoted price against the taught one (migration 20270729000000)
+- Commits on this branch: 1418
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 212
-- Migrations: 469 (first `20260530_create_positions.sql`, latest `20270729000000_pricing_taught_watcher.sql`)
+- Migrations: 471 (first `20260530_create_positions.sql`, latest `20270729000000_pricing_taught_watcher.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1054   Enums: 0
 - Test files: 873   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `663cd17b` 2026-11-16 Pricing: the watcher, a quoted price against the taught one (migration 20270729000000)
 - `75f96361` 2026-11-16 Docs: stamp the Price logic page (#854) as merged ad508334, deployed 11:43 IST (no SQL) (#858)
 - `ad508334` 2026-11-16 Pricing: the Price logic page, submitted cases side by side (no SQL) (#854)
 - `53ec4160` 2026-11-16 Revert "Page speed fix: put the saved copy back when SIGNED_IN arrives first (no SQL) (#855)" (#857)
@@ -38,7 +39,6 @@
 - `679f1306` 2026-11-15 Pricing Training: the wooden structure is one priced row, with an optional wood share (migration 20270723000000, already applied) (#838)
 - `709a747b` 2026-11-15 Sales: files on a lead's update, by button, drag and drop and paste (migration 20270722000000, apply before merge) (#839)
 - `894aea2d` 2026-11-15 Docs: stamp the Training photo-read fix (#828) as merged 1d7fcac4, deployed 22:34 IST (no SQL) (#837)
-- `3f7824d8` 2026-11-15 Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL) (#834)
 
 ## Pages by top-level area
 
@@ -507,8 +507,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270624000000_day_close_in_tasks.sql`
-- `20270625000000_scoreboard.sql`
 - `20270626000000_scoreboard_vote_rating.sql`
 - `20270627000000_scoreboard_monthly_review.sql`
 - `20270628000000_star_seller_focus.sql`
@@ -536,6 +534,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270725000000_pricing_woods.sql`
 - `20270726000000_pricing_training_library.sql`
 - `20270727000000_pricing_training_library_parts.sql`
+- `20270728000000_sales_add_lead_keeps_own.sql`
+- `20270728000100_sales_potential_without_value.sql`
 - `20270729000000_pricing_taught_watcher.sql`
 
 ## All SQL function names

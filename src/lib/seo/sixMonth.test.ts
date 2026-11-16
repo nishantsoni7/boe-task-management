@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { describe, test } from 'node:test'
 import { SeoIngestError, parseSeoIngest } from './ingest'
 import { briefProblem, sixMonthProblem } from './sixMonth'
-import { SAMPLE_BRIEF, SAMPLE_CASE, SAMPLE_REVIEW } from './sixMonthSample'
+import { SAMPLE_BRIEF, SAMPLE_CASE, SAMPLE_REPORT, SAMPLE_REVIEW } from './sixMonthSample'
 
 const NOW = '2030-07-01T00:00:00.000Z'
 const copy = <T,>(value: T): T => JSON.parse(JSON.stringify(value))
@@ -45,6 +45,26 @@ describe('what the door accepts as a review or a brief', () => {
     const badSection = copy(SAMPLE_CASE) as unknown as Record<string, unknown>
     badSection.talk = 'later'
     assert.equal(briefProblem(badSection), 'talk must be an object')
+  })
+
+  test('a report passes when each block is a kind the page can draw, with what that kind needs', () => {
+    assert.equal(briefProblem(SAMPLE_REPORT), null)
+    type Doc = { report: { blocks: Record<string, unknown>[] } } & Record<string, unknown>
+    const unknownKind = copy(SAMPLE_REPORT) as unknown as Doc
+    unknownKind.report.blocks[0].kind = 'poster'
+    assert.equal(briefProblem(unknownKind), 'report.blocks[0].kind is not one the page can draw')
+    const emptyCards = copy(SAMPLE_REPORT) as unknown as Doc
+    delete emptyCards.report.blocks[0].items
+    assert.equal(briefProblem(emptyCards), 'report.blocks[0] needs a title and items')
+    const noTableRows = copy(SAMPLE_REPORT) as unknown as Doc
+    delete noTableRows.report.blocks[2].rows
+    assert.equal(briefProblem(noTableRows), 'report.blocks[2] needs a title, head and rows')
+    const missingPart = copy(SAMPLE_REPORT) as unknown as Doc
+    delete missingPart.proof
+    assert.equal(briefProblem(missingPart), 'report.blocks[4] draws ai, which the brief does not have')
+    const badProof = copy(SAMPLE_REPORT) as unknown as Doc
+    ;((badProof.report.blocks[0].items as Record<string, unknown>[])[0].proofs as Record<string, unknown>[])[0].url = 'http://example.com'
+    assert.equal(briefProblem(badProof), 'report.blocks[0].items[0].proofs[0].url must be an https link')
   })
 
   test('a quarter may be blank, but never text', () => {
