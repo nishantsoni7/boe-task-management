@@ -15,9 +15,10 @@ import s from './quotations.module.css'
 
 type Supabase = ReturnType<typeof createClient>
 type Tab = 'clean' | 'change' | 'crop'
-type Insets = { top: number; right: number; bottom: number; left: number }
+export type Insets = { top: number; right: number; bottom: number; left: number }
 
-function drawCrop(img: HTMLImageElement, c: HTMLCanvasElement, turns: number, cut: Insets) {
+/** Draws `img` trimmed by `cut` (percent of each side) and turned a quarter `turns` times; also used by the scan review's Crop. */
+export function drawCrop(img: HTMLImageElement, c: HTMLCanvasElement, turns: number, cut: Insets) {
   const sx = (img.naturalWidth * cut.left) / 100, sy = (img.naturalHeight * cut.top) / 100
   const sw = Math.max(1, img.naturalWidth * (1 - (cut.left + cut.right) / 100)), sh = Math.max(1, img.naturalHeight * (1 - (cut.top + cut.bottom) / 100))
   const side = turns % 2 === 1

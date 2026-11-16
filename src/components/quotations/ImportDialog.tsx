@@ -18,6 +18,7 @@ import type { Survey } from '@/lib/quotations/scanReading'
 import { resolveAttachmentPath, signAttachmentUrl } from '@/lib/tasks/attachmentStorage'
 import { Pic } from './Pic'
 import { REF_LABEL } from './ProductLine'
+import { CropDialog } from './CropDialog'
 import s from './quotations.module.css'
 
 type Supabase = ReturnType<typeof createClient>
@@ -47,6 +48,8 @@ export function ImportDialog({ supabase, userId, areas, requestId, start, onClos
   const [reload, setReload] = useState(false)
   const [viewPage, setViewPage] = useState<number | null>(null)
   const [picking, setPicking] = useState<string | null>(null)
+  /** The picture (index into res.pictures) being cropped; a crop replaces it for every row that uses it. */
+  const [cropping, setCropping] = useState<number | null>(null)
   const [info, setInfo] = useState<StartInfo>({ client_name: '', project_name: '', supply_state: '', project_type: '' })
   const [reqFiles, setReqFiles] = useState<RequestFile[] | null>(null)
 
@@ -139,6 +142,7 @@ export function ImportDialog({ supabase, userId, areas, requestId, start, onClos
   const title = start ? 'Start from a client file' : 'Import client file'
 
   return (
+    <>
     <div className={s.scrim} onClick={busy ? undefined : onClose}>
       <div className={s.modal} style={{ maxWidth: rows ? 1400 : 640 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="imp-title">
         <div className={s.cardHead}><h2 id="imp-title">{title}</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} disabled={!!busy} aria-label="Close">×</button></div>
@@ -204,12 +208,17 @@ export function ImportDialog({ supabase, userId, areas, requestId, start, onClos
                             <td><input type="checkbox" aria-label={`Keep ${r.name}`} checked={r.include} onChange={e => upd(r.id, { include: e.target.checked })} /></td>
                             <td>
                               <div className={s.scanPics}>
-                                <button type="button" className={s.scanPick} onClick={() => setPicking(r.id)} aria-label={`Change the picture of ${r.name}`} title="Change the picture">
-                                  {r.picture !== null && urls[r.picture] ? <Pic src={urls[r.picture]} alt="" className={s.thumb} /> : <span className={s.thumbEmpty}>+</span>}
-                                </button>
+                                <span className={s.plRef}>
+                                  <button type="button" className={s.scanPick} onClick={() => setPicking(r.id)} aria-label={`Change the picture of ${r.name}`} title="Change the picture">
+                                    {r.picture !== null && urls[r.picture] ? <Pic src={urls[r.picture]} alt="" className={s.thumb} /> : <span className={s.thumbEmpty}>+</span>}
+                                  </button>
+                                  {r.picture !== null && urls[r.picture] && <button type="button" className={s.improve} onClick={() => setCropping(r.picture)} aria-label={`Crop the picture of ${r.name}`}>Crop</button>}
+                                </span>
                                 {(r.extras ?? []).map((x, j) => urls[x.picture] && (
                                   <span key={j} className={s.plRef} title={[REF_LABEL[x.kind], x.note].filter(Boolean).join(': ')}>
-                                    <Pic src={urls[x.picture]} alt={REF_LABEL[x.kind]} className={s.plRefImg} />
+                                    <button type="button" className={s.scanPick} onClick={() => setCropping(x.picture)} aria-label={`Crop this ${REF_LABEL[x.kind].toLowerCase()}`} title="Crop">
+                                      <Pic src={urls[x.picture]} alt={REF_LABEL[x.kind]} className={s.plRefImg} />
+                                    </button>
                                     <span className={s.plRefKind}>{REF_LABEL[x.kind]}</span>
                                     <button type="button" className={s.plRefRm} aria-label={`Remove this ${REF_LABEL[x.kind].toLowerCase()}`} onClick={() => upd(r.id, { extras: r.extras!.filter((_, k) => k !== j) })}>×</button>
                                   </span>
@@ -262,5 +271,11 @@ export function ImportDialog({ supabase, userId, areas, requestId, start, onClos
         </div>
       </div>
     </div>
+    {/* Beside the review, not inside its backdrop: a click there must never close the review and lose its rows. */}
+    {cropping !== null && res?.pictures[cropping] && (
+      <CropDialog src={urls[cropping]} onClose={() => setCropping(null)}
+        onUse={b => { const at = cropping; setRes(p => p && { ...p, pictures: p.pictures.map((x, i) => (i === at ? b : x)) }); setCropping(null) }} />
+    )}
+    </>
   )
 }
