@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `0f34e769` — Docs: stamp the salesperson-keeps-the-lead-they-add change (#861) as merged 03b1a061, deployed 12:37 IST (no SQL) (#864)
-- Commits on this branch: 1423
+- Commit: `7404c43e` — Docs: stamp Crop & rotate in the scan review (#853) as merged b296d0c2, deployed 10:42 IST (no SQL) (#859)
+- Commits on this branch: 1424
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 212
 - Migrations: 471 (first `20260530_create_positions.sql`, latest `20270729000000_pricing_taught_watcher.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1054   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `7404c43e` 2026-11-16 Docs: stamp Crop & rotate in the scan review (#853) as merged b296d0c2, deployed 10:42 IST (no SQL) (#859)
 - `0f34e769` 2026-11-16 Docs: stamp the salesperson-keeps-the-lead-they-add change (#861) as merged 03b1a061, deployed 12:37 IST (no SQL) (#864)
 - `acf8dc95` 2026-11-16 Docs: stamp the watcher (#863) as merged ce3bb873, deployed 13:32 IST, migration 20270729000000 applied (no SQL) (#865)
 - `ce3bb873` 2026-11-16 Pricing: the watcher, a quoted price against the taught one (migration 20270729000000) (#863)
@@ -38,7 +39,6 @@
 - `cd8d6358` 2026-11-16 Pricing Training: submitting is what counts, and a case can always be changed (migration 20270724000000, apply before merge) (#843)
 - `b53b86f9` 2026-11-16 Docs: stamp #835 (Start from a client file) as merged 17a37990, deployed 00:06 IST, migration 20270721000000 applied (#842)
 - `17a37990` 2026-11-16 Quotations: Start from a client file, read any requirement file into rooms, products and pictures (migration 20270721000000, apply before merge) (#835)
-- `f37ad21e` 2026-11-15 Docs: stamp #830 (AI calls use structured output) as merged 475569ea, deployed 21:46 IST (no SQL) (#831)
 
 ## Pages by top-level area
 

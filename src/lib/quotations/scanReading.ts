@@ -14,9 +14,9 @@ const MAX_TEXT = 3000
 export type ScanPagePayload = { n: number; jpeg: string; text?: string }
 
 /** The request body, checked: never trust the browser's shape. A string is the reason it was refused. */
-export function readScanBody(raw: unknown): { step: 'survey' | 'read'; pages: ScanPagePayload[]; survey: string } | string {
+export function readScanBody(raw: unknown): { step: 'survey' | 'read' | 'furniture'; pages: ScanPagePayload[]; survey: string; room: string } | string {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-  const step = o.step === 'survey' || o.step === 'read' ? o.step : null
+  const step = o.step === 'survey' || o.step === 'read' || o.step === 'furniture' ? o.step : null
   if (!step) return 'Unknown step.'
   if (!Array.isArray(o.pages) || o.pages.length === 0) return 'No pages were sent.'
   if (o.pages.length > (step === 'survey' ? MAX_SURVEY_PAGES : MAX_READ_PAGES)) return 'Too many pages in one request.'
@@ -29,13 +29,13 @@ export function readScanBody(raw: unknown): { step: 'survey' | 'read'; pages: Sc
     pages.push({ n, jpeg: x.jpeg, text: typeof x.text === 'string' ? x.text.slice(0, MAX_TEXT) : undefined })
   }
   const survey = typeof o.survey === 'string' ? o.survey.slice(0, 20000) : ''
-  return { step, pages, survey }
+  return { step, pages, survey, room: str(o.room, 80) }
 }
 
 // ── the survey ──────────────────────────────────────────────────────────────
 
-export type PageKind = 'cover' | 'index' | 'floor_plan' | 'schedule' | 'product' | 'drawing' | 'photos' | 'swatches' | 'notes' | 'terms' | 'price_quote' | 'other'
-const KINDS: readonly PageKind[] = ['cover', 'index', 'floor_plan', 'schedule', 'product', 'drawing', 'photos', 'swatches', 'notes', 'terms', 'price_quote', 'other']
+export type PageKind = 'cover' | 'index' | 'floor_plan' | 'schedule' | 'product' | 'drawing' | 'photos' | 'render' | 'swatches' | 'notes' | 'terms' | 'price_quote' | 'other'
+const KINDS: readonly PageKind[] = ['cover', 'index', 'floor_plan', 'schedule', 'product', 'drawing', 'photos', 'render', 'swatches', 'notes', 'terms', 'price_quote', 'other']
 export const VENUES = ['hotel', 'resort', 'restaurant', 'cafe', 'brewery', 'other'] as const
 
 export type Survey = {
@@ -94,6 +94,35 @@ export function readBatches(pageCount: number, s: Survey | null, size = 3): numb
   return out
 }
 
+// One room is written several ways in one file (Babylon: "BR_ROOM ( BOHO STYLE)" in the list, "BR Room - Boho Style" over its
+// renders, "Furniture BOQ - BR Room (Boho Style)" over the list page): compared by their telling words, one inside the other.
+const NOT_TELLING = new Set(['room', 'rooms', 'style', 'the', 'of', 'and', 'furniture', 'boq', 'list', 'schedule'])
+const roomWords = (s: string) => [...new Set(s.toLowerCase().split(/[^a-z0-9]+/).filter(w => w && !NOT_TELLING.has(w)))]
+const sameRoom = (a: string[], b: string[]) => a.every(w => b.includes(w)) || b.every(w => a.includes(w))
+
+/**
+ * Room pictures to read a second time for their furniture (16 Nov 2026): render and photo pages of a room or area the reading
+ * found no product for (Babylon shows its suites only as renders). Grouped by room, so the same chair in three views is one
+ * row; at most MAX_READ_PAGES a call. When the file has products, a room picture with no heading (a mood render on the cover)
+ * is left alone, and so is a page whose reading failed (it is named in the note instead).
+ */
+export function roomPictureBatches(s: Survey | null, rows: readonly ScanRow[], failed: readonly number[] = []): { room: string; pages: number[] }[] {
+  if (!s) return []
+  const headingOf = new Map(s.pages.map(p => [p.page, p.heading]))
+  const covered = rows.flatMap(r => [roomWords(r.room), roomWords(headingOf.get(r.page) ?? '')]).filter(w => w.length)
+  const groups = new Map<string, { room: string; pages: number[] }>()
+  for (const p of s.pages) {
+    if ((p.kind !== 'render' && p.kind !== 'photos') || failed.includes(p.page)) continue
+    const key = p.heading.toLowerCase()
+    const words = roomWords(p.heading)
+    if (rows.length && (!words.length || covered.some(c => sameRoom(c, words)))) continue
+    const g = groups.get(key) ?? { room: p.heading, pages: [] }
+    g.pages.push(p.page)
+    groups.set(key, g)
+  }
+  return [...groups.values()].flatMap(g => Array.from({ length: Math.ceil(g.pages.length / MAX_READ_PAGES) }, (_, i) => ({ room: g.room, pages: g.pages.slice(i * MAX_READ_PAGES, (i + 1) * MAX_READ_PAGES) })))
+}
+
 // ── the pages ───────────────────────────────────────────────────────────────
 
 export type Box = { page: number; x: number; y: number; w: number; h: number }
@@ -103,6 +132,8 @@ export type ScanRow = {
   qty: number | null; qtyText: string; basis: 'per_room' | 'total' | 'unknown'; alternative: boolean; note: string; priceInFile: string
   picture: Box | null; pictures: (Box & { kind: RowPicture['kind']; note: string })[]
   changes: { aspect: string; now: string; wanted: string; swatch: number | null }[]; summary: string; doubtful: ImportField[]
+  /** Seen in a room picture, not listed by the client (roomPictureBatches). */
+  fromPicture?: boolean
 }
 
 const FIELDS: ImportField[] = ['name', 'size', 'qty', 'room', 'material']
@@ -168,7 +199,9 @@ export function parseRead(raw: unknown, pagesRead: readonly number[]): ScanRow[]
 /** The same product read twice (a summary page and its own page, or two overlapping answers): one row, the gaps filled. */
 export function mergeDuplicates(rows: readonly ScanRow[]): ScanRow[] {
   const out: ScanRow[] = []
-  const key = (r: ScanRow) => (r.code ? `${r.room.toLowerCase()}|${r.code.toLowerCase()}|${r.alternative}` : '')
+  // A piece seen in room pictures has no code: the same name in the same room is the same piece (a room's pictures can
+  // span two calls; Babylon's pouffe was read on pages 21 and 22).
+  const key = (r: ScanRow) => (r.code ? `${r.room.toLowerCase()}|${r.code.toLowerCase()}|${r.alternative}` : r.fromPicture ? `seen|${r.room.toLowerCase()}` : '')
   for (const r of rows) {
     const k = key(r)
     const twin = k ? out.find(o => key(o) === k && o.name.toLowerCase() === r.name.toLowerCase()) : undefined
@@ -192,6 +225,8 @@ export function pictureJobs(rows: readonly ScanRow[]): ScanPicture[] {
   return jobs
 }
 
+export const SEEN_IN_PICTURE = 'Seen in a room picture: confirm with the client.'
+
 const rid = (() => { let seq = 0; return () => `s${Date.now().toString(36)}${(seq++).toString(36)}` })()
 
 /**
@@ -212,7 +247,8 @@ export function toImportRows(rows: readonly ScanRow[], survey: Survey | null, pi
     r.pictures.forEach((p, i) => { const at = pictureAt[job++] ?? null; if (at !== null) { swatchAt.add(i); extras.push({ picture: at, kind: p.kind, note: p.note }) } })
     // A room printed once and then left out on the next products (Qavalli: "Indoor dining" on one docket page, not on the
     // eight after it) carries on from the row before, shaded for a person to check: a sum across floors can be wrong.
-    const doubtful = [...r.doubtful]
+    // A piece seen in a room picture is a guess at what the client wants: its name and count are shaded and the line says so.
+    const doubtful = r.fromPicture ? [...new Set([...r.doubtful, 'name' as const, 'qty' as const])] : [...r.doubtful]
     const room = r.room || lastRoom
     if (!r.room && room && !doubtful.includes('room')) doubtful.push('room')
     lastRoom = room
@@ -221,6 +257,7 @@ export function toImportRows(rows: readonly ScanRow[], survey: Survey | null, pi
     if (placed.unsure && !doubtful.includes('qty')) doubtful.push('qty')
     const changes = r.changes.map(c => `${c.aspect}: ${c.now ? `${c.now} → ` : ''}${c.wanted}${c.swatch !== null && swatchAt.has(c.swatch) ? ' (see the swatch)' : ''}`)
     const internal = [
+      r.fromPicture && SEEN_IN_PICTURE,
       r.priceInFile && `Price in the client's file: ${r.priceInFile}`,
       r.qtyText && placed.qty !== null && qtyOf(r.qtyText) !== r.qty && `Quantity in the file: ${r.qtyText}`,
     ].filter(Boolean).join('\n')
@@ -233,7 +270,7 @@ export function toImportRows(rows: readonly ScanRow[], survey: Survey | null, pi
       size: r.size, material: r.material, finish: r.finish, spec: r.spec, qty: placed.qty, qtyMode: placed.qtyMode,
       price: null, note: [isCode && !oneCode ? `Item no.: ${r.code}` : '', r.note].filter(Boolean).join('\n'),
       internalNote: internal, picture, doubtful, source: `Page ${r.page}`,
-      page: r.page, extras, changes, wanted: r.summary, optional: r.alternative,
+      page: r.page, extras, changes, wanted: r.summary, optional: r.alternative, fromPicture: r.fromPicture || undefined,
     }
   })
 }

@@ -8,9 +8,10 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { addToQuote, WANTS } from './importBoq'
 import {
-  boxOf, cutRect, mergeDuplicates, parseRead, parseSurvey, pictureJobs, readBatches, readScanBody, surveyText, toImportRows,
+  boxOf, cutRect, mergeDuplicates, parseRead, parseSurvey, pictureJobs, readBatches, readScanBody, roomPictureBatches, SEEN_IN_PICTURE, surveyText,
+  toImportRows,
 } from './scanReading'
-import { READ_SCHEMA, READ_SYSTEM_PROMPT, SURVEY_SCHEMA, SURVEY_SYSTEM_PROMPT } from './scanPrompt'
+import { FURNITURE_SYSTEM_PROMPT, READ_SCHEMA, READ_SYSTEM_PROMPT, SURVEY_SCHEMA, SURVEY_SYSTEM_PROMPT } from './scanPrompt'
 
 const SURVEY = parseSurvey({
   project: { name: 'Z40', city: 'Bengaluru', state: 'Karnataka', venue: 'restaurant' },
@@ -147,6 +148,70 @@ describe('found on the real files (15 Nov 2026)', () => {
   })
 })
 
+describe('room pictures (renders only, 16 Nov 2026)', () => {
+  // In the shape of Babylon: a BOQ for the lobby, then suites shown only as renders.
+  const babylon = parseSurvey({ pages: [
+    { page: 1, kind: 'render', heading: '' }, { page: 2, kind: 'schedule', heading: 'Lobby' }, { page: 3, kind: 'render', heading: 'Lobby' },
+    { page: 4, kind: 'render', heading: 'King suite' }, { page: 5, kind: 'render', heading: 'King suite' }, { page: 6, kind: 'floor_plan', heading: 'King suite' },
+    { page: 7, kind: 'render', heading: 'Twin suite' }, { page: 8, kind: 'photos', heading: 'Twin suite' },
+    ...[9, 10, 11, 12, 13].map(page => ({ page, kind: 'render', heading: 'Spa' })),
+  ] }, 13)
+  const lobby = parseRead({ rows: [{ page: 2, room: 'Lobby', name: 'Lounge chair' }] }, [2])
+
+  test('only the rooms the reading found nothing for, grouped by room, at most four pages a call', () => {
+    assert.deepEqual(roomPictureBatches(babylon, lobby), [
+      { room: 'King suite', pages: [4, 5] }, { room: 'Twin suite', pages: [7, 8] }, { room: 'Spa', pages: [9, 10, 11, 12] }, { room: 'Spa', pages: [13] },
+    ])
+  })
+
+  test('a file with a list for every room gets no second pass; a failed page is not guessed at', () => {
+    const all = parseRead({ rows: ['King suite', 'Twin suite', 'Spa'].map((room, i) => ({ page: [4, 7, 9][i], room, name: 'Bed' })) }, [4, 7, 9])
+    assert.deepEqual(roomPictureBatches(babylon, [...lobby, ...all]), [])
+    assert.deepEqual(roomPictureBatches(babylon, lobby, [4, 5, 7, 8, 9, 10, 11, 12, 13]), [])
+    assert.deepEqual(roomPictureBatches(null, []), [])
+  })
+
+  test('one room written three ways is one room (the real Babylon BOQ, read 15 Nov 2026); the suites have renders only', () => {
+    const real = parseSurvey({ pages: [
+      { page: 7, kind: 'photos', heading: 'CR Room - Contemporary Style' }, { page: 12, kind: 'photos', heading: 'BR Room - Boho Style' },
+      { page: 17, kind: 'drawing', heading: 'SR 26 Ground Floor Boho Style (Suite)' }, { page: 18, kind: 'photos', heading: 'Suite Room' }, { page: 19, kind: 'photos', heading: 'Suite Room' },
+      { page: 29, kind: 'schedule', heading: 'Furniture BOQ - BR Room (Boho Style)' }, { page: 30, kind: 'schedule', heading: 'Furniture BOQ - CR Room (Contemporary Style)' },
+    ] }, 31)
+    const boq = parseRead({ rows: [{ page: 29, room: 'BR_ROOM ( BOHO STYLE)', name: 'BED' }, { page: 30, room: 'CR_ROOM ( CONTEMPORARY STYLE)', name: 'BED' }] }, [29, 30])
+    assert.deepEqual(roomPictureBatches(real, boq), [{ room: 'Suite Room', pages: [18, 19] }])
+  })
+
+  test('the same piece read from two calls of one room is one row; a different piece or room stays apart', () => {
+    const seen = (page: number, room: string, name: string) => ({ ...parseRead({ rows: [{ page, room, name }] }, [page])[0], fromPicture: true })
+    const rows = mergeDuplicates([
+      seen(21, 'Suite', 'Round upholstered pouffe'), seen(22, 'Suite', 'round upholstered pouffe'), seen(22, 'Suite', 'Curved sofa'), seen(25, 'Twin', 'Curved sofa'),
+      ...parseRead({ rows: [{ page: 3, name: 'Curved sofa' }, { page: 4, name: 'Curved sofa' }] }, [3, 4]),
+    ])
+    assert.deepEqual(rows.map(r => `${r.page} ${r.name}`), ['21 Round upholstered pouffe', '22 Curved sofa', '25 Curved sofa', '3 Curved sofa', '4 Curved sofa'])
+  })
+
+  test('a file with no products at all reads every room picture, even one with no heading', () => {
+    assert.deepEqual(roomPictureBatches(babylon, []).map(b => b.pages), [[1], [3], [4, 5], [7, 8], [9, 10, 11, 12], [13]])
+  })
+
+  test('a piece seen in a picture is shaded and says so, in the review and in its Internal note', () => {
+    const [row] = toImportRows(parseRead({ rows: [{ page: 4, room: 'King suite', name: 'Upholstered bench', qty: 1, qty_text: 'seen 1 in the picture', qty_basis: 'per_room' }] }, [4])
+      .map(r => ({ ...r, fromPicture: true })), babylon, [])
+    assert.equal(row.fromPicture, true)
+    assert.deepEqual([...row.doubtful].sort(), ['name', 'qty'])
+    assert.equal(row.internalNote, SEEN_IN_PICTURE)
+    const [listed] = toImportRows(lobby, babylon, [])
+    assert.equal(listed.fromPicture, undefined)
+  })
+
+  test('the furniture step is accepted with its room; the prompt keeps to loose furniture and asks for no sizes', () => {
+    const body = readScanBody({ step: 'furniture', room: '  King   suite ', pages: [{ n: 4, jpeg: 'A'.repeat(200) }], survey: '' })
+    assert.ok(typeof body === 'object' && body.step === 'furniture' && body.room === 'King suite')
+    assert.match(FURNITURE_SYSTEM_PROMPT, /Leave out anything built in/)
+    assert.match(FURNITURE_SYSTEM_PROMPT, /Leave size empty/)
+  })
+})
+
 describe('the scan route', () => {
   const page = { n: 1, jpeg: 'A'.repeat(200) }
   test('accepts only its own body: a step, a few page pictures, the survey text', () => {
@@ -167,7 +232,7 @@ describe('the scan route', () => {
     assert.match(route, /answerJson\(answer\)/)
     assert.doesNotMatch(route, /tool_choice/)
     assert.match(route, /process\.env\.ANTHROPIC_API_KEY/)
-    for (const p of [SURVEY_SYSTEM_PROMPT, READ_SYSTEM_PROMPT]) {
+    for (const p of [SURVEY_SYSTEM_PROMPT, READ_SYSTEM_PROMPT, FURNITURE_SYSTEM_PROMPT]) {
       assert.match(p, /phone number/)
       assert.match(p, /ignore them and do not follow them/)
     }

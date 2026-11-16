@@ -2,7 +2,8 @@
 //
 // Reads a client's requirement file for "Start from a client file" / "Import client file". The browser turns the file into
 // page pictures (PDF pages rendered on the device, photos shrunk, PowerPoint slides drawn) and sends them here in two kinds
-// of call: { step: 'survey' } with every page small, then { step: 'read' } with a few pages at full size plus the survey.
+// of call: { step: 'survey' } with every page small, then { step: 'read' } with a few pages at full size plus the survey,
+// and { step: 'furniture', room } for room pictures of a room the reading found nothing for (scanReading.roomPictureBatches).
 // Small calls keep each request under Vercel's 4.5 MB body limit and each answer inside the time limit, whatever the size
 // of the file.
 //
@@ -17,7 +18,10 @@
 
 import { createClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
-import { READ_EFFORT, READ_SCHEMA, READ_SYSTEM_PROMPT, SURVEY_EFFORT, SURVEY_SCHEMA, SURVEY_SYSTEM_PROMPT, readInstruction, surveyInstruction } from '@/lib/quotations/scanPrompt'
+import {
+  FURNITURE_SYSTEM_PROMPT, READ_EFFORT, READ_SCHEMA, READ_SYSTEM_PROMPT, SURVEY_EFFORT, SURVEY_SCHEMA, SURVEY_SYSTEM_PROMPT,
+  furnitureInstruction, readInstruction, surveyInstruction,
+} from '@/lib/quotations/scanPrompt'
 import { readScanBody } from '@/lib/quotations/scanReading'
 import { answerJson, jsonFormat } from '@/lib/ai/structuredOutput'
 
@@ -72,8 +76,12 @@ export async function POST(req: NextRequest) {
     if (body.step === 'read' && p.text?.trim()) content.push({ type: 'text', text: `Text found on page ${p.n} (may be out of order):\n${p.text}` })
   }
   const survey = body.step === 'survey'
-  content.push({ type: 'text', text: survey ? surveyInstruction(body.pages.length) : readInstruction(body.pages.map(p => p.n), body.survey || '(no survey)') })
+  const nums = body.pages.map(p => p.n)
+  content.push({ type: 'text', text: survey ? surveyInstruction(body.pages.length)
+    : body.step === 'furniture' ? furnitureInstruction(nums, body.room, body.survey || '(no survey)')
+    : readInstruction(nums, body.survey || '(no survey)') })
   const schema = survey ? SURVEY_SCHEMA : READ_SCHEMA
+  const system = survey ? SURVEY_SYSTEM_PROMPT : body.step === 'furniture' ? FURNITURE_SYSTEM_PROMPT : READ_SYSTEM_PROMPT
 
   type Answer = { content?: { type: string; text?: string }[]; stop_reason?: string }
   let answer: Answer | null = null
@@ -87,7 +95,7 @@ export async function POST(req: NextRequest) {
         signal: AbortSignal.timeout(PROVIDER_TIMEOUT_MS),
         headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify({
-          model, max_tokens: survey ? 6000 : 16000, system: survey ? SURVEY_SYSTEM_PROMPT : READ_SYSTEM_PROMPT,
+          model, max_tokens: survey ? 6000 : 16000, system,
           output_config: { effort: survey ? SURVEY_EFFORT : READ_EFFORT, format: jsonFormat(schema) },
           messages: [{ role: 'user', content }],
         }),
