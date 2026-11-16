@@ -118,6 +118,14 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Proof.** `priceApprovalSwitch.test.ts` (2), `navModel.test.ts` (twenty settings, the new section is findable and sits in Sales), `quotations_pglite.mjs` (empty limits give `not_needed` and `blocked = false`, already covered). Navigation now has 20 settings.
 
 ## 2026-11-15 — Control Center redesign, step 2: the six ?tab= screens get real routes (PR #821, squash-merged 19:13 IST as `826ea9c6`, deployed 19:15 IST, old addresses verified live) · no SQL
+## 2026-11-15 — Page speed, part 13: Sales leads and the quotations list join the saved copy (branch `perf/persisted-cache-b`, PR pending) · no SQL
+- **Owner ask.** "Phase B: Sales" (phase A, #810, is live).
+- **What is saved now.** The Lead Master list (only when no search is typed), the people list, the Board and its columns, My Day, and the quotations list (mine / all). Same rules as phase A: one person's copy, 12 hours, wiped on sign-out or another person, display only, kill switch `boe-qcache-off`.
+- **Never saved.** Held WhatsApp chats, one lead's detail, the phone check, the team figures, the quotation access answer (it decides who may edit), one quotation, and anything whose key mentions finance, payroll, attendance, salary, payment, credit, punch, bank, expense, reimbursement, payslip or wage.
+- **Why no id in the key.** These keys carry no person id, so `isPersistableKey` lists them by hand (`isSalesOrQuotationKey`); they are safe because the copy names one owner and the in-memory cache is cleared on any identity change. A test pins the two source key shapes.
+- **Honest limit.** Both screens still wait for the fresh permission answer (`enabled: ready`), so the gain is the list wait after that, not the permission wait.
+
+## 2026-11-15 — Control Center redesign, step 2: the six ?tab= screens get real routes (PR #821) · no SQL
 - **Owner ask.** "Start step 2: real routes for tab pages" (the second half of the Control Center redesign). Follows step 1 (#816) and the pending-work change (#818), both merged.
 - **Why.** Departments, the four Order screens and Sales team were `?tab=` views of one 1,490-line page: no address of their own, and every sidebar switch replaced the history entry, so Back skipped them.
 - **Routes.** `/admin/control-center/departments`, `/order-numbering`, `/order-notifications`, `/operations-handoff`, `/order-visibility`, `/sales-team`. Each is a thin page rendering a component moved out of `page.tsx` unchanged (`DepartmentsTab`, `OrderNumberingTab`, `OrderNotificationsTab`, `OperationsHandoffTab`; `OrderVisibilityTab` and `SalesTeamTab` already were). `page.tsx` is now Home plus the hidden Module Visibility tab (about 370 lines, was 1,490).
