@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `ba006af3` — Merge remote-tracking branch 'origin/main' into feat/price-logic
-- Commits on this branch: 1417
+- Commit: `ad508334` — Pricing: the Price logic page, submitted cases side by side (no SQL) (#854)
+- Commits on this branch: 1416
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 212
 - Migrations: 468 (first `20260530_create_positions.sql`, latest `20270727000000_pricing_training_library_parts.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1053   Enums: 0
@@ -14,10 +14,9 @@
 
 ## Latest 25 commits
 
-- `ba006af3` 2026-11-16 Merge remote-tracking branch 'origin/main' into feat/price-logic
+- `ad508334` 2026-11-16 Pricing: the Price logic page, submitted cases side by side (no SQL) (#854)
+- `53ec4160` 2026-11-16 Revert "Page speed fix: put the saved copy back when SIGNED_IN arrives first (no SQL) (#855)" (#857)
 - `296f3629` 2026-11-16 Page speed fix: put the saved copy back when SIGNED_IN arrives first (no SQL) (#855)
-- `75b8f721` 2026-11-16 Merge remote-tracking branch 'origin/main' into feat/price-logic
-- `d6c6591c` 2026-11-16 Pricing: the Price logic page, submitted cases side by side (no SQL)
 - `b296d0c2` 2026-11-16 Quotations: Crop & rotate a picture in the scan review (no SQL) (#853)
 - `5b38f85d` 2026-11-16 Page speed, part 14: PI Drafts joins the saved copy; the saved copy keeps earlier lists (no SQL) (#852)
 - `84d526a2` 2026-11-16 Docs: stamp "This one is different" (#850) as merged fab39501, deployed 10:02 IST, migration 20270727000000 applied (no SQL) (#851)
@@ -39,6 +38,7 @@
 - `709a747b` 2026-11-15 Sales: files on a lead's update, by button, drag and drop and paste (migration 20270722000000, apply before merge) (#839)
 - `894aea2d` 2026-11-15 Docs: stamp the Training photo-read fix (#828) as merged 1d7fcac4, deployed 22:34 IST (no SQL) (#837)
 - `3f7824d8` 2026-11-15 Docs: stamp the lead popup strip change (#829) as merged 29ff4ecd, deployed 22:10 IST, verified live (no SQL) (#834)
+- `1d7fcac4` 2026-11-15 Pricing Training: a failed photo reading says why, and can be tried again (no SQL) (#828)
 
 ## Pages by top-level area
 
