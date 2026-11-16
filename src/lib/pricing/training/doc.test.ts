@@ -169,6 +169,6 @@ describe('the Training screens follow the house rules', () => {
       for (const m of src.matchAll(/\bt\.([A-Za-z0-9_]+)/g)) assert.ok(new RegExp(`\\.${m[1]}\\b`).test(css), `${f}: .${m[1]} is not in training.module.css`)
     }
     const shell = readFileSync('src/components/layout/ComingSoonModule.tsx', 'utf8')
-    assert.match(shell, /pricing: \[\{ href: '\/pricing\/training', label: 'Training' \}, \{ href: '\/pricing\/woods', label: 'Wood rates' \}\]/)
+    assert.match(shell, /pricing: \[\{ href: '\/pricing\/training', label: 'Training' \}, \{ href: '\/pricing\/woods', label: 'Wood rates' \}, \{ href: '\/pricing\/logic', label: 'Price logic' \}\]/)
   })
 })
