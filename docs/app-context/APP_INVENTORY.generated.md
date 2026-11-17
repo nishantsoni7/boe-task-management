@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `f8e34c03` — Draft Orders (ClickUp): the Quotation tab of nine old orders as a list (#873)
-- Commits on this branch: 1432
+- Commit: `65a56c9c` — Docs: stamp the PowerPoint pictures fix (#872) as merged 0b2cc083, deployed 15:13 IST (no SQL) (#874)
+- Commits on this branch: 1433
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 213
 - Migrations: 471 (first `20260530_create_positions.sql`, latest `20270729000000_pricing_taught_watcher.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1054   Enums: 0
-- Test files: 878   Next.js 16.2.6, React 19.2.4
+- Test files: 880   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `65a56c9c` 2026-11-17 Docs: stamp the PowerPoint pictures fix (#872) as merged 0b2cc083, deployed 15:13 IST (no SQL) (#874)
 - `f8e34c03` 2026-11-17 Draft Orders (ClickUp): the Quotation tab of nine old orders as a list (#873)
 - `0b2cc083` 2026-11-17 Quotations: a PowerPoint's pictures are drawn again when a client file is read (#872)
 - `3f420714` 2026-11-17 Docs: stamp the half paid leave change (#869) as merged e055668f, deployed 14:00 IST (no SQL) (#871)
@@ -38,7 +39,6 @@
 - `84d526a2` 2026-11-16 Docs: stamp "This one is different" (#850) as merged fab39501, deployed 10:02 IST, migration 20270727000000 applied (no SQL) (#851)
 - `fab39501` 2026-11-16 Quotations: "This one is different" on a picked taught product (migration 20270727000000) (#850)
 - `8b87062e` 2026-11-16 Docs: stamp #848 (swatches and drawings to the PI draft) as merged eaa05402, deployed 09:18 IST (no SQL) (#849)
-- `d26acf88` 2026-11-16 Page speed, part 13: Sales leads and the quotations list join the saved copy (no SQL) (#824)
 
 ## Pages by top-level area
 
@@ -162,7 +162,7 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 5 source, 8 test
 - `src/lib/notifications` — 9 source, 25 test
-- `src/lib/orders` — 112 source, 172 test
+- `src/lib/orders` — 112 source, 173 test
 - `src/lib/payroll` — 36 source, 36 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test

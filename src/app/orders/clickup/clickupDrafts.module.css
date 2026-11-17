@@ -1,19 +1,10 @@
 /* Draft Orders (ClickUp) — the list, an order and the import. Shared table and
    note styles (.opp-*) come from globals.css; this holds only what is new. */
 
-.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
-.tab {
-  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12.5px; cursor: pointer;
-  color: var(--boe-text-muted); background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: 999px;
-}
-.tab:hover { border-color: var(--boe-border-strong); color: var(--boe-text); }
-.tabOn { color: var(--boe-brand); background: var(--boe-brand-tint); border-color: var(--boe-brand); font-weight: 600; }
-.count { font-variant-numeric: tabular-nums; opacity: 0.8; }
-
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
-/* Not flex: the search box sits in a COLUMN (.opp-page), where a flex basis of 220px made it 220px TALL. */
-.grow { width: 100%; max-width: 360px; }
-.right { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+/* The list (DraftsList): the buttons at the right end of the view bar; a client or assignee may wrap onto a second line. */
+.actions { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 8px 0; flex-wrap: wrap; }
+.wrap { white-space: normal !important; overflow-wrap: anywhere; }
 
 .pill {
   display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap;
@@ -63,7 +54,9 @@
 .totalRow dd { margin: 0; font-variant-numeric: tabular-nums; color: var(--boe-text); }
 .totalRow:last-child dt, .totalRow:last-child dd { font-weight: 700; color: var(--boe-text-strong); }
 
+@media (max-width: 700px) {
+  .actions { margin-left: 0; width: 100%; padding-top: 0; }
+}
 @media (max-width: 640px) {
-  .right { margin-left: 0; }
   .headTitle { font-size: 18px; }
 }
