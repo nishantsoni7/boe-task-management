@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `272fc217` — Page speed: the PI draft page reads the cost sheet and the sample type once (#893)
-- Commits on this branch: 1452
+- Commit: `b6aa2787` — Docs: stamp the PI draft shared reads (#893) as merged 272fc217, deployed 23:16 IST, checked live (#894)
+- Commits on this branch: 1453
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 472 (first `20260530_create_positions.sql`, latest `20270730000000_for_you_bundle.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1055   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `b6aa2787` 2026-11-17 Docs: stamp the PI draft shared reads (#893) as merged 272fc217, deployed 23:16 IST, checked live (#894)
 - `272fc217` 2026-11-17 Page speed: the PI draft page reads the cost sheet and the sample type once (#893)
 - `64d8204c` 2026-11-17 Docs: stamp the no-double-ask fix (#891) as merged c5fe668a, deployed 21:52 IST, checked live (#892)
 - `c5fe668a` 2026-11-17 Page speed: putting the saved copy back no longer asks twice (#891)
@@ -38,7 +39,6 @@
 - `0b2cc083` 2026-11-17 Quotations: a PowerPoint's pictures are drawn again when a client file is read (#872)
 - `3f420714` 2026-11-17 Docs: stamp the half paid leave change (#869) as merged e055668f, deployed 14:00 IST (no SQL) (#871)
 - `06bc8871` 2026-11-17 Docs: stamp the old-order PI sheet (#868) as merged e9298b57, deployed 13:34 IST (no SQL) (#870)
-- `e055668f` 2026-11-17 Payroll: a half paid leave takes half off the earliest absent day (#869)
 
 ## Pages by top-level area
 
