@@ -1,4 +1,7 @@
-import { useId, type CSSProperties } from 'react'
+'use client'
+
+import { useEffect, useId, useState, type CSSProperties } from 'react'
+import { SPLASH_LABEL, type SplashKind } from '@/lib/dailySplash/kinds'
 
 // The BOE One loading screen: the logo is drawn around its outline, floods to
 // solid terracotta, takes one soft sweep of light, lets go, and starts again.
@@ -22,10 +25,18 @@ const MARK =
 
 // One line at a time under the logo, each 4.5 s, in this order and then round
 // again. The first ones carry most of the weight: most waits are over in under
-// ten seconds. Fixed order on purpose (no random): the same markup must come out
-// on the server and in the browser. The cycle length in globals.css (36 s) and
-// its 12.5% fade-out step are this list's length times 4.5 s, and 100 / length;
+// ten seconds. The cycle length in globals.css (36 s) and its 12.5% fade-out
+// step are this list's SLOT COUNT times 4.5 s, and 100 / slots;
 // BoeOneLoader.test.tsx fails if the list and the CSS drift apart.
+//
+// THESE EIGHT ARE THE FALLBACK, NOT THE SHOW. Because most waits end within two
+// lines, a fixed list meant everyone saw the same two sentences every time. So
+// the markup is rendered with these (fixed order, no random: the server and the
+// first browser render must agree), and right after mount the browser swaps
+// them for LOADER_LINE_COUNT (8) lines drawn from the library in
+// src/lib/dailySplash: fun facts, one-liners, jingles, work hacks, trade facts,
+// quotes and, when one has been fetched, a news headline. Without JavaScript,
+// or before it arrives, these still show. Keep each at 60 characters or fewer.
 export const CHEER_LINES = [
   'Good things take a moment. This one’s worth it.',
   'Take a breath. Your next win is almost here.',
@@ -36,6 +47,16 @@ export const CHEER_LINES = [
   'You’re about to get something done. Drumroll, please.',
   'Hang in there. The best part is still arriving.',
 ]
+
+type LoaderLine = { text: string; kind?: SplashKind; by?: string }
+
+// What the first render shows: the fixed fallback, no label.
+const FALLBACK: readonly LoaderLine[] = CHEER_LINES.map(text => ({ text }))
+
+// The copy in the root layout is hidden until a clicked link waits for its page
+// (<html data-boe-nav-pending>). It is mounted once per visit, so it draws a
+// fresh set each time it is revealed, not once.
+const NAV_PENDING = 'data-boe-nav-pending'
 
 export function BoeOneLoader({
   message,
@@ -52,6 +73,41 @@ export function BoeOneLoader({
   const id = useId()
   const clip = `${id}-clip`
   const sheen = `${id}-sheen`
+
+  const [lines, setLines] = useState<readonly LoaderLine[]>(FALLBACK)
+  const isNavCopy = className === 'boe-nav-loader'
+  useEffect(() => {
+    if (!cheer) return
+    let alive = true
+    // THE LIBRARY IS A SEPARATE CHUNK. This component is in the root layout, so a
+    // static import would put ~13 KB (gzipped) of lines on EVERY page. It is
+    // fetched only when a loader is about to be seen: at once for a screen's own
+    // loader, and for the hidden copy only when a slow click reveals it. The first
+    // line shows 1.8 s after the loader starts, long after the chunk lands; if
+    // it cannot load, the fixed lines stay.
+    const redraw = () => {
+      import('@/lib/dailySplash/splash')
+        .then(lib => {
+          if (!alive) return
+          const storage = lib.browserStorage()
+          setLines(lib.drawLoaderLines(storage ? lib.readHeadlines(storage, Date.now()) : []))
+        })
+        .catch(() => { /* the fixed lines stay */ })
+    }
+    let watcher: MutationObserver | undefined
+    if (isNavCopy) {
+      watcher = new MutationObserver(() => {
+        if (document.documentElement.hasAttribute(NAV_PENDING)) redraw()
+      })
+      watcher.observe(document.documentElement, { attributes: true, attributeFilter: [NAV_PENDING] })
+    } else {
+      redraw()
+    }
+    return () => {
+      alive = false
+      watcher?.disconnect()
+    }
+  }, [cheer, isNavCopy])
 
   return (
     <div className={className ? `boe-loader ${className}` : 'boe-loader'} role="status" aria-live="polite">
@@ -78,9 +134,11 @@ export function BoeOneLoader({
       {/* Decoration for the eyes: a screen reader hears "Loading", not a joke every 4.5 s. */}
       {cheer ? (
         <div className="boe-loader-lines" aria-hidden="true">
-          {CHEER_LINES.map((line, i) => (
-            <p key={line} className="boe-loader-line" style={{ '--i': i } as CSSProperties}>
-              {line}
+          {lines.map((line, i) => (
+            <p key={line.text} className="boe-loader-line" style={{ '--i': i } as CSSProperties}>
+              {line.kind ? <span className="boe-loader-kind">{SPLASH_LABEL[line.kind]}</span> : null}
+              {line.text}
+              {line.by ? <span className="boe-loader-by">{' · '}{line.by}</span> : null}
             </p>
           ))}
         </div>

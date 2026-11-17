@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `c7737d28` — Draft Orders (ClickUp): the order page redrawn, the product list with a width for every column (#878)
-- Commits on this branch: 1437
-- Pages (`page.tsx`): 209   API routes (`route.ts`): 213
+- Commit: `2cd29029` — Page speed: the saved copy is put back after sign-in finishes (#880)
+- Commits on this branch: 1438
+- Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 472 (first `20260530_create_positions.sql`, latest `20270730000000_for_you_bundle.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1055   Enums: 0
-- Test files: 881   Next.js 16.2.6, React 19.2.4
+- Test files: 885   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `2cd29029` 2026-11-17 Page speed: the saved copy is put back after sign-in finishes (#880)
 - `c7737d28` 2026-11-17 Draft Orders (ClickUp): the order page redrawn, the product list with a width for every column (#878)
 - `91e70598` 2026-11-17 Docs: stamp For you in one call (#875) as merged a644cf19, deployed 16:33 IST, recounted live (#877)
 - `e78a9f22` 2026-11-17 Draft Orders (ClickUp): the list redrawn on the Finance list design (#876)
@@ -38,7 +39,6 @@
 - `ad508334` 2026-11-16 Pricing: the Price logic page, submitted cases side by side (no SQL) (#854)
 - `53ec4160` 2026-11-16 Revert "Page speed fix: put the saved copy back when SIGNED_IN arrives first (no SQL) (#855)" (#857)
 - `296f3629` 2026-11-16 Page speed fix: put the saved copy back when SIGNED_IN arrives first (no SQL) (#855)
-- `b296d0c2` 2026-11-16 Quotations: Crop & rotate a picture in the scan review (no SQL) (#853)
 
 ## Pages by top-level area
 
@@ -101,6 +101,7 @@
 - **create-employee** (1): ` [POST]`
 - **create-user** (1): ` [POST]`
 - **customer-reviews** (9): `/custom-submissions [DELETE,PATCH,POST,PUT]`, `/draft [PATCH]`, `/generate [POST]`, `/image-groups [DELETE,POST]`, `/images [DELETE,POST]`, `/photos [DELETE,POST]`, `/revise [POST]`, `/test-cards/purge [POST]`, `/whatsapp [POST]`
+- **daily-headlines** (1): ` [GET]`
 - **daily-log** (1): ` [GET,POST]`
 - **day-close** (7): `/evaluate [GET]`, `/launcher [GET]`, `/me [GET,POST]`, `/members [GET,POST]`, `/prompt [GET]`, `/strikes/[id] [POST]`, `/team [GET]`
 - **delete-user** (1): ` [POST]`
@@ -150,6 +151,7 @@
 - `src/lib/boeCredits` — 6 source, 9 test
 - `src/lib/controlCenter` — 2 source, 2 test
 - `src/lib/customerReviews` — 30 source, 41 test
+- `src/lib/dailySplash` — 4 source, 2 test
 - `src/lib/dayClose` — 6 source, 5 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
