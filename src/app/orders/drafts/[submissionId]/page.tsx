@@ -442,6 +442,8 @@ function PiDraftDetailPageInner() {
 
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [load, setLoad] = useState<Load>({ kind: 'loading' })
+  // The capabilities are applied: until then a PI that has arrived is not drawn, so its controls never appear late.
+  const [capsKnown, setCapsKnown] = useState(false)
   // Hide amounts: a display preference kept for this browser session. It masks
   // what is drawn and changes nothing about who may see, or what is stored.
   const [amountsHidden, setAmountsHidden] = useAmountsHidden()
@@ -945,9 +947,14 @@ function PiDraftDetailPageInner() {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { router.replace('/login'); return }
 
+      // THE PI ITSELF STARTS NOW, beside the group below (2026-11-17, page speed): its reads need only the
+      // address and the session, never the capabilities, which decide only the controls. The page is not drawn
+      // until both are in (capsKnown), so nothing appears without its buttons.
+      const draftRead = loadDraft()
+
       // THE PROFILE JOINS THE TWO PERMISSION READS rather than preceding them.
-      // All three need only the session's user id, and the draft below needs
-      // the capabilities, so this is the difference between three waits and two.
+      // All three need only the session's user id, and the controls need the
+      // capabilities, so this is the difference between three waits and two.
       //
       // A failed permission read still resolves to no capabilities, so the page
       // falls back to what it has always been — a read-only record — rather than
@@ -1002,7 +1009,8 @@ function PiDraftDetailPageInner() {
           .filter(person => person.id && person.full_name)
           .map(person => ({ id: person.id, name: person.full_name as string })),
       )
-      await loadDraft()
+      setCapsKnown(true)
+      await draftRead
     }
 
     run()
@@ -1838,7 +1846,7 @@ function PiDraftDetailPageInner() {
       return { key, props: thumbnailFor(key, url) }
     })
 
-  if (load.kind === 'loading') return <OrdersRouteFallback />
+  if (load.kind === 'loading' || (load.kind === 'ready' && !capsKnown)) return <OrdersRouteFallback />
 
   // Back to wherever this PI was opened from — PI Drafts, Confirmed Payments,
   // the dashboard — named, and never out of the app. See RecordBackLink.

@@ -1595,7 +1595,8 @@ describe('coming back to the tab does not reload anything', () => {
   })
 
   test('the initial load still happens on mount', () => {
-    assert.ok(source.includes('await loadDraft()'),
+    // 2026-11-17: the read starts beside the profile and permission group and is awaited after it.
+    assert.ok(source.includes('const draftRead = loadDraft()') && source.includes('await draftRead'),
       'arriving at the page still reads the record')
     assert.ok(source.includes('}, [submissionId])'),
       'and re-reads only when the route id changes')
@@ -1613,7 +1614,9 @@ describe('coming back to the tab does not reload anything', () => {
     // REVISED (usability pass): the Orders shell with a skeleton, not the
     // full-screen spinner — the sidebar and header stay while the PI loads.
     // Still nothing of the record, and no action, before it has landed.
-    assert.ok(source.includes("if (load.kind === 'loading') return <OrdersRouteFallback />"))
+    // 2026-11-17: also while the record is in but the capabilities are not, so no control appears late.
+    assert.ok(source.includes("if (load.kind === 'loading' || (load.kind === 'ready' && !capsKnown)) return <OrdersRouteFallback />"))
+    assert.ok(source.includes('setCapsKnown(true)\n      await draftRead'), 'the capabilities are applied before the record is waited for')
     // A quiet re-read never enters that state, so nothing can flash, no scroll
     // position is lost, and an open viewer is not unmounted underneath somebody.
     assert.ok(source.includes('quiet = false'))
