@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `d463a576` — Revert #886: putting the saved copy back froze Quotations (#887)
-- Commits on this branch: 1446
+- Commit: `b499978f` — Docs: stamp the revert of #886 (#887) as merged d463a576, deployed 19:41 IST, Quotations and My Tasks checked live (#888)
+- Commits on this branch: 1447
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 472 (first `20260530_create_positions.sql`, latest `20270730000000_for_you_bundle.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1055   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `b499978f` 2026-11-17 Docs: stamp the revert of #886 (#887) as merged d463a576, deployed 19:41 IST, Quotations and My Tasks checked live (#888)
 - `d463a576` 2026-11-17 Revert #886: putting the saved copy back froze Quotations (#887)
 - `1bf19da5` 2026-11-17 Page speed: the saved copy comes back in the right shape, then is put back after sign-in again (#886)
 - `f645047d` 2026-11-17 Docs: stamp the loader lines library (#882) as merged 0a7be599, live 18:20 IST (no SQL) (#884)
@@ -38,7 +39,6 @@
 - `a452cc5a` 2026-11-16 Quotations: the furniture in a room picture, for a room with no list (#866)
 - `7404c43e` 2026-11-16 Docs: stamp Crop & rotate in the scan review (#853) as merged b296d0c2, deployed 10:42 IST (no SQL) (#859)
 - `0f34e769` 2026-11-16 Docs: stamp the salesperson-keeps-the-lead-they-add change (#861) as merged 03b1a061, deployed 12:37 IST (no SQL) (#864)
-- `acf8dc95` 2026-11-16 Docs: stamp the watcher (#863) as merged ce3bb873, deployed 13:32 IST, migration 20270729000000 applied (no SQL) (#865)
 
 ## Pages by top-level area
 
