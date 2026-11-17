@@ -69,7 +69,7 @@ describe('a draft order page', () => {
     const t = text(renderToStaticMarkup(<OrderView order={order()} />))
     assert.ok(t.includes('Running orders'))
     assert.ok(t.includes('Draft, copied from ClickUp'))
-    assert.ok(t.includes('Assigned to Salesperson One'))
+    assert.ok(t.includes('Assigned Salesperson One'))
     assert.ok(t.includes('Deliver in two lots.'))
     assert.ok(t.includes('Comments (2)'))
     assert.ok(t.includes('PI attached'))
@@ -92,5 +92,60 @@ describe('a draft order page', () => {
     const html = renderToStaticMarkup(<OrderView order={order({ files: [{ id: FILE_ID, name: '<img src=x onerror=alert(1)>.xlsx', uploaded_at: null, uploaded_by: '', size: 10, sha256: '' }] })} />)
     assert.equal(html.includes('<img'), false)
     assert.ok(html.includes('&lt;img'))
+  })
+
+  test('the figures people ask for sit in one strip under the status, before any detail', () => {
+    const html = renderToStaticMarkup(<OrderView order={order()} />)
+    assert.ok(html.includes('aria-label="Order at a glance"'))
+    const t = text(html)
+    for (const pair of ['Value ₹3,61,900', 'Confirm date 30 Sept 2026', 'Due 6 Nov 2026', 'Assigned Salesperson One', 'Files 1', 'Comments 2']) assert.ok(t.includes(pair), pair)
+    assert.ok(html.indexOf('aria-label="Order at a glance"') < html.indexOf('aria-label="Order details"'))
+  })
+
+  test('with no value, nobody assigned and no date the strip says nobody or shows a dash, never a blank', () => {
+    const t = text(renderToStaticMarkup(<OrderView order={order({ assignees: [], due_date: null, fields: {}, files: [], comments: [] })} />))
+    assert.ok(t.includes('Value —'))
+    assert.ok(t.includes('Due —'))
+    assert.ok(t.includes('Assigned Nobody'))
+    assert.ok(t.includes('Files 0'))
+  })
+
+  test('the fields come in groups (the order, the client, the rest), labels read as words, dates as dates, fabric and finish as pills', () => {
+    const o = order({ fields: {
+      'Total Product Value': '361900', 'Dispatch Date': '2026-11-20', 'FABRIC STATUS': 'FABRIC PENDING', 'FINISH STATUS': 'FINISH APPROVED',
+      Phone: '+91 90000 00000', 'CUSTOMER BILLING': '1 Invented Road', 'Sample Approved': 'Yes', 'Another Note': 'x',
+    } })
+    const html = renderToStaticMarkup(<OrderView order={o} />)
+    const at = (title: string) => html.indexOf(`aria-label="${title}"`)
+    assert.ok(at('Order details') > 0 && at('Order details') < at('Client') && at('Client') < at('Other ClickUp fields'))
+    const t = text(html)
+    assert.ok(t.includes('Customer billing') && !t.includes('CUSTOMER BILLING'), 'an all-capitals label is made readable')
+    assert.ok(t.includes('Sample Approved'), 'a mixed-case label is left as it is')
+    assert.ok(t.indexOf('Another Note') < t.indexOf('Sample Approved'), 'the rest are alphabetical')
+    assert.ok(t.includes('20 Nov 2026') && !t.includes('2026-11-20'), 'a date reads as a date')
+    assert.ok(html.includes('fin-pill fin-pill--zero">Pending') && html.includes('fin-pill fin-pill--full">Approved'))
+  })
+
+  test('the PI sheet sits right under the figures, above the details and the files', () => {
+    const html = renderToStaticMarkup(<OrderView order={order()} piSheet={<section aria-label="PI sheet">SHEET-MARKER</section>} />)
+    const at = html.indexOf('SHEET-MARKER')
+    assert.ok(html.indexOf('aria-label="Order at a glance"') < at)
+    assert.ok(at < html.indexOf('aria-label="Order details"'))
+    assert.ok(at < html.indexOf('aria-label="Files"'))
+  })
+
+  test('files are a list, not a table: name, upload date, who, size, and a Download button named for the file', () => {
+    const html = renderToStaticMarkup(<OrderView order={order()} />)
+    assert.ok(html.includes('<ul class="fileList">'))
+    assert.equal(html.includes('<table'), false)
+    assert.ok(html.includes('aria-label="Download 535 Sample ji.xlsx"'))
+    assert.ok(/class="boe-btn boe-btn-secondary dl"/.test(html))
+  })
+
+  test('the status row names where the order stands in its own colour; the title above already names the order', () => {
+    const html = renderToStaticMarkup(<OrderView order={order({ status: 'dispatched' })} />)
+    assert.ok(html.includes('fin-pill fin-pill--neutral">Dispatched'))
+    assert.ok(html.includes('fin-pill fin-pill--neutral">Draft, copied from ClickUp'))
+    assert.equal(html.includes('<h2'), false, 'one heading per page: the layout title')
   })
 })

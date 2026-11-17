@@ -6,24 +6,13 @@
 .actions { margin-left: auto; display: flex; align-items: center; gap: 8px; padding: 8px 0; flex-wrap: wrap; }
 .wrap { white-space: normal !important; overflow-wrap: anywhere; }
 
-.pill {
-  display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap;
-  background: var(--boe-surface-quiet); color: var(--boe-text-muted); border: 1px solid var(--boe-border);
-}
-
 .card {
   background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel);
   padding: 14px 16px; display: flex; flex-direction: column; gap: 10px;
 }
 .cardTitle { margin: 0; font-size: 14px; font-weight: 700; color: var(--boe-text-strong); }
-.head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; }
 .headTitle { margin: 0; font-size: 20px; font-weight: 700; color: var(--boe-text-strong); }
 .meta { margin: 0; font-size: 12.5px; color: var(--boe-text-muted); }
-
-.facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px 24px; margin: 0; }
-.fact { min-width: 0; }
-.fact dt { font-size: 11.5px; color: var(--boe-text-muted); margin-bottom: 2px; }
-.fact dd { margin: 0; font-size: 13.5px; color: var(--boe-text); overflow-wrap: anywhere; white-space: pre-wrap; }
 
 .text { margin: 0; font-size: 13.5px; color: var(--boe-text); white-space: pre-wrap; overflow-wrap: anywhere; }
 
@@ -36,8 +25,6 @@
 .commentHead { font-size: 12px; color: var(--boe-text-muted); margin-bottom: 2px; }
 .commentHead strong { color: var(--boe-text-strong); }
 
-.fileLink { color: var(--boe-brand); text-decoration: underline; font-size: 12.5px; white-space: nowrap; }
-
 /* list-style is set here: the global reset removes the numbers of every ol. */
 .steps { margin: 0; padding-left: 20px; list-style: decimal; font-size: 13px; color: var(--boe-text); }
 .steps li { margin-bottom: 4px; }
@@ -46,14 +33,65 @@
 .problems { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--boe-error); max-height: 220px; overflow: auto; }
 
 /* The PI sheet of an old order. */
-.thumb { display: block; width: 56px; height: 56px; object-fit: contain; background: #fff; border: 1px solid var(--boe-border); border-radius: 6px; }
 .pick { max-width: 100%; margin-left: 6px; padding: 5px 8px; font-size: 12.5px; color: var(--boe-text); background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); }
-.totals { margin: 0; align-self: flex-end; min-width: min(100%, 300px); display: flex; flex-direction: column; gap: 4px; }
+/* The totals sit under the Rate and Total columns: the Total column is the table's right edge, and so is this block's. */
+.totals { margin: 0; align-self: flex-end; min-width: min(100%, 320px); display: flex; flex-direction: column; gap: 4px; padding-top: 8px; border-top: 1px solid var(--boe-border); }
 .totalRow { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; }
 .totalRow dt { color: var(--boe-text-muted); }
 .totalRow dd { margin: 0; font-variant-numeric: tabular-nums; color: var(--boe-text); }
 .totalRow:last-child dt, .totalRow:last-child dd { font-weight: 700; color: var(--boe-text-strong); }
 
+/* THE ORDER PAGE (OrderView): header, the strip of figures, two columns. */
+.orderHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+.orderTitle { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.orderNo {
+  font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--boe-text-muted);
+  background: var(--boe-surface-quiet); border: 1px solid var(--boe-border); border-radius: 6px; padding: 2px 8px;
+}
+.orderPills { display: flex; flex-wrap: wrap; gap: 6px; }
+.strip { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.stat { background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: 12px; padding: 12px 14px; min-width: 0; }
+.stat dt { font-size: 12px; color: var(--boe-text-muted); }
+.stat dd { margin: 4px 0 0; font-size: 15px; font-weight: 600; color: var(--boe-text-strong); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cols { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; align-items: start; }
+.col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+/* One field a row: the name in a column of its own, the value beside it, a hairline between rows. */
+.rows { margin: 0; display: flex; flex-direction: column; }
+.row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid var(--boe-border); }
+.row:first-child { border-top: 0; padding-top: 0; }
+.row dt { font-size: 12.5px; color: var(--boe-text-muted); }
+.row dd { margin: 0; font-size: 13.5px; color: var(--boe-text); overflow-wrap: anywhere; white-space: pre-wrap; }
+.fileList { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.fileRow { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--boe-border); }
+.fileRow:first-child { border-top: 0; padding-top: 0; }
+.fileMain { min-width: 0; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.fileName { font-size: 13.5px; color: var(--boe-text-strong); overflow-wrap: anywhere; }
+.fileMeta { font-size: 12px; color: var(--boe-text-muted); }
+.dl { flex-shrink: 0; padding: 6px 12px; font-size: 12.5px; text-decoration: none; }
+
+/* THE PRODUCT TABLE (PiSheetCard): a width for every column, the picture and name in one cell. */
+.sheetTable { min-width: 760px; }
+.sheetTable td { height: 88px; vertical-align: middle; }
+.prodCell { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.thumb { flex-shrink: 0; display: block; width: 72px; height: 72px; object-fit: contain; background: #fff; border: 1px solid var(--boe-border); border-radius: 8px; }
+.noPic {
+  flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 72px; height: 72px; text-align: center;
+  border: 1px dashed var(--boe-border); border-radius: 8px; font-size: 11px; color: var(--boe-text-placeholder);
+}
+.prodText { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.prodName { font-weight: 600; color: var(--boe-text-strong); overflow-wrap: anywhere; }
+.prodCode { font-size: 12px; color: var(--boe-text-muted); font-variant-numeric: tabular-nums; }
+.parties { margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 24px; }
+.partyBlock dt { font-size: 12px; color: var(--boe-text-muted); margin-bottom: 2px; }
+.partyBlock dd { margin: 0; font-size: 13.5px; color: var(--boe-text); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+@media (max-width: 1000px) {
+  .cols { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 560px) {
+  .row { grid-template-columns: 1fr; gap: 2px; }
+  .row:first-child { padding-top: 0; }
+}
 @media (max-width: 700px) {
   .actions { margin-left: 0; width: 100%; padding-top: 0; }
 }

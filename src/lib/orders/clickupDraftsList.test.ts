@@ -3,7 +3,7 @@
 
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { DRAFT_ALL, approvalChip, filterDrafts, statusTone, type DraftListRow } from './clickupDrafts'
+import { DRAFT_ALL, approvalChip, fieldLabel, filterDrafts, groupedFields, statusTone, type DraftListRow } from './clickupDrafts'
 
 const row = (order_no: string | null, client: string, status: string, assignees: string[] = ['Salesperson One']): DraftListRow => ({
   id: `id-${order_no}-${client}`, order_no, name: `${order_no ?? ''} ${client}`.trim(), client_name: client, status, assignees,
@@ -74,5 +74,33 @@ describe('the soft colours', () => {
   test('nothing in ClickUp is nothing on the screen', () => {
     assert.equal(approvalChip(undefined, 'fabric'), null)
     assert.equal(approvalChip('   ', 'finish'), null)
+  })
+})
+
+describe('the order page: the fields in groups', () => {
+  test('an all-capitals ClickUp label reads as a word; a mixed-case one is left alone', () => {
+    assert.equal(fieldLabel('CUSTOMER BILLING'), 'Customer billing')
+    assert.equal(fieldLabel('FABRIC STATUS'), 'Fabric status')
+    assert.equal(fieldLabel('Total Product Value'), 'Total Product Value')
+    assert.equal(fieldLabel('  Phone '), 'Phone')
+    assert.equal(fieldLabel('123'), '123', 'no letters: nothing to change')
+  })
+
+  test('the order first (codes, dates, value, statuses), then the client, then the rest alphabetically; empty groups are left out', () => {
+    const groups = groupedFields({
+      Phone: '1', 'Total Product Value': '2', 'Zeta note': 'z', 'Alpha note': 'a', 'CUSTOMER SHIPPING': 's', 'FINISH STATUS': 'f', 'Confirm Date': 'd',
+    })
+    assert.deepEqual(groups.map(g => g.key), ['order', 'client', 'other'])
+    assert.deepEqual(groups[0].entries.map(e => e[0]), ['Confirm Date', 'Total Product Value', 'FINISH STATUS'])
+    assert.deepEqual(groups[1].entries.map(e => e[0]), ['Phone', 'CUSTOMER SHIPPING'])
+    assert.deepEqual(groups[2].entries.map(e => e[0]), ['Alpha note', 'Zeta note'])
+    assert.deepEqual(groupedFields({ Phone: '1' }).map(g => g.key), ['client'])
+    assert.deepEqual(groupedFields({}), [])
+  })
+
+  test('every field ClickUp held appears exactly once, whatever its name', () => {
+    const fields = { 'New Project Code': 'a', Email: 'b', Whatever: 'c', 'Another one': 'd', 'Dispatch Date': 'e' }
+    const shown = groupedFields(fields).flatMap(g => g.entries.map(e => e[0])).sort()
+    assert.deepEqual(shown, Object.keys(fields).sort())
   })
 })
