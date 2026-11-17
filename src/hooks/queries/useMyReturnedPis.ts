@@ -7,6 +7,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { bundledRead } from '@/lib/modules/forYouBundle'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { isDashboardFunctionMissing } from '@/lib/orders/salespersonDashboard'
@@ -21,7 +22,7 @@ export function useMyReturnedPis(enabled: boolean) {
     queryKey: [...RETURNED_PIS_KEY, userId ?? null],
     enabled: enabled && !!userId && !viewMode,
     queryFn: async () => {
-      const { data, error } = await createClient().rpc('my_returned_pis')
+      const { data, error } = await bundledRead('returned', () => createClient().rpc('my_returned_pis'))
       if (isDashboardFunctionMissing(error)) return []
       if (error) throw new Error(error.message || 'Could not load the PIs returned to you.')
       return readReturnedPis(data)

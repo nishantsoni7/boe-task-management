@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { bundledRead } from '@/lib/modules/forYouBundle'
 import { isValidUUID } from '@/lib/ui'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
@@ -41,7 +42,7 @@ export function useForYouModes(enabled = true) {
     queryKey: FOR_YOU_MODES_KEY,
     enabled,
     queryFn: async () => {
-      const { data, error } = await createClient().from('for_you_item_settings').select('item_key, mode')
+      const { data, error } = await bundledRead('modes', () => createClient().from('for_you_item_settings').select('item_key, mode'))
       return error ? { modes: {}, failed: true } : { modes: readForYouModes(data), failed: false }
     },
     staleTime: 30_000,
@@ -55,11 +56,11 @@ export function useForYouChoices(userId: string | null | undefined) {
     queryKey: forYouChoicesKey(userId),
     enabled: isValidUUID(userId),
     queryFn: async () => {
-      const { data, error } = await createClient()
+      const { data, error } = await bundledRead('choices', () => createClient()
         .from('user_for_you_preferences')
         .select('hidden_items')
         .eq('user_id', userId!)
-        .maybeSingle()
+        .maybeSingle(), { choicesUser: userId! })
       if (error) return { hidden: [], failed: true }
       return { hidden: readHiddenItems((data as { hidden_items?: unknown } | null)?.hidden_items), failed: false }
     },
