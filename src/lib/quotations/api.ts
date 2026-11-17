@@ -75,6 +75,8 @@ export type QueueRow = {
   id: string; quote_no: string; client_name: string; project_name: string | null; owner_name: string | null
   value_before_gst: number; requested_at: string; reasons: PriceReason[]
 }
+/** Who sees the suggested prices (20270731000000): everyone, or only the people listed. */
+export type SuggestionSettings = { everyone: boolean; for_me: boolean; shown_to: string[]; may_change: boolean; updated_at: string }
 export type PriceSettings = { max_discount_pct: number | null; min_price_pct: number | null; updated_at: string; may_change: boolean }
 
 export type PublicQuotation = {
@@ -244,5 +246,7 @@ export const decidePrice = (s: Supabase, id: string, approve: boolean, note: str
   call<PriceState>(() => s.rpc('quotation_price_decide', { p_id: id, p_approve: approve, p_note: note }))
 export const fetchPriceQueue = (s: Supabase) => call<QueueRow[]>(() => s.rpc('quotation_price_queue'))
 export const fetchPriceSettings = (s: Supabase) => call<PriceSettings>(() => s.rpc('quotation_price_settings_get'))
+export const fetchSuggestionSettings = (s: Supabase) => call<SuggestionSettings>(() => s.rpc('quotation_suggestions_get'))
+export const saveSuggestionSettings = (s: Supabase, everyone: boolean) => call<SuggestionSettings>(() => s.rpc('quotation_suggestions_set', { p_everyone: everyone }))
 export const savePriceSettings = (s: Supabase, maxDiscount: number | null, minPrice: number | null) =>
   call<PriceSettings>(() => s.rpc('quotation_price_settings_set', { p_max_discount_pct: maxDiscount, p_min_price_pct: minPrice }))

@@ -21,7 +21,9 @@ import { istDateOf } from '@/lib/istDate'
 import {
   CLIENT_TYPES, STATUS_LABEL, errorKind, errorText, fetchQuotation, pictureUrl, quotationKeys, saveDoc, saveQuotation,
   setStatus as setStatusRpc, shareQuotation, fetchHints, requestPriceApproval, decidePrice, type PriceHint, uploadPicture, type Header, type Quotation, type QuotationStatus,
+  fetchSuggestionSettings,
 } from '@/lib/quotations/api'
+import { historyOnly } from '@/lib/quotations/suggestions'
 import {
   DIMENSION_UNITS, GST_RATES, SUPPLY_STATES, computeTotals, formatDateIN, gstModeForState, validUntil, whatsappLink,
   type QuoteArea, type QuoteLine,
@@ -85,13 +87,18 @@ export default function BuilderScreen() {
     const t = setTimeout(() => setHintNames([...new Set(lines.map(l => l.name.trim()).filter(n => n.length >= 3))].sort().slice(0, 80).join('\n')), 600)
     return () => clearTimeout(t)
   }, [lines])
+  // WHO SEES THE SUGGESTED PRICES (owner, 18 Nov 2026; Control Center › Sales › Quotation price approval): off for this person,
+  // the suggestion, its model and the taught-price picker are left out and only the history (last ordered / quoted) shows. A
+  // database without 20270731000000 answers with an error, which keeps them on, as before. Off until the answer is in.
+  const suggQ = useQuery({ queryKey: ['quotations', 'suggestions'], queryFn: () => fetchSuggestionSettings(supabase), enabled: accessLoaded && !notSetUp, staleTime: 300_000, retry: false })
+  const suggestOn = suggQ.isError ? true : !!suggQ.data?.for_me
   const hintsQ = useQuery({ queryKey: ['quotations', 'hints', id, hintNames], queryFn: () => fetchHints(supabase, hintNames.split('\n'), id), enabled: accessLoaded && !notSetUp && hintNames !== '', staleTime: 300_000, retry: false })
   const hintFor = useMemo(() => new Map<string, PriceHint>((hintsQ.data ?? []).map(h => [h.name, h])), [hintsQ.data])
   // Pricing model v2: one pool for every product type on screen, then each line priced for its own parameters.
   const typeWords = useMemo(() => poolWords(hintNames.split('\n').map(productType).filter((t): t is string => !!t)).join(' '), [hintNames])
-  const poolQ = useQuery({ queryKey: ['quotations', 'pool', id, typeWords], queryFn: () => fetchPool(supabase, typeWords.split(' '), id), enabled: accessLoaded && !notSetUp && typeWords !== '', staleTime: 300_000, retry: false })
+  const poolQ = useQuery({ queryKey: ['quotations', 'pool', id, typeWords], queryFn: () => fetchPool(supabase, typeWords.split(' '), id), enabled: accessLoaded && !notSetUp && suggestOn && typeWords !== '', staleTime: 300_000, retry: false })
   // Pricing > Training: the submitted cases a line can be told it is. Until 20270726000000 is applied the read fails and nothing shows.
-  const libraryQ = useQuery({ queryKey: trainingKeys.library, queryFn: () => fetchLibrary(supabase), enabled: accessLoaded && !notSetUp, staleTime: 300_000, retry: false })
+  const libraryQ = useQuery({ queryKey: trainingKeys.library, queryFn: () => fetchLibrary(supabase), enabled: accessLoaded && !notSetUp && suggestOn, staleTime: 300_000, retry: false })
   // The reason for a price that differs from the taught one also goes to the Price learning inbox. If that send fails the reason is
   // still on the line (in its note), where Pricing > Price logic reads it.
   const taught = useMemo(() => libraryQ.data && {
@@ -414,7 +421,7 @@ export default function BuilderScreen() {
               <LineRow key={l.key} l={l} area={g.area} unit={unit} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
                 first={li === 0} last={li === g.lines.length - 1} url={p => pictureUrl(supabase, p)}
                 onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onImprove={() => setStudioFor(l.key)} onView={() => setViewing(l.key)}
-                hint={hintFor.get(l.name.trim())} model={modelFor.get(l.key)} taught={taught} onRemove={() => removeLine(l.key)}
+                hint={suggestOn ? hintFor.get(l.name.trim()) : historyOnly(hintFor.get(l.name.trim()))} model={suggestOn ? modelFor.get(l.key) : null} taught={suggestOn ? taught : undefined} onRemove={() => removeLine(l.key)}
                 feedbackCtx={seesWhy ? { clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) } : undefined}
                 onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
             ))}
