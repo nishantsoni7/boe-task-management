@@ -55,7 +55,7 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
       <div className={s.plPic} onMouseEnter={() => pointAtPicture(target)} onMouseLeave={() => pointAtPicture(null)} onFocus={() => pointAtPicture(target)}
         title={editable ? 'Point here and press Ctrl+C to copy this picture, or Ctrl+V to paste one' : l.image_path ? 'Point here and press Ctrl+C to copy this picture' : undefined}>
         {l.image_path
-          ? <button type="button" className={s.plPicBtn} onClick={onView} aria-label={`View the picture of ${label}`}><Pic className={s.plPicImg} src={url(l.image_path)} alt="" /><span className={s.plZoom}><Maximize2 size={14} aria-hidden /></span></button>
+          ? <button type="button" className={s.plPicBtn} onClick={onView} aria-label={`View the picture of ${label}`}><Pic className={s.plPicImg} src={url(l.image_path)} alt="" lazy /><span className={s.plZoom}><Maximize2 size={14} aria-hidden /></span></button>
           : <button type="button" className={s.plPicEmpty} onClick={() => fileRef.current?.click()} disabled={!editable}><ImagePlus size={22} aria-hidden /><span>Add picture</span>{editable && <span className={s.small} style={{ fontWeight: 400 }}>or paste (Ctrl+V)</span>}</button>}
         {flash && <span className={`${s.small} ${s.muted}`} role="status">{flash}</span>}
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { onUpload(e.target.files?.[0]); e.target.value = '' }} />
@@ -73,7 +73,7 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
           <div className={s.plRefs} aria-label="Other pictures from the client's file">
             {l.references.map((r, i) => (
               <span key={r.path} className={s.plRef} title={[REF_LABEL[r.kind], r.note].filter(Boolean).join(': ')}>
-                <a href={url(r.path)} target="_blank" rel="noreferrer"><Pic className={s.plRefImg} src={url(r.path)} alt={REF_LABEL[r.kind]} /></a>
+                <a href={url(r.path)} target="_blank" rel="noreferrer"><Pic className={s.plRefImg} src={url(r.path)} alt={REF_LABEL[r.kind]} lazy /></a>
                 <span className={s.plRefKind}>{REF_LABEL[r.kind]}</span>
                 {editable && <button type="button" className={s.plRefRm} aria-label={`Remove this ${REF_LABEL[r.kind].toLowerCase()}`} onClick={() => onChange({ references: l.references!.filter((_, j) => j !== i) })}>×</button>}
               </span>

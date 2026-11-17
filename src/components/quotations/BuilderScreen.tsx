@@ -315,11 +315,11 @@ export default function BuilderScreen() {
           <span className={s.spacer} />
           {base.may_edit && (
             <>
-              {base.status === 'draft' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('sent')}>Mark sent</button>}
-              {(base.status === 'sent' || base.status === 'draft') && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('negotiating')}>Negotiating</button>}
+              {base.status === 'draft' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} title={dirty ? 'Save first' : undefined} onClick={() => moveTo('sent')}>Mark sent</button>}
+              {(base.status === 'sent' || base.status === 'draft') && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} title={dirty ? 'Save first' : undefined} onClick={() => moveTo('negotiating')}>Negotiating</button>}
               {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} onClick={() => moveTo('confirmed')} title="Confirmed without making a PI from it">Confirmed, no PI</button>}
-              {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => setLostNote('')}>Lost…</button>}
-              {base.status !== 'archived' && base.status !== 'confirmed' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('archived')}>Archive</button>}
+              {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} title={dirty ? 'Save first' : undefined} onClick={() => setLostNote('')}>Lost…</button>}
+              {base.status !== 'archived' && base.status !== 'confirmed' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} title={dirty ? 'Save first' : undefined} onClick={() => moveTo('archived')}>Archive</button>}
               {LOCKED.includes(base.status) && (base.status !== 'confirmed' || access.admin) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('negotiating')}>Reopen</button>}
             </>
           )}
@@ -343,7 +343,8 @@ export default function BuilderScreen() {
             <label className={s.field}><span>Delivery state</span><input id="q-state" className={s.input} list="q-states" value={h.supply_state} disabled={!editable}
               onChange={e => { const v = e.target.value; setH(p => (p ? { ...p, supply_state: v, gst_mode: SUPPLY_STATES.some(x => x.toLowerCase() === v.trim().toLowerCase()) ? gstModeForState(v) : p.gst_mode } : p)); touch() }} />
               <datalist id="q-states">{SUPPLY_STATES.map(x => <option key={x} value={x} />)}</datalist>
-              <span className={s.taxChip}>Tax: {h.gst_mode === 'igst' ? 'IGST (outside Rajasthan)' : 'CGST + SGST (within Rajasthan)'}</span></label>
+              <span className={s.taxChip}>Tax: {h.gst_mode === 'igst' ? 'IGST (outside Rajasthan)' : 'CGST + SGST (within Rajasthan)'}</span>
+              {h.supply_state.trim() && !SUPPLY_STATES.some(x => x.toLowerCase() === h.supply_state.trim().toLowerCase()) && <span className={s.small} style={{ color: '#8A5A00' }} role="status">Pick the state from the list: it decides CGST + SGST or IGST.</span>}</label>
           </div>
           {h.supply_state && gstModeForState(h.supply_state) !== h.gst_mode && <div className={`${s.notice} ${s.noticeWarn}`} style={{ marginTop: 12 }}>Delivery to {h.supply_state} is normally {gstModeForState(h.supply_state) === 'igst' ? 'IGST' : 'CGST + SGST'}: BOE is registered in Rajasthan. Check before sending (GST type is under Advanced client details).</div>}
           <LeadTime h={h} areas={areas} editable={editable} onChange={patch => { setH(p => (p ? { ...p, ...patch } : p)); touch() }} />
@@ -378,8 +379,10 @@ export default function BuilderScreen() {
           {base.share_token && (
             <>
               <div className={s.linkBox}><input id="q-link" className={s.input} value={link} readOnly aria-label="Client link" onFocus={e => e.currentTarget.select()} /><button className={s.iconBtn} onClick={copy} aria-label="Copy link">{copied ? <Check size={16} /> : <Copy size={16} />}</button></div>
-              <a className={`${s.btn} ${s.btnPrimary}`} href={whatsappLink(h.contact_phone, waText)} target="_blank" rel="noreferrer"><MessageCircle size={15} aria-hidden /> Open WhatsApp with the message</a>
-              <div className={`${s.small} ${s.muted}`}>WhatsApp opens with the text ready{h.contact_phone ? ` for ${h.contact_phone}` : ''}; you press send. The message carries the link, which always shows the latest saved version and has its own Save as PDF button.</div>
+              {dirty
+                ? <button type="button" className={`${s.btn} ${s.btnPrimary}`} disabled title="Save first"><MessageCircle size={15} aria-hidden /> Open WhatsApp with the message (save first)</button>
+                : <a className={`${s.btn} ${s.btnPrimary}`} href={whatsappLink(h.contact_phone, waText)} target="_blank" rel="noreferrer"><MessageCircle size={15} aria-hidden /> Open WhatsApp with the message</a>}
+              <div className={`${s.small} ${s.muted}`}>WhatsApp opens with the text ready{h.contact_phone ? ` for ${h.contact_phone}` : ''}; you press send. The message carries the link, which shows the version you last sent (before any version is sent, the latest saved copy) and has its own Save as PDF button. After changing prices, use Send as new version below.</div>
             </>
           )}
           {base.may_edit && (dirty ? <div className={`${s.small} ${s.dirty}`}>Save first: the PDF, the Excel and the link all use the saved quotation.</div>
@@ -411,8 +414,8 @@ export default function BuilderScreen() {
                   <input aria-label="Room type name" className={s.input} style={{ maxWidth: 220, fontWeight: 700 }} value={g.area.name} onChange={e => updArea(g.area!.key, { name: e.target.value })} disabled={!editable} />
                   <input aria-label="Style" className={s.input} style={{ maxWidth: 150 }} placeholder="Style (e.g. Boho)" value={g.area.style} onChange={e => updArea(g.area!.key, { style: e.target.value })} disabled={!editable} />
                   <span className={s.small}>×</span>
-                  <input aria-label={`Number of ${g.area.unit_label}`} className={`${s.input} ${s.mult}`} type="number" min={1} value={g.area.multiplier} onChange={e => updArea(g.area!.key, { multiplier: Math.max(1, Math.floor(Number(e.target.value) || 1)) })} disabled={!editable} />
-                  <input aria-label="Unit" className={s.input} style={{ maxWidth: 90 }} value={g.area.unit_label} onChange={e => updArea(g.area!.key, { unit_label: e.target.value || 'rooms' })} disabled={!editable} />
+                  <input aria-label={`Number of ${g.area.unit_label}`} className={`${s.input} ${s.mult}`} type="number" min={1} value={g.area.multiplier || ''} onChange={e => updArea(g.area!.key, { multiplier: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} disabled={!editable} />
+                  <input aria-label="Unit" className={s.input} style={{ maxWidth: 90 }} value={g.area.unit_label} onChange={e => updArea(g.area!.key, { unit_label: e.target.value })} onBlur={e => { if (!e.target.value.trim()) updArea(g.area!.key, { unit_label: 'rooms' }) }} disabled={!editable} />
                 </>
               ) : <b>{areas.length ? 'Not in a room type' : 'Products'}</b>}
               <span className={s.spacer} />
