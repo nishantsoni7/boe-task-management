@@ -8,6 +8,7 @@ import { useUnclosedFunds } from '@/hooks/queries/useCashJourneys'
 import type { ForYouAccess, ForYouItemKey } from '@/lib/modules/forYouCatalogue'
 import { itemApplies } from '@/lib/modules/forYouCatalogue'
 import { readFlaggedPis, type FlaggedPi } from '@/lib/orders/flaggedPis'
+import { bundledRead } from '@/lib/modules/forYouBundle'
 import { isDashboardFunctionMissing } from '@/lib/orders/salespersonDashboard'
 import {
   FOR_YOU_PAYMENT_SCAN_LIMIT,
@@ -140,8 +141,8 @@ export function useForYouWork(on: (key: ForYouItemKey) => boolean, access: ForYo
 
   // The ONE definition of who must answer a flagged PI is the database's (my_flagged_pis, 20270611000000); a
   // database without it answers nothing. Oldest first: the longest-held Order leads.
-  const flagged = useWorkRead<FlaggedPi>('pi_flagged_by_operations', userId, wanted('pi_flagged_by_operations'), () => createClient()
-    .rpc('my_flagged_pis')
+  const flagged = useWorkRead<FlaggedPi>('pi_flagged_by_operations', userId, wanted('pi_flagged_by_operations'), () => bundledRead('flagged', () => createClient()
+    .rpc('my_flagged_pis'))
     .then(({ data, error }: { data: unknown; error: { code?: string; message?: string } | null }) => (isDashboardFunctionMissing(error)
       ? { data: [], count: 0, error: null }
       : { data: error ? null : readFlaggedPis(data), count: null, error })) as unknown as PromiseLike<Answer>)
