@@ -90,6 +90,9 @@ Shell `src/components/layout/QuotationsLayout.tsx` (InventoryLayout's build). La
 ## Who sees the suggested prices (2026-11-18, branch `feat/quotation-suggestions-switch`, migration `20270731000000` APPLIED 01:04 IST)
 - `quotation_suggestion_settings` (one row, `shown_to` NULL = everyone), `quotation_suggestions_get()` / `quotation_suggestions_set(p_everyone)` (admin only; false = only the caller). Control Center › Sales › Quotation price approval: "Price suggestions on quotations". BuilderScreen `suggestOn` (error = on): off drops `model`, `taught` and the hint points (`historyOnly`, `src/lib/quotations/suggestions.ts`) and does not fetch the pool or the training library. A display setting, not a security boundary.
 
+## Copy and paste a product picture (2026-11-18, branch `feat/quotation-picture-copy-paste`, no SQL)
+- `pictureClipboard.ts`: document-level copy/paste listeners act only for the picture area the pointer (or focus) is on, never while a text field has focus. Copy = `boe-quote-picture:<storage path>` as text; paste takes that path (plain storage paths only) or an image file (uploaded). Test: `pictureClipboard.dom.test.tsx`.
+
 ## 7. Traps
 
 - Pricing (20270617000000): `quotation_price_history` computes word lists for every approved PI line on each call (no index); fine for thousands of lines, slow for hundreds of thousands. `quotation_get`, `quotation_share` and `quotation_link_pi` were re-created there: the latest definitions are in 20270617000000.
