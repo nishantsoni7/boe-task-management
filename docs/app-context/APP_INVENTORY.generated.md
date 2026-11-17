@@ -5,16 +5,16 @@
 
 ## Snapshot
 
-- Commit: `9798694e` — Page speed: the launcher's For you column asks the database once
+- Commit: `734f424d` — Draft Orders (ClickUp): the list redrawn on the Finance list design
 - Commits on this branch: 1434
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 213
 - Migrations: 472 (first `20260530_create_positions.sql`, latest `20270730000000_for_you_bundle.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1055   Enums: 0
-- Test files: 879   Next.js 16.2.6, React 19.2.4
+- Test files: 881   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `9798694e` 2026-11-17 Page speed: the launcher's For you column asks the database once
+- `734f424d` 2026-11-17 Draft Orders (ClickUp): the list redrawn on the Finance list design
 - `65a56c9c` 2026-11-17 Docs: stamp the PowerPoint pictures fix (#872) as merged 0b2cc083, deployed 15:13 IST (no SQL) (#874)
 - `f8e34c03` 2026-11-17 Draft Orders (ClickUp): the Quotation tab of nine old orders as a list (#873)
 - `0b2cc083` 2026-11-17 Quotations: a PowerPoint's pictures are drawn again when a client file is read (#872)
@@ -162,7 +162,7 @@
 - `src/lib/modules` — 7 source, 8 test
 - `src/lib/navigation` — 5 source, 8 test
 - `src/lib/notifications` — 9 source, 25 test
-- `src/lib/orders` — 112 source, 172 test
+- `src/lib/orders` — 112 source, 173 test
 - `src/lib/payroll` — 36 source, 36 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test

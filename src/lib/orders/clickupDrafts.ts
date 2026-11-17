@@ -273,6 +273,54 @@ export const whenIst = (iso: string | null): string =>
 export const dayIst = (value: string | null): string =>
   value ? new Date(value.length === 10 ? `${value}T00:00:00+05:30` : value).toLocaleDateString('en-IN', { timeZone: IST, day: 'numeric', month: 'short', year: 'numeric' }) : '—'
 
+// ── The list: what a row holds, the cards, the search, the soft status colours ──
+
+/** What the list needs of an order (the list route sends these and no more). */
+export type DraftListRow = Pick<DraftOrder, 'id' | 'order_no' | 'name' | 'client_name' | 'status' | 'assignees' | 'due_date' | 'fields' | 'file_count' | 'comment_count'>
+
+/** The soft colours of the Finance lists (`fin-pill--…`, `fin-dot--…`): amber, blue, green, red, grey. */
+export type DraftTone = 'zero' | 'partial' | 'full' | 'over' | 'neutral'
+
+export const DRAFT_ALL = 'all'
+
+const STATUS_TONE: Record<string, DraftTone> = {
+  'running orders': 'partial', 'ready for dispatch': 'full', hold: 'zero', cancelled: 'over', dispatched: 'neutral',
+}
+export const statusTone = (status: string): DraftTone => STATUS_TONE[status] ?? 'neutral'
+
+/**
+ * ClickUp's FABRIC STATUS / FINISH STATUS as one small soft pill in its own column: the column already says
+ * "Fabric", so "FABRIC PENDING" reads "Pending" (amber), approved or received reads green, "NO FABRIC" is grey,
+ * anything else blue. Null when ClickUp held nothing.
+ */
+export function approvalChip(value: string | undefined, word: 'fabric' | 'finish'): { label: string; tone: DraftTone } | null {
+  const lower = (value ?? '').replace(/\s+/g, ' ').trim().toLowerCase()
+  if (!lower) return null
+  const label = lower.startsWith(`${word} `) ? lower.slice(word.length + 1) : lower
+  const tone: DraftTone = /^no\b|n\/a|not required/.test(lower) ? 'neutral'
+    : /approved|received|done|complete/.test(lower) ? 'full'
+    : /pending|awaiting|waiting/.test(lower) ? 'zero'
+    : /reject|issue|problem/.test(lower) ? 'over'
+    : 'partial'
+  return { label: label.charAt(0).toUpperCase() + label.slice(1), tone }
+}
+
+/**
+ * What the list shows: the search narrows first, so a card's number never contradicts the list once its card is
+ * pressed (as on the PI Drafts list); then the pressed card; newest order number first.
+ */
+export function filterDrafts(rows: readonly DraftListRow[], tab: string, query: string):
+  { shown: DraftListRow[]; counts: Map<string, number>; searched: number } {
+  const needle = query.trim().toLowerCase()
+  const searched = rows.filter(r => !needle || [r.order_no ?? '', r.name, r.client_name, ...r.assignees].some(v => v.toLowerCase().includes(needle)))
+  const counts = new Map<string, number>()
+  for (const r of searched) counts.set(r.status, (counts.get(r.status) ?? 0) + 1)
+  const shown = searched
+    .filter(r => tab === DRAFT_ALL || r.status === tab)
+    .sort((a, b) => Number(b.order_no ?? 0) - Number(a.order_no ?? 0) || a.name.localeCompare(b.name))
+  return { shown, counts, searched: searched.length }
+}
+
 // ── The Excel (same three sheets as the export folder's orders.xlsx) ──
 
 export function draftWorkbook(rows: readonly DraftOrder[]): Sheet[] {
