@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `3ca099d6` — Docs: stamp the Draft Orders order page redesign (#878) as merged c7737d28, deployed 17:23 IST (no SQL)
-- Commits on this branch: 1438
+- Commit: `eecc186d` — Docs: stamp the Draft Orders order page redesign (#878) as merged c7737d28, deployed 17:23 IST (no SQL) (#879)
+- Commits on this branch: 1439
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 213
 - Migrations: 472 (first `20260530_create_positions.sql`, latest `20270730000000_for_you_bundle.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1055   Enums: 0
@@ -14,7 +14,8 @@
 
 ## Latest 25 commits
 
-- `3ca099d6` 2026-11-17 Docs: stamp the Draft Orders order page redesign (#878) as merged c7737d28, deployed 17:23 IST (no SQL)
+- `eecc186d` 2026-11-17 Docs: stamp the Draft Orders order page redesign (#878) as merged c7737d28, deployed 17:23 IST (no SQL) (#879)
+- `2cd29029` 2026-11-17 Page speed: the saved copy is put back after sign-in finishes (#880)
 - `c7737d28` 2026-11-17 Draft Orders (ClickUp): the order page redrawn, the product list with a width for every column (#878)
 - `91e70598` 2026-11-17 Docs: stamp For you in one call (#875) as merged a644cf19, deployed 16:33 IST, recounted live (#877)
 - `e78a9f22` 2026-11-17 Draft Orders (ClickUp): the list redrawn on the Finance list design (#876)
@@ -38,7 +39,6 @@
 - `75f96361` 2026-11-16 Docs: stamp the Price logic page (#854) as merged ad508334, deployed 11:43 IST (no SQL) (#858)
 - `ad508334` 2026-11-16 Pricing: the Price logic page, submitted cases side by side (no SQL) (#854)
 - `53ec4160` 2026-11-16 Revert "Page speed fix: put the saved copy back when SIGNED_IN arrives first (no SQL) (#855)" (#857)
-- `296f3629` 2026-11-16 Page speed fix: put the saved copy back when SIGNED_IN arrives first (no SQL) (#855)
 
 ## Pages by top-level area
 
