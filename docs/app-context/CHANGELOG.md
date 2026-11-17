@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-17 — Quotations: a PowerPoint's pictures are drawn again when a client file is read (branch `fix/scan-pptx-pictures`; PR number added at the stamp) · no SQL
+- **Owner ask.** "Carry the next process", then "Yes, test it": run the one untried door of Start from a client file, a PowerPoint, on the real Brewery deck (`C:\BOE New\Inquiry\659 Brewery\BREWERY FURNITURE SELECTION.pptx`, 18 slides, 31 pictures).
+- **Found.** Every slide came out white with only its text: no picture was drawn. A shape's position was read from the first `a:off` / `a:ext` in it, and PowerPoint also writes `<a:extLst><a:ext uri=…>` (no size) in the shape's name, before the real one, so every picture had zero size (and text boxes were squashed to a few letters wide).
+- **Fix.** `slideFrame` in `scanPages.ts` reads the position inside `a:xfrm` only. A placeholder with no frame of its own (it follows the slide layout, like the slide titles in this deck) still sits at the top-left; its text still goes to the reader as text.
+- **Proof.** The app's own `filePages` / `surveyJpeg` drawing the deck in headless Edge (esbuild bundle, not the signed-in app): before, 10-16 KB white slides; after, all pictures in place. Read with the app's prompts and the owner's spend-capped key (harness): 34 rows from 18 slides, every slide's designs as one row each with the others marked as options, every quantity right ("6 or 12" marked doubtful), 38 pictures of the right pieces; 7 calls, 60k input and 7.5k output tokens (about Rs 18). New `scanPages.test.ts` (jsdom, the deck's XML shape), tsc, eslint.
+- **Not seen** signed in, in a browser or on a phone.
+
 ## 2026-11-17 — Draft Orders (ClickUp): the Quotation tab of nine old orders as a list (branch `feat/old-order-quotation-sheet`; PR pending) · no SQL
 - **Owner ask.** After PR #868, the nine old orders whose Excel is a quotation, not a PI (469, 470, 474, 475, 476, 483, 490, 523, 530), were checked against Confirmed Orders and PI Drafts (read-only): none is there. Owner: "Yes, look into it", then "Yes, build it".
 - **What.** The pi-sheet route reads the Quotation tab when an Excel has no Master tab (`lib/pi/quotationSheet.ts`, new) and the same card draws it as "Quotation": Client, Ref, Description, Unit price, Notes, the totals as printed on the sheet, the note under them, a "not a PI" line. Order 528 shows its quotation too.
