@@ -4,12 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-17 — Page speed: the PI draft page starts reading the PI beside its first group (branch `perf/pi-draft-read-sooner`; PR number added at the stamp) · no SQL
+## 2026-11-17 — Page speed: the PI draft page starts reading the PI beside its first group (PR #895, merged 17 Nov 2026 23:59 IST as `e4d923f2`, live 18 Nov 00:02 IST) · no SQL
 - **Owner ask.** "Carry the next process", then step 1 of "start loading during the access check": "Yes, build step 1".
 - **Measured live first.** After the Orders guard has the permission answer (~1 s), the PI draft page ran one group (profile and two permission sets from the guard's cache, the salesperson list), and only then `loadDraft()`. `loadDraft` needs only the address and the session (its deps are `[supabase, submissionId]`); the capabilities decide only the controls. Opening a PI draft writes nothing.
 - **What.** `loadDraft()` starts right after the session check, beside that group, and is awaited after it. New `capsKnown` (set once the capabilities are applied): the record is not drawn until it is true, so no control appears late; a failed or missing PI still shows its message at once.
 - **Proof.** Orders, PI and drafts tests 5,242 pass (two source pins in `draftsAccess.test.ts` updated to the new wording, plus one that the capabilities are applied before the record is awaited); tsc, eslint. The guard is unchanged. Local full suite not run (CI runs it).
-- **Live check owed after the deploy:** on a PI draft, the PI reads start in the first group instead of after it; the page draws with all its controls; timing before and after.
+- **Live check 18 Nov 2026 00:03 IST (owner's Chrome, same PI draft, a clean reload):** the main PI read now starts 0.06 s after the permission answer, beside the salesperson list (it started 0.34 s after it at 23:40); the page drew with all its controls (Edit PI), no crash, 23 requests. Absolute times were lower too (permissions at 0.88 s vs 1.74 s), mostly a warmer connection, not counted.
 
 ## 2026-11-17 — Page speed: the PI draft page reads the cost sheet and the sample type once (PR #893, merged 17 Nov 2026 23:14 IST as `272fc217`, live 23:16 IST) · no SQL
 - **Owner ask.** "Carry the next process", then step A of the PI draft plan: "Yes, build A".
