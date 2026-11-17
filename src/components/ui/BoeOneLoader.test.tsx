@@ -17,6 +17,7 @@ import { join } from 'node:path'
 import { createElement, Fragment } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { BoeOneLoader, CHEER_LINES } from './BoeOneLoader'
+import { LOADER_LINE_COUNT } from '@/lib/dailySplash/splash'
 import { LoadingScreen } from './atoms'
 import { AppLink } from './AppLink'
 
@@ -67,6 +68,33 @@ describe('the drawing', () => {
       assert.ok(line.length <= 60, `too long for two lines at 36ch: ${line}`)
       assert.doesNotMatch(line, /error|fail|timed? ?out|connection|reload|refresh/i, line)
     }
+  })
+
+  test('what the server draws is the fixed fallback, with no label: the browser\'s first render must match it', () => {
+    const html = renderToStaticMarkup(createElement(BoeOneLoader))
+    for (const line of CHEER_LINES) assert.ok(html.includes(line), line)
+    assert.doesNotMatch(html, /boe-loader-kind/)
+  })
+
+  test('the drawn lines are swapped in after mount, and only for a wait that cheers', () => {
+    const src = read('src/components/ui/BoeOneLoader.tsx')
+    assert.ok(src.startsWith("'use client'"))
+    assert.ok(src.includes('useState<readonly LoaderLine[]>(FALLBACK)'), 'the first render is the fallback')
+    assert.ok(src.includes('if (!cheer) return'))
+    assert.ok(src.includes('drawLoaderLines('))
+  })
+
+  test('the library is its own chunk: the loader is in the root layout, so it may not import the lines statically', () => {
+    const src = read('src/components/ui/BoeOneLoader.tsx')
+    const staticImports = [...src.matchAll(/^import .* from '([^']+)'/gm)].map(m => m[1])
+    assert.deepEqual(staticImports.filter(p => p.includes('dailySplash')), ['@/lib/dailySplash/kinds'])
+    assert.ok(src.includes("import('@/lib/dailySplash/splash')"), 'the library loads on demand')
+    // The always-loaded file holds no data: a few hundred bytes, not the 24 KB of lines.
+    assert.ok(read('src/lib/dailySplash/kinds.ts').length < 2000)
+  })
+
+  test('a drawn set fills exactly the slots the stylesheet animates', () => {
+    assert.equal(LOADER_LINE_COUNT, CHEER_LINES.length)
   })
 
   test('two copies on one page do not share the ids their clip and gradient are looked up by', () => {
@@ -143,6 +171,14 @@ describe('the stylesheet', () => {
     const frames = CSS.slice(at, CSS.indexOf('\n}\n', at))
     assert.ok(frames.includes(`${100 / n}%  { opacity: 0; }`), 'the line must be gone by the end of its slot')
     assert.ok(rule('.boe-loader-line').includes('opacity: 0;'), 'a line is invisible until its turn')
+  })
+
+  test('the lines have room for a label and three lines, and the label and publisher are styled', () => {
+    const box = rule('.boe-loader-lines')
+    assert.match(box, /width: min\(44ch, 90vw\);/)
+    assert.match(box, /height: 6\.4em;/)
+    assert.match(rule('.boe-loader-kind'), /text-transform: uppercase;/)
+    assert.ok(CSS.includes('\n.boe-loader-by {'))
   })
 
   test('the loader for a waiting click is hidden until <html> is marked, waits 1.2 s, and lets clicks through', () => {

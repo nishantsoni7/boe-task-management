@@ -1865,19 +1865,33 @@ html[data-boe-nav-pending] .boe-loader.boe-nav-loader { display: flex; }
   letter-spacing: 0.04em;
   color: #686D6C;
 }
-/* One short, kind line at a time under the logo (BoeOneLoader's CHEER_LINES):
-   each is shown for 4.5 s, fades into the next, and the list goes round again.
-   They start 1 s after the layer shows. A cycle is 8 lines x 4.5 s = 36 s; each
-   line's slot is 12.5% of it, and --i (its place in the list) staggers the
-   starts. Two lines of room, so none moves the logo. */
+/* One short line at a time under the logo (BoeOneLoader's lines: a fixed
+   fallback of CHEER_LINES, swapped after mount for lines drawn from
+   src/lib/dailySplash): each is shown for 4.5 s, fades into the next, and the
+   list goes round again. They start 1 s after the layer shows. A cycle is
+   8 lines x 4.5 s = 36 s; each line's slot is 12.5% of it, and --i (its place
+   in the list) staggers the starts. Room for a small label and three lines (a
+   drawn line is up to 110 characters), so none moves the logo. */
 .boe-loader-lines {
   position: relative;
-  width: min(36ch, 88vw);
-  height: 3.1em;
+  width: min(44ch, 90vw);
+  height: 6.4em;
   margin-top: -10px;
   font-size: 13.5px;
   line-height: 1.5;
 }
+/* What kind of line it is (Fun fact, Jingle, In the news...); the fallback has none. */
+.boe-loader-kind {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #BC472F;
+}
+/* A headline's publisher. */
+.boe-loader-by { color: #686D6C; }
 .boe-loader-line {
   position: absolute;
   inset: 0 0 auto 0;
