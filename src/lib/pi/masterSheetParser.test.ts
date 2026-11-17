@@ -2906,3 +2906,80 @@ describe('the figures prove the layout, and a missing Grand Total is refused', (
     assert.match(result.errors[0].message, /"Cost per piece \(INR\)" was not found \(H31 holds "Rate"\)/)
   })
 })
+
+// ── OLD ORDERS (oldOrder option, src/lib/pi/legacySheet.ts) ───────────────────
+
+describe('old orders: the oldOrder option', () => {
+  const book = (opts: FixtureOptions) => buildPiWorkbook({ products: inventProducts(2), anchors: anchorsFor(2), ...opts })
+  const old = (bytes: Uint8Array) => parseBoePiWorkbook(bytes, { oldOrder: true })
+
+  test('a tab named "Master " (trailing space) is refused as a PI upload and read as an old order', async () => {
+    const bytes = book({ sheetNames: ['Cover', 'Master '], masterIndex: 1 })
+    const strict = await parseBoePiWorkbook(bytes)
+    assert.equal(strict.ok, false)
+    if (!strict.ok) assert.equal(strict.errors[0].code, 'MASTER_SHEET_MISSING')
+    const r = expectOk(await old(bytes))
+    assert.equal(r.data.products.length, 2)
+  })
+
+  test('the price column is read whatever it is called, and a second price in column K is never customization', async () => {
+    const bytes = book({
+      headerOverrides: { H31: 'CP Teak Wood Price', K31: 'CP Teak Wood Price' },
+      products: [
+        { name: 'Bed', quantity: 6, cost: 47500, customization: '47500' },
+        { name: 'Sidetable', quantity: 12, cost: 14800, customization: '14800' },
+      ],
+    })
+    assert.equal((await parseBoePiWorkbook(bytes)).ok, false)
+    const r = expectOk(await old(bytes))
+    assert.deepEqual(r.data.products.map(p => p.costPerPiece), [47500, 14800])
+    assert.deepEqual(r.data.products.map(p => p.lineTotal), [285000, 177600])
+    assert.deepEqual(r.data.products.map(p => p.customization), [null, null], 'a price in K is not a customization')
+  })
+
+  test('a blank or "Remarks" heading over column K keeps its text as the customization', async () => {
+    for (const heading of [null, 'Remarks']) {
+      const r = expectOk(await old(book({
+        headerOverrides: { K31: heading },
+        products: [{ name: 'Chair', quantity: 2, cost: 900, customization: 'Walnut finish' }, { name: 'Stool', quantity: 1, cost: 400 }],
+      })))
+      assert.deepEqual(r.data.products.map(p => p.customization), ['Walnut finish', null], `heading ${heading}`)
+    }
+  })
+
+  test('"Dimensions / Shape" is accepted for the size column', async () => {
+    const r = expectOk(await old(book({ headerOverrides: { D31: 'Dimensions / Shape (In Inches WxDxH)' } })))
+    assert.match(r.data.products[0].dimensions ?? '', /Standard Dimensions/)
+  })
+
+  test('a sheet that already has a Customization heading elsewhere on the row is not made ambiguous', async () => {
+    const r = expectOk(await old(book({ headerOverrides: { K31: null }, extraCells: { L31: text('Customization') } })))
+    assert.equal(r.data.products.length, 2)
+  })
+
+  test('prices in dollars or euros are refused: the figures are not rupees', async () => {
+    for (const heading of ['Cost per piece USD / Ex-Factory', 'Cost per piece (EURO)']) {
+      const r = await old(book({ headerOverrides: { H31: heading } }))
+      assert.equal(r.ok, false, heading)
+      if (!r.ok) assert.equal(r.errors[0].code, 'TEMPLATE_FINGERPRINT_MISMATCH')
+    }
+    const k = await old(book({ headerOverrides: { K31: 'Cost per piece USD FOB' } }))
+    assert.equal(k.ok, false, 'a dollar price in column K marks an export sheet too')
+  })
+
+  test('a PI upload stays strict: the same sheets are refused without the option', async () => {
+    const refused: Record<string, string>[] = [{ H31: 'Sample cost' }, { K31: 'Remarks' }, { D31: 'Dimensions / Shape' }]
+    for (const overrides of refused) {
+      const r = await parseBoePiWorkbook(book({ headerOverrides: overrides }))
+      assert.equal(r.ok, false, JSON.stringify(overrides))
+    }
+  })
+
+  test('only an old order may be larger than 10 MiB', async () => {
+    const big = new Uint8Array(PI_MAX_WORKBOOK_BYTES + 1)
+    const strict = await parseBoePiWorkbook(big)
+    assert.equal(strict.ok === false && strict.errors[0].code, 'INPUT_TOO_LARGE')
+    const lenient = await old(big)
+    assert.equal(lenient.ok === false && lenient.errors[0].code !== 'INPUT_TOO_LARGE', true, 'it is opened (and is not a workbook), not refused for its size')
+  })
+})

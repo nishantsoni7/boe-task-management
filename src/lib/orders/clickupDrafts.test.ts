@@ -224,6 +224,7 @@ describe('only an Administrator reaches the data', () => {
     'src/app/api/orders/clickup-drafts/[id]/route.ts',
     'src/app/api/orders/clickup-drafts/[id]/files/[fileId]/route.ts',
     'src/app/api/orders/clickup-drafts/import/route.ts',
+    'src/app/api/orders/clickup-drafts/[id]/pi-sheet/route.ts',
   ]
 
   test('every route asks for the Administrator before it reads or writes anything', () => {
