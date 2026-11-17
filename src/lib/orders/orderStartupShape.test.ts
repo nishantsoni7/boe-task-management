@@ -146,12 +146,26 @@ describe('the Orders layout guard', () => {
     assert.match(source, /role === 'admin'/)
     assert.ok(source.includes("(permissionsByModule.get('orders') ?? []).some(p => p.actionKey === 'view' && p.allowed)"))
     // A missing profile still denies; a failed permission read leaves the map empty, which denies.
-    assert.match(source, /const allowed = !!profile && \(/)
+    assert.match(source, /const allowed = !pending && !!profile && \(/)
   })
 
-  test('and it still blocks its children until it has answered', () => {
-    assert.match(source, /if \(!ready \|\| !userId\) return <LoadingScreen \/>/)
+  // REVISED 2026-11-18 (page speed): the page is BUILT while the guard waits, but nothing of it is seen, focused or
+  // clicked until the guard says yes; a no removes it and draws only the denial.
+  test('and nothing of the page is shown or usable until it has answered', () => {
+    assert.match(source, /const pending = !ready/)
+    assert.match(source, /\{pending && <LoadingScreen \/>\}/)
+    assert.match(source, /inert=\{pending\} style=\{\{ display: pending \? 'none' : 'contents' \}\}/)
+    assert.match(source, /if \(!pending && !allowed\) return <OrdersAccessDenied/)
+    assert.match(source, /<OrdersShownContext\.Provider value=\{!pending\}>/)
+    assert.match(source, /if \(ready && !userId\) return <LoadingScreen \/>/)
     assert.match(source, /if \(ready && !userId\) router\.replace\('\/login'\)/)
+  })
+
+  test('the Order page marks its updates seen only once it is on screen', () => {
+    const order = readFileSync(join(process.cwd(), 'src/app/orders/[id]/page.tsx'), 'utf8')
+    assert.match(order, /setMarkFor\(id\)/)
+    assert.match(order, /if \(shown && markFor === id\) void Promise\.resolve\(\)\.then\(markUpdatesSeen\)/)
+    assert.doesNotMatch(order, /^\s*void markUpdatesSeen\(\)/m)
   })
 })
 

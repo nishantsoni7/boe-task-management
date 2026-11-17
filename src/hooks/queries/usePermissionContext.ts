@@ -295,8 +295,17 @@ export async function callerModulePermissions(
   userId: string,
   moduleKey: string,
 ): Promise<EffectivePermission[]> {
-  return cachedModulePermissions(qc, userId, moduleKey)
-    ?? getEffectivePermissions(supabase, userId, moduleKey).catch(() => [])
+  const cached = cachedModulePermissions(qc, userId, moduleKey)
+  if (cached) return cached
+  // THE GUARD'S OWN READ MAY BE ON ITS WAY (2026-11-18): the Orders page is built while the guard waits for the
+  // permission context, so wait for that read rather than send a second one. staleTime 0 joins the read in flight.
+  const key = ['permission-context', userId] as const
+  if (qc.getQueryState(key)?.fetchStatus === 'fetching') {
+    const ctx = await qc.fetchQuery<{ permissionsByModule: ReadonlyMap<string, readonly EffectivePermission[]> }>({ queryKey: key, staleTime: 0 })
+      .catch(() => null)
+    if (ctx?.permissionsByModule) return [...(ctx.permissionsByModule.get(moduleKey) ?? [])]
+  }
+  return getEffectivePermissions(supabase, userId, moduleKey).catch(() => [])
 }
 
 /**
@@ -314,6 +323,7 @@ export function cachedModulePermissions(
   const state = qc.getQueryState<{ permissionsByModule: ReadonlyMap<string, readonly EffectivePermission[]> }>(
     ['permission-context', userId],
   )
-  if (!state?.data || Date.now() - state.dataUpdatedAt > PERMISSION_STALE_MS) return null
+  // An invalidated answer (a saved copy put back, or a role change) is never reused: the caller waits for the fresh one.
+  if (!state?.data || state.isInvalidated || Date.now() - state.dataUpdatedAt > PERMISSION_STALE_MS) return null
   return [...(state.data.permissionsByModule.get(moduleKey) ?? [])]
 }
