@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { Lock } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
@@ -8,8 +8,14 @@ import { colors } from '@/lib/tokens'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { OrdersShownContext } from '@/lib/orders/ordersShown'
 
+const subscribeNothing = () => () => {}
+
 export default function OrdersGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
+  // In the browser and past hydration (2026-11-18): the server and the first browser render build no hidden page,
+  // as before, so their HTML matches (#897 drew it on the server too: React error #418 on some loads). The hidden
+  // page is built a moment later, still long before the permission answer lands.
+  const inBrowser = useSyncExternalStore(subscribeNothing, () => true, () => false)
 
   // ── ONE ANSWER FOR THE GATE, THE PAGE AND THE FRAME (2026-11-12) ──
   //
@@ -52,9 +58,11 @@ export default function OrdersGuard({ children }: { children: React.ReactNode })
   return (
     <OrdersShownContext.Provider value={!pending}>
       {pending && <LoadingScreen />}
-      <div data-orders-page={pending ? 'waiting' : 'shown'} inert={pending} style={{ display: pending ? 'none' : 'contents' }}>
-        {children}
-      </div>
+      {(inBrowser || !pending) && (
+        <div data-orders-page={pending ? 'waiting' : 'shown'} inert={pending} style={{ display: pending ? 'none' : 'contents' }}>
+          {children}
+        </div>
+      )}
     </OrdersShownContext.Provider>
   )
 }
