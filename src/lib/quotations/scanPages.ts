@@ -129,6 +129,16 @@ export async function filePages(file: File, startAt: number, onPage: (done: numb
 
 const EMU = (v: string | null) => Number(v) || 0
 
+/** Where a shape sits, as fractions of the slide (sw × sh EMU). Read inside a:xfrm only: PowerPoint also writes
+ *  <a:extLst><a:ext uri=…> (no size) in the shape's name, before it, which drew every picture of the Brewery deck at zero size. */
+// shortcut: positions inside a group shape are taken as they are (no group transform); a grouped picture can land a
+// little off. Fine for reading; upgrade when a real deck shows it.
+export function slideFrame(el: Element, sw: number, sh: number) {
+  const xf = el.getElementsByTagName('a:xfrm')[0]
+  const off = xf?.getElementsByTagName('a:off')[0]; const ext = xf?.getElementsByTagName('a:ext')[0]
+  return { x: EMU(off?.getAttribute('x') ?? null) / sw, y: EMU(off?.getAttribute('y') ?? null) / sh, w: EMU(ext?.getAttribute('cx') ?? null) / sw, h: EMU(ext?.getAttribute('cy') ?? null) / sh }
+}
+
 async function slidePages(file: File, name: string, startAt: number, onPage: (done: number, total: number) => void): Promise<ScanPage[]> {
   const JSZip = (await import('jszip')).default
   let zip: InstanceType<typeof JSZip>
@@ -151,12 +161,7 @@ async function slidePages(file: File, name: string, startAt: number, onPage: (do
       const t = r?.getAttribute('Target') ?? ''
       return t.startsWith('../') ? `ppt/${t.slice(3)}` : t
     }
-    // shortcut: positions inside a group shape are taken as they are (no group transform); a grouped picture can land a
-    // little off. Fine for reading; upgrade when a real deck shows it.
-    const frame = (el: Element) => {
-      const off = el.getElementsByTagName('a:off')[0]; const ext = el.getElementsByTagName('a:ext')[0]
-      return { x: EMU(off?.getAttribute('x') ?? null) / sw, y: EMU(off?.getAttribute('y') ?? null) / sh, w: EMU(ext?.getAttribute('cx') ?? null) / sw, h: EMU(ext?.getAttribute('cy') ?? null) / sh }
-    }
+    const frame = (el: Element) => slideFrame(el, sw, sh)
     const pics: { f: ReturnType<typeof frame>; bmp: ImageBitmap }[] = []
     for (const pic of Array.from(doc.getElementsByTagName('p:pic'))) {
       const id = pic.getElementsByTagName('a:blip')[0]?.getAttribute('r:embed')
