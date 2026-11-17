@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-17 — REVERT of #880 (the saved copy put back after sign-in): it crashed My Tasks (branch `revert/saved-copy-restore-880`; PR number added at the stamp) · no SQL
+## 2026-11-17 — REVERT of #880 (the saved copy put back after sign-in): it crashed My Tasks (PR #883, merged 17 Nov 2026 18:27 IST as `08012448`, live 18:30 IST; My Tasks checked live 18:31 IST: loads, no crash) · no SQL
 - **What happened.** Found 17 Nov ~18:10 IST while measuring page speed: `/tasks/my` showed "This page ran into a problem" every time, console `TypeError: t?.has is not a function`; with the saved copy switched off (`boe-qcache-off`) the page loaded. Now that #880 put the saved copy back, a value that is a Set in memory came back from the stored JSON as a plain object (`persistedCache.ts` tags a Map for the round trip, not a Set). The live test after #880 covered only `/modules` and `/orders/drafts`, not the task screens.
 - **What.** `Providers.tsx` and `persistedCache.test.ts` back to their state before #880 (the first SIGNED_IN attaches without a restore), so the saved copy is again saved but not put back: no crash, and no speed gain. Owner: "Yes, revert".
 - **Next (separate PR).** Tag a Set like a Map, bump `PERSIST_VERSION` so copies already saved in the wrong shape are dropped, a round-trip test over every restored family, then #880's change again and a live check of EVERY restored screen (launcher, task lists, Sales leads, quotations, PI Drafts), not two.
