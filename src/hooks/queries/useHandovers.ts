@@ -3,6 +3,7 @@
 import { useCallback, useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { bundledRead } from '@/lib/modules/forYouBundle'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { notificationKeys } from '@/lib/notificationCache'
@@ -46,13 +47,14 @@ export function useOpenHandovers() {
     queryKey: [...OPEN_HANDOVERS_KEY, userId ?? null],
     enabled: !!userId && !viewMode,
     queryFn: async () => {
-      const { data, error } = await createClient().rpc('finance_handover_list', {
+      // With the rest of the For you column when they ask together (forYouBundle.ts: the same five arguments).
+      const { data, error } = await bundledRead('handovers', () => createClient().rpc('finance_handover_list', {
         p_statuses: [...OPEN_HANDOVER_STATUSES],
         p_only_mine: false,
         p_limit: 100,
         p_offset: 0,
         p_id: null,
-      })
+      }), { handoverStatuses: OPEN_HANDOVER_STATUSES })
       if (isHandoverFeatureMissing(error)) return []
       if (error) throw new Error(handoverErrorMessage(error))
       return readHandovers(data)

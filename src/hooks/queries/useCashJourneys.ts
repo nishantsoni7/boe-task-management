@@ -3,6 +3,7 @@
 import { useCallback } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
+import { bundledRead } from '@/lib/modules/forYouBundle'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { HANDOVERS_KEY } from '@/hooks/queries/useHandovers'
@@ -44,7 +45,8 @@ export function useUnclosedFunds(enabled = true) {
     queryKey: [...CASH_JOURNEYS_KEY, 'unclosed', userId ?? null],
     enabled: enabled && !!userId && !viewMode,
     queryFn: async () => {
-      const { data, error } = await createClient().rpc('finance_unclosed_funds')
+      // With the rest of the For you column when they ask together (forYouBundle.ts); alone, its own read.
+      const { data, error } = await bundledRead('unclosed', () => createClient().rpc('finance_unclosed_funds'))
       if (isHandoverFeatureMissing(error)) return EMPTY
       if (error) throw new Error(handoverErrorMessage(error))
       return readUnclosedFunds(data)

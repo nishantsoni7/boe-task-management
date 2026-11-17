@@ -1314,6 +1314,8 @@ describe('the applied migrations are frozen', () => {
       '20270728000100_sales_potential_without_value.sql',
       // Pricing, the watcher: the CHECK on pricing_feedback.kind re-created with 'differs_taught' (no row changed), and the read-only pricing_taught_quotes().
       '20270729000000_pricing_taught_watcher.sql',
+      // Page speed: for_you_bundle(), the For you column's reads in one call, run as the caller (security invoker). No table or data change.
+      '20270730000000_for_you_bundle.sql',
     ])
   })
 
@@ -1847,6 +1849,7 @@ describe('the applied migrations are frozen', () => {
       '20270728000000_sales_add_lead_keeps_own.sql',
       '20270728000100_sales_potential_without_value.sql',
       '20270729000000_pricing_taught_watcher.sql',
+      '20270730000000_for_you_bundle.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
