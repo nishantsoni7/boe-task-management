@@ -49,6 +49,9 @@ import {
  */
 export const PI_MAX_WORKBOOK_BYTES = 10 * 1024 * 1024
 
+/** Old orders copied from ClickUp are read, never uploaded: their PI workbooks reach 50 MB (pictures). */
+export const OLD_ORDER_MAX_WORKBOOK_BYTES = 64 * 1024 * 1024
+
 // ── Archive ───────────────────────────────────────────────────────────────────
 
 export type PiArchive = {
@@ -99,8 +102,8 @@ async function inflate(bytes: Uint8Array, filter: UnzipFilter): Promise<ArchiveE
  * bomb is refused before its bytes are allocated — the same ordering the
  * optimiser uses. The input array is only ever read.
  */
-export async function openPiArchive(bytes: Uint8Array): Promise<PiArchiveResult> {
-  if (bytes.length > PI_MAX_WORKBOOK_BYTES) return { ok: false, reason: 'INPUT_TOO_LARGE' }
+export async function openPiArchive(bytes: Uint8Array, maxBytes = PI_MAX_WORKBOOK_BYTES): Promise<PiArchiveResult> {
+  if (bytes.length > maxBytes) return { ok: false, reason: 'INPUT_TOO_LARGE' }
   if (bytes.length === 0) return { ok: false, reason: 'INVALID_ZIP' }
 
   const names: string[] = []

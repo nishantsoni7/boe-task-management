@@ -54,6 +54,15 @@
 .progressFill { height: 100%; background: var(--boe-brand); transition: width 0.2s ease; }
 .problems { margin: 0; padding-left: 18px; font-size: 12.5px; color: var(--boe-error); max-height: 220px; overflow: auto; }
 
+/* The PI sheet of an old order. */
+.thumb { display: block; width: 56px; height: 56px; object-fit: contain; background: #fff; border: 1px solid var(--boe-border); border-radius: 6px; }
+.pick { max-width: 100%; margin-left: 6px; padding: 5px 8px; font-size: 12.5px; color: var(--boe-text); background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); }
+.totals { margin: 0; align-self: flex-end; min-width: min(100%, 300px); display: flex; flex-direction: column; gap: 4px; }
+.totalRow { display: flex; justify-content: space-between; gap: 16px; font-size: 13px; }
+.totalRow dt { color: var(--boe-text-muted); }
+.totalRow dd { margin: 0; font-variant-numeric: tabular-nums; color: var(--boe-text); }
+.totalRow:last-child dt, .totalRow:last-child dd { font-weight: 700; color: var(--boe-text-strong); }
+
 @media (max-width: 640px) {
   .right { margin-left: 0; }
   .headTitle { font-size: 18px; }

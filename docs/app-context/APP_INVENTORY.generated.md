@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `a452cc5a` — Quotations: the furniture in a room picture, for a room with no list (#866)
-- Commits on this branch: 1425
-- Pages (`page.tsx`): 209   API routes (`route.ts`): 212
+- Commit: `e982ae9f` — Docs: stamp the furniture in a room picture (#866) as merged a452cc5a, deployed 18:32 IST (no SQL) (#867)
+- Commits on this branch: 1426
+- Pages (`page.tsx`): 209   API routes (`route.ts`): 213
 - Migrations: 471 (first `20260530_create_positions.sql`, latest `20270729000000_pricing_taught_watcher.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1054   Enums: 0
-- Test files: 873   Next.js 16.2.6, React 19.2.4
+- Test files: 875   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `e982ae9f` 2026-11-16 Docs: stamp the furniture in a room picture (#866) as merged a452cc5a, deployed 18:32 IST (no SQL) (#867)
 - `a452cc5a` 2026-11-16 Quotations: the furniture in a room picture, for a room with no list (#866)
 - `7404c43e` 2026-11-16 Docs: stamp Crop & rotate in the scan review (#853) as merged b296d0c2, deployed 10:42 IST (no SQL) (#859)
 - `0f34e769` 2026-11-16 Docs: stamp the salesperson-keeps-the-lead-they-add change (#861) as merged 03b1a061, deployed 12:37 IST (no SQL) (#864)
@@ -38,7 +39,6 @@
 - `65a81cd2` 2026-11-16 Pricing: the wood list with rates, and the wood picked on a structure row (migration 20270725000000) (#845)
 - `37e023cc` 2026-11-16 Docs: stamp Training submit-is-what-counts (#843) as merged cd8d6358, deployed 00:39 IST, migration 20270724000000 applied (no SQL) (#844)
 - `cd8d6358` 2026-11-16 Pricing Training: submitting is what counts, and a case can always be changed (migration 20270724000000, apply before merge) (#843)
-- `b53b86f9` 2026-11-16 Docs: stamp #835 (Start from a client file) as merged 17a37990, deployed 00:06 IST, migration 20270721000000 applied (#842)
 
 ## Pages by top-level area
 
@@ -116,7 +116,7 @@
 - **notifications** (5): ` [DELETE,GET]`, `/[id] [DELETE]`, `/counts [GET]`, `/delete-selected [POST]`, `/mark-read [POST]`
 - **notify-status-update** (1): ` [POST]`
 - **objections** (2): ` [GET,POST]`, `/review [POST]`
-- **orders** (33): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/dispatch/read-paper [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/number [POST]`, `/[id]/payment-plan/pdf [GET]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/bdpi/[id]/delete [POST]`, `/bdpi/[id]/pdf [GET]`, `/bdpi/[id]/pictures [GET]`, `/bdpi/import [POST]`, `/clickup-drafts [GET]`, `/clickup-drafts/[id] [GET]`, `/clickup-drafts/[id]/files/[fileId] [GET]`, `/clickup-drafts/import [POST]`, `/customize-learning/attempts [GET,PATCH]`, `/customize-learning/examples [GET,PATCH,POST]`, `/customize-learning/rules [GET,PATCH,POST]`, `/fabric-finish/image [POST]`, `/fabric-finish/refresh [POST]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/customization-feedback [POST]`, `/pi-edits/interpret-customization [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
+- **orders** (34): `/[id] [DELETE]`, `/[id]/delete [POST]`, `/[id]/dispatch/read-paper [POST]`, `/[id]/documents [POST]`, `/[id]/notify [POST]`, `/[id]/number [POST]`, `/[id]/payment-plan/pdf [GET]`, `/[id]/pi-versions/[versionId]/pdf [GET]`, `/bdpi/[id]/delete [POST]`, `/bdpi/[id]/pdf [GET]`, `/bdpi/[id]/pictures [GET]`, `/bdpi/import [POST]`, `/clickup-drafts [GET]`, `/clickup-drafts/[id] [GET]`, `/clickup-drafts/[id]/files/[fileId] [GET]`, `/clickup-drafts/[id]/pi-sheet [GET]`, `/clickup-drafts/import [POST]`, `/customize-learning/attempts [GET,PATCH]`, `/customize-learning/examples [GET,PATCH,POST]`, `/customize-learning/rules [GET,PATCH,POST]`, `/fabric-finish/image [POST]`, `/fabric-finish/refresh [POST]`, `/import/process-draft [POST]`, `/pi-edits [POST]`, `/pi-edits/customization-feedback [POST]`, `/pi-edits/interpret-customization [POST]`, `/pi-edits/photo [POST]`, `/pi-edits/regenerate-image [POST]`, `/pi-format [GET]`, `/pi-revisions/approve [POST]`, `/submissions/delete [POST]`, `/submissions/notify [POST]`, `/test-data-cleanup [POST]`, `/test-data-reset [POST]`
 - **payroll** (19): `/adjustments [GET,POST]`, `/adjustments/[id] [DELETE]`, `/ask [POST]`, `/attendance-correction [POST]`, `/delete [GET,POST]`, `/generate [POST]`, `/lock [POST]`, `/monthly-review [GET]`, `/monthly-review/detail [GET]`, `/my-result [GET]`, `/my-result/review [POST]`, `/participation [GET,PATCH]`, `/periods [GET,POST]`, `/results [GET]`, `/results/detail [GET]`, `/salary-report [GET]`, `/settings [GET,PUT]`, `/settlement [PATCH]`, `/unlock [POST]`
 - **performance** (2): ` [GET,POST]`, `/app-open [POST]`
 - **performance-audit** (1): ` [POST]`
@@ -162,11 +162,11 @@
 - `src/lib/modules` — 6 source, 7 test
 - `src/lib/navigation` — 5 source, 8 test
 - `src/lib/notifications` — 9 source, 25 test
-- `src/lib/orders` — 110 source, 171 test
+- `src/lib/orders` — 112 source, 172 test
 - `src/lib/payroll` — 36 source, 35 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
-- `src/lib/pi` — 8 source, 6 test
+- `src/lib/pi` — 9 source, 6 test
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
