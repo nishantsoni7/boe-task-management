@@ -22,8 +22,10 @@
 
 import { dehydrate, hydrate, type DehydratedState, type Query, type QueryClient } from '@tanstack/react-query'
 
-export const PERSIST_VERSION = 1
+// 2 (2026-11-17): copies saved under 1 hold Sets as {} (My Tasks crashed on the pinned list); they are deleted, never read.
+export const PERSIST_VERSION = 2
 export const PERSIST_KEY = `boe-qcache:v${PERSIST_VERSION}`
+const OLD_PERSIST_KEYS = ['boe-qcache:v1'] as const
 export const PERSIST_KILL_SWITCH_KEY = 'boe-qcache-off'
 export const PERSIST_MAX_AGE_MS = 12 * 60 * 60 * 1000
 export const PERSIST_MAX_BYTES = 1_500_000
@@ -97,21 +99,45 @@ export function persistEnabled(storage: PersistStorage | null): storage is Persi
   try { return storage.getItem(PERSIST_KILL_SWITCH_KEY) !== '1' } catch { return false }
 }
 
-// A Map (the permission context holds one) is not JSON; it travels as a tagged list and comes back a Map.
+// A Map (the permission context holds one) and a Set (My Tasks' pinned ids, useTopTasks) are not JSON; each travels as
+// a tagged list and comes back as itself.
 const MAP_TAG = '$map'
-const replacer = (_k: string, v: unknown) => (v instanceof Map ? { [MAP_TAG]: [...v.entries()] } : v)
+const SET_TAG = '$set'
+const replacer = (_k: string, v: unknown) =>
+  (v instanceof Map ? { [MAP_TAG]: [...v.entries()] } : v instanceof Set ? { [SET_TAG]: [...v] } : v)
 const reviver = (_k: string, v: unknown) => {
-  if (v && typeof v === 'object' && !Array.isArray(v) && MAP_TAG in (v as object) && Object.keys(v as object).length === 1) {
-    return new Map((v as Record<string, [unknown, unknown][]>)[MAP_TAG])
+  if (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v as object).length === 1) {
+    if (MAP_TAG in (v as object)) return new Map((v as Record<string, [unknown, unknown][]>)[MAP_TAG])
+    if (SET_TAG in (v as object)) return new Set((v as Record<string, unknown[]>)[SET_TAG])
   }
   return v
+}
+
+/**
+ * Whether a result comes back from the saved copy exactly as it went in: plain objects, arrays, strings, finite numbers,
+ * booleans, null, and the tagged Map and Set. Anything else (a Date, a class instance, a function, NaN, an undefined in a
+ * list) would come back in another shape and could crash its screen, so that result is simply not saved.
+ */
+export function survivesSaving(v: unknown, depth = 0): boolean {
+  if (v === null || typeof v === 'string' || typeof v === 'boolean') return true
+  if (typeof v === 'number') return Number.isFinite(v)
+  if (typeof v !== 'object' || depth > 40) return false
+  if (Array.isArray(v)) return v.every(x => survivesSaving(x, depth + 1))
+  if (v instanceof Map) return [...v].every(([k, x]) => survivesSaving(k, depth + 1) && survivesSaving(x, depth + 1))
+  if (v instanceof Set) return [...v].every(x => survivesSaving(x, depth + 1))
+  const proto = Object.getPrototypeOf(v)
+  if (proto !== Object.prototype && proto !== null) return false
+  // An undefined property is dropped by JSON and reads as undefined again: the same.
+  return Object.values(v).every(x => x === undefined || survivesSaving(x, depth + 1))
 }
 
 type Saved = { v: number; owner: string; savedAt: number; state: DehydratedState }
 
 export function wipePersistedCache(storage: PersistStorage | null): void {
   if (!storage) return
-  try { storage.removeItem(PERSIST_KEY) } catch { /* nothing to do */ }
+  for (const key of [PERSIST_KEY, ...OLD_PERSIST_KEYS]) {
+    try { storage.removeItem(key) } catch { /* nothing to do */ }
+  }
 }
 
 /** Write the allowlisted, successful, recent results of `qc` for `userId`. Returns the bytes saved (0 = nothing). */
@@ -128,6 +154,7 @@ export function savePersistedCache(
       && q.state.data != null
       && now - q.state.dataUpdatedAt <= PERSIST_MAX_AGE_MS
       && isPersistableKey(q.queryKey, userId)
+      && survivesSaving(q.state.data)
     const state = dehydrate(qc, { shouldDehydrateQuery: keep })
 
     // KEEP WHAT IS ALREADY SAVED BUT NO LONGER IN MEMORY. The in-memory cache forgets a result five minutes after the
@@ -188,6 +215,13 @@ export function restorePersistedCache(
     const queries = saved.state.queries.filter(q =>
       isPersistableKey(q.queryKey, userId) && now - (q.state.dataUpdatedAt ?? 0) <= PERSIST_MAX_AGE_MS && q.state.data !== undefined)
     hydrate(qc, { ...saved.state, queries })
+    // A PUT-BACK RESULT IS ALWAYS ASKED AGAIN (17 Nov 2026). It keeps the time it was fetched, so a copy saved a few
+    // seconds earlier still counted as fresh (the permission answer is fresh for 30 s): nothing asked again, and
+    // ModuleGuard, which waits for an answer fetched in THIS visit, waited for ever on Quotations (#886, reverted #887).
+    // Marking each one invalidated makes every screen that shows it fetch at once (an open one now, the rest on mount).
+    // Only the entries that took the saved data: a newer answer already in memory is left alone.
+    const restoredAt = new Map(queries.map(q => [q.queryHash, q.state.dataUpdatedAt]))
+    void qc.invalidateQueries({ predicate: q => restoredAt.has(q.queryHash) && q.state.dataUpdatedAt === restoredAt.get(q.queryHash) })
     return queries.length
   } catch {
     wipePersistedCache(storage)
@@ -225,6 +259,8 @@ export function createPersister(
       if (owner === userId) return
       detach()
       if (!persistEnabled(storage)) return
+      // A copy from an older version is never read, only deleted (version 1 held Sets in the wrong shape).
+      for (const key of OLD_PERSIST_KEYS) { try { storage.removeItem(key) } catch { /* nothing to do */ } }
       if (options.restore !== false) restorePersistedCache(qc, userId, storage, clock.now())
       owner = userId
 
