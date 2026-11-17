@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f645047d` — Docs: stamp the loader lines library (#882) as merged 0a7be599, live 18:20 IST (no SQL) (#884)
-- Commits on this branch: 1444
+- Commit: `1bf19da5` — Page speed: the saved copy comes back in the right shape, then is put back after sign-in again (#886)
+- Commits on this branch: 1445
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 472 (first `20260530_create_positions.sql`, latest `20270730000000_for_you_bundle.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1055   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `1bf19da5` 2026-11-17 Page speed: the saved copy comes back in the right shape, then is put back after sign-in again (#886)
 - `f645047d` 2026-11-17 Docs: stamp the loader lines library (#882) as merged 0a7be599, live 18:20 IST (no SQL) (#884)
 - `1662190b` 2026-11-17 Docs: stamp the revert of #880 (#883) as merged 08012448, deployed 18:30 IST, My Tasks checked live (#885)
 - `08012448` 2026-11-17 Revert #880: putting the saved copy back crashed My Tasks (#883)
@@ -38,7 +39,6 @@
 - `0f34e769` 2026-11-16 Docs: stamp the salesperson-keeps-the-lead-they-add change (#861) as merged 03b1a061, deployed 12:37 IST (no SQL) (#864)
 - `acf8dc95` 2026-11-16 Docs: stamp the watcher (#863) as merged ce3bb873, deployed 13:32 IST, migration 20270729000000 applied (no SQL) (#865)
 - `ce3bb873` 2026-11-16 Pricing: the watcher, a quoted price against the taught one (migration 20270729000000) (#863)
-- `d8240a8d` 2026-11-16 SEO report: at most three cards a row, readable proof rows + docs stamp for #860 (#862)
 
 ## Pages by top-level area
 

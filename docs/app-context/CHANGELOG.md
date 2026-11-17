@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-17 — REVERT of #886 (the saved copy in the right shape, put back after sign-in): it froze Quotations (branch `revert/saved-copy-sets-886`; PR number added at the stamp) · no SQL
+- **What happened.** #886 went live 19:10 IST. Live check in the owner's Chrome: the launcher, Dashboard, My Tasks (the pinned Set now comes back right), Sales My Day, Sales Board and PI Drafts loaded from the saved copy, twice each, no console error. But `/quotations` stayed on the full-page Loading screen with NO data request for 10 s and more, twice; with the saved copy switched off it loaded. The quotations list itself was not in the saved copy, so something else the copy restores leaves that page waiting. Cause not yet found.
+- **What.** `persistedCache.ts`, `persistedCache.test.ts` and `Providers.tsx` back to their state before #886 (the copy is saved, not put back; key `boe-qcache:v1`). A `boe-qcache:v2` copy left on a device is never read by this code. Owner: "Yes, revert".
+- **Before any retry.** Find why Quotations waits for ever with a restored copy (its guard or access read against a restored permission context, most likely), and add `/quotations` and every other module page to the live check, not only the restored screens.
+
 ## 2026-11-17 — Page speed: the saved copy comes back in the right shape, then is put back after sign-in again (branch `fix/saved-copy-sets`; PR number added at the stamp) · no SQL
 - **Owner ask.** After the revert (#883): "Yes, plan it", then "Yes, build it".
 - **Cause of the crash, confirmed.** `useTopTasks` (`['top-tasks', uid]`, a saved family) returns `{ pinnedIds: Set, tasks }`; My Tasks calls `pinnedIds.has()`; the saved copy (JSON) brought the Set back as `{}`. The permission context's Map was already tagged; no other Set in the saved families.

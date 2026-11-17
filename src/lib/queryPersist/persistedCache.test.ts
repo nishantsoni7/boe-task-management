@@ -153,45 +153,6 @@ describe('saving and restoring', () => {
     assert.deepEqual(b.getQueryData(['tasks', 'assigned-to', ME]), [{ id: 't1', title: 'Call client' }])
   })
 
-  // 17 Nov 2026: version 1 brought the pinned ids back as {} and My Tasks crashed on `pinnedIds.has` (#880, reverted #883).
-  test('My Tasks\' pinned ids (a Set, useTopTasks) come back as a Set that answers has()', () => {
-    const storage = memoryStorage()
-    const a = client()
-    put(a, ['top-tasks', ME], { pinnedIds: new Set(['t1', 't2']), tasks: [{ id: 't1' }, { id: 't2' }] })
-    assert.ok(savePersistedCache(a, ME, storage, NOW) > 0)
-    const b = client()
-    assert.equal(restorePersistedCache(b, ME, storage, NOW + 1000), 1)
-    const top = b.getQueryData(['top-tasks', ME]) as { pinnedIds: Set<string>; tasks: { id: string }[] }
-    assert.ok(top.pinnedIds instanceof Set)
-    assert.equal(top.pinnedIds.has('t2'), true)
-    assert.equal(top.pinnedIds.has('t9'), false)
-    assert.deepEqual(top.tasks, [{ id: 't1' }, { id: 't2' }])
-  })
-
-  test('a result holding anything JSON cannot bring back is not saved at all; the rest still are', () => {
-    const storage = memoryStorage()
-    const a = client()
-    put(a, ['profile', ME], { id: ME, seen: new Date(NOW) })
-    put(a, ['module-order', ME], [1, Number.NaN])
-    put(a, ['task-order', ME], [undefined, 'x'])
-    put(a, ['app-modules-visibility', ME], { hidden: [], since: null, gone: undefined })
-    savePersistedCache(a, ME, storage, NOW)
-    const text = storage.getItem(PERSIST_KEY) as string
-    assert.ok(text.includes('app-modules-visibility'))
-    for (const left of ['"profile"', 'module-order', 'task-order']) assert.equal(text.includes(left), false, left)
-  })
-
-  test('a version 1 copy (Sets saved as {}) is deleted when someone is attached, and never read', () => {
-    const old = JSON.stringify({ v: 1, owner: ME, savedAt: NOW, state: { mutations: [], queries: [] } })
-    const storage = memoryStorage({ 'boe-qcache:v1': old })
-    assert.equal(PERSIST_KEY, 'boe-qcache:v2')
-    createPersister(client(), storage, { now: () => NOW, schedule: () => 0, cancel: () => {} }).attach(ME)
-    assert.equal(storage.getItem('boe-qcache:v1'), null)
-    const other = memoryStorage({ 'boe-qcache:v1': old })
-    wipePersistedCache(other)
-    assert.equal(other.getItem('boe-qcache:v1'), null)
-  })
-
   test('only allowlisted successful results are written; the rest of the cache never reaches the device', () => {
     const storage = memoryStorage()
     const a = client()
@@ -363,25 +324,6 @@ describe('it is display only, and wired where identity is decided', () => {
     assert.match(p, /const persister = createPersister\(queryClient\)/)
     assert.match(p, /if \(signedInId\) persister\.attach\(signedInId\)\s*else persister\.wipe\(\)/)
     assert.equal((p.match(/persister\.wipe\(\)/g) ?? []).length, 3, 'no session, sign-out, and a different person')
-  })
-
-  // 17 Nov 2026. The saved copy was never put back (16 Nov: the first SIGNED_IN attached without a restore, so the
-  // seed's attach was a no-op), and putting it back INSIDE the auth callback hung the app (#855, reverted #857).
-  test('the saved copy is restored only by the seed, never inside the auth callback', () => {
-    const p = src('src/components/layout/Providers.tsx')
-    const start = p.indexOf('supabase.auth.onAuthStateChange(')
-    const end = p.indexOf('return () => {', start)
-    assert.ok(start > 0 && end > start)
-    const callback = p.slice(start, end)
-    // Inside the callback the only attach is the different-person one, and it never restores.
-    const attaches = callback.match(/persister\.attach\([^)]*\)/g) ?? []
-    assert.deepEqual(attaches, ['persister.attach(nextUserId, { restore: false })'])
-    assert.doesNotMatch(callback, /setTimeout|restorePersistedCache|hydrate\(/)
-    // The first event of the tab adopts the identity and does nothing else with the saved copy.
-    const first = callback.slice(callback.indexOf('if (lastUserId.current === undefined) {'), callback.indexOf('if (nextUserId === lastUserId.current)'))
-    assert.doesNotMatch(first.replace(/\/\/.*$/gm, ''), /persister\./)
-    // The seed (after initialisation, outside the callback) attaches with the restore: attach's default.
-    assert.ok(p.indexOf('if (signedInId) persister.attach(signedInId)') < start)
   })
 
   test('while previewing somebody else nothing is painted from a saved copy', () => {
