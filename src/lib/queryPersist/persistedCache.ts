@@ -221,7 +221,12 @@ export function restorePersistedCache(
     // Marking each one invalidated makes every screen that shows it fetch at once (an open one now, the rest on mount).
     // Only the entries that took the saved data: a newer answer already in memory is left alone.
     const restoredAt = new Map(queries.map(q => [q.queryHash, q.state.dataUpdatedAt]))
-    void qc.invalidateQueries({ predicate: q => restoredAt.has(q.queryHash) && q.state.dataUpdatedAt === restoredAt.get(q.queryHash) })
+    // cancelRefetch false: a screen that already started its read keeps it; the default cancelled it and sent it again,
+    // so every page asked twice for the permissions and the profile (measured live, 17 Nov 2026).
+    void qc.invalidateQueries(
+      { predicate: q => restoredAt.has(q.queryHash) && q.state.dataUpdatedAt === restoredAt.get(q.queryHash) },
+      { cancelRefetch: false },
+    )
     return queries.length
   } catch {
     wipePersistedCache(storage)
