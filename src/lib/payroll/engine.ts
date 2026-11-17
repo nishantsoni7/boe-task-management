@@ -245,6 +245,26 @@ function waivedByPaidLeave(line: PendingDeductionLine): PendingDeductionLine {
 }
 
 /**
+ * The same absent day, with `cover` of it (0.5 = half) charged to the company.
+ *
+ * The line stays chargeable: `amount_deducted` is what is LEFT after the cover,
+ * rounded as built like every other line, and `explain.gross_amount` keeps the
+ * whole day so the popup can show the cover as a subtraction (gross − charged).
+ * `waived_by` is set, which is what keeps the day named as paid-leave covered
+ * and refuses BOE Credits on it. A part-covered line is told apart from a fully
+ * covered one by `amount_deducted > 0`.
+ */
+function partlyWaivedByPaidLeave(line: PendingDeductionLine, cover: number, rates: PayrollRates, s: PayrollSettings): PendingDeductionLine {
+  const share = 1 - cover
+  return {
+    ...line,
+    amount_deducted: roundRupees(rates.per_day_rate * share),
+    hours_deducted: s.full_day_hours * share,
+    waived_by: 'paid_leave',
+  }
+}
+
+/**
  * The same line, paid for by the employee's BOE Credits instead of their
  * salary (Phase 1C). `explain.gross_amount` keeps what the rule charged, and
  * `credits_redeemed` says what it cost in credits, so the popup can show both.
@@ -675,6 +695,18 @@ function applyLeaveAbsorption(
     paid_leave_used = 0.5
   }
 
+  // Stage 2c: a part-leave (0.5) covers that share of the earliest absent day.
+  // A whole absent day needs a whole leave (stage 1), so before this stage a
+  // half leave could never touch an absence and was spent on late lines worth
+  // less. The day stays absent and stays in remaining_absent_days; only its
+  // charge falls. It is reached only when no half-day took the leave first, and
+  // it never saves less than stage 3: 0.5 × 8.5 h of lateness is at most half a day.
+  let absent_day_leave_cover = 0
+  if (paid_leave_used === 0 && paidLeaveAvailable > 0 && paidLeaveAvailable < 1 && remaining_absent_days >= 1) {
+    absent_day_leave_cover = paidLeaveAvailable
+    paid_leave_used = paidLeaveAvailable
+  }
+
   // Stage 3: absorb hourly deductions (leave must not yet be used)
   if (paid_leave_used === 0) {
     const threshold = paidLeaveAvailable * s.hours_per_paid_leave
@@ -688,6 +720,7 @@ function applyLeaveAbsorption(
     paid_leave_available: paidLeaveAvailable,
     paid_leave_used,
     leave_absorbed_deductions,
+    absent_day_leave_cover,
     remaining_absent_days,
     remaining_half_days,
     remaining_hourly_hours: leave_absorbed_deductions ? 0 : total_hourly_hours,
@@ -882,7 +915,14 @@ function buildFinalDeductionLines(p: {
   const absorbedAbsentDays = absentDays.length - p.leaveState.remaining_absent_days
   const absentLines: PendingDeductionLine[] = absentDays.map((day, i) => {
     const line = dayLine(day.date, 'absent', p.rates, p.settings)
-    return i < absorbedAbsentDays ? waivedByPaidLeave(line) : settleDayLine(line, 'absent')
+    if (i < absorbedAbsentDays) return waivedByPaidLeave(line)
+    // A part-leave (stage 2c) reduces the EARLIEST absent day. It and a whole
+    // absorbed day cannot both happen (each needs the month's one leave), so
+    // when no day was absorbed whole, index 0 is that earliest day.
+    if (i === 0 && p.leaveState.absent_day_leave_cover > 0) {
+      return partlyWaivedByPaidLeave(line, p.leaveState.absent_day_leave_cover, p.rates, p.settings)
+    }
+    return settleDayLine(line, 'absent')
   })
 
   // Half-day deduction lines — one per half_day, same rule, same direction.

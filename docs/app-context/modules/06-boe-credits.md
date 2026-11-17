@@ -36,7 +36,7 @@ Verified against checkout `852e0493`. Reference doc: `docs/Module Docs/BOE_CREDI
   | `ledger` | GET | `requireSelfOrAdmin` |
   | `balances` | GET | `requireAdmin` (company-wide; own balance read via ledger/view) |
   | `adjustments` | POST | `requireAdmin`; one `admin_adjustment` row, reason mandatory, decimals allowed up to 2 places (route comment still says "whole number": stale) |
-  | `redemptions` | POST `{payroll_period_id, attendance_date}` | caller from token only; re-runs the engine to decide eligibility; DB prices the cost |
+  | `redemptions` | POST `{payroll_period_id, attendance_date}` | caller from token only; re-runs the engine to decide eligibility; DB prices the cost. A day a half paid leave covered half of (payroll 05: `waived_by = 'paid_leave'` with a charge left) is refused as `part_company_paid` |
   | `payroll-applications` | POST `{payroll_period_id, credits}`, DELETE `{payroll_period_id}` | employee's own only; admins have no path |
   | `reversals` | POST | `requireAdmin` |
   | `review-months` | GET `?month=YYYY-MM`, POST finalize | `requireAdmin`; GET warns about submitted-but-unverified reviews |
