@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-17 — Quotations: a PowerPoint's pictures are drawn again when a client file is read (branch `fix/scan-pptx-pictures`; PR number added at the stamp) · no SQL
+## 2026-11-17 — Quotations: a PowerPoint's pictures are drawn again when a client file is read (PR #872, merged 17 Nov 2026 15:10 IST as `0b2cc083`, live 15:13 IST) · no SQL
 - **Owner ask.** "Carry the next process", then "Yes, test it": run the one untried door of Start from a client file, a PowerPoint, on the real Brewery deck (`C:\BOE New\Inquiry\659 Brewery\BREWERY FURNITURE SELECTION.pptx`, 18 slides, 31 pictures).
 - **Found.** Every slide came out white with only its text: no picture was drawn. A shape's position was read from the first `a:off` / `a:ext` in it, and PowerPoint also writes `<a:extLst><a:ext uri=…>` (no size) in the shape's name, before the real one, so every picture had zero size (and text boxes were squashed to a few letters wide).
 - **Fix.** `slideFrame` in `scanPages.ts` reads the position inside `a:xfrm` only. A placeholder with no frame of its own (it follows the slide layout, like the slide titles in this deck) still sits at the top-left; its text still goes to the reader as text.
