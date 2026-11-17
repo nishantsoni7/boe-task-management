@@ -158,7 +158,7 @@ function NewQuotation({ onClose, onCreated, create }: {
     } catch (x) { setErr(errorText(x)); setBusy(false) }
   }
   return (
-    <div className={s.scrim} onClick={onClose}>
+    <div className={s.scrim} onClick={busy || f.client_name.trim() ? undefined : onClose}>
       <form className={s.modal} onClick={e => e.stopPropagation()} onSubmit={submit} aria-labelledby="newq-title">
         <div className={s.cardHead}><h2 id="newq-title">New quotation</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} aria-label="Close">×</button></div>
         <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>

@@ -48,6 +48,7 @@ export function CropBox({ img, turns, box, onBox, disabled }: {
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const [drag, setDrag] = useState<Drag | null>(null)
+  const whole = box.w >= 0.999 && box.h >= 0.999
 
   // The whole picture, turned, as the backdrop the box is drawn on.
   useEffect(() => {
@@ -70,7 +71,9 @@ export function CropBox({ img, turns, box, onBox, disabled }: {
   // One handler for the area, the box and the four corners: what is dragged is the element's data-kind.
   const begin = (e: React.PointerEvent<HTMLElement>) => {
     if (disabled) return
-    const kind = (e.currentTarget.dataset.kind ?? 'new') as Drag['kind']
+    let kind = (e.currentTarget.dataset.kind ?? 'new') as Drag['kind']
+    // While the box is still the whole picture it covers everything, so a drag on it draws a new box (found live, 18 Nov 2026).
+    if (kind === 'move' && whole) kind = 'new'
     const area = e.currentTarget.closest('[data-crop-area]')
     if (!area) return
     e.preventDefault(); e.stopPropagation()
@@ -111,7 +114,7 @@ export function CropBox({ img, turns, box, onBox, disabled }: {
         <span style={{ ...shade, left: pct(box.x + box.w), top: pct(box.y), right: 0, height: pct(box.h) }} />
         <span data-crop-box data-kind="move" onPointerDown={begin}
           style={{ position: 'absolute', left: pct(box.x), top: pct(box.y), width: pct(box.w), height: pct(box.h),
-            outline: '2px solid #fff', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)', cursor: disabled ? 'default' : 'move', touchAction: 'none' }} />
+            outline: '2px solid #fff', boxShadow: '0 0 0 1px rgba(0,0,0,0.5)', cursor: disabled ? 'default' : whole ? 'crosshair' : 'move', touchAction: 'none' }} />
         {!disabled && [handle('nw', box.x, box.y), handle('ne', box.x + box.w, box.y), handle('sw', box.x, box.y + box.h), handle('se', box.x + box.w, box.y + box.h)]}
       </div>
       <span style={{ fontSize: 12, color: 'var(--boe-muted, #6b6b6b)' }}>

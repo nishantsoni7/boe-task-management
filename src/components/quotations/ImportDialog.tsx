@@ -143,7 +143,7 @@ export function ImportDialog({ supabase, userId, areas, requestId, start, onClos
 
   return (
     <>
-    <div className={s.scrim} onClick={busy ? undefined : onClose}>
+    <div className={s.scrim} onClick={busy || res ? undefined : onClose}>
       <div className={s.modal} style={{ maxWidth: rows ? 1400 : 640 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="imp-title">
         <div className={s.cardHead}><h2 id="imp-title">{title}</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} disabled={!!busy} aria-label="Close">×</button></div>
         <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>

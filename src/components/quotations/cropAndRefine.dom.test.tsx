@@ -30,6 +30,22 @@ describe('the crop box', () => {
     assert.deepEqual(box, { x: 0.1, y: 0.1, w: 0.5, h: 0.5 })
     ui.unmount()
   })
+
+  test('on first open the box is the whole picture and covers it: a drag on it still DRAWS a box, it does not move the whole', async () => {
+    const img = { naturalWidth: 400, naturalHeight: 200 } as HTMLImageElement
+    let box: Box = WHOLE
+    const ui = mount(createElement(CropBox, { img, turns: 0, box, onBox: (b: Box) => { box = b } }))
+    const area = ui.container.querySelector('[data-crop-area]') as HTMLElement
+    area.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 200, right: 400, bottom: 200, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect
+    const fire = (el: Element, type: string, x: number, y: number) => act(() => {
+      el.dispatchEvent(Object.assign(new MouseEvent(type, { bubbles: true, cancelable: true, clientX: x, clientY: y }), { pointerId: 1 }))
+    })
+    await fire(ui.container.querySelector('[data-crop-box]')!, 'pointerdown', 40, 20)
+    await fire(area, 'pointermove', 240, 120)
+    await fire(area, 'pointerup', 240, 120)
+    assert.deepEqual(box, { x: 0.1, y: 0.1, w: 0.5, h: 0.5 })
+    ui.unmount()
+  })
 })
 
 describe('changing a made picture again', () => {

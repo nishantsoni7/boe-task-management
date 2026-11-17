@@ -93,7 +93,7 @@ export function StudioDialog({ supabase, userId, path, url, wants, swatch, onClo
   )
 
   return (
-    <div className={s.scrim} onClick={busy ? undefined : onClose}>
+    <div className={s.scrim} onClick={busy || result ? undefined : onClose}>
       <div className={s.modal} style={{ maxWidth: 820 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="studio-title">
         <div className={s.cardHead}><h2 id="studio-title">Improve picture</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} disabled={busy} aria-label="Close">×</button></div>
         <div className={s.tabs} role="tablist">{tabBtn('clean', 'Clean up', Sparkles)}{tabBtn('change', 'Change it', Wand2)}{tabBtn('crop', 'Crop & rotate', Crop)}</div>
