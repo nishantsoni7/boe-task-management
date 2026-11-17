@@ -6,6 +6,7 @@ import { Lock } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { OrdersShownContext } from '@/lib/orders/ordersShown'
 
 export default function OrdersGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -29,11 +30,17 @@ export default function OrdersGuard({ children }: { children: React.ReactNode })
     if (ready && !userId) router.replace('/login')
   }, [ready, userId, router])
 
-  if (!ready || !userId) return <LoadingScreen />
+  // THE PAGE STARTS WHILE THE ANSWER IS ON ITS WAY (2026-11-18, page speed). Until the guard knows, the page is
+  // built HIDDEN and inert (nothing of it is seen, focused or clicked) so its reads start at once instead of a
+  // second later; every one of them runs as the person and is refused by the database exactly as before. Said
+  // yes: the same page is shown, not built again. Said no: it is removed and the denial is drawn. Anything a page
+  // does on opening beyond reading waits for OrdersShownContext (the Order page's "seen" mark).
+  const pending = !ready
+  if (ready && !userId) return <LoadingScreen />
 
   // Admin always has access; otherwise defer to Control Center's
   // Order Management access level (view = can open this module at all).
-  const allowed = !!profile && (
+  const allowed = !pending && !!profile && (
     role === 'admin'
     || (permissionsByModule.get('orders') ?? []).some(p => p.actionKey === 'view' && p.allowed)
   )
@@ -41,8 +48,15 @@ export default function OrdersGuard({ children }: { children: React.ReactNode })
   // DENIED IN PLACE. This used to redirect to /coming-soon, a hard-coded
   // ATTENDANCE placeholder, so somebody without Orders access was told a
   // different module was "under development". The rule is unchanged.
-  if (!allowed) return <OrdersAccessDenied onBack={() => router.push('/modules')} />
-  return <>{children}</>
+  if (!pending && !allowed) return <OrdersAccessDenied onBack={() => router.push('/modules')} />
+  return (
+    <OrdersShownContext.Provider value={!pending}>
+      {pending && <LoadingScreen />}
+      <div data-orders-page={pending ? 'waiting' : 'shown'} inert={pending} style={{ display: pending ? 'none' : 'contents' }}>
+        {children}
+      </div>
+    </OrdersShownContext.Provider>
+  )
 }
 
 /** Said to a signed-in person whose account does not have Order Management. */

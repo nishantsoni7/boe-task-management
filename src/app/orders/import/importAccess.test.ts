@@ -207,11 +207,12 @@ describe('the Upload PI entry point', () => {
     assert.ok(source.includes('NEW_ORDER_ACTION.href'), 'and lead to the import route')
     assert.ok(read('src/lib/orders/orderDashboard.ts').includes("href: UPLOAD_PI_PATH"))
     assert.ok(read('src/lib/orders/orderDashboard.ts').includes("export const UPLOAD_PI_PATH = '/orders/import'"))
-    // Capabilities are derived from the guard's permission context, and the guard renders
-    // this page only once that is ready, so the button cannot flash before they resolve.
+    // Capabilities are derived from the guard's permission context, and the guard shows
+    // this page only once that is ready (built hidden and inert before, 2026-11-18), so the
+    // button cannot flash before they resolve.
     assert.ok(source.includes("deriveOrdersCapabilities(role, permissionsByModule.get('orders') ?? [])"),
       'capabilities must come from the resolved permissions')
-    assert.ok(read(ORDERS_LAYOUT).includes('if (!ready || !userId) return <LoadingScreen />'))
+    assert.ok(read(ORDERS_LAYOUT).includes("inert={pending} style={{ display: pending ? 'none' : 'contents' }}"))
   })
 
   test('it is called Upload PI, not New Order', () => {
@@ -1526,7 +1527,7 @@ describe('the Orders guard denies in place', () => {
   test('no redirect to /coming-soon; its own message and a way back', () => {
     const guard = readFileSync(join(process.cwd(), 'src/app/orders/layout.tsx'), 'utf8')
     assert.ok(!guard.includes("router.replace('/coming-soon')"))
-    assert.ok(guard.includes('if (!allowed) return <OrdersAccessDenied'))
+    assert.ok(guard.includes('if (!pending && !allowed) return <OrdersAccessDenied'))
     assert.ok(guard.includes('Order Management is not enabled for your account'))
     assert.ok(!/Attendance/.test(guard.replace(/\/\/.*$/gm, '')), 'no other module is named')
   })

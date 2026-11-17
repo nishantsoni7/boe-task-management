@@ -87,6 +87,7 @@ import {
 // relation, its files and its version history are all still here.
 import { canRecordPaymentAgainstOrder } from '@/lib/finance/crossModuleLinks'
 import { useViewAs } from '@/hooks/useViewAs'
+import { useOrdersShown } from '@/lib/orders/ordersShown'
 import type { UserProfile } from '@/lib/types'
 import { ChevronDown } from 'lucide-react'
 import {
@@ -1682,6 +1683,8 @@ export default function OrderDetailPage() {
    * failed mark means the badge is still there next time. Both are worse than
    * working and far better than a page that will not open.
    */
+  /** The Order whose updates are to be marked seen once the page is on screen (see the end of the load). */
+  const [markFor, setMarkFor] = useState<string | null>(null)
   const markUpdatesSeen = async () => {
     // A PREVIEW SEES, IT DOES NOT READ-RECEIPT. Under View As the session is
     // still the administrator's, so marking anything read here would silently
@@ -1793,14 +1796,23 @@ export default function OrderDetailPage() {
       // THEM), and then marked read for THEM ALONE — every other recipient's
       // rows are different rows and are untouched.
       //
-      // Last in the sequence and never awaited by anything: the page is
-      // already on screen, and a failed read or a failed mark leaves the
-      // trail unmarked rather than the Order unopened.
-      void markUpdatesSeen()
+      // Last in the sequence and never awaited by anything: a failed read or a
+      // failed mark leaves the trail unmarked rather than the Order unopened.
+      // ONLY ONCE THE PAGE IS ON SCREEN (2026-11-18): the Orders guard builds
+      // this page hidden while it checks access, and someone it turns away must
+      // never be marked as having seen the Order. markFor waits for `shown`.
+      setMarkFor(id)
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
+
+  const shown = useOrdersShown()
+  useEffect(() => {
+    // Started after the effect returns: markUpdatesSeen sets state once its read lands.
+    if (shown && markFor === id) void Promise.resolve().then(markUpdatesSeen)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, markFor])
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
