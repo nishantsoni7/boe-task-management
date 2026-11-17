@@ -152,10 +152,7 @@ function AuthIdentityBoundary({ children }: { children: ReactNode }) {
       // the identity; there is no earlier user whose data could be lingering.
       if (lastUserId.current === undefined) {
         lastUserId.current = nextUserId
-        // NO persister call here (2026-11-17). This event arrives while auth-js is still initialising, before the seed
-        // above resolves. Attaching here without a restore made the seed's attach a no-op, so the saved copy was never
-        // put back (measured 16 Nov); restoring here deadlocked the app (#855: auth-js awaits this callback, and the
-        // restored screens' getSession() waited for it). The seed attaches, with the restore, after initialisation.
+        if (nextUserId) persister.attach(nextUserId, { restore: false })
         return
       }
 
