@@ -6,11 +6,14 @@
 // stored workbook and the page draws what this returns; nothing is saved.
 //
 // The reader is the PI parser in its `oldOrder` mode (src/lib/pi/legacySheet.ts).
-// Export sheets (prices in dollars or euros), quotations, dispatch sheets and
-// repair sheets are NOT PIs and are not shown: the page says why and the
-// download stays.
+// Nine old orders were never a PI: their Excel is the app's own quotation export
+// (one tab "Quotation"), read by src/lib/pi/quotationSheet.ts and drawn by the same
+// card with `kind: 'quotation'`. Export sheets (prices in dollars or euros),
+// dispatch sheets and repair sheets are neither and are not shown: the page says
+// why and the download stays.
 
 import { formatINR } from '@/lib/currency'
+import type { QuotationSheet } from '@/lib/pi/quotationSheet'
 import type { PiAmountOrText, PiParseResult } from '@/lib/pi/types'
 import { dayIst, type DraftFile } from './clickupDrafts'
 
@@ -35,10 +38,13 @@ export type PiSheetLine = {
   code: string | null
   name: string | null
   quantity: number | null
+  /** The size of a PI line; the description of a quotation line. */
   size: string | null
   material: string | null
+  /** The rate of a PI line; the unit price of a quotation line. */
   rate: number | null
   total: number | null
+  /** The customization of a PI line; the notes of a quotation line. */
   customization: string | null
   /** A small picture as a data URL, or null. */
   picture: string | null
@@ -47,6 +53,11 @@ export type PiSheetLine = {
 export type PiSheetParty = { name: string | null; phone: string | null; address: string | null }
 
 export type PiSheetView = {
+  /** A PI sheet (the Master tab) or a quotation (the Quotation tab); the card words its headings from this. */
+  kind: 'pi' | 'quotation'
+  /** The quotation's title line; null for a PI. */
+  title: string | null
+  /** The PI number, or the quotation's Ref. */
   piNo: string | null
   date: string | null
   salesperson: string | null
@@ -54,6 +65,8 @@ export type PiSheetView = {
   shipTo: PiSheetParty
   lines: PiSheetLine[]
   totals: { label: string; value: string }[]
+  /** Free-text rows under a quotation's totals ("Packing extra - 25000/-"). */
+  footnotes: string[]
   /** Plain words about what could not be read; empty when the sheet is sound. */
   problems: string[]
   missingPictures: number
@@ -116,6 +129,8 @@ export function piSheetViewOf(parsed: Extract<PiParseResult, { ok: true }>, pict
   const problems = [...new Set(parsed.blockingIssues.filter(i => !TOLERATED.has(i.code)).map(i => problemWords(i.code, i.row, i.message)))]
   const party = (name: string | null, phone: string | null, address: string | null): PiSheetParty => ({ name, phone, address })
   return {
+    kind: 'pi',
+    title: null,
     piNo: header.sourceOrderNumber,
     date: header.creationDate ? (header.creationDate.iso ? dayIst(header.creationDate.iso) : header.creationDate.text) : null,
     salesperson: header.createdBy,
@@ -123,7 +138,32 @@ export function piSheetViewOf(parsed: Extract<PiParseResult, { ok: true }>, pict
     shipTo: party(header.shipToName, header.shipToPhone, header.shippingAddress),
     lines,
     totals,
+    footnotes: [],
     problems: problems.length > 6 ? [...problems.slice(0, 6), `…and ${problems.length - 6} more.`] : problems,
+    missingPictures: lines.filter(l => l.picture === null).length,
+  }
+}
+
+const rupees = (n: number) => (n < 0 ? `-${formatINR(-n)}` : formatINR(n))
+
+/** The same card for a quotation's Excel. The totals are the sheet's own, as printed; nothing is recomputed. */
+export function piSheetViewOfQuotation(q: QuotationSheet, pictures: ReadonlyMap<number, string>): PiSheetView {
+  const lines: PiSheetLine[] = q.lines.map(l => ({
+    row: l.row, code: l.code, name: l.name, quantity: l.quantity, size: l.description, material: null,
+    rate: l.unitPrice, total: l.total, customization: l.notes, picture: pictures.get(l.row) ?? null,
+  }))
+  return {
+    kind: 'quotation',
+    title: q.title,
+    piNo: q.ref,
+    date: q.date,
+    salesperson: null,
+    billTo: { name: q.client, phone: null, address: null },
+    shipTo: { name: null, phone: null, address: null },
+    lines,
+    totals: q.totals.map(t => ({ label: t.label, value: rupees(t.amount) })),
+    footnotes: q.footnotes,
+    problems: q.problems,
     missingPictures: lines.filter(l => l.picture === null).length,
   }
 }
@@ -131,7 +171,7 @@ export function piSheetViewOf(parsed: Extract<PiParseResult, { ok: true }>, pict
 /** Why a sheet is not shown as a list, in words for the owner. */
 export function piSheetReason(errors: readonly { code: string }[]): string {
   const codes = new Set(errors.map(e => e.code))
-  if (codes.has('MASTER_SHEET_MISSING')) return 'This Excel has no PI sheet (it may be a quotation, a dispatch sheet or a repair sheet).'
+  if (codes.has('MASTER_SHEET_MISSING')) return 'This Excel has no PI or Quotation sheet (it may be a dispatch sheet or a repair sheet).'
   if (codes.has('TEMPLATE_FINGERPRINT_MISMATCH')) return 'The columns of this sheet are laid out differently from a BOE PI (for example prices in dollars or euros), so it cannot be shown as a list.'
   if (codes.has('NO_PRODUCT_ROWS')) return 'This PI sheet has no product rows.'
   return 'This Excel could not be read as a PI.'

@@ -11,6 +11,7 @@ import type { PiSheetView } from '@/lib/orders/clickupPiSheet'
 const text = (html: string) => html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
 
 const sheet = (patch: Partial<PiSheetView> = {}): PiSheetView => ({
+  kind: 'pi', title: null, footnotes: [],
   piNo: '407', date: '30 Sep 2026', salesperson: 'Salesperson One',
   billTo: { name: 'Example Buyer Ltd', phone: '9000000002', address: '1 Invented Road' },
   shipTo: { name: null, phone: null, address: null },
@@ -62,6 +63,29 @@ describe('the PI sheet card', () => {
     assert.ok(html.indexOf('407 Final.xlsx') < html.indexOf('407 First.xlsx'))
     assert.ok(/<option[^>]*value="b.xlsx"[^>]*selected|<option[^>]*selected[^>]*value="b.xlsx"/.test(html) || html.includes('value="b.xlsx"'))
     assert.equal(renderToStaticMarkup(<PiSheetCard reply={reply()} />).includes('<select'), false, 'one file needs no switch')
+  })
+
+  test('a quotation is worded as one: Description, Unit price, Notes, the client, the note under the totals', () => {
+    const q = sheet({
+      kind: 'quotation', title: 'Invented Cafe Project', piNo: 'QT-XX-00001', salesperson: null,
+      lines: [{ row: 7, code: '900-BE001', name: 'Two Seater Table', quantity: 10, size: 'Acacia wood', material: null, rate: 8600, total: 86000, customization: 'Frame size to be confirmed', picture: null }],
+      totals: [{ label: 'Subtotal', value: '₹86,000' }, { label: 'Discount', value: '-₹2,000' }],
+      footnotes: ['Packing extra - 5000/-'], missingPictures: 1,
+    })
+    const html = renderToStaticMarkup(<PiSheetCard reply={reply({ sheet: q })} />)
+    const t = text(html)
+    for (const word of ['Quotation', 'Invented Cafe Project', 'Ref QT-XX-00001', 'Client', 'Description', 'Unit price', 'Notes', 'Acacia wood', '₹8,600', '-₹2,000', 'Packing extra - 5000/-', 'not a PI. The totals are as printed on the sheet']) {
+      assert.ok(t.includes(word), `${word} is drawn`)
+    }
+    assert.equal(t.includes('Material'), false, 'a quotation has no Material column')
+    assert.equal(t.includes('Bill to'), false)
+    assert.ok(html.includes('aria-label="Quotation"'))
+  })
+
+  test('a PI keeps its own words', () => {
+    const t = text(renderToStaticMarkup(<PiSheetCard reply={reply()} />))
+    for (const word of ['PI sheet', 'Bill to', 'Size', 'Material', 'Rate']) assert.ok(t.includes(word), word)
+    assert.equal(t.includes('not a PI'), false)
   })
 
   test('with no list it says why and points to the Excel under Files', () => {

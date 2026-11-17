@@ -6,9 +6,10 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { piSheetApplies, piSheetCandidates, piSheetReason, piSheetViewOf } from './clickupPiSheet'
+import { piSheetApplies, piSheetCandidates, piSheetReason, piSheetViewOf, piSheetViewOfQuotation } from './clickupPiSheet'
 import type { DraftFile } from './clickupDrafts'
 import type { PiParseResult } from '@/lib/pi/types'
+import type { QuotationSheet } from '@/lib/pi/quotationSheet'
 
 const ROOT = process.cwd()
 const read = (p: string) => readFileSync(join(ROOT, p), 'utf8').replace(/\r/g, '')
@@ -121,9 +122,44 @@ describe('what the page is given', () => {
   })
 })
 
+describe("a quotation's Excel in the same card", () => {
+  const quotation = (over: Partial<QuotationSheet> = {}): QuotationSheet => ({
+    title: 'Invented Cafe Project', client: 'Example Client', date: '2026-01-02', ref: 'QT-XX-00001', orderNo: '900',
+    lines: [
+      { row: 7, code: '900-BE001', name: 'Two Seater Table', description: 'Acacia wood', quantity: 10, unitPrice: 8600, total: 86000, notes: 'Frame size to be confirmed', image: null },
+      { row: 8, code: null, name: 'Stool', description: null, quantity: 4, unitPrice: 1500, total: 6000, notes: null, image: null },
+    ],
+    totals: [{ label: 'Subtotal', amount: 92000 }, { label: 'Discount', amount: -2000 }, { label: 'Grand Total', amount: 106200 }],
+    footnotes: ['Packing extra - 5000/-'], problems: [], ...over,
+  })
+
+  test('a PI sheet says kind pi, a quotation says kind quotation, with its title, ref and client', () => {
+    assert.equal(piSheetViewOf(parsed(), new Map()).kind, 'pi')
+    const v = piSheetViewOfQuotation(quotation(), new Map([[7, 'data:image/jpeg;base64,AAAA']]))
+    assert.equal(v.kind, 'quotation')
+    assert.equal(v.title, 'Invented Cafe Project')
+    assert.equal(v.piNo, 'QT-XX-00001')
+    assert.equal(v.billTo.name, 'Example Client')
+    assert.equal(v.salesperson, null)
+  })
+
+  test('the description, unit price and notes ride in the size, rate and customization places; the picture is by row', () => {
+    const v = piSheetViewOfQuotation(quotation(), new Map([[7, 'data:image/jpeg;base64,AAAA']]))
+    assert.deepEqual(v.lines[0], { row: 7, code: '900-BE001', name: 'Two Seater Table', quantity: 10, size: 'Acacia wood', material: null, rate: 8600, total: 86000, customization: 'Frame size to be confirmed', picture: 'data:image/jpeg;base64,AAAA' })
+    assert.equal(v.lines[1].picture, null)
+    assert.equal(v.missingPictures, 1)
+  })
+
+  test("the totals are the sheet's own, as printed, a discount with its minus before the rupee sign", () => {
+    const v = piSheetViewOfQuotation(quotation(), new Map())
+    assert.deepEqual(v.totals, [{ label: 'Subtotal', value: '₹92,000' }, { label: 'Discount', value: '-₹2,000' }, { label: 'Grand Total', value: '₹1,06,200' }])
+    assert.deepEqual(v.footnotes, ['Packing extra - 5000/-'])
+  })
+})
+
 describe('the words when there is no list', () => {
   test('a quotation or dispatch sheet, an export or odd layout, and anything else', () => {
-    assert.match(piSheetReason([{ code: 'MASTER_SHEET_MISSING' }]), /no PI sheet/)
+    assert.match(piSheetReason([{ code: 'MASTER_SHEET_MISSING' }]), /no PI or Quotation sheet/)
     assert.match(piSheetReason([{ code: 'TEMPLATE_FINGERPRINT_MISMATCH' }]), /dollars or euros/)
     assert.match(piSheetReason([{ code: 'NO_PRODUCT_ROWS' }]), /no product rows/)
     assert.match(piSheetReason([{ code: 'INVALID_ZIP' }]), /could not be read/)
@@ -138,6 +174,12 @@ describe('the pi-sheet route', () => {
     assert.ok(route.indexOf('requireDraftsAdmin()') < route.indexOf('.from('), 'the guard comes before the table')
     assert.ok(route.indexOf('requireDraftsAdmin()') < route.indexOf('.storage'), 'the guard comes before storage')
     for (const write of ['.insert(', '.update(', '.upsert(', '.delete(', '.upload(', '.remove(']) assert.equal(route.includes(write), false, write)
+  })
+
+  test('a workbook with no Master tab goes to the quotation reader, and only then', () => {
+    const at = route.indexOf('readQuotationWorkbook(bytes)')
+    assert.ok(at > route.indexOf('MASTER_SHEET_MISSING'), 'the quotation reader is tried only when the Master tab is missing')
+    assert.ok(route.includes('piSheetViewOfQuotation('))
   })
 
   test('it reads in old-order mode, only for orders the rule names, and builds the path from ids', () => {

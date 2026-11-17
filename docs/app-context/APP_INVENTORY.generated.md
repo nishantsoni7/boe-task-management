@@ -5,16 +5,17 @@
 
 ## Snapshot
 
-- Commit: `66402ffe` — Docs: stamp the half paid leave change (#869) as merged e055668f, deployed 14:00 IST (no SQL)
-- Commits on this branch: 1429
+- Commit: `3f420714` — Docs: stamp the half paid leave change (#869) as merged e055668f, deployed 14:00 IST (no SQL) (#871)
+- Commits on this branch: 1430
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 213
 - Migrations: 471 (first `20260530_create_positions.sql`, latest `20270729000000_pricing_taught_watcher.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1054   Enums: 0
-- Test files: 876   Next.js 16.2.6, React 19.2.4
+- Test files: 877   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `66402ffe` 2026-11-17 Docs: stamp the half paid leave change (#869) as merged e055668f, deployed 14:00 IST (no SQL)
+- `3f420714` 2026-11-17 Docs: stamp the half paid leave change (#869) as merged e055668f, deployed 14:00 IST (no SQL) (#871)
+- `06bc8871` 2026-11-17 Docs: stamp the old-order PI sheet (#868) as merged e9298b57, deployed 13:34 IST (no SQL) (#870)
 - `e055668f` 2026-11-17 Payroll: a half paid leave takes half off the earliest absent day (#869)
 - `e9298b57` 2026-11-17 Draft Orders (ClickUp): the PI Excel of an old order as a product list, orders 300 and up (#868)
 - `e982ae9f` 2026-11-16 Docs: stamp the furniture in a room picture (#866) as merged a452cc5a, deployed 18:32 IST (no SQL) (#867)
@@ -38,7 +39,6 @@
 - `d26acf88` 2026-11-16 Page speed, part 13: Sales leads and the quotations list join the saved copy (no SQL) (#824)
 - `eaa05402` 2026-11-16 Quotations: the client's swatches and drawings go to the PI draft (no SQL) (#848)
 - `465f0aa8` 2026-11-16 Docs: stamp the wood list (#845) as merged 65a81cd2, deployed 01:10 IST, migration 20270725000000 applied (no SQL) (#846)
-- `51f940c8` 2026-11-16 Quotations: pick a taught product on a line and see its taught price (migration 20270726000000) (#847)
 
 ## Pages by top-level area
 
@@ -166,7 +166,7 @@
 - `src/lib/payroll` — 36 source, 36 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
-- `src/lib/pi` — 9 source, 6 test
+- `src/lib/pi` — 10 source, 7 test
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
