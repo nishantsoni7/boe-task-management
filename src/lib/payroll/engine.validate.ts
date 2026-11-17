@@ -340,13 +340,13 @@ scenario('S09  Absent day — no leave balance, full deduction applied', () => {
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S10  0.5 leave cannot absorb an absent day (needs ≥ 1)
+// S10  0.5 leave takes HALF of an absent day (a whole day needs a whole leave)
 //
 // Inputs:  12 full-present + Jun 30 absent  →  days_present = 12  →  10 < 12 ≤ 15  →  leave = 0.5
-// Deduct:  stage-1 skipped (leave < 1); 1 × PDR = 1 000
-// Expect:  gross = 29 000, net = 29 000
+// Deduct:  stage-1 skipped (leave < 1); stage-2c: the absent day is charged half = round(PDR / 2)
+// Expect:  gross = 30 000, net = 30 000 − round(PDR / 2)
 // ─────────────────────────────────────────────────────────────────────────────
-scenario('S10  0.5 leave cannot absorb absent day (needs ≥ 1), 12 present days', () => {
+scenario('S10  0.5 leave takes half of the absent day, 12 present days', () => {
   const e    = emp({ joining_date: '2026-06-16' })
   const days = juneWorkDays().filter(d => d >= '2026-06-16')
   const records = days.filter(d => d !== '2026-06-30').map(recFull)
@@ -354,11 +354,11 @@ scenario('S10  0.5 leave cannot absorb absent day (needs ≥ 1), 12 present days
 
   chk('working_days_in_month', r.working_days_in_month,  13)
   chk('paid_leave_available',  r.paid_leave_available,   0.5)
-  chk('paid_leave_used',       r.paid_leave_used,        0)
+  chk('paid_leave_used',       r.paid_leave_used,        0.5)
   chk('days_absent',           r.days_absent,            1)
-  chk('total_deductions',      r.total_deductions,       PDR)    // 1 000
+  chk('total_deductions',      r.total_deductions,       Math.round(PDR / 2))
   chk('gross_salary',          r.gross_salary,           SALARY) // 30 000
-  chk('net_salary',            r.net_salary,             SALARY - PDR)
+  chk('net_salary',            r.net_salary,             SALARY - Math.round(PDR / 2))
 })
 
 // ─────────────────────────────────────────────────────────────────────────────

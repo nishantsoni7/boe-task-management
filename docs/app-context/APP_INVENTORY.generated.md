@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `e982ae9f` — Docs: stamp the furniture in a room picture (#866) as merged a452cc5a, deployed 18:32 IST (no SQL) (#867)
-- Commits on this branch: 1426
+- Commit: `1e0c0e4d` — Payroll: a half paid leave takes half off the earliest absent day
+- Commits on this branch: 1427
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 213
 - Migrations: 471 (first `20260530_create_positions.sql`, latest `20270729000000_pricing_taught_watcher.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1054   Enums: 0
-- Test files: 875   Next.js 16.2.6, React 19.2.4
+- Test files: 876   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `1e0c0e4d` 2026-11-17 Payroll: a half paid leave takes half off the earliest absent day
 - `e982ae9f` 2026-11-16 Docs: stamp the furniture in a room picture (#866) as merged a452cc5a, deployed 18:32 IST (no SQL) (#867)
 - `a452cc5a` 2026-11-16 Quotations: the furniture in a room picture, for a room with no list (#866)
 - `7404c43e` 2026-11-16 Docs: stamp Crop & rotate in the scan review (#853) as merged b296d0c2, deployed 10:42 IST (no SQL) (#859)
@@ -38,7 +39,6 @@
 - `51f940c8` 2026-11-16 Quotations: pick a taught product on a line and see its taught price (migration 20270726000000) (#847)
 - `65a81cd2` 2026-11-16 Pricing: the wood list with rates, and the wood picked on a structure row (migration 20270725000000) (#845)
 - `37e023cc` 2026-11-16 Docs: stamp Training submit-is-what-counts (#843) as merged cd8d6358, deployed 00:39 IST, migration 20270724000000 applied (no SQL) (#844)
-- `cd8d6358` 2026-11-16 Pricing Training: submitting is what counts, and a case can always be changed (migration 20270724000000, apply before merge) (#843)
 
 ## Pages by top-level area
 
@@ -163,7 +163,7 @@
 - `src/lib/navigation` — 5 source, 8 test
 - `src/lib/notifications` — 9 source, 25 test
 - `src/lib/orders` — 112 source, 172 test
-- `src/lib/payroll` — 36 source, 35 test
+- `src/lib/payroll` — 36 source, 36 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 9 source, 6 test

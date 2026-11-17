@@ -315,7 +315,7 @@ export const PARAMETERS: ParameterRow[] = [
   {
     rule: 'Paid leave',
     condition: `Earned by days present in the same month.`,
-    effect: `Charges the earliest item it can reach ₹0 — one absent day, or ${HALF_DAYS_PER_PAID_LEAVE} half days, or up to ${HOURS_PER_PAID_LEAVE}h of late, early and missing-punch charges.`,
+    effect: `Charges the earliest item it can reach ₹0 — one absent day, or ${HALF_DAYS_PER_PAID_LEAVE} half days, or up to ${HOURS_PER_PAID_LEAVE}h of late, early and missing-punch charges. A half-day allowance covers one half day, or takes half off the earliest absent day.`,
     adminCanChange: 'Applied automatically, not requested',
   },
   {

@@ -45,6 +45,15 @@ export type ExplainableLine = {
   explain?: DeductionExplanation
 }
 
+/**
+ * True when the month's paid leave covered only PART of the line, so it still
+ * costs something: a half leave spent on an absent day. A fully covered line is
+ * ₹0; this one keeps a charge and is named by `waived_by` alone.
+ */
+export function isPartlyCoveredByPaidLeave(line: Pick<ExplainableLine, 'waived_by' | 'amount_deducted'>): boolean {
+  return line.waived_by === 'paid_leave' && line.amount_deducted > 0
+}
+
 /** One "label → value" row inside the Calculation block. */
 export type CalculationRow = {
   label: string
@@ -65,6 +74,8 @@ export type ExplainedDeduction = {
   amount: number
   /** True when the month's paid leave cancelled the charge. */
   companyPaid: boolean
+  /** True when the month's paid leave covered only part of it (a half leave on an absence). */
+  partlyCovered: boolean
   /** True when the employee's BOE Credits cancelled the charge (Phase 1C). */
   creditCovered: boolean
   /** The one-line note under a covered row, whichever way it was covered. */
@@ -113,7 +124,9 @@ export const DEDUCTION_TITLES: Record<string, string> = {
 
 /** The row heading. A company-paid item is named for the rule that covered it. */
 export function deductionTitle(line: ExplainableLine): string {
-  if (line.waived_by === 'paid_leave') return 'Paid Leave · Company Paid'
+  // A part-covered day keeps its own name (Absent): it still costs money, and the
+  // note under it says that half of it was covered.
+  if (line.waived_by === 'paid_leave' && !isPartlyCoveredByPaidLeave(line)) return 'Paid Leave · Company Paid'
   return DEDUCTION_TITLES[line.deduction_type] ?? line.deduction_type
 }
 
@@ -178,7 +191,9 @@ function calculationRows(line: ExplainableLine, e: DeductionExplanation | undefi
   ]
 
   if (line.waived_by === 'paid_leave') {
-    rows.push({ label: 'Company-paid allowance', value: `− ${money(e.gross_amount)}` })
+    // What the allowance took off: all of the line when it is ₹0, the covered
+    // half when a part-leave left a charge behind.
+    rows.push({ label: 'Company-paid allowance', value: `− ${money(e.gross_amount - line.amount_deducted)}` })
   }
   if (line.waived_by === 'boe_credits') {
     rows.push({ label: `BOE Credits (${creditsLabel(line.credits_redeemed)})`, value: `− ${money(e.gross_amount)}` })
@@ -197,10 +212,14 @@ function creditsLabel(n: number | undefined): string {
 
 export function explainLine(line: ExplainableLine, index = 0): ExplainedDeduction {
   const e = line.explain
-  const companyPaid   = line.waived_by === 'paid_leave'
+  const partlyCovered = isPartlyCoveredByPaidLeave(line)
+  const companyPaid   = line.waived_by === 'paid_leave' && !partlyCovered
   const creditCovered = line.waived_by === 'boe_credits'
 
-  const rule = companyPaid
+  const rule = partlyCovered
+    ? 'This month’s paid leave is half a day, and it is spent on the earliest absent day. '
+      + `${ruleSentence(line, e)} Half of the day is charged to the company; the other half is deducted from this salary.`
+    : companyPaid
     ? 'The first paid leave of the month — the earliest one by date — is covered by BOE. '
       + `${ruleSentence(line, e)} That cost is charged to the company, not to this salary.`
     // Read by both the employee and the admin, so it names neither.
@@ -216,9 +235,12 @@ export function explainLine(line: ExplainableLine, index = 0): ExplainedDeductio
     calculation: calculationRows(line, e),
     amount: line.amount_deducted,
     companyPaid,
+    partlyCovered,
     creditCovered,
-    coverageNote: companyPaid ? COMPANY_PAID_NOTE : creditCovered ? coveredLabel(line.credits_redeemed ?? 0) : undefined,
-    grossAmount: companyPaid || creditCovered ? e?.gross_amount : undefined,
+    coverageNote: partlyCovered
+      ? PART_COVERED_NOTE
+      : companyPaid ? COMPANY_PAID_NOTE : creditCovered ? coveredLabel(line.credits_redeemed ?? 0) : undefined,
+    grossAmount: companyPaid || partlyCovered || creditCovered ? e?.gross_amount : undefined,
   }
 }
 
@@ -241,3 +263,6 @@ export function dayDeductionTotal(lines: ExplainableLine[]): number {
 
 /** The one-line note under a company-paid row. */
 export const COMPANY_PAID_NOTE = '1st paid leave covered by company'
+
+/** The one-line note under a row that a half leave covered half of. */
+export const PART_COVERED_NOTE = 'Half covered by company paid leave'
