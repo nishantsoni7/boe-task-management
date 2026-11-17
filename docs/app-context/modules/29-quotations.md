@@ -93,6 +93,9 @@ Shell `src/components/layout/QuotationsLayout.tsx` (InventoryLayout's build). La
 ## Copy and paste a product picture (2026-11-18, branch `feat/quotation-picture-copy-paste`, no SQL)
 - `pictureClipboard.ts`: document-level copy/paste listeners act only for the picture area the pointer (or focus) is on, never while a text field has focus. Copy = `boe-quote-picture:<storage path>` as text; paste takes that path (plain storage paths only) or an image file (uploaded). Test: `pictureClipboard.dom.test.tsx`.
 
+## Crop by drawing a box; change a made picture again (2026-11-18, branch `feat/quotation-picture-crop-refine`, no SQL)
+- `CropBox.tsx` (drag to draw, move, corner resize; `renderCrop` turns then cuts) in StudioDialog and CropDialog; `drawCrop`/`Insets` removed. StudioDialog keeps `earlier` (the made pictures before this one) and sends `{ sourcePath: result, mode: "change", instruction }` for "Make these changes". Test: `cropAndRefine.dom.test.tsx`.
+
 ## 7. Traps
 
 - Pricing (20270617000000): `quotation_price_history` computes word lists for every approved PI line on each call (no index); fine for thousands of lines, slow for hundreds of thousands. `quotation_get`, `quotation_share` and `quotation_link_pi` were re-created there: the latest definitions are in 20270617000000.

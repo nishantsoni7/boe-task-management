@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `d2a9b142` — Quotations: who sees the suggested prices (everyone, or only the administrator who switches it) (#899)
-- Commits on this branch: 1458
+- Commit: `aa521cd8` — Quotations: copy and paste a product picture with the keyboard (#900)
+- Commits on this branch: 1459
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 473 (first `20260530_create_positions.sql`, latest `20270731000000_quotation_suggestions_switch.sql`)
 - Tables ever created: 262 (dropped at some point: 8)   SQL functions: 1057   Enums: 0
-- Test files: 889   Next.js 16.2.6, React 19.2.4
+- Test files: 890   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `aa521cd8` 2026-11-18 Quotations: copy and paste a product picture with the keyboard (#900)
 - `d2a9b142` 2026-11-18 Quotations: who sees the suggested prices (everyone, or only the administrator who switches it) (#899)
 - `b71cb3e6` 2026-11-18 Orders: the hidden page is built only in the browser (React #418), and #897 stamped (#898)
 - `e8b22498` 2026-11-18 Page speed: Orders pages start loading while the access check runs (#897)
@@ -38,7 +39,6 @@
 - `c7737d28` 2026-11-17 Draft Orders (ClickUp): the order page redrawn, the product list with a width for every column (#878)
 - `91e70598` 2026-11-17 Docs: stamp For you in one call (#875) as merged a644cf19, deployed 16:33 IST, recounted live (#877)
 - `e78a9f22` 2026-11-17 Draft Orders (ClickUp): the list redrawn on the Finance list design (#876)
-- `a644cf19` 2026-11-17 Page speed: the launcher's For you column asks the database once (migration 20270730000000) (#875)
 
 ## Pages by top-level area
 
