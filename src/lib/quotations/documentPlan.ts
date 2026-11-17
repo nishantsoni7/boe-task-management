@@ -138,8 +138,9 @@ export function groupsOf(areas: readonly QuoteArea[], lines: readonly QuoteLine[
 // quantity, the rate and the amount. A room type is a heading row inside the same table, not a new page; a page that
 // starts in the middle of a room type repeats its heading as "continued". The summary follows the last row.
 
-/** Characters of a product name that fit one line of the product column (about 36 units wide, the name at 1.9 units); capitals count 1.3. */
-export const NAME_LINE_CHARS = 36
+/** Characters of a product name that fit one line of the product column; capitals count 1.3. MEASURED on a live quotation (18 Nov 2026):
+ * the column is 41.4 units wide and the name (1.9 units) wraps at about 44 characters: 160 took 4 lines, 62 and 50 took 2, 37 took 1. */
+export const NAME_LINE_CHARS = 42
 export const nameLines = (name: string): number => Math.max(1, Math.ceil((name.length + 0.3 * (name.match(/[A-Z]/g) || []).length) / NAME_LINE_CHARS))
 /** Characters of a size, material or remark line in the product column (1.2-unit type). */
 export const SPEC_LINE_CHARS = 52
