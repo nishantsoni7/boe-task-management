@@ -155,6 +155,9 @@ describe('the Orders layout guard', () => {
     assert.match(source, /const pending = !ready/)
     assert.match(source, /\{pending && <LoadingScreen \/>\}/)
     assert.match(source, /inert=\{pending\} style=\{\{ display: pending \? 'none' : 'contents' \}\}/)
+    // Never on the server or during hydration (React #418 on some loads under #897): browser only.
+    assert.match(source, /useSyncExternalStore\(subscribeNothing, \(\) => true, \(\) => false\)/)
+    assert.match(source, /\{\(inBrowser \|\| !pending\) && \(/)
     assert.match(source, /if \(!pending && !allowed\) return <OrdersAccessDenied/)
     assert.match(source, /<OrdersShownContext\.Provider value=\{!pending\}>/)
     assert.match(source, /if \(ready && !userId\) return <LoadingScreen \/>/)

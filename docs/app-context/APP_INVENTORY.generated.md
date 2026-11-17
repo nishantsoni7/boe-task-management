@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `10ab1a4f` — Docs: stamp the PI read beside the first group (#895) as merged e4d923f2, deployed 00:02 IST, checked live (#896)
-- Commits on this branch: 1455
+- Commit: `e8b22498` — Page speed: Orders pages start loading while the access check runs (#897)
+- Commits on this branch: 1456
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 472 (first `20260530_create_positions.sql`, latest `20270730000000_for_you_bundle.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1055   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `e8b22498` 2026-11-18 Page speed: Orders pages start loading while the access check runs (#897)
 - `10ab1a4f` 2026-11-18 Docs: stamp the PI read beside the first group (#895) as merged e4d923f2, deployed 00:02 IST, checked live (#896)
 - `e4d923f2` 2026-11-17 Page speed: the PI draft page starts reading the PI beside its first group (#895)
 - `b6aa2787` 2026-11-17 Docs: stamp the PI draft shared reads (#893) as merged 272fc217, deployed 23:16 IST, checked live (#894)
@@ -38,7 +39,6 @@
 - `a644cf19` 2026-11-17 Page speed: the launcher's For you column asks the database once (migration 20270730000000) (#875)
 - `65a56c9c` 2026-11-17 Docs: stamp the PowerPoint pictures fix (#872) as merged 0b2cc083, deployed 15:13 IST (no SQL) (#874)
 - `f8e34c03` 2026-11-17 Draft Orders (ClickUp): the Quotation tab of nine old orders as a list (#873)
-- `0b2cc083` 2026-11-17 Quotations: a PowerPoint's pictures are drawn again when a client file is read (#872)
 
 ## Pages by top-level area
 
