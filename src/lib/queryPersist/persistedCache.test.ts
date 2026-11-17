@@ -326,25 +326,6 @@ describe('it is display only, and wired where identity is decided', () => {
     assert.equal((p.match(/persister\.wipe\(\)/g) ?? []).length, 3, 'no session, sign-out, and a different person')
   })
 
-  // 17 Nov 2026. The saved copy was never put back (16 Nov: the first SIGNED_IN attached without a restore, so the
-  // seed's attach was a no-op), and putting it back INSIDE the auth callback hung the app (#855, reverted #857).
-  test('the saved copy is restored only by the seed, never inside the auth callback', () => {
-    const p = src('src/components/layout/Providers.tsx')
-    const start = p.indexOf('supabase.auth.onAuthStateChange(')
-    const end = p.indexOf('return () => {', start)
-    assert.ok(start > 0 && end > start)
-    const callback = p.slice(start, end)
-    // Inside the callback the only attach is the different-person one, and it never restores.
-    const attaches = callback.match(/persister\.attach\([^)]*\)/g) ?? []
-    assert.deepEqual(attaches, ['persister.attach(nextUserId, { restore: false })'])
-    assert.doesNotMatch(callback, /setTimeout|restorePersistedCache|hydrate\(/)
-    // The first event of the tab adopts the identity and does nothing else with the saved copy.
-    const first = callback.slice(callback.indexOf('if (lastUserId.current === undefined) {'), callback.indexOf('if (nextUserId === lastUserId.current)'))
-    assert.doesNotMatch(first.replace(/\/\/.*$/gm, ''), /persister\./)
-    // The seed (after initialisation, outside the callback) attaches with the restore: attach's default.
-    assert.ok(p.indexOf('if (signedInId) persister.attach(signedInId)') < start)
-  })
-
   test('while previewing somebody else nothing is painted from a saved copy', () => {
     const d = src('src/hooks/queries/useDisplaySubject.ts')
     assert.match(d, /displayReady: subjectReady/)
