@@ -93,4 +93,49 @@ describe('the PI sheet card', () => {
     assert.ok(t.includes('This Excel has no PI sheet'))
     assert.ok(t.includes('The Excel is under Files below.'))
   })
+
+  test('one fixed table: every column has its own width, numbers sit on the right, picture and name share one cell', () => {
+    const html = renderToStaticMarkup(<PiSheetCard reply={reply()} />)
+    assert.ok(html.includes('class="fin-table sheetTable"'))
+    const heads = [...html.matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map(m => m[1])
+    assert.deepEqual(heads, ['Product', 'Qty', 'Size', 'Material', 'Rate', 'Total'])
+    const widths = [...html.matchAll(/<col style="width:([0-9.]+)%"/g)].map(m => Number(m[1]))
+    assert.equal(widths.length, heads.length)
+    assert.equal(widths.reduce((a, b) => a + b, 0), 100)
+    assert.equal((html.match(/<th class="fin-num"/g) ?? []).length, 3, 'Qty, Rate and Total are right-aligned')
+  })
+
+  test('the widths add up to 100 with and without the Customization / Notes column, for a PI and for a quotation', () => {
+    const withNotes = sheet({ lines: [{ ...sheet().lines[0], customization: 'Walnut finish' }, sheet().lines[1]] })
+    const quotation = sheet({ kind: 'quotation' })
+    for (const s of [sheet(), withNotes, quotation, { ...quotation, lines: withNotes.lines }]) {
+      const html = renderToStaticMarkup(<PiSheetCard reply={reply({ sheet: s })} />)
+      const widths = [...html.matchAll(/<col style="width:([0-9.]+)%"/g)].map(m => Number(m[1]))
+      assert.equal(widths.reduce((a, b) => a + b, 0), 100, `${s.kind} ${s.lines.some(l => l.customization) ? 'with' : 'without'} notes`)
+    }
+    const heads = (s: PiSheetView) => [...renderToStaticMarkup(<PiSheetCard reply={reply({ sheet: s })} />).matchAll(/<th[^>]*>([^<]*)<\/th>/g)].map(m => m[1])
+    assert.deepEqual(heads(withNotes), ['Product', 'Qty', 'Size', 'Material', 'Customization', 'Rate', 'Total'])
+    assert.deepEqual(heads(quotation), ['Product', 'Qty', 'Description', 'Unit price', 'Total'])
+  })
+
+  test('the product cell holds the picture, the name and the code under it; a line with no picture says so', () => {
+    const html = renderToStaticMarkup(<PiSheetCard reply={reply()} />)
+    assert.ok(html.includes('class="prodCell"'))
+    assert.ok(/<img class="thumb" src="data:image\/jpeg;base64,AAAA"/.test(html))
+    assert.ok(html.indexOf('class="prodName">Bed') < html.indexOf('class="prodCode">407-B001'), 'the code sits under the name')
+    assert.ok(html.includes('class="noPic"'), 'the second line has no picture')
+  })
+
+  test('a line with no customization shows a dash in that column, never a bare label on a phone card', () => {
+    const withNotes = sheet({ lines: [{ ...sheet().lines[0], customization: 'Walnut finish' }, sheet().lines[1]] })
+    const html = renderToStaticMarkup(<PiSheetCard reply={reply({ sheet: withNotes })} />)
+    const cells = [...html.matchAll(/<td[^>]*>(.*?)<\/td>/g)].map(m => text(m[1]))
+    assert.ok(cells.includes('Walnut finish'))
+    assert.equal(cells.filter(c => c === '—').length >= 3, true, 'size, material and customization dashes on the second line')
+  })
+
+  test('a phone gets cards: the table sits inside the shared phone card wrapper, in the scroll wrapper of the Finance lists', () => {
+    const html = renderToStaticMarkup(<PiSheetCard reply={reply()} />)
+    assert.ok(html.includes('class="fin-table-wrap"><div class="boe-cardtable">'))
+  })
 })

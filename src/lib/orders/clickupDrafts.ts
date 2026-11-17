@@ -254,6 +254,37 @@ export function orderedFields(fields: Record<string, string>): [string, string][
   return Object.entries(fields).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b))
 }
 
+// ── The order page: ClickUp's fields in three groups, with readable labels ──
+
+const ORDER_FIELDS = [
+  'New Project Code', 'Project Code', 'Confirm Date', 'Total Product Value', 'Lead Source',
+  'Order Status', 'Factory Status', 'FABRIC STATUS', 'FINISH STATUS', 'Fabric on Drive', 'Finish on Drive', 'Dispatch Date',
+]
+const CLIENT_FIELDS = ['Phone', 'Email', 'Location', 'Customer Type', 'Company', 'CUSTOMER BILLING', 'CUSTOMER SHIPPING', 'Requirement']
+
+/** "CUSTOMER BILLING" → "Customer billing"; a label typed in mixed case is left as it is. */
+export function fieldLabel(key: string): string {
+  const t = key.trim()
+  return /[A-Z]/.test(t) && t === t.toUpperCase() ? t.charAt(0) + t.slice(1).toLowerCase() : t
+}
+
+export type FieldGroup = { key: 'order' | 'client' | 'other'; title: string; entries: [string, string][] }
+
+/**
+ * What the order page shows beside the products: the order's own fields first (codes, dates, value, statuses),
+ * then the client's, then everything else ClickUp held, alphabetically. A group with nothing in it is left out.
+ */
+export function groupedFields(fields: Record<string, string>): FieldGroup[] {
+  const pick = (names: string[]): [string, string][] => names.filter(n => fields[n]).map(n => [n, fields[n]])
+  const named = new Set([...ORDER_FIELDS, ...CLIENT_FIELDS])
+  const other = Object.entries(fields).filter(([k]) => !named.has(k)).sort(([a], [b]) => a.localeCompare(b))
+  return ([
+    { key: 'order', title: 'Order details', entries: pick(ORDER_FIELDS) },
+    { key: 'client', title: 'Client', entries: pick(CLIENT_FIELDS) },
+    { key: 'other', title: 'Other ClickUp fields', entries: other },
+  ] as FieldGroup[]).filter(g => g.entries.length > 0)
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1048576) return `${(bytes / 1024).toFixed(0)} KB`
