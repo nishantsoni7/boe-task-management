@@ -38,6 +38,11 @@ describe('the one product table, as measured (18 Nov 2026)', () => {
     assert.equal(nameLines('King bed with cane headboard'), 1)
     assert.equal(nameLines(''), 1)
   })
+  test('on a live quotation (18 Nov 2026) every name is planned with exactly the lines the browser drew', () => {
+    // [characters, capitals, lines drawn] in a 41.4-unit product column
+    const live: [number, number, number][] = [[13, 12, 1], [17, 15, 1], [24, 22, 1], [25, 1, 1], [37, 4, 1], [50, 7, 2], [56, 8, 2], [58, 8, 2], [62, 9, 2], [160, 16, 4]]
+    for (const [len, caps, drawn] of live) assert.equal(nameLines('A'.repeat(caps) + 'a'.repeat(len - caps)), drawn, `${len} characters`)
+  })
 })
 
 describe('which room types count as rooms (item 3)', () => {

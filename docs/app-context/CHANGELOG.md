@@ -4,7 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-18 — Quotations: practical fixes from the module review, and a drag on first open draws the crop box (branch `fix/quotation-practical-fixes`; PR number added at the stamp) · no SQL
+## 2026-11-18 — Quotations: a product name's lines are planned at the width the live table really has (branch `fix/quotation-table-name-width`; PR number added at the stamp) · no SQL
+- **Measured live** after #902 on a real quotation: the product column (41.4 units) wraps names at about 44 characters, not 36, so long names were planned a line or more too tall and pages ended early (pages 49 and 64 units empty). `NAME_LINE_CHARS` 36 → 42; `documentLayout.test.ts` pins the ten measured names (exact lines). Render check: no page overflows.
+
+## 2026-11-18 — Quotations: practical fixes from the module review, and a drag on first open draws the crop box (PR #903, merged 18 Nov 2026 02:08 IST as `22f041f1`, live 02:10 IST) · no SQL
 - **Owner asks (18 Nov 2026):** "analyze the complete Quotation module for practicality". A read-only review of the module listed 10 problems; the five small ones are fixed here, the rest are in the morning report.
 - **Status buttons wait for Save.** Mark sent, Negotiating, Lost… and Archive are off while there are unsaved changes (as "Confirmed, no PI" already was): a status change bumps the quotation, and the next Save was then refused as "somebody saved after you", and reloading lost the edits.
 - **WhatsApp waits for Save, and says what the link shows.** The message quotes the totals on screen, so it is off until saved; the line under it now says the link shows the version last sent (before any, the latest saved copy) and points to Send as new version.
