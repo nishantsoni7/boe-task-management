@@ -140,6 +140,15 @@ describe('eligibility comes from the settled deduction line, not the attendance 
     if (!e.eligible) assert.equal(e.reason, 'company_paid')
   })
 
+  test('a day a half leave covered half of (paid leave, still charged) is refused with its own reason', () => {
+    const e = attendanceRedemptionEligibility(day('2026-08-03', [{ deduction_type: 'absent', amount_deducted: 385, waived_by: 'paid_leave' }]), CTX)
+    assert.equal(e.eligible, false)
+    if (!e.eligible) {
+      assert.equal(e.reason, 'part_company_paid')
+      assert.match(e.message, /Half of this day/)
+    }
+  })
+
   test('a ₹0 line with no stated waiver is still not a deduction to cover', () => {
     const e = attendanceRedemptionEligibility(day('2026-08-03', [{ deduction_type: 'absent', amount_deducted: 0 }]), CTX)
     assert.equal(e.eligible, false)

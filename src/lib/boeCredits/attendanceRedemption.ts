@@ -132,6 +132,7 @@ export type RedemptionIneligibleReason =
   | 'no_deduction'
   | 'not_day_deduction'
   | 'company_paid'
+  | 'part_company_paid'
   | 'already_covered'
   | 'redemption_disabled'
 
@@ -153,6 +154,7 @@ export const REDEMPTION_REFUSALS: Record<RedemptionIneligibleReason, string> = {
   no_deduction:      'There is no salary deduction on this date to cover.',
   not_day_deduction: 'Credits can only cover a half-day or absent-day deduction. Late arrivals, early departures and missing punches are not covered.',
   company_paid:      'This day is already covered by your paid leave, so no credits are needed.',
+  part_company_paid: 'Half of this day is already covered by your paid leave. The rest cannot be covered with credits.',
   already_covered:   'This day is already covered with BOE Credits.',
   // Names no feature: for an employee a switched-off redemption does not exist.
   redemption_disabled: 'BOE Credits cannot be used to cover this deduction.',
@@ -196,6 +198,9 @@ export function attendanceRedemptionEligibility(
   // from the classification, and a day has exactly one.
   const line = dayLines[0]
   if (line.waived_by === CREDIT_COVERED_WAIVER) return refuse('already_covered')
+  // Paid leave covered PART of the day (a half leave on an absence): it still
+  // costs something, but credits are not offered on a day the allowance touched.
+  if (line.waived_by != null && line.amount_deducted > 0) return refuse('part_company_paid')
   if (line.waived_by != null || line.amount_deducted <= 0) return refuse('company_paid')
 
   const deduction_type = line.deduction_type as RedeemableDeductionType

@@ -189,6 +189,12 @@ export type LeaveState = {
   paid_leave_available: number   // 0, 0.5, or 1
   paid_leave_used: number        // 0, 0.5, or 1
   leave_absorbed_deductions: boolean
+  /**
+   * The share of ONE absent day (the earliest) that a part-leave covered: 0.5 for
+   * a half leave, otherwise 0. That day is still an absent day and still counts
+   * in `remaining_absent_days`; only its charge is reduced.
+   */
+  absent_day_leave_cover: number
   // Aggregates after leave absorption (may differ from MonthlyAggregates values)
   remaining_absent_days: number
   remaining_half_days: number

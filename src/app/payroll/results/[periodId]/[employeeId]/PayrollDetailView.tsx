@@ -40,7 +40,7 @@ import {
   PAYMENT_NOT_RECORDED_LABEL,
   SETTLEMENT_STATUS_NOT_RECORDED,
 } from '@/lib/payroll/settlement'
-import { COMPANY_PAID_NOTE } from '@/lib/payroll/deductionExplanation'
+import { COMPANY_PAID_NOTE, PART_COVERED_NOTE, isPartlyCoveredByPaidLeave } from '@/lib/payroll/deductionExplanation'
 import { istClockOf } from '@/lib/istDate'
 import {
   coveredLabel,
@@ -1262,7 +1262,7 @@ function DeductionsTab({
                         {/* Neutral: red is reserved for the money column, so the
                             amounts stay the fastest thing to find on the row. */}
                         <span style={{ color: '#4C5352', fontWeight: 500 }}>
-                          {l.waived_by === 'paid_leave'
+                          {l.waived_by === 'paid_leave' && !isPartlyCoveredByPaidLeave(l)
                             ? 'Paid Leave · Company Paid'
                             : DEDUCTION_LABELS[l.deduction_type] ?? l.deduction_type}
                         </span>
@@ -1273,7 +1273,7 @@ function DeductionsTab({
                         )}
                         {l.waived_by === 'paid_leave' && (
                           <div style={{ fontSize: 12, color: '#276247', marginTop: 1 }}>
-                            {COMPANY_PAID_NOTE}
+                            {isPartlyCoveredByPaidLeave(l) ? PART_COVERED_NOTE : COMPANY_PAID_NOTE}
                           </div>
                         )}
                         {/* The day keeps its name — Half Day, Absent — and the
