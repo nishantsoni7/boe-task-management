@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `d4caec3c` — Draft Orders (ClickUp): the Quotation tab of nine old orders as a list
-- Commits on this branch: 1431
+- Commit: `f8e34c03` — Draft Orders (ClickUp): the Quotation tab of nine old orders as a list (#873)
+- Commits on this branch: 1432
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 213
 - Migrations: 471 (first `20260530_create_positions.sql`, latest `20270729000000_pricing_taught_watcher.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1054   Enums: 0
@@ -14,7 +14,8 @@
 
 ## Latest 25 commits
 
-- `d4caec3c` 2026-11-17 Draft Orders (ClickUp): the Quotation tab of nine old orders as a list
+- `f8e34c03` 2026-11-17 Draft Orders (ClickUp): the Quotation tab of nine old orders as a list (#873)
+- `0b2cc083` 2026-11-17 Quotations: a PowerPoint's pictures are drawn again when a client file is read (#872)
 - `3f420714` 2026-11-17 Docs: stamp the half paid leave change (#869) as merged e055668f, deployed 14:00 IST (no SQL) (#871)
 - `06bc8871` 2026-11-17 Docs: stamp the old-order PI sheet (#868) as merged e9298b57, deployed 13:34 IST (no SQL) (#870)
 - `e055668f` 2026-11-17 Payroll: a half paid leave takes half off the earliest absent day (#869)
@@ -38,7 +39,6 @@
 - `fab39501` 2026-11-16 Quotations: "This one is different" on a picked taught product (migration 20270727000000) (#850)
 - `8b87062e` 2026-11-16 Docs: stamp #848 (swatches and drawings to the PI draft) as merged eaa05402, deployed 09:18 IST (no SQL) (#849)
 - `d26acf88` 2026-11-16 Page speed, part 13: Sales leads and the quotations list join the saved copy (no SQL) (#824)
-- `eaa05402` 2026-11-16 Quotations: the client's swatches and drawings go to the PI draft (no SQL) (#848)
 
 ## Pages by top-level area
 
