@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `cf6e178f` — Draft Orders (ClickUp): the order page redrawn, the product list with a width for every column
-- Commits on this branch: 1436
+- Commit: `c7737d28` — Draft Orders (ClickUp): the order page redrawn, the product list with a width for every column (#878)
+- Commits on this branch: 1437
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 213
 - Migrations: 472 (first `20260530_create_positions.sql`, latest `20270730000000_for_you_bundle.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1055   Enums: 0
@@ -14,7 +14,8 @@
 
 ## Latest 25 commits
 
-- `cf6e178f` 2026-11-17 Draft Orders (ClickUp): the order page redrawn, the product list with a width for every column
+- `c7737d28` 2026-11-17 Draft Orders (ClickUp): the order page redrawn, the product list with a width for every column (#878)
+- `91e70598` 2026-11-17 Docs: stamp For you in one call (#875) as merged a644cf19, deployed 16:33 IST, recounted live (#877)
 - `e78a9f22` 2026-11-17 Draft Orders (ClickUp): the list redrawn on the Finance list design (#876)
 - `a644cf19` 2026-11-17 Page speed: the launcher's For you column asks the database once (migration 20270730000000) (#875)
 - `65a56c9c` 2026-11-17 Docs: stamp the PowerPoint pictures fix (#872) as merged 0b2cc083, deployed 15:13 IST (no SQL) (#874)
@@ -38,7 +39,6 @@
 - `53ec4160` 2026-11-16 Revert "Page speed fix: put the saved copy back when SIGNED_IN arrives first (no SQL) (#855)" (#857)
 - `296f3629` 2026-11-16 Page speed fix: put the saved copy back when SIGNED_IN arrives first (no SQL) (#855)
 - `b296d0c2` 2026-11-16 Quotations: Crop & rotate a picture in the scan review (no SQL) (#853)
-- `5b38f85d` 2026-11-16 Page speed, part 14: PI Drafts joins the saved copy; the saved copy keeps earlier lists (no SQL) (#852)
 
 ## Pages by top-level area
 
