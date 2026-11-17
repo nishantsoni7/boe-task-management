@@ -1,8 +1,9 @@
 'use client'
 
 // The PI sheet of an old order, as a list (orders 300 and up): product picture, code, name, size,
-// material, quantity, rate, total, then the totals. The route reads the stored Excel; nothing is
-// saved. PiSheetCard is the drawing alone, so a test can render it without a fetch.
+// material, quantity, rate, total, then the totals. A quotation's Excel (the nine orders that were
+// never a PI) uses the same card with a Description column and "Unit price". The route reads the
+// stored Excel; nothing is saved. PiSheetCard is the drawing alone, so a test can render it without a fetch.
 
 import { useEffect, useState } from 'react'
 import { formatINR } from '@/lib/currency'
@@ -23,6 +24,8 @@ const money = (n: number | null) => (n === null ? '—' : formatINR(n))
 
 export function PiSheetCard({ reply, onPick }: { reply: PiSheetReply; onPick?: (fileId: string) => void }) {
   const { sheet, files, current } = reply
+  const isQuotation = sheet?.kind === 'quotation'
+  const heading = isQuotation ? 'Quotation' : 'PI sheet'
   const party = (title: string, p: PiSheetView['billTo']) =>
     p.name || p.phone || p.address ? (
       <div className={styles.fact}>
@@ -32,8 +35,8 @@ export function PiSheetCard({ reply, onPick }: { reply: PiSheetReply; onPick?: (
     ) : null
 
   return (
-    <section className={styles.card} aria-label="PI sheet">
-      <h3 className={styles.cardTitle}>PI sheet</h3>
+    <section className={styles.card} aria-label={heading}>
+      <h3 className={styles.cardTitle}>{heading}</h3>
       {files.length > 1 && (
         <label className={styles.meta}>
           Excel{' '}
@@ -46,9 +49,12 @@ export function PiSheetCard({ reply, onPick }: { reply: PiSheetReply; onPick?: (
       {sheet && (
         <>
           <p className={styles.meta}>
-            {[sheet.piNo && `PI ${sheet.piNo}`, sheet.date, sheet.salesperson && `by ${sheet.salesperson}`].filter(Boolean).join(' · ')}
+            {[sheet.title, sheet.piNo && `${isQuotation ? 'Ref' : 'PI'} ${sheet.piNo}`, sheet.date, sheet.salesperson && `by ${sheet.salesperson}`].filter(Boolean).join(' · ')}
             {files.length === 1 ? ` · read from ${files[0].name}` : ''}
           </p>
+          {isQuotation && (
+            <p className="opp-note">This is the quotation sheet, not a PI. The totals are as printed on the sheet.</p>
+          )}
           {sheet.problems.length > 0 && (
             <div className="opp-warn" role="alert">
               Check the Excel: it could not be read fully.
@@ -56,15 +62,16 @@ export function PiSheetCard({ reply, onPick }: { reply: PiSheetReply; onPick?: (
             </div>
           )}
           {(sheet.billTo.name || sheet.billTo.address || sheet.shipTo.name || sheet.shipTo.address) && (
-            <dl className={styles.facts}>{party('Bill to', sheet.billTo)}{party('Ship to', sheet.shipTo)}</dl>
+            <dl className={styles.facts}>{party(isQuotation ? 'Client' : 'Bill to', sheet.billTo)}{party('Ship to', sheet.shipTo)}</dl>
           )}
           <div className="opp-scroll">
             <table className="opp-table">
               <thead>
                 <tr>
-                  <th>Picture</th><th>Code</th><th>Product</th><th className="opp-num">Qty</th><th>Size</th><th>Material</th>
-                  <th className="opp-num">Rate</th><th className="opp-num">Total</th>
-                  {sheet.lines.some(l => l.customization) && <th>Customization</th>}
+                  <th>Picture</th><th>Code</th><th>Product</th><th className="opp-num">Qty</th><th>{isQuotation ? 'Description' : 'Size'}</th>
+                  {!isQuotation && <th>Material</th>}
+                  <th className="opp-num">{isQuotation ? 'Unit price' : 'Rate'}</th><th className="opp-num">Total</th>
+                  {sheet.lines.some(l => l.customization) && <th>{isQuotation ? 'Notes' : 'Customization'}</th>}
                 </tr>
               </thead>
               <tbody>
@@ -76,7 +83,7 @@ export function PiSheetCard({ reply, onPick }: { reply: PiSheetReply; onPick?: (
                     <td style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{l.name ?? '—'}</td>
                     <td className="opp-num">{l.quantity ?? '—'}</td>
                     <td style={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>{l.size ?? '—'}</td>
-                    <td style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{l.material ?? '—'}</td>
+                    {!isQuotation && <td style={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>{l.material ?? '—'}</td>}
                     <td className="opp-num">{money(l.rate)}</td>
                     <td className="opp-num">{money(l.total)}</td>
                     {sheet.lines.some(x => x.customization) && <td style={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>{l.customization ?? ''}</td>}
@@ -92,6 +99,7 @@ export function PiSheetCard({ reply, onPick }: { reply: PiSheetReply; onPick?: (
               ))}
             </dl>
           )}
+          {sheet.footnotes.map(n => <p key={n} className={styles.meta}>{n}</p>)}
           {sheet.missingPictures > 0 && (
             <p className="opp-note">{sheet.missingPictures} of {sheet.lines.length} lines have no picture in the sheet.</p>
           )}
@@ -119,7 +127,7 @@ export function PiSheetSection({ order }: { order: DraftOrder }) {
 
   if (!applies) return null
   if (problem) return <section className={styles.card} aria-label="PI sheet"><h3 className={styles.cardTitle}>PI sheet</h3><p className="opp-warn" role="alert">{problem}</p></section>
-  if (!reply) return <section className={styles.card} aria-label="PI sheet"><h3 className={styles.cardTitle}>PI sheet</h3><p className="opp-note" role="status">Reading the PI Excel…</p></section>
+  if (!reply) return <section className={styles.card} aria-label="PI sheet"><h3 className={styles.cardTitle}>PI sheet</h3><p className="opp-note" role="status">Reading the Excel…</p></section>
   if (!reply.applies) return null
   return <PiSheetCard reply={reply} onPick={setFile} />
 }

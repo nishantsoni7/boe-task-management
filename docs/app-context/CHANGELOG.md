@@ -11,6 +11,15 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Proof.** The app's own `filePages` / `surveyJpeg` drawing the deck in headless Edge (esbuild bundle, not the signed-in app): before, 10-16 KB white slides; after, all pictures in place. Read with the app's prompts and the owner's spend-capped key (harness): 34 rows from 18 slides, every slide's designs as one row each with the others marked as options, every quantity right ("6 or 12" marked doubtful), 38 pictures of the right pieces; 7 calls, 60k input and 7.5k output tokens (about Rs 18). New `scanPages.test.ts` (jsdom, the deck's XML shape), tsc, eslint.
 - **Not seen** signed in, in a browser or on a phone.
 
+## 2026-11-17 — Draft Orders (ClickUp): the Quotation tab of nine old orders as a list (branch `feat/old-order-quotation-sheet`; PR pending) · no SQL
+- **Owner ask.** After PR #868, the nine old orders whose Excel is a quotation, not a PI (469, 470, 474, 475, 476, 483, 490, 523, 530), were checked against Confirmed Orders and PI Drafts (read-only): none is there. Owner: "Yes, look into it", then "Yes, build it".
+- **What.** The pi-sheet route reads the Quotation tab when an Excel has no Master tab (`lib/pi/quotationSheet.ts`, new) and the same card draws it as "Quotation": Client, Ref, Description, Unit price, Notes, the totals as printed on the sheet, the note under them, a "not a PI" line. Order 528 shows its quotation too.
+- **No SQL, no table, no storage write, no permission change.** Administrator only, saves nothing, as before.
+- **Proof.** Real ClickUp backup, read only: 10 of 10 quotation files read (59 lines, 59 pictures, no arithmetic problems); 210 of 221 orders from 300 up now list, 11 do not. Tests: `quotationSheet.test.ts` (8, invented workbooks built in process), the view and route pins in `clickupPiSheet.test.ts`, `piSheet.render.test.tsx`.
+- **Said to the owner.** The printed Grand Total on some sheets does not add up from the visible rows (an extra only written as a note), so the totals are shown as printed.
+- **Not seen** on a signed-in screen or a phone.
+- **Rollback.** Revert the PR; nothing was written anywhere.
+
 ## 2026-11-17 — Payroll: a half paid leave takes half off the earliest absent day (PR #869 squash-merged 17 Nov 2026 13:57 IST as `e055668f`, deployed to production 14:00 IST) · no SQL
 - **Owner ask.** One employee's October 2026 payslip: why is the paid leave not adjusted against the absences, only the late arrivals? His machine file is final (11 days present, 16 absent), so the data was right; the rule was the cause. Plan and defaults approved ("Approve plan").
 - **Cause.** 11-15 days present earns 0.5 leave. A whole absent day needed a whole leave (stage 1), so a half leave could never touch an absence and fell to the late-lines stage: three late lines, Rs 407 saved, while all 16 absences were charged Rs 1,385.
