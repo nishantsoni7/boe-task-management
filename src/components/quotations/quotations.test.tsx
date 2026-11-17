@@ -74,7 +74,7 @@ describe('the printed quotation (real Resort Shamshabad quote)', () => {
   })
 
   test('an optional line shows its price but is not in the total, and says so', () => {
-    assert.ok(text.includes('optional, not in the total'))
+    assert.ok(text.includes('Optional, not in the total'))
     assert.ok(text.includes('Decor, quoted separately'))
   })
 

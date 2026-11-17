@@ -1318,6 +1318,8 @@ describe('the applied migrations are frozen', () => {
       '20270730000000_for_you_bundle.sql',
       // Quotations: who sees price suggestions, a new one-row table and two functions; no existing table or data change.
       '20270731000000_quotation_suggestions_switch.sql',
+      // Quotations: the salesperson's own details on the document, a new table, two functions and the two read functions; no existing row changes.
+      '20270801000000_quotation_salesperson_card.sql',
     ])
   })
 
@@ -1853,6 +1855,8 @@ describe('the applied migrations are frozen', () => {
       '20270729000000_pricing_taught_watcher.sql',
       '20270730000000_for_you_bundle.sql',
       '20270731000000_quotation_suggestions_switch.sql',
+      // Quotations: the salesperson's own details on the document, a new table, two functions and the two read functions; no existing row changes.
+      '20270801000000_quotation_salesperson_card.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

@@ -16,7 +16,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import '@/lib/testing/cssModuleStub'
 import { QuotationDocument, type DocData } from './QuotationDocument'
 import { EXPECTATIONS, TERMS } from '@/lib/quotations/terms'
-import { PROOF, planProductPages, groupsOf } from '@/lib/quotations/documentPlan'
+import { PROOF, groupsOf, planTablePages, summaryUnits } from '@/lib/quotations/documentPlan'
 import { fetchQuotation, type Quotation } from '@/lib/quotations/api'
 import type { QuoteArea, QuoteLine } from '@/lib/quotations/math'
 
@@ -46,20 +46,20 @@ const sheets = (h: string) => [...h.matchAll(/<section class="(?:sheet|sheet cov
 
 describe('the pages', () => {
   const h = html(doc())
-  test('cover, at a glance, our work, products, investment, terms and acceptance, then the standard terms', () => {
-    // two room types (the second holds only an optional product) give two product pages; the notes and the optional box do not fit under
-    // the total of this small quotation, so they take a last investment page
-    assert.deepEqual(sheets(h), ['Cover', 'At a glance', 'Our work', 'The products', 'The products', 'The investment', 'The investment', 'Terms and acceptance', 'Terms and conditions', 'Terms and conditions'])
+  test('cover, at a glance, our work, ONE page of products and prices, terms and acceptance, then the standard terms', () => {
+    // since 18 Nov 2026 the pictures and the prices are one table: two room types (the second holds only an optional product) and the
+    // totals fit one page; the notes print on the terms page
+    assert.deepEqual(sheets(h), ['Cover', 'At a glance', 'Our work', 'Products and prices', 'Terms and acceptance', 'Terms and conditions', 'Terms and conditions'])
   })
   test('the page numbers run on from 02 without a gap, and the signing page is the one named on page 2', () => {
     const nums = [...h.matchAll(/<span>(\d\d)<\/span><\/div>/g)].map(m => Number(m[1]))
-    assert.deepEqual(nums, [2, 3, 4, 5, 6, 7, 8, 9, 10])
-    assert.equal(sheets(h).indexOf('Terms and acceptance') + 1, 8)
-    assert.ok(plain(h).includes('sign on page 08'), 'the terms and acceptance page is page 8 here')
+    assert.deepEqual(nums, [2, 3, 4, 5, 6, 7])
+    assert.equal(sheets(h).indexOf('Terms and acceptance') + 1, 5)
+    assert.ok(plain(h).includes('sign on page 05'), 'the terms and acceptance page is page 5 here')
   })
   test('there is no Accept button: the document says how to approve (reply, or sign) and nothing on it is a control', () => {
     assert.ok(!/<button|<a /.test(h))
-    assert.ok(plain(h).includes('Reply “Approved” to Nishant, or sign on page 08'))
+    assert.ok(plain(h).includes('Reply “Approved” to Nishant, or sign on page 05'))
   })
   test('the cover shows the project, the client, the number with its version, the date and the validity', () => {
     const t = plain(h)
@@ -106,6 +106,11 @@ describe('the salesperson', () => {
     assert.equal(t.split('+91 90000 00001').length - 1, 3, 'page 2 box, page 2 person, page 6 person')
     assert.ok(t.includes('nishant@boe.example') && t.includes('Reply “Approved” to Nishant on WhatsApp'))
   })
+  test('the role the salesperson filled in prints with the name; without one, nothing is made up ("Sales" was a fixed demo word)', () => {
+    const t = plain(html(doc({ salesperson_title: 'Sales Manager' })))
+    assert.equal(t.split('Sales Manager, Best of Exports').length - 1, 2, 'page 2 and the signing page')
+    assert.ok(!plain(html(doc())).includes('Sales, Best of Exports'))
+  })
   test('without a mobile or e-mail nothing is made up: no number, no "on WhatsApp"', () => {
     const t = plain(html(doc()))
     assert.ok(!/\+91|@/.test(t)); assert.ok(!t.includes('on WhatsApp')); assert.ok(t.includes('Reply to Nishant'))
@@ -149,9 +154,9 @@ describe('the figures', () => {
     const c = plain(html(doc({ gst_mode: 'cgst_sgst' })))
     assert.ok(c.includes('CGST (9%)') && c.includes('SGST (9%)') && !c.includes('IGST'))
   })
-  test('an optional product is shown but out of the total, and listed under it', () => {
+  test('an optional product is a row of the table, marked, with its amount in brackets (out of the total)', () => {
     const t = plain(html(doc()))
-    assert.ok(t.includes('optional, not in the total')); assert.ok(t.includes('Optional, not in the total Verona Chair · 12 pieces'))
+    assert.ok(t.includes('Verona Chair')); assert.ok(t.includes('Optional, not in the total')); assert.ok(t.includes('(₹4,80,000)'))
   })
   test('the proof numbers are the owner\'s own, and printed on page 2 and the Our work page', () => {
     const t = plain(html(doc()))
@@ -169,29 +174,29 @@ describe('the full terms stay part of the quotation', () => {
 })
 
 describe('many products', () => {
-  test('a heavy quotation plans a page per room type and keeps every product and every price', () => {
+  test('a heavy quotation runs on page after page and keeps every product and every price', () => {
     const lines = Array.from({ length: 60 }, (_, i) => L(i, i % 2 ? 'a' : 'b', `Product ${i}`, { spec: i % 5 === 0 ? 'x'.repeat(500) : '' }))
     const d = doc({ lines })
     const h = html(d)
-    assert.equal(planProductPages(groupsOf(d.areas, d.lines)).flatMap(p => p.lines).length, 60)
+    assert.equal(planTablePages(groupsOf(d.areas, d.lines), summaryUnits(5)).flatMap(p => p.rows).filter(r => r.kind === 'line').length, 60)
     for (let i = 0; i < 60; i++) assert.ok(h.includes(`Product ${i}<`) || h.includes(`Product ${i} `), `Product ${i}`)
-    assert.ok(sheets(h).length > 20)
+    assert.ok(sheets(h).filter(x => x === 'Products and prices').length >= 6)
   })
-  test('a quotation with nothing in it still draws, with no product pages', () => {
+  test('a quotation with nothing in it still draws: the totals page, with no product table', () => {
     const h = html(doc({ lines: [], areas: [] }))
-    assert.ok(!sheets(h).includes('The products')); assert.ok(sheets(h).includes('The investment'))
+    assert.equal(sheets(h).filter(x => x === 'Products and prices').length, 1); assert.ok(!h.includes('class="tbl ptbl"'))
   })
 })
 
 describe('a product with no picture, and what counts as a room (render of 14 Nov 2026)', () => {
   test('a product with no picture prints its text only, with no empty frame; one with a picture keeps its frame', () => {
     const none = html(doc({ lines: [L(1, 'a', 'Wardrobe', { image_path: null })] }))
-    assert.ok(!none.includes('class="ph"'), 'no empty white frame')
+    assert.ok(!none.includes('class="tb"'), 'no empty white frame')
     assert.ok(plain(none).includes('Wardrobe') && plain(none).includes('Ash wood'), 'the text is all there')
-    assert.ok(html(doc({ lines: [L(1, 'a', 'Wardrobe')] })).includes('class="ph"'), 'a picture keeps its frame')
+    assert.ok(html(doc({ lines: [L(1, 'a', 'Wardrobe')] })).includes('class="tb"'), 'a picture keeps its frame')
   })
   test('the frame is drawn only around a picture: in the source, not as an always-present box with a conditional inside', () => {
-    assert.match(read('src/components/quotations/QuotationDocument.tsx'), /\{l\.image_path \? <div className=\{d\.ph\}><Pic /)
+    assert.match(read('src/components/quotations/QuotationDocument.tsx'), /\{l\.image_path \? <div className=\{d\.tb\}><Pic /)
   })
   test('a Lobby and Restaurant on the unit "area" is not a room: the headline says forty-six rooms, not forty-seven', () => {
     const areas: QuoteArea[] = [

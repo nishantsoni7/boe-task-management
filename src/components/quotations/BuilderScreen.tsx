@@ -40,6 +40,7 @@ import { PriceCard } from './PricingDesk'
 import { LineRow } from './ProductLine'
 import { LeadTime, effectiveLeadTime } from './LeadTime'
 import { PictureViewer, viewerItemsOf } from './PictureViewer'
+import { MyDetailsReminder } from './MyDetails'
 import { productType } from '@/lib/pricing/features'
 import { priceLine, type ModelSuggestion } from '@/lib/pricing/model'
 import { fetchPool, poolWords } from '@/lib/pricing/pool'
@@ -291,6 +292,8 @@ export default function BuilderScreen() {
           <div className={s.row}><span>{msg.text}</span>{msg.undo && <button className={`${s.btn} ${s.btnSm}`} onClick={msg.undo}>Undo</button>}<span className={s.spacer} /><button className={s.iconBtn} onClick={() => setMsg(null)} aria-label="Dismiss"><X size={14} /></button></div>
         </div>
       )}
+      {/* until the owner has filled in the details their quotations print (20270801000000) */}
+      {base.may_edit && profile?.id === base.owner_id && <MyDetailsReminder supabase={supabase} />}
       {!base.may_edit && <div className={s.notice}>You can read this quotation. Only its owner, or someone with Edit and See all, can change it.</div>}
       {base.may_edit && LOCKED.includes(base.status) && <div className={`${s.notice} ${s.noticeWarn}`}>This quotation is {STATUS_LABEL[base.status].toLowerCase()} and cannot be changed. {base.status !== 'confirmed' || access.admin ? 'Reopen it from the Status bar to edit.' : 'Only an administrator can reopen it.'}</div>}
 
