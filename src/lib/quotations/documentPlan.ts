@@ -1,5 +1,5 @@
 // The premium client quotation document (owner-approved 14 Nov 2026): everything that is DECIDED, not drawn. Pure and
-// testable: the project types and the lead-time rules, the amounts in words, the plan of which product and table rows go
+// testable: the project types and the lead-time rules, the amounts in words, the plan of which table rows go
 // on which A4 page, and the facts the document prints about BOE itself.
 
 import type { QuoteArea, QuoteLine } from './math'
@@ -119,8 +119,8 @@ export const documentFileName = (quoteNo: string, project: string | null | undef
 
 // ── Which A4 page holds what ──────────────────────────────────────────────────────────────────────────────────────────
 // Pages are planned here, not left to the browser, so the same pages show on a screen and come out of Save as PDF, and
-// the page numbers are known. The budgets are in "row units" and are deliberately generous; src/components/quotations/
-// documentPlan.render.test.tsx and the headless-browser check read the result back.
+// the page numbers are known. Heights are in page units (1 unit = 1% of the page width; an A4 page is 141.4 units tall).
+// The estimates are deliberately a little generous; the headless-browser check reads the result back (nothing overflows).
 
 export type Group = { area: QuoteArea | null; lines: QuoteLine[] }
 
@@ -131,102 +131,87 @@ export function groupsOf(areas: readonly QuoteArea[], lines: readonly QuoteLine[
   ].filter(g => g.lines.length > 0)
 }
 
-export type ProductPage = { area: QuoteArea | null; lines: QuoteLine[]; continued: boolean }
+// ── Products and prices: ONE table (owner, 18 Nov 2026) ──────────────────────────────────────────────────────────────
+// "We have separate pages for product images and the list of product with pricing ... we want it to be shown at one place
+// only ... a modern table neatly laid out ... a lot of empty spacing ... keep it standard." So every product is one row:
+// its picture (a fixed thumbnail, so every row with a picture is the same height), the name and what it is made of, the
+// quantity, the rate and the amount. A room type is a heading row inside the same table, not a new page; a page that
+// starts in the middle of a room type repeats its heading as "continued". The summary follows the last row.
 
-/**
- * Products: two to a row, as many rows as fit one page (usually two rows, four products), a new page for every room type.
- * A card's height is estimated in page-width units (1 unit = 1% of the page width): the picture, the name (a long one wraps),
- * the size and material lines, the remarks (about 52 characters to a line) and the quantity line; a row is as tall as its
- * taller card. The estimate is deliberately a little generous.
- */
-export const PRODUCT_PAGE_UNITS = 104 // the page really has 109.2 units of room for the cards (measured 14 Nov 2026), so 5 are kept in reserve
-const PRODUCT_ROW_GAP = 3
-/**
- * Characters of a product name that fit on one line of a card. MEASURED in the real render (14 Nov 2026): a card is 41 units wide and the
- * name is set at 2.85 units, so a line holds about 14.4 em: mixed-case names up to 31 characters fit on one line (a 28-character name uses
- * 95% of it), and capitals are about 30% wider (an upper-case name of 26 characters already wraps). 30 with capitals counted 1.3 never
- * under-counted a measured name except an all-wide-letter string; it errs on the side of one more line, never fewer.
- */
-export const NAME_LINE_CHARS = 30
+/** Characters of a product name that fit one line of the product column (about 36 units wide, the name at 1.9 units); capitals count 1.3. */
+export const NAME_LINE_CHARS = 36
 export const nameLines = (name: string): number => Math.max(1, Math.ceil((name.length + 0.3 * (name.match(/[A-Z]/g) || []).length) / NAME_LINE_CHARS))
-/** A card without a picture draws no frame: the picture and the gap under it are not in its height. */
-export const PICTURE_UNITS = 31.7
-export const cardUnits = (l: QuoteLine): number => {
-  const text = 1 + Math.max(1, Math.ceil((l.material || '').length / 52)) + Math.ceil(((l.spec || '').length + (l.size_text || '').length * 0.2) / 52) + Math.ceil((l.client_note || '').length / 52)
-  // measured: an ordinary card with a picture is 46.2, one with a two-line name 49.4 (the estimate is about 2.5 above that)
-  return 30.3 + 5.6 + 3.5 + 3.2 * nameLines(l.name) + text * 2.05 - (l.image_path ? 0 : PICTURE_UNITS)
-}
-export function planProductPages(groups: readonly Group[]): ProductPage[] {
-  const pages: ProductPage[] = []
-  for (const g of groups) {
-    let rows: QuoteLine[][] = [], height = 0, first = true
-    const rowH = (r: QuoteLine[]) => Math.max(...r.map(cardUnits))
-    const flush = () => { if (rows.length) { pages.push({ area: g.area, lines: rows.flat(), continued: !first }); first = false; rows = []; height = 0 } }
-    for (const l of g.lines) {
-      const open = rows[rows.length - 1]
-      if (open && open.length < 2) {
-        const grown = height - rowH(open) + Math.max(rowH(open), cardUnits(l))
-        if (grown <= PRODUCT_PAGE_UNITS) { open.push(l); height = grown; continue }
-      }
-      const add = cardUnits(l) + (rows.length ? PRODUCT_ROW_GAP : 0)
-      if (rows.length && height + add > PRODUCT_PAGE_UNITS) flush()
-      rows.push([l]); height += cardUnits(l) + (rows.length > 1 ? PRODUCT_ROW_GAP : 0)
-    }
-    flush()
-  }
-  return pages
-}
+/** Characters of a size, material or remark line in the product column (1.2-unit type). */
+export const SPEC_LINE_CHARS = 52
+const specLines = (t: string | null | undefined) => (t ?? '').split('\n').reduce((k, x) => k + (x.trim() ? Math.ceil(x.length / SPEC_LINE_CHARS) : 0), 0)
+/** The picture thumbnail's height; the row's padding; a line of the name; a line of the details. */
+export const THUMB_UNITS = 10
+// measured: a row's padding and rule 2.7, a name line 2.4 plus 0.4 under the name, a details line 1.8; each is rounded up
+const ROW_PAD = 2.8, NAME_LINE = 2.8, SPEC_LINE = 1.85
 
-/** The price table: a row per product, a heading row per room type. The summary (subtotal to total, payment split, timeline) follows the last row, and then the extras (optional products, notes). */
-export type InvRow = { kind: 'group'; area: QuoteArea } | { kind: 'line'; line: QuoteLine; area: QuoteArea | null }
-export type InvestmentPage = { rows: InvRow[]; summary: boolean; extras: boolean }
-export const INV_FIRST_UNITS = 16
-export const INV_NEXT_UNITS = 17
-/** At most this many optional products are listed under the total; the rest are on the product pages. */
-export const OPTIONAL_LISTED = 12
+/** A product row: the taller of its picture and its words. `perUnit`: it also prints "2 per room × 40 rooms". */
+export const lineUnits = (l: QuoteLine, perUnit = false): number => {
+  const words = nameLines(l.name) * NAME_LINE + SPEC_LINE * (
+    (l.size_text ? Math.ceil((l.size_text.length * 1.6 + 6) / SPEC_LINE_CHARS) : 0) + specLines(l.material) + specLines(l.spec)
+    + specLines(l.client_note ? `Note: ${l.client_note}` : '') + (perUnit ? 1 : 0) + (l.is_optional ? 1 : 0))
+  return ROW_PAD + Math.max(l.image_path ? THUMB_UNITS : 0, words)
+}
+export const GROUP_UNITS = 6.4
+export type TableRow = { kind: 'group'; area: QuoteArea; continued?: boolean } | { kind: 'line'; line: QuoteLine; area: QuoteArea | null }
+export type TablePage = { rows: TableRow[]; summary: boolean }
+/** Room for rows on the first page (under its headline) and on the pages after it, with the column heads taken off. MEASURED in the
+ * real A4 render (18 Nov 2026): 107.5 and 114.4 units; about 3 are kept in reserve. A picture row measured 12.7, one with two lines of remarks 14.5. */
+export const TABLE_FIRST_UNITS = 105
+export const TABLE_NEXT_UNITS = 112
+const perUnitOf = (l: QuoteLine, a: QuoteArea | null) => l.qty_mode === 'per_unit' && !!a && a.multiplier > 1
+export const rowUnits = (r: TableRow): number => r.kind === 'group' ? GROUP_UNITS : lineUnits(r.line, perUnitOf(r.line, r.area))
+
 /**
- * What the summary under the last row needs, in table-row units (measured: a quotation with a subtotal, IGST, one optional
- * product and two lines of notes takes 10.1; the estimate is a little generous). `main`: the total row, the amount in words, the
- * 70 / 30 bar and the timeline, and a row for every line of the sum table. `extras`: a box for the optional products and a box for the notes.
+ * What the summary under the last row needs, in page units: the subtotal-to-total lines, the amount in words, the 70 / 30
+ * bar and the timeline. Measured: 51.3 with five sum lines (planned 53).
  */
-export const summaryUnits = (a: { sumRows: number; optionalLines: number; noteLines: number }): { main: number; extras: number } => ({
-  main: 5.5 + 0.55 * a.sumRows,
-  extras: (a.optionalLines ? 1.45 + 0.55 * Math.min(a.optionalLines, OPTIONAL_LISTED + 1) : 0) + (a.noteLines ? 1.65 + 0.8 * a.noteLines : 0),
-})
-/** A row is one unit; a heading row a little more, and a product name that wraps onto a second line costs another unit. */
-const rowUnits = (r: InvRow) => r.kind === 'group' ? 1.2 : (r.line.name.length > 46 ? 1.9 : 1)
+export const summaryUnits = (sumRows: number): number => 36 + 3.4 * sumRows
 
-/** Page by page: rows until a page is full; the summary goes under the last rows if it fits, else on a page of its own; extras that do not fit with it get a last page. */
-export function planInvestmentPages(groups: readonly Group[], need: { main: number; extras: number }): InvestmentPage[] {
-  const rows: InvRow[] = []
+/**
+ * Page by page: rows until a page is full; the summary goes under the last rows when it fits. When it does not, the last
+ * product moves to the next page with it, so the totals never stand on a page of their own (unless even that cannot fit).
+ */
+export function planTablePages(groups: readonly Group[], summary: number): TablePage[] {
+  const rows: TableRow[] = []
   for (const g of groups) {
-    const lines = g.lines.filter(l => !l.is_optional)
-    if (!lines.length) continue
     if (g.area) rows.push({ kind: 'group', area: g.area })
-    for (const l of lines) rows.push({ kind: 'line', line: l, area: g.area })
+    for (const l of g.lines) rows.push({ kind: 'line', line: l, area: g.area })
   }
-  const pages: InvestmentPage[] = []
+  // the rows from `from` to the end, with the "continued" heading a page starting there repeats
+  const units = (from: number) => (rows[from]?.kind === 'line' && rows[from].area ? GROUP_UNITS : 0) + rows.slice(from).reduce((t, r) => t + rowUnits(r), 0)
+  const pages: TablePage[] = []
   let i = 0
   while (true) {
-    const cap = pages.length === 0 ? INV_FIRST_UNITS : INV_NEXT_UNITS
-    let rest = 0
-    for (let k = i; k < rows.length; k++) rest += rowUnits(rows[k])
-    if (rest + need.main + need.extras <= cap || (i >= rows.length && need.extras === 0)) { pages.push({ rows: rows.slice(i), summary: true, extras: true }); break }
-    if (rest + need.main <= cap || i >= rows.length) {
-      pages.push({ rows: rows.slice(i), summary: true, extras: false })
-      if (need.extras > 0) pages.push({ rows: [], summary: false, extras: true })
-      break
-    }
-    let used = 0, take = 0
+    const cap = pages.length === 0 ? TABLE_FIRST_UNITS : TABLE_NEXT_UNITS
+    const head = rows[i]
+    const lead: TableRow[] = head?.kind === 'line' && head.area ? [{ kind: 'group', area: head.area, continued: true }] : []
+    if (i >= rows.length || units(i) + summary <= cap) { pages.push({ rows: [...lead, ...rows.slice(i)], summary: true }); break }
+    let used = lead.length ? GROUP_UNITS : 0, take = 0
     while (i + take < rows.length && used + rowUnits(rows[i + take]) <= cap) { used += rowUnits(rows[i + take]); take++ }
     if (take === 0) take = 1
+    if (i + take === rows.length) {
+      // every row fits but the summary does not: the last product goes over with it
+      let c = rows.length - 1
+      if (c > i && rows[c - 1].kind === 'group') c -= 1
+      if (c > i && units(c) + summary <= TABLE_NEXT_UNITS) take = c - i
+    }
     // a room-type heading is never the last row of a page
     if (take > 1 && i + take < rows.length && rows[i + take - 1].kind === 'group') take -= 1
-    pages.push({ rows: rows.slice(i, i + take), summary: false, extras: false })
+    pages.push({ rows: [...lead, ...rows.slice(i, i + take)], summary: false })
     i += take
   }
   return pages
 }
+
+/** The notes print on the Terms and acceptance page, which has room for about this many lines of them; longer notes get a page of their own. */
+export const NOTES_ON_TERMS_LINES = 10
+export const noteLinesOf = (notes: string | null | undefined, transport: string | null | undefined): number =>
+  (notes ? notes.split('\n').reduce((k, x) => k + Math.max(1, Math.ceil(x.length / 85)), 0) : 0) + (transport ? 1 : 0)
 
 /** The standard terms, split over as many annex pages as their length needs (characters, with a weight for each title). */
 export const TERMS_PAGE_CHARS = 7400

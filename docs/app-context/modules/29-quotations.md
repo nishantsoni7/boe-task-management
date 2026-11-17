@@ -87,14 +87,19 @@ Shell `src/components/layout/QuotationsLayout.tsx` (InventoryLayout's build). La
 10. The person who presses Confirm owns the PI draft (Orders shows a draft only to its maker), and needs Order Management → Create.
 11. **Leads are not touched** (owner, 2026-11-12): Lead Board rule 8 of 2026-11-03 ("Converted is a record only, no link to Orders") stands.
 
-## Who sees the suggested prices (2026-11-18, branch `feat/quotation-suggestions-switch`, migration `20270731000000` APPLIED 01:04 IST)
+## Who sees the suggested prices (2026-11-18, PR #899 merged 01:14 IST as `d2a9b142`, migration `20270731000000` APPLIED 01:04 IST)
 - `quotation_suggestion_settings` (one row, `shown_to` NULL = everyone), `quotation_suggestions_get()` / `quotation_suggestions_set(p_everyone)` (admin only; false = only the caller). Control Center › Sales › Quotation price approval: "Price suggestions on quotations". BuilderScreen `suggestOn` (error = on): off drops `model`, `taught` and the hint points (`historyOnly`, `src/lib/quotations/suggestions.ts`) and does not fetch the pool or the training library. A display setting, not a security boundary.
 
-## Copy and paste a product picture (2026-11-18, branch `feat/quotation-picture-copy-paste`, no SQL)
+## Copy and paste a product picture (2026-11-18, PR #900 merged 01:26 IST as `aa521cd8`, no SQL)
 - `pictureClipboard.ts`: document-level copy/paste listeners act only for the picture area the pointer (or focus) is on, never while a text field has focus. Copy = `boe-quote-picture:<storage path>` as text; paste takes that path (plain storage paths only) or an image file (uploaded). Test: `pictureClipboard.dom.test.tsx`.
 
-## Crop by drawing a box; change a made picture again (2026-11-18, branch `feat/quotation-picture-crop-refine`, no SQL)
+## Crop by drawing a box; change a made picture again (2026-11-18, PR #901 merged 01:38 IST as `62939430`, no SQL)
 - `CropBox.tsx` (drag to draw, move, corner resize; `renderCrop` turns then cuts) in StudioDialog and CropDialog; `drawCrop`/`Insets` removed. StudioDialog keeps `earlier` (the made pictures before this one) and sends `{ sourcePath: result, mode: "change", instruction }` for "Make these changes". Test: `cropAndRefine.dom.test.tsx`.
+
+## Products and prices in ONE table; the salesperson's own details (2026-11-18, branch `feat/quotation-pdf-one-table`, migration `20270801000000` APPLIED)
+- Supersedes the product card pages and the price pages of section 13. `planTablePages(groups, summaryUnits(sumRows))` in `documentPlan.ts` (rows: `group` with `continued`, `line`; `lineUnits` / `rowUnits` / `GROUP_UNITS` / `TABLE_FIRST_UNITS` 105 / `TABLE_NEXT_UNITS` 112, measured in headless Edge); the last product goes over with the totals when they do not fit. Notes print on the Terms and acceptance page (`NOTES_ON_TERMS_LINES` 10, else a Notes page). CSS: `.ptbl`, `.tb` (fixed thumbnail), `.pname`, `.pspec`, `.optRow`; phone stacks each row.
+- `quotation_salesperson_cards` (one row per person; no direct grants) via `quotation_my_card()` / `quotation_my_card_save(p jsonb)`; `quotation_get` adds `owner_display_name`, `owner_title`, `owner_card_saved` and takes phone / e-mail from the card once saved; `quotation_public` adds `salesperson_title`. `MyDetails.tsx`: `MyDetailsReminder` (builder, print page, owner only, until saved) and `MyDetailsDialog` ("My details" on the print page). Tests: PGlite (5 checks), `documentPlan.test.ts`, `documentLayout.test.ts`, `clientDocument.test.tsx`, `myDetails.dom.test.tsx`.
+- Trap: a render check needs the real stylesheet; the throw-away render and CDP scripts are in `BOE-Development/temporary/quotation-render`.
 
 ## 7. Traps
 

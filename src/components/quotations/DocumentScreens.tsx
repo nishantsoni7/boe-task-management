@@ -1,16 +1,17 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Download } from 'lucide-react'
+import { ArrowLeft, Download, UserRound } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
 import { createClient } from '@/lib/supabase/client'
 import { errorText, fetchPublic, fetchQuotation, pictureUrl, quotationKeys } from '@/lib/quotations/api'
 import { documentFileName } from '@/lib/quotations/documentPlan'
 import { QuotationDocument } from './QuotationDocument'
+import { MyDetailsDialog, MyDetailsReminder } from './MyDetails'
 import p from './screens.module.css'
 
 // Two ways to the same printed quotation: the salesperson's print page (signed in, inside the module gate) and
@@ -48,17 +49,25 @@ function Bar({ back, fileName }: { back?: React.ReactNode; fileName: string }) {
 
 export function PrintScreen() {
   const { id } = useParams<{ id: string }>()
-  const { supabase, loading, accessLoaded } = useQuotations()
+  const { supabase, profile, loading, accessLoaded } = useQuotations()
+  const [details, setDetails] = useState(false)
   const q = useQuery({ queryKey: quotationKeys.one(id), queryFn: () => fetchQuotation(supabase, id), enabled: accessLoaded, retry: false })
   if (loading || q.isLoading || (!q.data && !q.isError)) return <LoadingScreen />
   if (q.isError || !q.data) return <div className={p.page}><div className={p.msg}>{errorText(q.error)}</div></div>
   const x = q.data
+  // the salesperson who owns it fills in, or changes, the details it prints (20270801000000)
+  const mine = !!profile?.id && profile.id === x.owner_id
   return (
     <div className={p.page}>
-      <Bar fileName={documentFileName(x.quote_no, x.header.project_name, x.header.client_name)} back={<Link className={p.btn} href={`/quotations/${id}`}><ArrowLeft size={15} aria-hidden /> Back to the quotation</Link>} />
+      <Bar fileName={documentFileName(x.quote_no, x.header.project_name, x.header.client_name)} back={<>
+        <Link className={p.btn} href={`/quotations/${id}`}><ArrowLeft size={15} aria-hidden /> Back to the quotation</Link>
+        {mine && <button className={p.btn} onClick={() => setDetails(true)}><UserRound size={15} aria-hidden /> My details</button>}
+      </>} />
+      {mine && !x.owner_card_saved && <div className={p.bar}><div style={{ flex: 1 }}><MyDetailsReminder supabase={supabase} /></div></div>}
+      {details && <MyDetailsDialog supabase={supabase} onClose={() => setDetails(false)} />}
       <QuotationDocument pictureUrl={path => pictureUrl(supabase, path)} doc={{
         quote_no: x.quote_no, issued_at: x.sent_at ?? x.created_at, valid_days: x.header.valid_days, client_name: x.header.client_name,
-        project_name: x.header.project_name || null, contact_name: x.header.contact_name || null, salesperson: x.owner_name,
+        project_name: x.header.project_name || null, contact_name: x.header.contact_name || null, salesperson: x.owner_display_name ?? x.owner_name, salesperson_title: x.owner_title,
         company_name: x.header.company_name || null, client_gstin: x.header.client_gstin || null, dimension_unit: x.header.dimension_unit,
         project_type: x.header.project_type || null, seats: x.header.seats, lead_time_weeks: x.header.lead_time_weeks,
         salesperson_phone: x.owner_phone, salesperson_email: x.owner_email,

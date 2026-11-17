@@ -7,9 +7,9 @@ import type { DimensionUnit, GstMode, QuoteArea, QuoteLine } from '@/lib/quotati
 import { computeTotals, formatDateIN, sizeInInches, sizeWithUnit, toDimensionUnit, validUntil } from '@/lib/quotations/math'
 import { CLOSING, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS } from '@/lib/quotations/terms'
 import {
-  ADDRESS, ADVANCE_PCT, OPTIONAL_LISTED, PROOF, WEBSITE, WORKSHOP_LINE, capitalised, compactAmount, countsSeats, groupsOf, numberInWords,
-  planInvestmentPages, planProductPages, planTermsPages, roomsOf, rupeesInWords, summaryUnits, toProjectType,
-  type InvRow,
+  ADDRESS, ADVANCE_PCT, PROOF, WEBSITE, WORKSHOP_LINE, capitalised, compactAmount, countsSeats, groupsOf, numberInWords,
+  NOTES_ON_TERMS_LINES, noteLinesOf, planTablePages, planTermsPages, roomsOf, rupeesInWords, summaryUnits, toProjectType,
+  type TableRow,
 } from '@/lib/quotations/documentPlan'
 import { WORK_PULL, workSetFor } from '@/lib/quotations/documentWork'
 import d from './document.module.css'
@@ -17,8 +17,9 @@ import { Pic } from './Pic'
 
 // The quotation as the client receives it (owner-approved 14 Nov 2026): a portrait A4 document in the look of the
 // Best of Exports catalogue. The print page, the client link and the saved PDF all draw THIS, page by page; the page
-// plan (which products and rows go on which page) is decided in src/lib/quotations/documentPlan.ts so a screen and a
-// PDF show the same pages. Client-safe by construction: it is given no internal notes, cost, client phone or e-mail.
+// plan (which rows go on which page) is decided in src/lib/quotations/documentPlan.ts so a screen and a PDF show the
+// same pages. Since 18 Nov 2026 the products and their prices are ONE table (picture, product, qty, rate, amount), not
+// picture pages followed by price pages, and the salesperson's details are the ones they filled in themselves. Client-safe by construction: it is given no internal notes, cost, client phone or e-mail.
 // The Finish of a product is never printed (owner, 13 Nov 2026).
 
 export type DocData = {
@@ -40,6 +41,8 @@ export type DocData = {
   salesperson: string | null
   salesperson_phone?: string | null
   salesperson_email?: string | null
+  /** What the salesperson calls their role ("Sales Manager"), from the details they filled in (20270801000000). */
+  salesperson_title?: string | null
   gst_mode: GstMode
   discount_pct: number
   fabric_amount: number
@@ -69,12 +72,13 @@ function Proof() {
   )
 }
 
-function Person({ name, phone, email, lead }: { name: string | null; phone?: string | null; email?: string | null; lead: ReactNode }) {
+function Person({ name, title, phone, email, lead }: { name: string | null; title?: string | null; phone?: string | null; email?: string | null; lead: ReactNode }) {
   const contact = [phone, email].filter(Boolean).join(' · ')
+  const role = title?.trim() ? `${title.trim()}, Best of Exports` : 'Best of Exports'
   return (
     <div className={d.person}>
       <div className={d.av} aria-hidden="true">{(name ?? 'B').trim().charAt(0).toUpperCase()}</div>
-      <p>{lead}<br />{contact ? <>{contact}<br /></> : null}<span className={d.muted}>Sales, Best of Exports</span></p>
+      <p>{lead}<br />{contact ? <>{contact}<br /></> : null}<span className={d.muted}>{role}</span></p>
     </div>
   )
 }
@@ -107,11 +111,11 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
   const type = toProjectType(doc.project_type)
   const rooms = roomsOf(doc.areas)
   const groups = groupsOf(doc.areas, doc.lines)
-  const productPages = planProductPages(groups)
-  const optional = doc.lines.filter(l => l.is_optional)
   const sumRows = 1 + (t.discount > 0 ? 1 : 0) + (doc.fabric_amount > 0 ? 1 : 0) + (doc.packing_amount > 0 ? 1 : 0) + (t.discount > 0 || doc.fabric_amount > 0 || doc.packing_amount > 0 ? 1 : 0) + t.gst.length * (doc.gst_mode === 'cgst_sgst' ? 2 : 1)
-  const noteLines = (doc.notes ? doc.notes.split('\n').reduce((k, x) => k + Math.max(1, Math.ceil(x.length / 85)), 0) : 0) + (doc.transport_note ? 1 : 0)
-  const invPages = planInvestmentPages(groups, summaryUnits({ sumRows, optionalLines: optional.length, noteLines }))
+  // the notes sit with the terms (there is room there); long notes get a page of their own just before them
+  const hasNotes = !!(doc.notes || doc.transport_note)
+  const notesPage = noteLinesOf(doc.notes, doc.transport_note) > NOTES_ON_TERMS_LINES
+  const tablePages = planTablePages(groups, summaryUnits(sumRows))
   const termPages = planTermsPages([{ heading: EXPECTATIONS_TITLE, items: EXPECTATIONS }, { heading: 'Terms and Conditions', items: TERMS }])
   const work = workSetFor(type)
   const title = doc.project_name || doc.client_name
@@ -122,10 +126,9 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
 
   let n = 1
   const nGlance = ++n, nWork = ++n
-  const firstProduct = n + 1
-  n += productPages.length
-  const firstInvest = n + 1
-  n += invPages.length
+  const firstTable = n + 1
+  n += tablePages.length
+  const nNotes = notesPage ? ++n : 0
   const nTerms = ++n
   const firstAnnex = n + 1
 
@@ -151,25 +154,48 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
   included.push(doc.gst_mode === 'cgst_sgst' ? 'GST shown separately as CGST and SGST' : 'GST shown separately as IGST')
   const weeks = doc.lead_time_weeks && doc.lead_time_weeks > 0 ? doc.lead_time_weeks : null
 
-  const qtyText = (l: QuoteLine, a: QuoteArea | null) => {
-    const q = t.lineQty[l.key] ?? 0
-    const pieces = `${q.toLocaleString('en-IN')} ${q === 1 ? 'piece' : 'pieces'}`
-    return l.qty_mode === 'per_unit' && a && a.multiplier > 1 ? `${l.qty} per ${singular(a.unit_label)} · ${pieces}` : pieces
-  }
-
-  const invRow = (r: InvRow) => {
-    if (r.kind === 'group') return <tr key={`g${r.area.key}`} className={d.grp}><td colSpan={3}>{areaTitle(r.area)}</td><td className={d.r}>{formatINR(t.areaTotal[r.area.key] ?? 0)}</td></tr>
+  const tableRow = (r: TableRow) => {
+    if (r.kind === 'group') {
+      return (
+        <tr key={`g${r.area.key}${r.continued ? 'c' : ''}`} className={d.grp}>
+          <td colSpan={4}>{areaTitle(r.area)}{r.continued ? <span className={d.cont}> · continued</span> : null}</td>
+          <td className={d.r}>{r.continued ? '' : formatINR(t.areaTotal[r.area.key] ?? 0)}</td>
+        </tr>
+      )
+    }
     const l = r.line, q = t.lineQty[l.key] ?? 0
     const per = l.qty_mode === 'per_unit' && r.area && r.area.multiplier > 1 ? `${l.qty} per ${singular(r.area.unit_label)} × ${r.area.multiplier} ${r.area.unit_label}` : ''
+    const size = l.size_text ? sizeWithUnit(l.size_text, unit) : ''
+    const inch = l.size_text ? inches(l.size_text, unit) : ''
+    const amount = l.unit_price === null ? '—' : formatINR(t.lineTotal[l.key] ?? 0)
     return (
-      <tr key={l.key}>
-        <td>{l.name}{per ? <small>{per}</small> : null}</td>
+      <tr key={l.key} className={l.is_optional ? d.optRow : undefined}>
+        {/* a product with no picture leaves the cell empty: no empty frame */}
+        <td className={d.thumb}>{l.image_path ? <div className={d.tb}><Pic src={pictureUrl(l.image_path)} alt={l.name} lazy /></div> : null}</td>
+        <td>
+          <b className={d.pname}>{l.name}</b>
+          <span className={d.pspec}>
+            {size ? <span className={d.num}>{size}{inch ? ` (${inch})` : ''}</span> : null}
+            {l.material ? <span>{l.material}</span> : null}
+            {l.spec ? <span className={d.remarks}>{l.spec}</span> : null}
+            {l.client_note ? <span className={d.remarks}>Note: {l.client_note}</span> : null}
+            {per ? <span>{per}</span> : null}
+            {l.is_optional ? <span className={d.opt}>Optional, not in the total</span> : null}
+          </span>
+        </td>
         <td className={d.r}>{q.toLocaleString('en-IN')}</td>
         <td className={d.r}>{l.unit_price === null ? '—' : formatINR(l.unit_price)}</td>
-        <td className={d.r}>{l.unit_price === null ? '—' : formatINR(t.lineTotal[l.key] ?? 0)}</td>
+        <td className={d.r}>{l.is_optional && l.unit_price !== null ? `(${amount})` : amount}</td>
       </tr>
     )
   }
+
+  const notesBox = (
+    <div className={d.notesBox}>
+      {doc.notes ? <><h3>Notes</h3><p>{doc.notes}</p></> : null}
+      {doc.transport_note ? <p><b>Transport:</b> {doc.transport_note}</p> : null}
+    </div>
+  )
 
   return (
     <article className={d.doc}>
@@ -216,7 +242,7 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
           <div><div className={d.tlabel}>This quotation is valid until {until}</div><strong>Reply “Approved” to begin</strong></div>
           <div className={d.reply}>{doc.salesperson_phone ? `WhatsApp ${doc.salesperson_phone}` : `Reply to ${who}`}</div>
         </div>
-        <Person name={doc.salesperson} phone={doc.salesperson_phone} email={doc.salesperson_email} lead={<b>{doc.salesperson ?? 'Best of Exports'}</b>} />
+        <Person name={doc.salesperson} title={doc.salesperson_title} phone={doc.salesperson_phone} email={doc.salesperson_email} lead={<b>{doc.salesperson ?? 'Best of Exports'}</b>} />
         <Proof />
         <p className={d.proofLine}>{WORKSHOP_LINE}</p>
       </Page>
@@ -235,43 +261,13 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
         <Proof />
       </Page>
 
-      {/* ── 4 · the products ── */}
-      {productPages.map((pg, pi) => (
-        <Page key={`p${pi}`} n={firstProduct + pi} section="The products" kicker="The products">
-          <div className={d.room}><h3>{pg.area ? areaTitle(pg.area) : 'Other products'}{pg.continued ? <span className={d.cont}> · continued</span> : null}</h3></div>
-          <div className={d.pgrid}>
-            {pg.lines.map(l => {
-              const size = l.size_text ? sizeWithUnit(l.size_text, unit) : ''
-              const inch = l.size_text ? inches(l.size_text, unit) : ''
-              return (
-                <div key={l.key} className={`${d.prod} ${l.is_optional ? d.optional : ''}`}>
-                  {/* a product with no picture prints its text only: no empty frame (cardUnits leaves the picture out of its height) */}
-                  {l.image_path ? <div className={d.ph}><Pic src={pictureUrl(l.image_path)} alt={l.name} lazy /></div> : null}
-                  <h4>{l.name}</h4>
-                  <div className={d.spec}>
-                    {size ? <div className={d.num}>{size}{inch ? <span> ({inch})</span> : null}</div> : null}
-                    {l.material ? <div>{l.material}</div> : null}
-                    {l.spec ? <div className={d.remarks}>{l.spec}</div> : null}
-                    {l.client_note ? <div className={d.remarks}>Note: {l.client_note}</div> : null}
-                  </div>
-                  <div className={d.qty}>
-                    <span><em>{qtyText(l, pg.area)}</em>{l.is_optional ? <em className={d.opt}> · optional, not in the total</em> : null}</span>
-                    <b>{l.unit_price === null ? '—' : formatINR(l.unit_price)}</b>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </Page>
-      ))}
-
-      {/* ── 5 · the investment ── */}
-      {invPages.map((pg, pi) => (
-        <Page key={`i${pi}`} n={firstInvest + pi} section="The investment" kicker="The investment" title={pi === 0 ? 'Every rupee, line by line.' : undefined}>
+      {/* ── 4 · the products and their prices, one table ── */}
+      {tablePages.map((pg, pi) => (
+        <Page key={`i${pi}`} n={firstTable + pi} section="Products and prices" kicker="Products and prices" title={pi === 0 ? 'Every piece, line by line.' : undefined}>
           {pg.rows.length ? (
-            <table className={d.tbl}>
-              <thead><tr><th>Item</th><th className={d.r}>Qty</th><th className={d.r}>Rate</th><th className={d.r}>Amount</th></tr></thead>
-              <tbody>{pg.rows.map(invRow)}</tbody>
+            <table className={`${d.tbl} ${d.ptbl}`}>
+              <thead><tr><th className={d.thumb} aria-label="Picture" /><th>Product</th><th className={d.r}>Qty</th><th className={d.r}>Rate</th><th className={d.r}>Amount</th></tr></thead>
+              <tbody>{pg.rows.map(tableRow)}</tbody>
             </table>
           ) : null}
           {pg.summary ? (
@@ -288,23 +284,6 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
                 <tr className={d.tot}><td colSpan={3}>Grand total</td><td className={d.r}>{formatINR(t.grand)}</td></tr>
               </tbody></table>
               <p className={d.words}>{rupeesInWords(t.grand)}</p>
-            </>
-          ) : null}
-          {pg.extras && optional.length ? (
-            <div className={d.optBox}>
-              <h3>Optional, not in the total</h3>
-              {optional.slice(0, OPTIONAL_LISTED).map(l => <p key={l.key}>{l.name} · {(t.lineQty[l.key] ?? 0).toLocaleString('en-IN')} pieces · {l.unit_price === null ? 'price on request' : <>{formatINR(l.unit_price)} each · <b>{formatINR(t.lineTotal[l.key] ?? 0)}</b> before GST</>}</p>)}
-              {optional.length > OPTIONAL_LISTED ? <p>and {optional.length - OPTIONAL_LISTED} more optional products, on the product pages</p> : null}
-            </div>
-          ) : null}
-          {pg.extras && (doc.notes || doc.transport_note) ? (
-            <div className={d.notesBox}>
-              {doc.notes ? <><h3>Notes</h3><p>{doc.notes}</p></> : null}
-              {doc.transport_note ? <p><b>Transport:</b> {doc.transport_note}</p> : null}
-            </div>
-          ) : null}
-          {pg.summary ? (
-            <>
               <div className={d.sched}><div className={d.a}><b>{ADVANCE_PCT}%</b>Advance, on confirmation of the order</div><div className={d.b}><b>{100 - ADVANCE_PCT}%</b>Before dispatch</div></div>
               <div className={d.tline}>
                 <div><b>Approval</b>Advance received</div>
@@ -316,6 +295,8 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
           ) : null}
         </Page>
       ))}
+
+      {notesPage ? <Page n={nNotes} section="Notes" kicker="Notes">{notesBox}</Page> : null}
 
       {/* ── 6 · terms in plain words, and the acceptance ── */}
       <Page n={nTerms} section="Terms and acceptance" kicker="Terms and acceptance" title="What we ask, and how we start.">
@@ -329,12 +310,13 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
             <li>Design, size and finish unchanged once finalised</li>
             <li>One single point of contact for the project</li></ul></div>
         </div>
+        {hasNotes && !notesPage ? notesBox : null}
         <p className={d.fine}>The full terms and conditions (7 expectations, 23 terms) follow on the next {termPages.length === 1 ? 'page' : 'pages'} and are part of this quotation.</p>
         <div className={d.accept}>
           <div className={d.tlabel}>Accepted for {signedFor}</div>
           <div className={d.sign}><div>Name</div><div>Signature</div><div>Date and PO number</div></div>
         </div>
-        <Person name={doc.salesperson} phone={doc.salesperson_phone} email={doc.salesperson_email} lead={<b>Questions? Talk to {who}.</b>} />
+        <Person name={doc.salesperson} title={doc.salesperson_title} phone={doc.salesperson_phone} email={doc.salesperson_email} lead={<b>Questions? Talk to {who}.</b>} />
         <div className={d.addr}><div className={d.vrt} /><div>{WEBSITE}<br />{ADDRESS.map(x => <span key={x}>{x}<br /></span>)}</div></div>
       </Page>
 

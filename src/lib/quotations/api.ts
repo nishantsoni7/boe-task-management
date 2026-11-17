@@ -48,6 +48,8 @@ export type Quotation = {
   created_at: string; updated_at: string; owner_name: string | null; may_edit: boolean
   /** The salesperson's mobile and e-mail, printed on the client document (20270717000000, owner 14 Nov 2026). */
   owner_phone: string | null; owner_email: string | null
+  /** The salesperson's own details for the document, once they have filled them in (20270801000000); before that the name is owner_name. */
+  owner_id: string; owner_display_name: string | null; owner_title: string | null; owner_card_saved: boolean
   header: Header; areas: QuoteArea[]; lines: QuoteLine[]; events: QuotationEvent[]
   /** The PI draft this quotation was confirmed into (20270615000000), or null. */
   pi: { id: string; draft_reference: string | null; status: string } | null
@@ -76,6 +78,8 @@ export type QueueRow = {
   value_before_gst: number; requested_at: string; reasons: PriceReason[]
 }
 /** Who sees the suggested prices (20270731000000): everyone, or only the people listed. */
+/** The salesperson's details printed on their quotations, filled in once and editable (20270801000000). */
+export type MyCard = { saved: boolean; name: string; title: string; phone: string; email: string; updated_at?: string }
 export type SuggestionSettings = { everyone: boolean; for_me: boolean; shown_to: string[]; may_change: boolean; updated_at: string }
 export type PriceSettings = { max_discount_pct: number | null; min_price_pct: number | null; updated_at: string; may_change: boolean }
 
@@ -89,7 +93,7 @@ export type PublicQuotation = {
   version_no?: number | null
   /** Set only when set (20270717000000); a copy sent before has none. The salesperson's contact is live, not frozen. */
   project_type?: string | null; seats?: number | null; lead_time_weeks?: number | null
-  salesperson_phone?: string | null; salesperson_email?: string | null
+  salesperson_phone?: string | null; salesperson_email?: string | null; salesperson_title?: string | null
   areas: QuoteArea[]; lines: QuoteLine[]
 }
 
@@ -134,6 +138,7 @@ export const quotationKeys = {
   access: ['quotations', 'access'] as const,
   list: (scope: 'mine' | 'all') => ['quotations', 'list', scope] as const,
   one: (id: string) => ['quotations', 'one', id] as const,
+  myCard: ['quotations', 'my-card'] as const,
 }
 
 export const fetchAccess = (s: Supabase) => call<QuotationAccess>(() => s.rpc('quotation_my_access'))
@@ -167,7 +172,7 @@ export function toLines(rows: DbLine[]): QuoteLine[] {
 }
 
 export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation> {
-  const r = await call<{ quotation: Record<string, unknown>; owner_name: string | null; owner_phone?: string | null; owner_email?: string | null; may_edit: boolean; areas: DbArea[]; lines: DbLine[]; events: QuotationEvent[]; pi?: Quotation['pi']; price?: PriceState; request?: Quotation['request'] }>(
+  const r = await call<{ quotation: Record<string, unknown>; owner_name: string | null; owner_phone?: string | null; owner_email?: string | null; owner_display_name?: string | null; owner_title?: string | null; owner_card_saved?: boolean; may_edit: boolean; areas: DbArea[]; lines: DbLine[]; events: QuotationEvent[]; pi?: Quotation['pi']; price?: PriceState; request?: Quotation['request'] }>(
     () => s.rpc('quotation_get', { p_id: id }))
   const q = r.quotation as Record<string, string | number | null>
   const str = (k: string) => (q[k] as string | null) ?? ''
@@ -175,6 +180,7 @@ export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation
     id: str('id'), quote_no: str('quote_no'), status: q.status as QuotationStatus, share_token: (q.share_token as string | null) ?? null,
     sent_at: (q.sent_at as string | null) ?? null, created_at: str('created_at'), updated_at: str('updated_at'),
     owner_name: r.owner_name, owner_phone: r.owner_phone ?? null, owner_email: r.owner_email ?? null, may_edit: r.may_edit,
+    owner_id: str('owner_id'), owner_display_name: r.owner_display_name ?? null, owner_title: r.owner_title ?? null, owner_card_saved: !!r.owner_card_saved,
     header: {
       client_name: str('client_name'), project_name: str('project_name'), contact_name: str('contact_name'),
       contact_phone: str('contact_phone'), contact_role: str('contact_role'), client_type: str('client_type'),
@@ -246,6 +252,8 @@ export const decidePrice = (s: Supabase, id: string, approve: boolean, note: str
   call<PriceState>(() => s.rpc('quotation_price_decide', { p_id: id, p_approve: approve, p_note: note }))
 export const fetchPriceQueue = (s: Supabase) => call<QueueRow[]>(() => s.rpc('quotation_price_queue'))
 export const fetchPriceSettings = (s: Supabase) => call<PriceSettings>(() => s.rpc('quotation_price_settings_get'))
+export const fetchMyCard = (s: Supabase) => call<MyCard>(() => s.rpc('quotation_my_card'))
+export const saveMyCard = (s: Supabase, card: Pick<MyCard, 'name' | 'title' | 'phone' | 'email'>) => call<MyCard>(() => s.rpc('quotation_my_card_save', { p: card }))
 export const fetchSuggestionSettings = (s: Supabase) => call<SuggestionSettings>(() => s.rpc('quotation_suggestions_get'))
 export const saveSuggestionSettings = (s: Supabase, everyone: boolean) => call<SuggestionSettings>(() => s.rpc('quotation_suggestions_set', { p_everyone: everyone }))
 export const savePriceSettings = (s: Supabase, maxDiscount: number | null, minPrice: number | null) =>

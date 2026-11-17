@@ -740,4 +740,41 @@ await db.exec(mig('20270721000000_quotation_line_reference_images.sql'))
   ok('the client link and the frozen version do not carry the extra pictures')
 }
 
+// ── 20270801000000: the salesperson's own details, filled in once ──
+await db.exec(mig('20270801000000_quotation_salesperson_card.sql'))
+{
+  const save = (uid, card) => as(uid, 'select public.quotation_my_card_save($1::jsonb) as r', [JSON.stringify(card)]).then(r => r.rows[0].r)
+  const c0 = await rpc(U.sales, 'quotation_my_card')
+  assert.deepEqual([c0.saved, c0.name, c0.phone, c0.email], [false, 'Mohit Sharma', '+91 90000 00001', 'mohit@boe.example'])
+  const g0 = await rpc(U.sales, 'quotation_get', qa)
+  assert.deepEqual([g0.owner_card_saved, g0.owner_phone, g0.owner_email, g0.owner_display_name], [false, '+91 90000 00001', 'mohit@boe.example', null])
+  ok('before anything is saved: the form starts from the profile, and the document prints what it printed before')
+
+  await assert.rejects(() => save(U.sales, { name: 'M' }), /write your name/)
+  await assert.rejects(() => save(U.sales, { name: 'Mohit', phone: 'call me' }), /mobile number is not valid/)
+  await assert.rejects(() => save(U.sales, { name: 'Mohit', phone: '12345' }), /mobile number is not valid/)
+  await assert.rejects(() => save(U.sales, { name: 'Mohit', email: 'mohit@' }), /e-mail is not valid/)
+  await assert.rejects(() => save(U.nobody, { name: 'No Access' }), /QUOTATIONS_FORBIDDEN/)
+  ok('a short name, a wrong mobile or e-mail, and a person without Quotations are refused')
+
+  const c1 = await save(U.sales, { name: ' Mohit Sharma ', title: 'Sales Manager', phone: '+91 98290-12345', email: '' })
+  assert.deepEqual([c1.saved, c1.name, c1.title, c1.phone, c1.email], [true, 'Mohit Sharma', 'Sales Manager', '+91 98290-12345', ''])
+  const g1 = await rpc(U.sales, 'quotation_get', qa)
+  assert.deepEqual([g1.owner_card_saved, g1.owner_display_name, g1.owner_title, g1.owner_phone, g1.owner_email], [true, 'Mohit Sharma', 'Sales Manager', '+91 98290-12345', null])
+  const c2 = await save(U.sales, { name: 'Mohit S.', title: '', phone: '', email: 'MOHIT@boe.example' })
+  assert.deepEqual([c2.name, c2.title, c2.phone, c2.email], ['Mohit S.', '', '', 'mohit@boe.example'], 'saved again: it is editable')
+  assert.equal((await rpc(U.sales2, 'quotation_my_card')).saved, false, 'one person saving does not fill in anyone else')
+  ok('saved details print on the print page; a blank mobile prints nothing once saved; saving again changes them')
+
+  const tok = (await db.query("update public.quotations set share_token = repeat('c', 31) || 'd', status = 'sent' where id = $1 returning share_token", [qa])).rows[0].share_token
+  const pub2 = (await as(null, 'select public.quotation_public($1) as r', [tok], 'anon')).rows[0].r
+  assert.deepEqual([pub2.salesperson, pub2.salesperson_email, 'salesperson_title' in pub2, 'salesperson_phone' in pub2], ['Mohit S.', 'mohit@boe.example', false, false])
+  for (const k of ['owner_id', 'share_token', 'internal_notes', 'contact_phone']) assert.ok(!(k in pub2), k)
+  ok('the client link prints the saved name and e-mail, and nothing the salesperson left blank')
+
+  await assert.rejects(() => as(U.sales, 'select * from public.quotation_salesperson_cards'), /permission denied/)
+  await assert.rejects(() => as(null, 'select public.quotation_my_card()', [], 'anon'), /permission denied/)
+  ok('the table is closed to direct reads, and the details functions to anyone signed out')
+}
+
 console.log(`all ${checks} checks passed`)

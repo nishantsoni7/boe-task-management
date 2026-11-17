@@ -1,6 +1,6 @@
 /**
  * The premium client document's decisions (owner-approved 14 Nov 2026): the lead-time rules and their edges, amounts in words,
- * and which products, price rows and terms go on which A4 page. The pages drawn from this plan are read back in a real
+ * and which table rows and terms go on which A4 page. The pages drawn from this plan are read back in a real
  * browser (PDF page count equals the planned sheets, nothing overflows) when the document is built; here the plan itself.
  *
  * Run:
@@ -11,15 +11,15 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import {
-  PROJECT_TYPES, cardUnits, compactAmount, countsRooms, countsSeats, documentFileName, groupsOf, leadTimeRule, numberInWords, planInvestmentPages,
-  OPTIONAL_LISTED, planProductPages, planTermsPages, projectTypeLabel, roomsOf, rupeesInWords, summaryUnits, toProjectType, PRODUCT_PAGE_UNITS, TERMS_PAGE_CHARS,
-  NAME_LINE_CHARS, PICTURE_UNITS, isRoomUnit, nameLines,
+  PROJECT_TYPES, compactAmount, countsRooms, countsSeats, documentFileName, groupsOf, leadTimeRule, numberInWords, planTablePages,
+  planTermsPages, projectTypeLabel, roomsOf, rowUnits, rupeesInWords, summaryUnits, toProjectType, TERMS_PAGE_CHARS, TABLE_FIRST_UNITS, TABLE_NEXT_UNITS,
+  THUMB_UNITS, lineUnits, noteLinesOf, type TablePage,
 } from './documentPlan'
 import { EXPECTATIONS, TERMS } from './terms'
 import type { QuoteArea, QuoteLine } from './math'
 
 const area = (key: string, multiplier = 1, name = key, unit_label = 'rooms'): QuoteArea => ({ key, name, style: '', multiplier, unit_label })
-// A product has a picture unless a test says otherwise: most do, and a card without one is deliberately shorter (see "a product with no picture").
+// A product has a picture unless a test says otherwise: most do, and a row without one is shorter.
 const line = (n: number, areaKey: string | null, over: Partial<QuoteLine> = {}): QuoteLine => ({
   key: `l${n}`, area_key: areaKey, name: `Product ${n}`, size_text: '20 x 30', spec: '', material: 'Ash wood', finish: '', category: '',
   qty_mode: 'per_unit', qty: 1, unit_price: 1000, tax_rate: 18, image_path: 'u/p.jpg', is_optional: false, client_note: '', internal_note: '', ...over,
@@ -96,88 +96,71 @@ describe('amounts and counts in words (Indian grouping)', () => {
   })
 })
 
-describe('product pages', () => {
-  const flat = (pages: ReturnType<typeof planProductPages>) => pages.flatMap(p => p.lines.map(l => l.key))
-  test('four ordinary products fill a page (2 × 2); the fifth starts the next, marked as continued', () => {
-    const pages = planProductPages(groupsOf([area('a', 56)], lines(5, 'a')))
-    assert.deepEqual(pages.map(p => p.lines.length), [4, 1]); assert.deepEqual(pages.map(p => p.continued), [false, true])
+describe('products and prices: one table (owner, 18 Nov 2026)', () => {
+  const keys = (pages: TablePage[]) => pages.flatMap(p => p.rows.filter(r => r.kind === 'line').map(r => (r as { line: QuoteLine }).line.key))
+  const small = summaryUnits(2)
+  test('a short quotation is one page: its room-type heading, its products and the summary under them', () => {
+    const pages = planTablePages(groupsOf([area('a', 5)], lines(4, 'a')), small)
+    assert.equal(pages.length, 1); assert.equal(pages[0].summary, true); assert.equal(pages[0].rows.length, 5)
   })
-  test('every room type starts its own page, and the page names its room type', () => {
-    const areas = [area('a', 10), area('b', 20)]
-    const pages = planProductPages(groupsOf(areas, [...lines(2, 'a'), ...lines(2, 'b', 10)]))
-    assert.deepEqual(pages.map(p => [p.area?.key, p.lines.length]), [['a', 2], ['b', 2]])
+  test('room types do NOT start new pages: two small room types share one page', () => {
+    const pages = planTablePages(groupsOf([area('a', 10), area('b', 20)], [...lines(2, 'a'), ...lines(1, 'b', 10)]), small)
+    assert.equal(pages.length, 1)
+    assert.deepEqual(pages[0].rows.map(r => r.kind === 'group' ? r.area.key : 'line'), ['a', 'line', 'line', 'b', 'line'])
   })
-  test('products with no room type come last, on their own pages', () => {
-    const pages = planProductPages(groupsOf([area('a')], [...lines(1, 'a'), ...lines(1, null, 5), line(9, 'gone')]))
-    assert.deepEqual(pages.map(p => p.area?.key ?? null), ['a', null]); assert.equal(pages[1].lines.length, 2)
-  })
-  test('every product is on exactly one page, in the order it was typed', () => {
-    const ls = [...lines(9, 'a'), ...lines(7, 'b', 20)]
-    assert.deepEqual(flat(planProductPages(groupsOf([area('a'), area('b')], ls))), ls.map(l => l.key))
-  })
-  test('long remarks cost room: a 1,600-character remark takes a page of its own, and two long ones do not share a row', () => {
-    const long = (n: number) => line(n, 'a', { spec: 'x'.repeat(1600) })
-    assert.ok(cardUnits(long(1)) > PRODUCT_PAGE_UNITS - 3)
-    assert.deepEqual(planProductPages(groupsOf([area('a')], [long(1), line(2, 'a'), line(3, 'a')])).map(p => p.lines.length), [1, 2])
-    const mid = (n: number) => line(n, 'a', { spec: 'y'.repeat(400) })
-    assert.deepEqual(planProductPages(groupsOf([area('a')], [mid(1), mid(2), mid(3), mid(4), mid(5)])).map(p => p.lines.length), [2, 2, 1], 'two rows of 400-character remarks do not fit one page')
-  })
-  test('a longer name and longer material count for more than a short one', () => {
-    assert.ok(cardUnits(line(1, 'a', { name: 'A very long product name that wraps' })) > cardUnits(line(1, 'a')))
-    assert.ok(cardUnits(line(1, 'a', { material: 'm'.repeat(120) })) > cardUnits(line(1, 'a')))
-  })
-  test('no lines, no pages', () => assert.deepEqual(planProductPages([]), []))
-})
-
-describe('price table pages', () => {
-  const keys = (pages: ReturnType<typeof planInvestmentPages>) => pages.flatMap(p => p.rows.filter(r => r.kind === 'line').map(r => (r as { line: QuoteLine }).line.key))
-  const small = summaryUnits({ sumRows: 2, optionalLines: 0, noteLines: 0 })
-  test('a short quotation is one page with its summary', () => {
-    const pages = planInvestmentPages(groupsOf([area('a', 5)], lines(4, 'a')), small)
-    assert.equal(pages.length, 1); assert.deepEqual([pages[0].summary, pages[0].extras], [true, true]); assert.equal(pages[0].rows.length, 5, 'a room-type heading and four products')
-  })
-  test('no products still gives the summary page', () => assert.deepEqual(planInvestmentPages([], { main: 8, extras: 0 }), [{ rows: [], summary: true, extras: true }]))
-  test('a long quotation splits; every product is on one page in order; only the last page carries the summary', () => {
-    const ls = [...lines(30, 'a'), ...lines(20, 'b', 40)]
-    const pages = planInvestmentPages(groupsOf([area('a', 3), area('b', 4)], ls), { main: 8, extras: 3 })
-    assert.ok(pages.length >= 4)
+  test('no products still gives the summary page', () => assert.deepEqual(planTablePages([], 8), [{ rows: [], summary: true }]))
+  test('a long quotation splits; every product, optional ones too, is on one page in the order typed; only the last page carries the summary', () => {
+    const ls = [...lines(30, 'a'), line(35, 'a', { is_optional: true }), ...lines(20, 'b', 40), ...lines(3, null, 90)]
+    const pages = planTablePages(groupsOf([area('a', 3), area('b', 4)], ls), summaryUnits(4))
+    assert.ok(pages.length >= 5)
     assert.deepEqual(keys(pages), ls.map(l => l.key))
     assert.deepEqual(pages.map(p => p.summary), pages.map((_, i) => i === pages.length - 1))
   })
+  test('a page that opens in the middle of a room type repeats its heading as "continued"', () => {
+    const pages = planTablePages(groupsOf([area('a', 3)], lines(20, 'a')), small)
+    assert.ok(pages.length >= 2)
+    for (const p of pages.slice(1)) assert.deepEqual([p.rows[0].kind, p.rows[0].kind === 'group' && p.rows[0].continued], ['group', true])
+    assert.ok(!(pages[0].rows[0].kind === 'group' && pages[0].rows[0].continued), 'the first heading is not "continued"')
+  })
   test('a room-type heading is never the last row of a page', () => {
-    for (let n = 10; n <= 40; n++) {
-      const pages = planInvestmentPages(groupsOf([area('a', 2), area('b', 2), area('c', 2)], [...lines(n, 'a'), ...lines(n, 'b', 100), ...lines(n, 'c', 200)]), { main: 8, extras: 3 })
+    for (let n = 3; n <= 24; n++) {
+      const pages = planTablePages(groupsOf([area('a', 2), area('b', 2), area('c', 2)], [...lines(n, 'a'), ...lines(n, 'b', 100), ...lines(n, 'c', 200)]), small)
       for (const p of pages) if (p.rows.length) assert.notEqual(p.rows[p.rows.length - 1].kind, 'group', `n=${n}`)
     }
   })
-  test('optional products are not rows of the table', () => {
-    const ls = [line(1, 'a'), line(2, 'a', { is_optional: true }), line(3, 'a')]
-    assert.deepEqual(keys(planInvestmentPages(groupsOf([area('a', 2)], ls), small)), ['l1', 'l3'])
-    assert.deepEqual(planInvestmentPages(groupsOf([area('a')], [line(1, 'a', { is_optional: true })]), small), [{ rows: [], summary: true, extras: true }])
+  test('no page is planned past its room, so nothing runs off the A4 sheet', () => {
+    const need = summaryUnits(6)
+    for (const pic of [true, false]) for (const spec of ['', 'x'.repeat(90), 'y'.repeat(400)]) for (const n of [5, 12, 23, 40]) {
+      const ls = Array.from({ length: n }, (_, i) => line(i, i < n / 2 ? 'a' : 'b', { image_path: pic || i % 3 === 0 ? 'u/p.jpg' : null, spec: i % 2 ? spec : '', name: i % 5 ? `Product ${i}` : 'Hand-carved Sheesham wood sofa three seater with arms' }))
+      planTablePages(groupsOf([area('a', 4), area('b', 4)], ls), need).forEach((p, i) => {
+        const used = p.rows.reduce((t, r) => t + rowUnits(r), 0) + (p.summary ? need : 0)
+        assert.ok(used <= (i === 0 ? TABLE_FIRST_UNITS : TABLE_NEXT_UNITS), `${n} products, page ${i}: ${used}`)
+      })
+    }
   })
-  test('a summary that does not fit under the last rows goes on a page of its own', () => {
-    const pages = planInvestmentPages(groupsOf([area('a', 2)], lines(14, 'a')), { main: 12, extras: 0 })
-    assert.deepEqual(pages.map(p => [p.rows.length, p.summary]), [[15, false], [0, true]])
-  })
-  test('notes and optional boxes too long to sit under the summary get a last page; nothing loops or is lost', () => {
-    const need = summaryUnits({ sumRows: 4, optionalLines: 20, noteLines: 20 })
-    assert.ok(need.main + need.extras > 17)
-    const pages = planInvestmentPages(groupsOf([area('a', 2)], lines(3, 'a')), need)
-    assert.deepEqual(pages.map(p => [p.summary, p.extras]), [[true, false], [false, true]])
-    assert.deepEqual(keys(pages), ['l0', 'l1', 'l2'])
-    // however large the figures, the plan ends and the summary appears exactly once
-    for (const huge of [{ main: 40, extras: 40 }, { main: 0, extras: 99 }, { main: 99, extras: 0 }]) {
-      const p = planInvestmentPages(groupsOf([area('a', 2)], lines(9, 'a')), huge)
+  test('the totals never stand alone: when they do not fit under the last rows, the last product goes over with them', () => {
+    const pages = planTablePages(groupsOf([area('a', 2)], lines(7, 'a')), 80)
+    assert.deepEqual(pages.map(p => p.summary), [false, true])
+    assert.deepEqual(pages[1].rows.map(r => r.kind), ['group', 'line'], 'the "continued" heading and the last product')
+    // only when even one product cannot fit with them do the totals take a page of their own
+    const alone = planTablePages(groupsOf([area('a', 2)], lines(7, 'a')), 110)
+    assert.deepEqual(alone.map(p => [p.summary, p.rows.length]), [[false, 8], [true, 0]])
+    for (const huge of [200, 0, 199]) {
+      const p = planTablePages(groupsOf([area('a', 2)], lines(9, 'a')), huge)
       assert.equal(p.filter(x => x.summary).length, 1); assert.equal(keys(p).length, 9)
     }
   })
-  test('the summary grows with its sum rows, optional products and notes', () => {
-    const base = summaryUnits({ sumRows: 2, optionalLines: 0, noteLines: 0 })
-    assert.ok(summaryUnits({ sumRows: 6, optionalLines: 0, noteLines: 0 }).main > base.main)
-    assert.ok(summaryUnits({ sumRows: 2, optionalLines: 3, noteLines: 0 }).extras > summaryUnits({ sumRows: 2, optionalLines: 1, noteLines: 0 }).extras)
-    assert.ok(summaryUnits({ sumRows: 2, optionalLines: 0, noteLines: 4 }).extras > summaryUnits({ sumRows: 2, optionalLines: 0, noteLines: 1 }).extras)
-    assert.equal(base.extras, 0)
-    assert.equal(summaryUnits({ sumRows: 2, optionalLines: 500, noteLines: 0 }).extras, summaryUnits({ sumRows: 2, optionalLines: OPTIONAL_LISTED + 1, noteLines: 0 }).extras, 'only the listed ones take room')
+  test('a row with a picture is never shorter than the picture; one without is shorter; long words cost more', () => {
+    assert.ok(lineUnits(line(1, 'a')) >= THUMB_UNITS)
+    assert.ok(lineUnits(line(1, 'a', { image_path: null })) < lineUnits(line(1, 'a')))
+    assert.ok(lineUnits(line(1, 'a', { spec: 'x'.repeat(400) })) > lineUnits(line(1, 'a')))
+    assert.ok(lineUnits(line(1, 'a', { image_path: null, name: 'A very long product name that wraps onto a second line' })) > lineUnits(line(1, 'a', { image_path: null })))
+  })
+  test('the summary grows with its sum rows; notes are counted in lines of about 85 characters', () => {
+    assert.ok(summaryUnits(6) > summaryUnits(2))
+    assert.equal(noteLinesOf('Prices are ex-factory.\nSamples after the advance.', 'As per actual'), 3)
+    assert.equal(noteLinesOf('x'.repeat(170), null), 2)
+    assert.equal(noteLinesOf(null, null), 0)
   })
 })
 

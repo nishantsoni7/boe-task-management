@@ -442,7 +442,7 @@ Read first, in this order:
 
 ## Orders pages start loading while the access check runs (2026-11-18, PR #897, merged 18 Nov 2026 00:48 IST as `e8b22498`, live 00:50 IST, no SQL; checked live)
 - The Orders guard builds the page hidden and inert while it waits for the permission context; shows the same page on yes; removes it and draws the denial on no. `OrdersShownContext` (`src/lib/orders/ordersShown.ts`) tells a page whether it is on screen; the Order page's "seen" mark waits for it. `callerModulePermissions` joins the guard's read in flight; `cachedModulePermissions` refuses an invalidated answer.
-- **Browser only (18 Nov 2026, branch `fix/orders-hidden-page-browser-only`):** the hidden page is never drawn on the server or during hydration (`useSyncExternalStore`), or the HTML can differ (React #418).
+- **Browser only (18 Nov 2026, PR #898, merged 01:02 IST as `b71cb3e6`):** the hidden page is never drawn on the server or during hydration (`useSyncExternalStore`), or the HTML can differ (React #418).
 - **Trap:** anything an Orders page does on opening beyond reading (a write, a mark, a redirect that depends on capabilities) must wait for `useOrdersShown()`; audit it before adding one. Pins: `orderStartupShape.test.ts`, `importAccess.test.ts`.
 
 ## PI Draft page — reads the PI beside its first group (2026-11-17, PR #895, merged 17 Nov 2026 23:59 IST as `e4d923f2`, live 18 Nov 00:02 IST, no SQL; live: the PI read starts ~0.3 s sooner)

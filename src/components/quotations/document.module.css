@@ -118,23 +118,24 @@
 .pull p { margin: 0; font-family: var(--f-disp); font-size: calc(2.5 * var(--u)); line-height: 1.25; color: var(--ink); }
 .pull span { font-size: calc(1 * var(--u)); letter-spacing: .28em; text-transform: uppercase; color: var(--muted); }
 
-/* ── products ── */
-.room { display: flex; align-items: baseline; justify-content: space-between; gap: calc(2 * var(--u)); margin-bottom: calc(3 * var(--u)); padding-bottom: calc(1.6 * var(--u)); border-bottom: calc(.12 * var(--u)) solid var(--rule); }
-.room h3 { margin: 0; font-family: var(--f-disp); font-weight: 400; font-size: calc(2.96 * var(--u)); line-height: 1.15; }
+/* ── products and prices: one table (18 Nov 2026); a fixed thumbnail keeps every row with a picture the same height ── */
 .cont { font-family: var(--f-label); font-size: calc(1.2 * var(--u)); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
-.pgrid { display: grid; grid-template-columns: 1fr 1fr; gap: calc(3 * var(--u)) calc(4 * var(--u)); align-content: start; }
-.prod { display: grid; gap: calc(1.4 * var(--u)); align-content: start; min-width: 0; break-inside: avoid; }
-/* the picture is placed absolutely: a percentage height inside an aspect-ratio box is not honoured when the page is fragmented for print, and the picture then made its box square */
-.ph { position: relative; background: #fff; aspect-ratio: 1 / .74; overflow: hidden; }
-.ph img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
-.prod h4 { margin: 0; font-family: var(--f-disp); font-weight: 400; font-size: var(--fs-name); line-height: 1.12; overflow-wrap: anywhere; }
-.spec { font-size: calc(1.28 * var(--u)); letter-spacing: .06em; line-height: 1.6; color: var(--muted); overflow-wrap: anywhere; }
 .remarks { white-space: pre-line; color: var(--ink); }
-.qty { display: flex; justify-content: space-between; align-items: baseline; gap: calc(1 * var(--u)); padding-top: calc(1 * var(--u)); border-top: calc(.1 * var(--u)) solid var(--rule); font-size: var(--fs-small); }
-.qty b { font-family: var(--f-disp); font-weight: 400; font-size: calc(2.17 * var(--u)); white-space: nowrap; }
-.qty em { font-style: normal; color: var(--muted); letter-spacing: .06em; }
-.qty .opt { color: var(--terra); }
-.optional .ph { opacity: .85; }
+.opt { color: var(--terra); }
+.tbl.ptbl td { padding: calc(1.3 * var(--u)) 0 calc(1.3 * var(--u)) calc(1.6 * var(--u)); }
+.tbl.ptbl td:first-child, .tbl.ptbl th:first-child { padding-left: 0; }
+.tbl.ptbl th { padding-left: calc(1.6 * var(--u)); }
+.ptbl .thumb { width: calc(13 * var(--u)); }
+.tb { position: relative; width: calc(13 * var(--u)); height: calc(10 * var(--u)); background: #fff; overflow: hidden; }
+/* the picture is placed absolutely: a percentage height is not honoured when the page is fragmented for print */
+.tb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
+.pname { display: block; font-family: var(--f-disp); font-weight: 400; font-size: calc(1.9 * var(--u)); line-height: 1.25; color: var(--ink); overflow-wrap: anywhere; }
+.pspec { display: grid; margin-top: calc(.4 * var(--u)); font-size: calc(1.2 * var(--u)); line-height: 1.5; letter-spacing: .04em; color: var(--muted); overflow-wrap: anywhere; }
+.ptbl td.r { font-family: var(--f-disp); font-size: calc(1.7 * var(--u)); color: var(--ink); width: calc(10 * var(--u)); }
+.tbl.ptbl .grp td { padding: calc(2.2 * var(--u)) 0 calc(1.2 * var(--u)); }
+.tbl.ptbl .grp td.r { font-size: calc(1.6 * var(--u)); color: var(--muted); }
+.optRow .tb { opacity: .85; }
+.optRow td.r { color: var(--muted); }
 
 /* ── the investment ── */
 .tbl { width: 100%; border-collapse: collapse; font-size: var(--fs-table); }
@@ -150,10 +151,9 @@
 .subr td { border-bottom: 0; padding: calc(.6 * var(--u)) 0; color: var(--muted); }
 .tot td { border-top: calc(.2 * var(--u)) solid var(--ink); border-bottom: 0; padding-top: calc(1.6 * var(--u)); font-family: var(--f-disp); font-size: var(--fs-total); color: var(--ink); }
 .words { font-size: calc(1.25 * var(--u)); letter-spacing: .06em; color: var(--muted); margin: calc(1.2 * var(--u)) 0 0; text-align: right; }
-.optBox, .notesBox { margin-top: calc(3 * var(--u)); padding: calc(2 * var(--u)) calc(2.4 * var(--u)); background: var(--paper2); }
-.optBox h3, .notesBox h3 { margin: 0 0 calc(1 * var(--u)); font-weight: 400; font-size: calc(1.2 * var(--u)); letter-spacing: .3em; text-transform: uppercase; color: var(--terra); }
-.optBox p, .notesBox p { margin: 0 0 calc(.6 * var(--u)); font-size: calc(1.45 * var(--u)); line-height: 1.55; white-space: pre-line; }
-.optBox b { font-weight: 500; }
+.notesBox { margin-top: calc(3 * var(--u)); padding: calc(2 * var(--u)) calc(2.4 * var(--u)); background: var(--paper2); }
+.notesBox h3 { margin: 0 0 calc(1 * var(--u)); font-weight: 400; font-size: calc(1.2 * var(--u)); letter-spacing: .3em; text-transform: uppercase; color: var(--terra); }
+.notesBox p { margin: 0 0 calc(.6 * var(--u)); font-size: calc(1.45 * var(--u)); line-height: 1.55; white-space: pre-line; }
 .sched { display: grid; grid-template-columns: 7fr 3fr; margin-top: calc(3.4 * var(--u)); }
 .sched > div { padding: calc(1.6 * var(--u)) calc(2 * var(--u)); font-size: calc(1.31 * var(--u)); letter-spacing: .06em; }
 .sched .a { background: var(--terra); color: #fff; }
@@ -228,17 +228,30 @@
   .pull, .galWide figure:last-of-type { grid-column: 1 / -1; }
   .pull p { font-size: 19px; }
   .pull span { font-size: 10px; }
-  .room { margin-bottom: 20px; padding-bottom: 12px; }
-  .room h3 { font-size: 22px; }
   .cont { font-size: 10px; }
-  .pgrid { grid-template-columns: minmax(0, 1fr); gap: 28px; }
-  .spec { font-size: 12.5px; }
-  .qty b { font-size: 19px; }
+  /* the product table stacks: the picture beside the name and details, then Qty, Rate and Amount on a line of their own */
+  .ptbl, .ptbl tbody { display: block; }
+  .ptbl thead { display: none; }
+  .ptbl tr { display: grid; grid-template-columns: 64px repeat(3, minmax(0, 1fr)); column-gap: 12px; row-gap: 8px; padding: 14px 0; border-bottom: 1px solid var(--rule); }
+  .tbl.ptbl td { padding: 0; border: 0; }
+  .ptbl td.thumb { grid-row: 1 / span 2; }
+  .ptbl tr:not(.grp) td:nth-child(2) { grid-column: 2 / -1; }
+  .ptbl .thumb, .tb { width: 64px; }
+  .tb { height: 50px; }
+  .pname { font-size: 15px; }
+  .pspec { font-size: 11.5px; }
+  .ptbl td.r { font-size: 14px; width: auto; text-align: left; }
+  .ptbl tr:not(.grp) td.r::before { display: block; font-family: var(--f-label); font-size: 9.5px; letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
+  .ptbl tr:not(.grp) td:nth-child(3)::before { content: 'Qty'; }
+  .ptbl tr:not(.grp) td:nth-child(4)::before { content: 'Rate'; }
+  .ptbl tr:not(.grp) td:nth-child(5)::before { content: 'Amount'; }
+  .ptbl .grp { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 20px 0 10px; }
+  .tbl.ptbl .grp td.r { font-size: 13px; }
   .tbl td small { font-size: 11px; }
   .grp td { font-size: 16px; }
   .words { font-size: 11.5px; }
-  .optBox p, .notesBox p { font-size: 13px; }
-  .optBox h3, .notesBox h3 { font-size: 10.5px; }
+  .notesBox p { font-size: 13px; }
+  .notesBox h3 { font-size: 10.5px; }
   .sched > div { font-size: 12px; padding: 14px; }
   .sched b { font-size: 22px; }
   .tline { grid-template-columns: repeat(2, 1fr); gap: 4px 0; }
