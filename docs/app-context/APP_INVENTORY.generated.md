@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `13572e60` — Merge remote-tracking branch 'origin/main' into docs/stamp-loader-lines
+- Commit: `f645047d` — Docs: stamp the loader lines library (#882) as merged 0a7be599, live 18:20 IST (no SQL) (#884)
 - Commits on this branch: 1444
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 472 (first `20260530_create_positions.sql`, latest `20270730000000_for_you_bundle.sql`)
@@ -14,9 +14,9 @@
 
 ## Latest 25 commits
 
-- `13572e60` 2026-11-17 Merge remote-tracking branch 'origin/main' into docs/stamp-loader-lines
+- `f645047d` 2026-11-17 Docs: stamp the loader lines library (#882) as merged 0a7be599, live 18:20 IST (no SQL) (#884)
+- `1662190b` 2026-11-17 Docs: stamp the revert of #880 (#883) as merged 08012448, deployed 18:30 IST, My Tasks checked live (#885)
 - `08012448` 2026-11-17 Revert #880: putting the saved copy back crashed My Tasks (#883)
-- `dcbd7a96` 2026-11-17 Docs: stamp the loader lines library (#882) as merged 0a7be599, live 18:20 IST (no SQL)
 - `0a7be599` 2026-11-17 Loading screens: fresh lines from a library of 304 instead of the same eight (#882)
 - `f69dd49e` 2026-11-17 Docs: stamp the saved-copy fix (#880) as merged 2cd29029, deployed 17:38 IST, tested live (#881)
 - `eecc186d` 2026-11-17 Docs: stamp the Draft Orders order page redesign (#878) as merged c7737d28, deployed 17:23 IST (no SQL) (#879)
