@@ -14,6 +14,7 @@ import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import type { DraftOrder } from '@/lib/orders/clickupDrafts'
 import { callDrafts } from '../callDrafts'
 import { OrderView } from '../OrderView'
+import { PiSheetSection } from '../PiSheetSection'
 
 export default function ClickupDraftOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
@@ -39,7 +40,7 @@ export default function ClickupDraftOrderPage({ params }: { params: Promise<{ id
         <AppLink href="/orders/clickup" className="opp-back">← Draft Orders (ClickUp)</AppLink>
         {problem && <p className="opp-warn" role="alert">{problem}</p>}
         {!order && !problem && <p className="opp-note" role="status">Loading…</p>}
-        {order && <OrderView order={order} />}
+        {order && <OrderView order={order} piSheet={<PiSheetSection order={order} />} />}
       </div>
     </OrdersLayout>
   )

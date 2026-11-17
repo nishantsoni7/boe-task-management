@@ -53,6 +53,7 @@
 
 import {
   openPiArchive,
+  OLD_ORDER_MAX_WORKBOOK_BYTES,
   PI_MAX_WORKBOOK_BYTES,
   partText,
   readSharedStrings,
@@ -67,6 +68,7 @@ import {
   type PiSheet,
 } from './workbookReader'
 import { harvestProductImages, resolveDrawingPart, type PiImageHarvest } from './drawingAnchors'
+import { adaptLegacySheet } from './legacySheet'
 import {
   locateLayout,
   PRODUCT_COLUMN_NAMES,
@@ -297,6 +299,11 @@ type NonNumericPolicy = 'strict' | 'wordedZero'
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
+export type PiParseOptions = {
+  /** Read an OLD order's workbook for display (Draft Orders, never an upload): see legacySheet.ts. */
+  oldOrder?: boolean
+}
+
 /**
  * Parse one BOE PI workbook. Pure with respect to the caller's bytes: nothing is
  * written, nothing is uploaded, and `bytes` is never modified.
@@ -306,17 +313,23 @@ type NonNumericPolicy = 'strict' | 'wordedZero'
  * returned, and `blockingIssues` is what a later phase consults before allowing
  * a submission.
  */
-export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResult> {
+export async function parseBoePiWorkbook(bytes: Uint8Array, options: PiParseOptions = {}): Promise<PiParseResult> {
   const warnings: PiWarning[] = []
   const blockingIssues: PiBlockingIssue[] = []
+  const oldOrder = options.oldOrder === true
 
-  const opened = await openPiArchive(bytes)
+  const opened = await openPiArchive(bytes, oldOrder ? OLD_ORDER_MAX_WORKBOOK_BYTES : PI_MAX_WORKBOOK_BYTES)
   if (!opened.ok) {
     return { ok: false, warnings, errors: [archiveError(opened.reason)] }
   }
   const { entries } = opened.archive
 
-  const resolution = resolveSheetPart(entries, MASTER_SHEET_NAME)
+  let resolution = resolveSheetPart(entries, MASTER_SHEET_NAME)
+  if (oldOrder && !resolution.ok && resolution.reason === 'MASTER_SHEET_MISSING') {
+    // Old sheets often carry the tab as "Master " (a trailing space).
+    const declared = resolution.sheetNames.find(n => normalizeLabel(n) === 'master')
+    if (declared !== undefined) resolution = resolveSheetPart(entries, declared)
+  }
   if (!resolution.ok) {
     return {
       ok: false,
@@ -343,7 +356,8 @@ export async function parseBoePiWorkbook(bytes: Uint8Array): Promise<PiParseResu
     }
   }
 
-  const sheet = readSheet(sheetXml, readSharedStrings(entries))
+  const rawSheet = readSheet(sheetXml, readSharedStrings(entries))
+  const sheet = oldOrder ? adaptLegacySheet(rawSheet) : rawSheet
 
   // ── The gate. Nothing below runs until every column is found by its name. ──
   const located = locateLayout(sheet)

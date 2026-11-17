@@ -3,9 +3,11 @@
 // Its own file so a test can draw it without the layout, the router or a fetch.
 
 import { dayIst, formatBytes, inr, orderedFields, statusLabel, whenIst, type DraftOrder } from '@/lib/orders/clickupDrafts'
+import type { ReactNode } from 'react'
 import styles from './clickupDrafts.module.css'
 
-export function OrderView({ order }: { order: DraftOrder }) {
+/** `piSheet` is the PI sheet list, drawn above the files (the page passes it; a test leaves it out). */
+export function OrderView({ order, piSheet }: { order: DraftOrder; piSheet?: ReactNode }) {
   const facts = orderedFields(order.fields)
   return (
     <>
@@ -37,6 +39,8 @@ export function OrderView({ order }: { order: DraftOrder }) {
           <p className={styles.text}>{order.description}</p>
         </section>
       )}
+
+      {piSheet}
 
       <section className={styles.card} aria-label="Files">
         <h3 className={styles.cardTitle}>Files ({order.files.length})</h3>
