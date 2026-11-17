@@ -531,6 +531,8 @@ function PiDraftDetailPageInner() {
    * submission binding happens to be derived.
    */
   const [rowVersion, setRowVersion] = useState<number | null>(null)
+  /** The version the PI first loaded with: the cost sheet was already read at it, so it is not read again for it. */
+  const [firstRowVersion, setFirstRowVersion] = useState<number | null>(null)
   /** Bumped when the cost sheet panel closes: a value may have been typed there. */
   const [costSheetSaves, setCostSheetSaves] = useState(0)
   /**
@@ -538,8 +540,10 @@ function PiDraftDetailPageInner() {
    * 2026-10-30): the sheet's own one read, taken by its own hook so the page's
    * counted reads are unchanged. Re-read when the PI is (a quantity may have
    * changed) and when the panel closes. Undefined while it is being read.
+   * Not re-read when the version first arrives (17 Nov 2026: that read the same sheet twice on every load).
    */
-  const productCosts = useProductCosts(submissionId, `${rowVersion ?? ''}:${costSheetSaves}`)
+  const costsVersion = rowVersion !== null && rowVersion !== firstRowVersion ? rowVersion : ''
+  const productCosts = useProductCosts(submissionId, `${costsVersion}:${costSheetSaves}`)
   const [correctionOpen, setCorrectionOpen] = useState(false)
   const [correctionSaving, setCorrectionSaving] = useState(false)
   const [correctionFailure, setCorrectionFailure] = useState<string | null>(null)
@@ -890,6 +894,7 @@ function PiDraftDetailPageInner() {
 
     // The version this render is based on, for optimistic concurrency.
     setRowVersion(typeof row.row_version === 'number' ? row.row_version : null)
+    if (typeof row.row_version === 'number') { const v = row.row_version; setFirstRowVersion(f => f ?? v) }
 
     // THE TWO DATES THE PI ALREADY STATES, offered as the starting point for
     // the confirmation dialog. `?? prev` and never an overwrite: a quiet
@@ -2470,6 +2475,7 @@ function PiDraftDetailPageInner() {
       submittedAt={submission.submitted_at ?? null}
       onSaved={() => loadDraft({ quiet: true })}
       onHighlightRead={setHighlightRead}
+      knownSampleType={salesDetails.available ? salesDetails.sample_type : undefined}
     />
   )
   /** The owner's one route once the PI is locked — the same correction request as before. */

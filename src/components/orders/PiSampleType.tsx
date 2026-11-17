@@ -66,18 +66,27 @@ type Read = { kind: 'loading' } | { kind: 'unavailable' } | { kind: 'ready'; val
  * is the PI's row_version (optimistic concurrency); `onSaved` lets the page
  * re-read so the next write elsewhere carries the new version.
  */
-export function PiSampleType({ supabase, submissionId, canEdit, rowVersion, onSaved }: {
+export function PiSampleType({ supabase, submissionId, canEdit, rowVersion, onSaved, known }: {
   supabase: SupabaseClient
   submissionId: string
   canEdit: boolean
   rowVersion: number | null
   onSaved: () => void
+  /** The value the page's sales-details read already has; given, this box reads nothing itself (17 Nov 2026). */
+  known?: SampleType | null
 }) {
-  const [read, setRead] = useState<Read>({ kind: 'loading' })
+  const [read, setRead] = useState<Read>(known !== undefined ? { kind: 'ready', value: known } : { kind: 'loading' })
+  // The page re-reads after a save or someone else's change: follow its value.
+  const [seenKnown, setSeenKnown] = useState(known)
+  if (known !== seenKnown) {
+    setSeenKnown(known)
+    if (known !== undefined) setRead({ kind: 'ready', value: known })
+  }
   const [saving, setSaving] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
 
   useEffect(() => {
+    if (known !== undefined) return
     let live = true
     void (async () => {
       try {
@@ -93,7 +102,7 @@ export function PiSampleType({ supabase, submissionId, canEdit, rowVersion, onSa
       }
     })()
     return () => { live = false }
-  }, [supabase, submissionId, rowVersion])
+  }, [supabase, submissionId, rowVersion, known])
 
   // A database without the column yet: nothing is drawn.
   if (read.kind !== 'ready') return null

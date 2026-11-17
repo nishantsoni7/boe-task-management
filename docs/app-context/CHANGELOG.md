@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-17 — Page speed: the PI draft page reads the cost sheet and the sample type once (branch `perf/pi-draft-shared-reads`; PR number added at the stamp) · no SQL
+- **Owner ask.** "Carry the next process", then step A of the PI draft plan: "Yes, build A".
+- **Measured live first.** A PI draft load made 27 requests in 5 waves. Real repeats: the Fabric & Finish sheet (`order_submission_fabric_finish_read`) twice, because `useProductCosts`' reload key held the PI's `row_version`, empty until the main read arrived, so it changed once and read the same sheet again; the sample type twice, read by the page's sales-details read (`SALES_DETAILS_COLUMNS` includes `sample_type`) and again by `PiSampleType`. The supporting documents are two different reads (the last returned set, and every initial set sent), left as they are.
+- **What.** PI draft page: `firstRowVersion` remembers the version the PI first loaded with; the cost sheet's key moves only when the version CHANGES after that (an edit, a save), so the first load reads it once. `PiSampleType` takes `known` (passed by `PiSupportingDetails` from the page's sales-details read when it is available): given, the box reads nothing and follows the page's value after each re-read; not given (a database without the columns), it reads its own column as before. No change to who may see or edit what.
+- **Proof.** New `piSampleTypeKnown.dom.test.tsx` (3: given = no read; not given = its own read; the page wiring). Orders, PI and drafts tests 5,235 pass, tsc, eslint. The page's counted read budget (`orderStartupShape`, PI detail 30) is unchanged: the two reads removed are in the hook and the box, not the page file. Local full suite not run (CI runs it).
+- **Live check owed after the deploy:** a PI draft load: one fabric sheet read, one sample-type read; the fabric/packing columns, the sample box, the sales details all filled; a save still re-reads the sheet.
+
 ## 2026-11-17 — Page speed: putting the saved copy back no longer asks twice (PR #891, merged 17 Nov 2026 21:51 IST as `c5fe668a`, live 21:52 IST) · no SQL
 - **Found.** Measured live after #889 on a PI draft page: with the saved copy on, the permissions (`resolve_effective_permissions_for_user`) and the profile were each asked twice (27 requests); with it off, once (25). `invalidateQueries` cancels a read already on its way by default and sends it again.
 - **What.** `restorePersistedCache` invalidates with `{ cancelRefetch: false }`: a screen that already started its read keeps it; one that has not still asks at once or on mount, so the Quotations freeze stays fixed.

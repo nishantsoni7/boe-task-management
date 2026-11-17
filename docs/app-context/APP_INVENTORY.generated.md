@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `c5fe668a` — Page speed: putting the saved copy back no longer asks twice (#891)
-- Commits on this branch: 1450
+- Commit: `64d8204c` — Docs: stamp the no-double-ask fix (#891) as merged c5fe668a, deployed 21:52 IST, checked live (#892)
+- Commits on this branch: 1451
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 472 (first `20260530_create_positions.sql`, latest `20270730000000_for_you_bundle.sql`)
 - Tables ever created: 261 (dropped at some point: 8)   SQL functions: 1055   Enums: 0
-- Test files: 885   Next.js 16.2.6, React 19.2.4
+- Test files: 886   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `64d8204c` 2026-11-17 Docs: stamp the no-double-ask fix (#891) as merged c5fe668a, deployed 21:52 IST, checked live (#892)
 - `c5fe668a` 2026-11-17 Page speed: putting the saved copy back no longer asks twice (#891)
 - `15fa364f` 2026-11-17 Docs: stamp the saved-copy fix (#889) as merged 6aa09ddd, deployed 21:12 IST, 27 module pages checked live (#890)
 - `6aa09ddd` 2026-11-17 Page speed: a put-back saved copy is always asked again (the Quotations freeze), with #886 (#889)
@@ -38,7 +39,6 @@
 - `06bc8871` 2026-11-17 Docs: stamp the old-order PI sheet (#868) as merged e9298b57, deployed 13:34 IST (no SQL) (#870)
 - `e055668f` 2026-11-17 Payroll: a half paid leave takes half off the earliest absent day (#869)
 - `e9298b57` 2026-11-17 Draft Orders (ClickUp): the PI Excel of an old order as a product list, orders 300 and up (#868)
-- `e982ae9f` 2026-11-16 Docs: stamp the furniture in a room picture (#866) as merged a452cc5a, deployed 18:32 IST (no SQL) (#867)
 
 ## Pages by top-level area
 

@@ -3,6 +3,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { PiHighlightRemark } from './PiHighlightRemark'
 import { PiSampleType } from './PiSampleType'
+import type { SampleType } from '@/lib/orders/sampleType'
 import { PiDraftAttachments, PiSentColumns, useSentWithPi, type SupportingState } from './PiSupportingDocuments'
 import { SectionChip } from './PiFormParts'
 
@@ -26,11 +27,13 @@ export const SUPPORTING_DETAILS_TITLE = 'Supporting details'
  */
 export function PiSupportingDetails({
   supabase, submissionId, rowVersion, canEditFiles, canEditHighlight, locked, supporting, submittedAt,
-  onSaved, onHighlightRead,
+  onSaved, onHighlightRead, knownSampleType,
 }: {
   supabase: SupabaseClient
   submissionId: string
   rowVersion: number | null
+  /** The sample type the page's sales-details read already has (undefined: not known, the box reads it). */
+  knownSampleType?: SampleType | null
   /** Client PO and Design Files: only while the PI is a draft or returned. */
   canEditFiles: boolean
   /** The Order highlight: can_edit_order_submission, as the page resolved it. */
@@ -78,6 +81,7 @@ export function PiSupportingDetails({
               submissionId={submissionId}
               canEdit
               rowVersion={rowVersion}
+              known={knownSampleType}
               onSaved={() => { void onSaved() }}
             />
           )}
