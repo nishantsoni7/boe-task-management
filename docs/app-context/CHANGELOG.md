@@ -4,11 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-17 — Page speed: putting the saved copy back no longer asks twice (branch `fix/saved-copy-no-double-ask`; PR number added at the stamp) · no SQL
+## 2026-11-17 — Page speed: putting the saved copy back no longer asks twice (PR #891, merged 17 Nov 2026 21:51 IST as `c5fe668a`, live 21:52 IST) · no SQL
 - **Found.** Measured live after #889 on a PI draft page: with the saved copy on, the permissions (`resolve_effective_permissions_for_user`) and the profile were each asked twice (27 requests); with it off, once (25). `invalidateQueries` cancels a read already on its way by default and sends it again.
 - **What.** `restorePersistedCache` invalidates with `{ cancelRefetch: false }`: a screen that already started its read keeps it; one that has not still asks at once or on mount, so the Quotations freeze stays fixed.
 - **Proof.** `persistedCache.test.ts` 35: a new test (a read on its way when the copy is put back is sent once, and its answer wins) fails without the change; the #889 tests still pass. Related source-pin tests 327, tsc, eslint. Local full suite not run (CI runs it).
-- **Live check owed after the deploy:** a PI draft and an order page ask once for permissions and profile with the copy on; Quotations and a quick pass over the module pages open.
+- **Live check 17 Nov 2026 21:53-22:00 IST (owner's Chrome, copy on):** a PI draft and an order page each asked once for the permissions and once for the profile; 14 module pages opened (Quotations twice, 0.9 s and 2.2 s), no crash, nothing stuck, no console error; one pair (My Day, Inventory) came back blank (the page request never arrived) and opened fine four times right after.
 
 ## 2026-11-17 — Page speed: a put-back saved copy is always asked again (the Quotations freeze), with #886 (PR #889, merged 17 Nov 2026 21:10 IST as `6aa09ddd`, live 21:12 IST) · no SQL
 - **Owner ask.** "Carry the next process" (cause found by reading the code), then "Yes, build it".
