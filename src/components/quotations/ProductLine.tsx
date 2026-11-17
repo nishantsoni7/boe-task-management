@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Copy, ImagePlus, Maximize2, Trash2 } from 'lucide-react'
 import { formatINR } from '@/lib/currency'
 import type { PriceHint } from '@/lib/quotations/api'
@@ -10,6 +10,7 @@ import { PriceHintLine } from './PricingDesk'
 import { TaughtPrice, type DiffersReport } from '@/components/pricing/training/TaughtPrice'
 import type { Library } from '@/lib/pricing/training/match'
 import { Pic } from './Pic'
+import { forgetPicture, pointAtPicture, type PictureTarget } from './pictureClipboard'
 import s from './quotations.module.css'
 
 /**
@@ -36,12 +37,27 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
   const inches = unit === 'in' ? sizeInInches(l.size_text) : null
   const perUnit = l.qty_mode === 'per_unit' && !!area
   const label = l.name.trim() || 'this product'
+  // Copy and paste the picture with the keyboard (owner, 18 Nov 2026; pictureClipboard.ts): point at it and press Ctrl+C / Ctrl+V.
+  const [flash, setFlash] = useState('')
+  const live = useRef({ path: l.image_path, editable, onChange, onUpload })
+  useEffect(() => { live.current = { path: l.image_path, editable, onChange, onUpload } })
+  const target = useMemo<PictureTarget>(() => ({
+    get path() { return live.current.path },
+    get editable() { return live.current.editable },
+    set: path => live.current.onChange({ image_path: path }),
+    upload: file => live.current.onUpload(file),
+    flash: text => setFlash(text),
+  }), [])
+  useEffect(() => () => forgetPicture(target), [target])
+  useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(''), 2500); return () => clearTimeout(t) }, [flash])
   return (
     <div className={s.pl}>
-      <div className={s.plPic}>
+      <div className={s.plPic} onMouseEnter={() => pointAtPicture(target)} onMouseLeave={() => pointAtPicture(null)} onFocus={() => pointAtPicture(target)}
+        title={editable ? 'Point here and press Ctrl+C to copy this picture, or Ctrl+V to paste one' : l.image_path ? 'Point here and press Ctrl+C to copy this picture' : undefined}>
         {l.image_path
           ? <button type="button" className={s.plPicBtn} onClick={onView} aria-label={`View the picture of ${label}`}><Pic className={s.plPicImg} src={url(l.image_path)} alt="" /><span className={s.plZoom}><Maximize2 size={14} aria-hidden /></span></button>
-          : <button type="button" className={s.plPicEmpty} onClick={() => fileRef.current?.click()} disabled={!editable}><ImagePlus size={22} aria-hidden /><span>Add picture</span></button>}
+          : <button type="button" className={s.plPicEmpty} onClick={() => fileRef.current?.click()} disabled={!editable}><ImagePlus size={22} aria-hidden /><span>Add picture</span>{editable && <span className={s.small} style={{ fontWeight: 400 }}>or paste (Ctrl+V)</span>}</button>}
+        {flash && <span className={`${s.small} ${s.muted}`} role="status">{flash}</span>}
         <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { onUpload(e.target.files?.[0]); e.target.value = '' }} />
         {editable && l.image_path && (
           <div className={s.plLinks}>
