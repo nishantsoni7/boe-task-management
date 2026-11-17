@@ -229,6 +229,28 @@ describe('saving and restoring', () => {
     assert.ok(asked >= 1, 'asked again')
   })
 
+  // 17 Nov 2026, measured live after #889: every page asked twice for the permissions and the profile.
+  test('a read already on its way when the copy is put back is not cancelled and sent again', async () => {
+    const b = client()
+    let asked = 0
+    let finish: (v: unknown) => void = () => {}
+    const watch = new QueryObserver(b, {
+      queryKey: ['permission-context', ME],
+      queryFn: () => { asked++; return new Promise(r => { finish = r }) },
+      staleTime: 30_000,
+    })
+    const stop = watch.subscribe(() => {})
+    await tick()
+    assert.equal(asked, 1, 'the screen started its read')
+    restorePersistedCache(b, ME, savedSecondsAgo(), Date.now())
+    await tick()
+    finish({ fresh: true })
+    await tick()
+    stop()
+    assert.equal(asked, 1, 'one read, not two')
+    assert.deepEqual(b.getQueryData(['permission-context', ME]), { fresh: true })
+  })
+
   test('without the invalidation the same copy would never be asked again (the #886 freeze, kept as proof)', async () => {
     const b = client()
     const saved = JSON.parse(savedSecondsAgo().getItem(PERSIST_KEY) as string)
