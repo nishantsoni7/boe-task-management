@@ -26,11 +26,55 @@ export type QuoteLine = {
   internal_note: string
   /** Its other pictures (20270721000000): a swatch, a drawing, another reference. Internal: never on the client's copy. */
   references?: LineRef[]
+  /** What the client picked for this product (20270808000100): fabric, finish, stone, rope weave. Internal for now; never changes a price. */
+  choices?: LineChoices
 }
 
 export type LineRef = { path: string; kind: 'swatch' | 'drawing' | 'reference'; note?: string }
 /** The database allows 8 (quotation_line_refs_ok). */
 export const MAX_LINE_REFS = 8
+
+// ── client choices (20270808000100) ──────────────────────────────────────────────────────────────
+export const CHOICE_KINDS = ['fabric', 'finish', 'stone', 'rope_weave'] as const
+export type ChoiceKind = (typeof CHOICE_KINDS)[number]
+export const CHOICE_LABEL: Record<ChoiceKind, string> = { fabric: 'Fabric', finish: 'Finish', stone: 'Stone', rope_weave: 'Rope weave' }
+/** 'catalog' = picked from our catalog; 'client' = the client's own (name is then their description, supplier who supplies it). */
+export type LineChoice = {
+  source: 'catalog' | 'client'
+  name?: string; code?: string; supplier?: string; used_for?: string; note?: string
+  /** A swatch picture in quotation-images, same shape as a product's picture path. */
+  photo?: string | null
+  status: 'to_confirm' | 'confirmed'
+  /** YYYY-MM-DD, only when confirmed. */
+  confirmed_on?: string
+}
+export type LineChoices = Partial<Record<ChoiceKind, LineChoice>>
+/** The longest each text may be (quotation_line_choices_ok). */
+export const CHOICE_MAX = { name: 200, code: 80, supplier: 120, used_for: 160, note: 400 } as const
+
+/** What is saved: only the kinds that are in use, and only the fields that have something in them (the database allows strings only). */
+export function cleanChoices(c: LineChoices | undefined): LineChoices {
+  const out: LineChoices = {}
+  for (const k of CHOICE_KINDS) {
+    const v = c?.[k]
+    if (!v) continue
+    const o: LineChoice = { source: v.source, status: v.status }
+    for (const f of ['name', 'code', 'supplier', 'used_for', 'note'] as const) {
+      const t = (v[f] ?? '').trim().slice(0, CHOICE_MAX[f])
+      if (t) o[f] = t
+    }
+    if (v.photo) o.photo = v.photo
+    if (v.status === 'confirmed' && v.confirmed_on) o.confirmed_on = v.confirmed_on
+    out[k] = o
+  }
+  return out
+}
+
+/** How many choices a product has and how many still wait for the client. */
+export function choiceCounts(c: LineChoices | undefined): { total: number; open: number } {
+  const all = CHOICE_KINDS.map(k => c?.[k]).filter((v): v is LineChoice => !!v)
+  return { total: all.length, open: all.filter(v => v.status !== 'confirmed').length }
+}
 
 export type GstMode = 'igst' | 'cgst_sgst'
 
