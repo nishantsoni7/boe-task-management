@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
-import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useParams, usePathname, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronLeft, ClipboardList, MessageCircle, Pencil, Search as ZoomIcon, ShoppingBag } from 'lucide-react'
 import { InventoryLayout } from '@/components/layout/InventoryLayout'
@@ -35,7 +35,6 @@ function describe(h: HistoryEntry): { title: string; sub: string } {
 export default function ProductDetailScreen() {
   const params = useParams<{ id: string }>()
   const id = params.id
-  const router = useRouter()
   const pathname = usePathname()
   const search = useSearchParams()
   const qc = useQueryClient()
@@ -74,8 +73,9 @@ export default function ProductDetailScreen() {
   useEffect(() => {
     if (!savedFlag) return
     show(savedFlag === 'created' ? 'Product added' : 'Changes saved')
-    router.replace(pathname, { scroll: false })
-  }, [savedFlag, show, router, pathname])
+    // The History API, not router.replace: on a page opened straight from a link, router.replace left the parameter in the address.
+    window.history.replaceState(null, '', pathname)
+  }, [savedFlag, show, pathname])
 
   if (loading || (itemQ.isLoading && !item)) return <LoadingScreen />
 

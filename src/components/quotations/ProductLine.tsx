@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Copy, ImagePlus, Maximize2, Trash2 } from 'lucide-react'
 import { formatINR } from '@/lib/currency'
 import type { PriceHint } from '@/lib/quotations/api'
-import { sizeInInches, type DimensionUnit, type LineRef, type QuoteArea, type QuoteLine } from '@/lib/quotations/math'
+import { sizeInInches, sizeToInches, type DimensionUnit, type LineRef, type QuoteArea, type QuoteLine } from '@/lib/quotations/math'
 import type { ModelSuggestion } from '@/lib/pricing/model'
 import { PriceHintLine } from './PricingDesk'
 import { TaughtPrice, type DiffersReport } from '@/components/pricing/training/TaughtPrice'
@@ -84,7 +84,7 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
       <div className={s.plMid}>
         <label className={`${s.field} ${s.c5}`}><span>Product</span><input aria-label="Product name" className={s.input} style={{ fontWeight: 600 }} placeholder="Product name, e.g. Bed" value={l.name} onChange={e => onChange({ name: e.target.value })} disabled={!editable} /></label>
         <label className={`${s.field} ${s.c7}`}><span>Dimensions ({unit})</span>
-          <span className={s.unitWrap}><input aria-label="Dimensions" className={s.input} placeholder="e.g. 83 × 68 × 18" value={l.size_text} onChange={e => onChange({ size_text: e.target.value })} disabled={!editable} /><span className={s.unitTag} aria-hidden>{unit}</span></span>
+          <span className={s.unitWrap}><input aria-label="Dimensions" className={s.input} placeholder="e.g. 83 × 68 × 18" value={l.size_text} onChange={e => onChange({ size_text: e.target.value })} onBlur={() => { const inch = unit === 'in' ? sizeToInches(l.size_text) : null; if (inch) onChange({ size_text: inch }) }} disabled={!editable} /><span className={s.unitTag} aria-hidden>{unit}</span></span>
           {inches && <span className={`${s.small} ${s.muted} ${s.num}`}>= {inches.join(' × ')} in</span>}
         </label>
         <label className={`${s.field} ${s.c5}`}><span>Material</span><textarea aria-label="Material" className={`${s.input} ${s.t3}`} rows={3} maxLength={120} placeholder="e.g. Ash wood" value={l.material} onChange={e => onChange({ material: e.target.value })} disabled={!editable} /></label>

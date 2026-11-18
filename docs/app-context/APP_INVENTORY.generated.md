@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `ebaa0f44` — Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
-- Commits on this branch: 265
+- Commit: `48b0bc5b` — Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it
+- Commits on this branch: 266
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 474 (first `20260530_create_positions.sql`, latest `20270801000000_quotation_salesperson_card.sql`)
 - Tables ever created: 263 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
-- Test files: 893   Next.js 16.2.6, React 19.2.4
+- Test files: 896   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `48b0bc5b` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it
 - `ebaa0f44` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
 - `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
 - `413a70c2` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes (#906)
@@ -38,7 +39,6 @@
 - `d463a576` 2026-11-17 Revert #886: putting the saved copy back froze Quotations (#887)
 - `1bf19da5` 2026-11-17 Page speed: the saved copy comes back in the right shape, then is put back after sign-in again (#886)
 - `f645047d` 2026-11-17 Docs: stamp the loader lines library (#882) as merged 0a7be599, live 18:20 IST (no SQL) (#884)
-- `1662190b` 2026-11-17 Docs: stamp the revert of #880 (#883) as merged 08012448, deployed 18:30 IST, My Tasks checked live (#885)
 
 ## Pages by top-level area
 
@@ -172,7 +172,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 21 source, 14 test
+- `src/lib/quotations` — 21 source, 16 test
 - `src/lib/salesLeads` — 16 source, 16 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test

@@ -15,6 +15,20 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Proof.** Day Close tests updated, `moveDueDates.test.ts` added, plus `tsc`, eslint, full `npm test` and `next build`.
 - **Rollback.** Revert the PR; nothing in the database changed.
 
+## 2026-11-18 — Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (branch `fix/quotation-valid-until`; PR number added at the stamp) · no SQL
+- The builder ("Valid until", the WhatsApp text, the Excel sheet) and the print / PDF page dated a quotation from its FIRST send, so a version sent later could print a "valid until" already in the past. They now use the newest sent version's date, else the first send, else the day it was made: the rule the client link (`quotation_public`) already followed. New `issuedAt` in `src/lib/quotations/versions.ts`; the builder reads the versions with the Versions card's own query key (no extra call); the print page waits for them so a PDF never carries the old date. Test: `issuedAt.test.ts`.
+- The "Valid for (days)" box was NOT brought back: rule 18 of the redesign (owner, 13 Nov 2026) removed it; `valid_days` stays 7 by default.
+
+## 2026-11-18 — Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5 (branch `fix/quotation-size-to-inches`; PR number added at the stamp) · no SQL
+- **Owner rule:** a size not in inches or cm is converted to inches by default and rounded to the nearest 0.5 (8.3 → 8.5, 8.2 → 8). New `sizeToInches` in `src/lib/quotations/math.ts`: "2000 x 900 x 450 mm" → "78.5 × 35.5 × 17.5", 6'6" x 3' → "78 × 36". Inches, cm, a part with no unit and text it cannot read stay as typed.
+- Applied when the Dimensions box is left on an inches quotation (`ProductLine.tsx`) and to every imported line (`importBoq.addToQuote`: client file, Excel, PI). Test: `sizeToInches.test.ts`.
+
+## 2026-11-18 — Quotations: New quotation's Cancel and × work again; quotation dialogs close on Escape; deep-link parameters really leave the address (branch `fix/dialog-close-buttons`; PR number added at the stamp) · no SQL
+- **Owner report:** on New quotation, Cancel and × did nothing. Measured live: on a page opened straight at `/quotations?new=1` (the menu's New quotation, a refresh) `router.replace('/quotations')` committed `/quotations?new=1` again, so the dialog stayed. Opened from the page's own button it closed. Fix: `closeNew` uses `window.history.replaceState` (Next.js follows it), the same fix `MembersWorkspace` already carried.
+- **Same pattern, same fix** where a deep-link parameter is dropped after use: Finance `?new=1` (a refresh reopened the request form), Received Payments `?payment=/&action=`, Confirmed Orders `?deleted=1`, Inventory product `?saved=`.
+- **Escape** now closes New quotation, Start from a client file / Import, Improve picture, Crop & rotate, My details and Compare versions, through the shared `useDialogFocus` (also keeps Tab inside and gives focus back). A dialog holding work (a client typed in, a reading or a made picture on screen) keeps the tap-outside rule: Escape does not close it; Cancel and × still do.
+- Test: `src/components/quotations/dialogClose.dom.test.tsx`; `paymentsPaging.test.ts` pin updated.
+
 ## 2026-11-18 — Quotations: ask before an app link leaves a quotation with unsaved changes (PR #906, merged 18 Nov 2026 06:01 IST as `413a70c2`, live 06:03 IST) · no SQL
 - With unsaved edits, a click on any link to another page (the app's menu, the launcher, a link inside the builder) asks "You have unsaved changes. Leave without saving?"; Cancel stays. Closing or reloading the tab already asked (`beforeunload`). New `src/lib/navigation/leaveGuard.ts` (`askBeforeLeaving`, a document click listener in the capture phase; next/link skips a click whose default was prevented); `leaveGuard.dom.test.ts`. Not covered: the browser's Back button.
 

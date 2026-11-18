@@ -5,7 +5,7 @@
 // for a person to check (a client's BOQ can head its own rate that way). A PDF or photo never brings prices. Nothing here is trusted blindly: every row is shown for review first, and anything the reader was
 // unsure of is marked.
 
-import { MAX_LINE_REFS, type LineRef, type QuoteArea, type QuoteLine } from './math'
+import { MAX_LINE_REFS, sizeToInches, type LineRef, type QuoteArea, type QuoteLine } from './math'
 
 /** The start of the Remarks line that says what the client wants different from the reference picture (Improve picture reads it). */
 export const WANTS = 'Client wants: '
@@ -240,7 +240,7 @@ export function addToQuote(rows: readonly ImportRow[], areas: readonly QuoteArea
     const wants = r.wanted?.trim() || r.changes?.length ? `${WANTS}${[r.wanted?.trim(), ...(r.changes ?? [])].filter(Boolean).join('; ')}` : ''
     return {
       // Cut to the database's limits (20270614000000), so an imported line can always be saved.
-      key: newKey(), area_key, name: r.name.trim().slice(0, 160), size_text: r.size.slice(0, 80), spec: [r.spec.trim(), wants, r.note.trim()].filter(Boolean).join('\n').slice(0, 1600),
+      key: newKey(), area_key, name: r.name.trim().slice(0, 160), size_text: (sizeToInches(r.size) ?? r.size).slice(0, 80), spec: [r.spec.trim(), wants, r.note.trim()].filter(Boolean).join('\n').slice(0, 1600),
       material: r.material.slice(0, 120), finish: r.finish.slice(0, 120), category: '',
       qty_mode: area_key ? r.qtyMode : 'fixed', qty: Math.min(100000, Math.round((r.qty ?? 1) * 100) / 100) || 1, unit_price: r.price, tax_rate: 18,
       image_path: picturePaths.get(r.id) ?? null, is_optional: !!r.optional, client_note: '', internal_note: r.internalNote.slice(0, 1000), // the file's own note joins the Remarks text: the builder has no separate note for the client (20270714000000)

@@ -152,6 +152,48 @@ export function sizeWithUnit(text: string | null | undefined, unit: DimensionUni
   return !t || !/\d/.test(t) || OWN_UNIT.test(t) ? t : `${t} ${unit}`
 }
 
+const NUM = String.raw`(\d+(?:\.\d+)?)`
+const FT = String.raw`(?:'|’|ft|feet|foot)`
+const IN = String.raw`(?:"|”|''|in|inch(?:es)?)`
+const FEET_INCHES = new RegExp(String.raw`^${NUM}\s*${FT}\s*${NUM}\s*${IN}?$`, 'i')
+const WITH_UNIT = new RegExp(String.raw`^${NUM}\s*(mm|cm|mtrs?|meters?|metres?|m|${FT}|${IN})?$`, 'i')
+const TO_INCHES: Record<string, number> = { mm: 1 / 25.4, cm: 0, m: 1 / 0.0254, ft: 12, in: 1 }
+const unitKey = (u: string): string => {
+  const x = u.toLowerCase()
+  if (x === 'mm' || x === 'cm') return x
+  if (/^(mtrs?|meters?|metres?|m)$/.test(x)) return 'm'
+  if (/^('|’|ft|feet|foot)$/.test(x)) return 'ft'
+  return 'in'
+}
+
+/**
+ * A size written in mm, metres or feet, in inches rounded to the nearest 0.5 (owner, 18 Nov 2026: 8.3 → 8.5, 8.2 → 8):
+ * "2000 x 900 x 450 mm" → "78.5 × 35.5 × 17.5"; 6'6" x 3' → "78 × 36". Null when there is nothing to convert: inches,
+ * centimetres, a part with no unit (it may be the quotation's own), or text this cannot read; that text stays as typed.
+ */
+export function sizeToInches(text: string | null | undefined): string | null {
+  const t = (text ?? '').replace(/\([^)]*\)/g, ' ').trim()
+  if (!t) return null
+  const parts = t.split(/\s*[x×X*]\s*/).filter(Boolean)
+  if (parts.length < 1 || parts.length > 3) return null
+  const read: { n: number; unit: string | null }[] = []
+  for (const p of parts) {
+    const fi = FEET_INCHES.exec(p.trim())
+    if (fi) { read.push({ n: Number(fi[1]) * 12 + Number(fi[2]), unit: 'in' }); continue }
+    const m = WITH_UNIT.exec(p.trim())
+    if (!m) return null
+    read.push({ n: Number(m[1]), unit: m[2] ? unitKey(m[2]) : null })
+  }
+  // "2000 x 900 x 450 mm": a unit written once at the end is every part's.
+  const last = read[read.length - 1].unit
+  const units = read.map(r => r.unit ?? last)
+  if (units.some(u => u === null || u === 'cm')) return null
+  const wasFeetOrInches = parts.some(p => FEET_INCHES.test(p.trim()))
+  if (units.every(u => u === 'in') && !wasFeetOrInches) return null
+  const half = (n: number) => Math.round(n * 2) / 2
+  return read.map((r, i) => String(half(r.n * TO_INCHES[units[i] as string]))).join(' × ')
+}
+
 /** A wa.me link with the message filled in; the person presses send in WhatsApp (no API, no cost). */
 export function whatsappLink(phone: string | null | undefined, text: string): string {
   let digits = (phone ?? '').replace(/\D/g, '')
