@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `746cf467` — Quotations: the logo mark on every picture the client sees, optional per quotation; clean originals in a private bucket (migrations 20270806000000, 20270806000200) (#924)
-- Commits on this branch: 1485
+- Commit: `a08a1d5f` — Docs: stamp #929 (shared image model on Nano Banana 2) as merged (#930)
+- Commits on this branch: 1488
 - Pages (`page.tsx`): 210   API routes (`route.ts`): 219
 - Migrations: 482 (first `20260530_create_positions.sql`, latest `20270806000200_quotation_picture_mark_switch.sql`)
 - Tables ever created: 265 (dropped at some point: 8)   SQL functions: 1066   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `a08a1d5f` 2026-11-18 Docs: stamp #929 (shared image model on Nano Banana 2) as merged (#930)
+- `6bca071d` 2026-11-18 Images: the shared image model moves from Nano Banana Pro to Nano Banana 2 (about US$0.08 a picture against US$0.15; no SQL) (#929)
+- `aae6360f` 2026-11-18 Docs: stamp #924 (logo marks on quotation pictures) as merged and backfilled (#928)
 - `746cf467` 2026-11-18 Quotations: the logo mark on every picture the client sees, optional per quotation; clean originals in a private bucket (migrations 20270806000000, 20270806000200) (#924)
 - `3e886ceb` 2026-11-18 Docs: stamp #926 as merged (the builder's top area redone, 1360 px cap kept) (#927)
 - `7ea6f66d` 2026-11-18 Quotations: the builder's top area redone: Request | Status | Share as three compact cards, a four-field Client grid, the page capped at 1360 px (no SQL) (#926)
@@ -36,9 +39,6 @@
 - `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
 - `413a70c2` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes (#906)
 - `f9998cbe` 2026-11-18 Docs: stamp #904 (quotation name width) as merged (#905)
-- `713b6697` 2026-11-18 Quotations: plan a product name's lines at the width the live table really has (#904)
-- `22f041f1` 2026-11-18 Quotations: practical fixes from the module review; crop draws on first open (#903)
-- `25fd59ee` 2026-11-18 Quotations: the PDF shows products and prices in one table; the salesperson's own details (#902)
 
 ## Pages by top-level area
 
@@ -172,7 +172,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 27 source, 22 test
+- `src/lib/quotations` — 28 source, 22 test
 - `src/lib/salesLeads` — 16 source, 16 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test

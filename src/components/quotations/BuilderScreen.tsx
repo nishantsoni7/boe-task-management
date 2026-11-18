@@ -29,7 +29,7 @@ import {
 } from '@/lib/quotations/api'
 import { historyOnly } from '@/lib/quotations/suggestions'
 import {
-  DIMENSION_UNITS, GST_RATES, SUPPLY_STATES, computeTotals, formatDateIN, gstModeForState, validUntil,
+  DIMENSION_UNITS, SUPPLY_STATES, computeTotals, formatDateIN, gstModeForState, validUntil,
   type QuoteArea, type QuoteLine,
 } from '@/lib/quotations/math'
 import { CLOSING, DEFAULT_CLIENT_NOTE, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS } from '@/lib/quotations/terms'
@@ -93,7 +93,6 @@ export default function BuilderScreen() {
   const [viewing, setViewing] = useState<string | null>(null)
   const [advOpen, setAdvOpen] = useState(false)
   // The GST rate new products start with while no product sets it (the quotation has one rate; each product still stores it).
-  const [newRate, setNewRate] = useState(18)
   // Price hints for the names on screen, asked for once typing pauses.
   const [hintNames, setHintNames] = useState('')
   useEffect(() => {
@@ -146,12 +145,8 @@ export default function BuilderScreen() {
   const updArea = (key: string, patch: Partial<QuoteArea>) => { setAreas(p => p.map(a => (a.key === key ? { ...a, ...patch } : a))); touch() }
   const updLine = (key: string, patch: Partial<QuoteLine>) => { setLines(p => p.map(l => (l.key === key ? { ...l, ...patch } : l))); touch() }
 
-  // One GST rate for the whole quotation (owner, 13 Nov 2026). Each product still stores its rate, so a quotation that already has
-  // mixed rates shows "Mixed rates" until somebody picks one.
-  const rates = useMemo(() => [...new Set(lines.map(l => l.tax_rate))], [lines])
-  const uniformRate = rates.length === 1 ? rates[0] : null
-  const startRate = uniformRate ?? newRate
-  const setAllRates = (rate: number) => { setNewRate(rate); setLines(p => p.map(l => ({ ...l, tax_rate: rate }))); touch() }
+  // Everything is billed at 18% (owner, 18 Nov 2026), so there is no GST rate to pick: the total shows one GST line.
+  const startRate = 18
 
   const save = useCallback(async () => {
     if (!base || !h || saving) return
@@ -230,16 +225,21 @@ export default function BuilderScreen() {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1800) }
     catch { (document.getElementById('q-link') as HTMLInputElement | null)?.select() }
   }
-  // The plain Excel of the saved quotation for the client: lines, quantity, price and totals, no pictures (never the internal PI sheet).
+  // The Excel of the saved quotation for the client (owner, 18 Nov 2026): styled, a picture beside each product, live formulas for editing; never the internal PI sheet.
   const downloadExcel = async () => {
     if (busy) return
     setBusy(true)
     try {
-      const [{ clientSheet, clientSheetFileName }, { downloadWorkbook }] = await Promise.all([import('@/lib/quotations/clientSheet'), import('@/lib/finance/expenseReimbursementExport')])
-      await downloadWorkbook(clientSheetFileName(base.quote_no), [clientSheet({
-        quoteNo: base.quote_no, clientName: h.client_name, projectName: h.project_name, issuedOn: formatDateIN(issued), validUntilOn: formatDateIN(validUntil(issued, h.valid_days)),
-        unit: h.dimension_unit, transportNote: h.transport_note, notes: h.notes,
-      }, h, areas, lines)])
+      const { downloadClientWorkbook } = await import('@/lib/quotations/clientWorkbookDownload')
+      const { missing } = await downloadClientWorkbook({
+        head: {
+          quoteNo: base.quote_no, clientName: h.client_name, projectName: h.project_name, issuedOn: formatDateIN(issued), validUntilOn: formatDateIN(validUntil(issued, h.valid_days)),
+          unit: h.dimension_unit, transportNote: h.transport_note, notes: h.notes,
+          preparedBy: { name: base.owner_display_name ?? base.owner_name ?? '', title: base.owner_title ?? '', phone: base.owner_phone ?? '', email: base.owner_email ?? '' },
+        },
+        money: h, areas, lines, srcOf: picSrc,
+      })
+      if (missing > 0) setMsg({ tone: 'warn', text: `The Excel was downloaded, but ${missing} picture${missing === 1 ? '' : 's'} could not be loaded and ${missing === 1 ? 'is' : 'are'} left out.` })
     } catch (e) { setMsg({ tone: 'bad', text: errorText(e) }) }
     finally { setBusy(false) }
   }
@@ -400,18 +400,7 @@ export default function BuilderScreen() {
                 {h.fabric_amount > 0 && <tr><td>Fabric</td><td>{formatINR(h.fabric_amount)}</td></tr>}
                 {h.packing_amount > 0 && <tr><td>Packing</td><td>{formatINR(h.packing_amount)}</td></tr>}
                 <tr className={s.hr}><td>Before GST</td><td>{formatINR(totals.taxable)}</td></tr>
-                <tr className={s.gstRow}>
-                  <td><label htmlFor="q-gst-rate">GST rate <span className={`${s.small} ${s.muted}`}>(all products)</span></label></td>
-                  <td>
-                    <select id="q-gst-rate" className={`${s.input} ${s.gstSel}`} value={uniformRate ?? (lines.length === 0 ? newRate : 'mixed')} onChange={e => setAllRates(Number(e.target.value))} disabled={!editable}>
-                      {uniformRate === null && lines.length > 0 && <option value="mixed" disabled>Mixed rates</option>}
-                      {GST_RATES.map(r => <option key={r} value={r}>{r}%</option>)}
-                    </select>
-                  </td>
-                </tr>
-                {totals.gst.flatMap(r => h.gst_mode === 'cgst_sgst'
-                  ? [<tr key={`c${r.rate}`} className={s.sub}><td>CGST {r.rate / 2}%</td><td>{formatINR(r.cgst)}</td></tr>, <tr key={`s${r.rate}`} className={s.sub}><td>SGST {r.rate / 2}%</td><td>{formatINR(r.sgst)}</td></tr>]
-                  : [<tr key={`i${r.rate}`} className={s.sub}><td>IGST {r.rate}%</td><td>{formatINR(r.igst)}</td></tr>])}
+                {totals.gst.map(r => <tr key={r.rate} className={s.sub}><td>GST @{r.rate}%</td><td>{formatINR(r.gst)}</td></tr>)}
                 <tr className={s.tot}><td>Grand total</td><td>{formatINR(totals.grand)}</td></tr>
               </tbody></table>
             </div>
