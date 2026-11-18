@@ -31,7 +31,7 @@ export function QuotationSuggestionsSetting() {
     setSaving(true)
     try {
       await saveSuggestionSettings(supabase, everyone)
-      setSaved(everyone ? 'Everyone sees the price suggestions again.' : 'Only you see the price suggestions now.')
+      setSaved(everyone ? 'Everyone sees the price suggestions again.' : 'Only the pricing desk sees the price suggestions now.')
       await queryClient.invalidateQueries({ queryKey: ['quotations'] })
     } catch (e) {
       setError(errorText(e))
@@ -52,13 +52,15 @@ export function QuotationSuggestionsSetting() {
             <div className={cc.listDetail}>
               {v.everyone
                 ? 'Shown to everyone who prices quotations.'
-                : `Shown only to ${v.shown_to.length ? v.shown_to.join(', ') : 'nobody'}. Everyone else sees the history only.`}
+                : v.desk
+                  ? 'Shown only to the pricing desk: administrators and anyone with Quotations edit and view all. Everyone else sees the history only.'
+                  : `Shown only to ${v.shown_to.length ? v.shown_to.join(', ') : 'nobody'}. Everyone else sees the history only.`}
             </div>
           </div>
           <div className={cc.rowActions}>
-            <CcBadge tone={v.everyone ? 'green' : 'gray'}>{v.everyone ? 'Everyone' : 'Only selected'}</CcBadge>
+            <CcBadge tone={v.everyone ? 'green' : 'gray'}>{v.everyone ? 'Everyone' : v.desk ? 'Pricing desk' : 'Only selected'}</CcBadge>
             {v.everyone
-              ? <button className="boe-btn boe-btn-ghost" disabled={saving || !v.may_change} onClick={() => void save(false)}>{saving ? 'Saving…' : 'Only me'}</button>
+              ? <button className="boe-btn boe-btn-ghost" disabled={saving || !v.may_change} onClick={() => void save(false)}>{saving ? 'Saving…' : 'Pricing desk only'}</button>
               : <button className="boe-btn boe-btn-ghost" disabled={saving || !v.may_change} onClick={() => void save(true)}>{saving ? 'Saving…' : 'Show to everyone'}</button>}
           </div>
         </div>

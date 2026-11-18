@@ -25,7 +25,7 @@ import { istDateOf } from '@/lib/istDate'
 import {
   STATUS_LABEL, errorKind, errorText, fetchQuotation, fetchPictureMark, pictureMarkKey, pictureSrc, quotationKeys, setPictureMark, saveDoc, saveQuotation,
   setStatus as setStatusRpc, shareQuotation, fetchHints, requestPriceApproval, decidePrice, type PriceHint, uploadPicture, type Header, type Quotation, type QuotationStatus,
-  fetchSuggestionSettings,
+  fetchSuggestionSettings, fetchPaymentDetails,
 } from '@/lib/quotations/api'
 import { historyOnly } from '@/lib/quotations/suggestions'
 import {
@@ -238,6 +238,7 @@ export default function BuilderScreen() {
           preparedBy: { name: base.owner_display_name ?? base.owner_name ?? '', title: base.owner_title ?? '', phone: base.owner_phone ?? '', email: base.owner_email ?? '' },
         },
         money: h, areas, lines, srcOf: picSrc,
+        payment: await fetchPaymentDetails(supabase).catch(() => null), // the bank account and QR; the Excel is still made without them
       })
       if (missing > 0) setMsg({ tone: 'warn', text: `The Excel was downloaded, but ${missing} picture${missing === 1 ? '' : 's'} could not be loaded and ${missing === 1 ? 'is' : 'are'} left out.` })
     } catch (e) { setMsg({ tone: 'bad', text: errorText(e) }) }
