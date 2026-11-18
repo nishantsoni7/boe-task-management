@@ -53,7 +53,7 @@ Written 2026-11-12 from the build, branch `feat/quotations-module`. Migration `2
 |---|---|---|
 | `/quotations` | `ListScreen`: my / everyone's (view_all), status filter (Open = draft, sent, negotiating), search, New quotation dialog (`?new=1`) | view |
 | `/quotations/[id]` | `BuilderScreen` (one column since 13 Nov 2026, layout in section 11): status and client on top, room types × rooms with the products (`ProductLine.tsx`), adjustments and totals, terms and notes, then client link + WhatsApp, **PI draft card** (Confirm → make PI draft on a Sent or Negotiating quotation, what blocks it line by line, the linked PI with Open; Download in PI format .xlsx), status ("Confirmed, no PI" for a confirmation without a PI), history. Save is explicit (button or Ctrl+S) and refuses a stale copy | view (edit per section 5) |
-| `/quotations/requests` | `RequestsScreen` (18 Nov 2026, branch `feat/quotation-requests-page`): quotation requests, Pending and Completed, search; the owner sees all, Nitish his, a salesperson theirs; a row opens the request in Tasks | view (the list needs task_management view_quotations) |
+| `/quotations/requests` | `RequestsScreen` (18 Nov 2026, PR #920, merged 18 Nov 2026 11:40 IST as `829b7893`, live 11:43 IST): quotation requests, Pending and Completed, search; the owner sees all, Nitish his, a salesperson theirs; a row opens the request in Tasks | view (the list needs task_management view_quotations) |
 | `/quotations/[id]/print` | `PrintScreen`: the quotation as the client gets it (A4 sheets), **Download PDF** (the browser's Save as PDF over the same sheets, file named after the quotation) | view |
 | `/q/[token]` | `PublicScreen`: the client link. No login, `noindex` | anyone with the link |
 
