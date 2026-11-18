@@ -81,6 +81,8 @@ const TASK_PATTERNS: Array<{ re: RegExp; label: string; color: string; bg: strin
   { re: /approved and completed task/i,  label: 'Approved & completed',   color: colors.green, bg: colors.greenTint },
   { re: /returned task to working/i,     label: 'Returned for changes',   color: colors.amber, bg: colors.amberTint },
 
+  // Day Close (2026-11-18): an assignee moved a task's due date at Close my day, with the reason.
+  { re: /moved the due date/i,    label: 'Date moved',       color: colors.amber, bg: colors.amberTint },
   { re: /added a comment/i,       label: 'Added comment',    color: colors.blue,  bg: colors.blueTint  },
   { re: /new comment on task/i,   label: 'New comment',      color: colors.blue,  bg: colors.blueTint  },
   { re: /acknowledged task/i,     label: 'Acknowledged',     color: colors.green, bg: colors.greenTint },

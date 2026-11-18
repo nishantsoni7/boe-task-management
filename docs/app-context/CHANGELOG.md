@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Day Close: the person who gave a task is told when it is moved to a new date (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
+- Close my day's "move to a new date" now also sends the task's giver a task notice: "Dhruv moved the due date to Mon, 23 Nov: <reason>", badge "Date moved", opening the task. It is never sent for a Self Task or to the mover.
+- No new notification type: the ordinary task notice (`task_acknowledged` with the task's id), so it shows in the Tasks inbox and is pushed like any task update.
+- **Proof.** `moveDueDates.test.ts` (3), `tsc`, eslint, full `npm test`, `next build`.
+
 ## 2026-11-18 — Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (branch `claude/boe1-employee-monitoring-t5ypei`) · migrations `20270802000000` + `20270802000100` (NOT YET APPLIED)
 - **Owner ask.** Leaving with work open means next day's punch "has not been considered", clearly notified; a hold that clears itself, never an automatic deduction (owner chose the recommendation).
 - **Built.**
