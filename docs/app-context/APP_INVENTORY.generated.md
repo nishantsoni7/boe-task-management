@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `4ce1b6a1` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- Commits on this branch: 278
+- Commit: `a2df0ae2` — Day Close: tell the person who gave a task when it is moved to a new date
+- Commits on this branch: 279
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 215
 - Migrations: 476 (first `20260530_create_positions.sql`, latest `20270802000100_day_close_attendance_hold.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `a2df0ae2` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date
 - `4ce1b6a1` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `5db5a11d` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (migrations 20270802000000 + 20270802000100) (#913)
 - `b24fcb87` 2026-11-18 Docs: regenerate the app inventory
@@ -38,7 +39,6 @@
 - `aa521cd8` 2026-11-18 Quotations: copy and paste a product picture with the keyboard (#900)
 - `d2a9b142` 2026-11-18 Quotations: who sees the suggested prices (everyone, or only the administrator who switches it) (#899)
 - `b71cb3e6` 2026-11-18 Orders: the hidden page is built only in the browser (React #418), and #897 stamped (#898)
-- `e8b22498` 2026-11-18 Page speed: Orders pages start loading while the access check runs (#897)
 
 ## Pages by top-level area
 
