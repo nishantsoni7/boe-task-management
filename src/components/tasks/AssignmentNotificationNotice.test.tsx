@@ -183,9 +183,10 @@ describe('every creation screen distinguishes A and C, and has no outcome B', ()
       assert.ok(insertFail > 0, 'the task insert error is handled')
     })
 
-    test(`${name}: no notification is requested, so no "not notified" notice exists`, () => {
+    test(`${name}: no "not notified" notice exists`, () => {
       assert.equal(outcomeBBranches(src).length, 0)
-      assert.equal(src.includes('requestAssignmentNotification'), false)
+      // Only the quotation request form asks for a notice (owner, 18 Nov 2026), and a failure is only logged.
+      assert.equal(src.includes('requestAssignmentNotification'), name === 'Quotation')
       assert.equal(src.includes('AssignmentNotificationNotice'), false)
       assert.equal(src.includes(ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE), false)
     })
