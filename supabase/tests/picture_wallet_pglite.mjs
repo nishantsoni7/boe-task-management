@@ -1,4 +1,4 @@
-// Database regression suite for 20270807000000 (picture credits: settings, allowances, ledger, four functions).
+// Database regression suite for 20270808000000 (picture credits: settings, allowances, ledger, four functions).
 // Runs the REAL migration over a stub of public.users. Run:
 //   node supabase/tests/picture_wallet_pglite.mjs <dir with @electric-sql/pglite installed>
 // Expected last line: "all N checks passed".
@@ -13,7 +13,7 @@ if (!PGLITE_DIR) { console.error('usage: node picture_wallet_pglite.mjs <dir wit
 const require = createRequire(resolve(PGLITE_DIR) + '/')
 const { PGlite } = require('@electric-sql/pglite')
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '../..')
-const migration = readFileSync(`${REPO}/supabase/migrations/20270807000000_picture_wallet.sql`, 'utf8').replace(/\r/g, '')
+const migration = readFileSync(`${REPO}/supabase/migrations/20270808000000_picture_wallet.sql`, 'utf8').replace(/\r/g, '')
 
 const [ANU, BEN, CARA] = ['a1', 'b2', 'c3'].map(x => `00000000-0000-0000-0000-0000000000${x}`)
 const db = new PGlite()

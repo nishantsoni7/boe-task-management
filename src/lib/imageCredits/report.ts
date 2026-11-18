@@ -1,4 +1,4 @@
-// The shapes the tracking page reads (image_credit_report, in the 20270807000000 migration) and the two sums on it.
+// The shapes the tracking page reads (image_credit_report, in the 20270808000000 migration) and the two sums on it.
 // Client-safe.
 
 /** What the fal balance reader answers (src/lib/imageCredits/falBalance.ts, server only). Lives here so the page can name it. */

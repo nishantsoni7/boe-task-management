@@ -28,6 +28,6 @@ describe('the screens use it', () => {
     assert.match(builder, /const issued = istDateOf\(issuedAt\(versionsQ\.data, base\.sent_at, base\.created_at\)\)/)
     assert.match(print, /issued_at: issuedAt\(vq\.data, x\.sent_at, x\.created_at\)/)
     // Waits for the versions (and, since 18 Nov 2026, for the logo-mark switch) before drawing.
-    assert.match(print, /\(!!q\.data && \(vq\.isLoading \|\| mq\.isLoading\)\)\) return <LoadingScreen \/>/)
+    assert.match(print, /\(!!q\.data && \(vq\.isLoading \|\| mq\.isLoading(?: \|\| pq\.isLoading)?\)\)\) return <LoadingScreen \/>/)
   })
 })

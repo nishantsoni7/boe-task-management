@@ -32,7 +32,7 @@ test('every tool has a label and a cost: studio is 1 credit, the three edits are
 })
 
 test('the tool names match the ones the database accepts', () => {
-  const sql = read('supabase/migrations/20270807000000_picture_wallet.sql')
+  const sql = read('supabase/migrations/20270808000000_picture_wallet.sql')
   const listed = /tool\s+text\s+not null check \(tool in \(([^)]*)\)\)/.exec(sql)![1].match(/'[a-z_]+'/g)!.map(s => s.slice(1, -1))
   assert.deepEqual([...listed].sort(), [...CREDIT_TOOLS].sort())
 })
@@ -159,7 +159,7 @@ test('the founders’ routes check for an administrator; the staff note route on
 })
 
 test('the wallet functions are reachable by the service role only, and the tables are closed', () => {
-  const sql = read('supabase/migrations/20270807000000_picture_wallet.sql')
+  const sql = read('supabase/migrations/20270808000000_picture_wallet.sql')
   for (const fn of ['image_credit_spend', 'image_credit_refund', 'image_credit_status', 'image_credit_report']) {
     assert.match(sql, new RegExp(`revoke all on function public\\.${fn}\\([^)]*\\)\\s+from public, anon, authenticated`))
     assert.match(sql, new RegExp(`grant execute on function public\\.${fn}\\([^)]*\\)\\s+to service_role`))

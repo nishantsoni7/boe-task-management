@@ -166,6 +166,15 @@
 .tline b { display: block; font-weight: 500; letter-spacing: .12em; text-transform: uppercase; font-size: var(--fs-micro); margin-bottom: calc(.3 * var(--u)); }
 
 /* ── terms and acceptance ── */
+.pay { margin-top: calc(2.4 * var(--u)); border: calc(.15 * var(--u)) solid var(--ink); padding: calc(1.8 * var(--u)) calc(3 * var(--u)); display: flex; gap: calc(3 * var(--u)); align-items: center; justify-content: space-between; break-inside: avoid; }
+.payMain h3 { margin: 0 0 calc(1 * var(--u)); font-weight: 400; font-size: calc(1.2 * var(--u)); letter-spacing: .3em; text-transform: uppercase; color: var(--terra); }
+.payMain dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: calc(.3 * var(--u)) calc(2 * var(--u)); font-size: calc(1.35 * var(--u)); letter-spacing: .03em; color: var(--ink); }
+.payMain dl > div { display: contents; }
+.payMain dt { color: var(--muted); letter-spacing: .14em; text-transform: uppercase; font-size: calc(1.05 * var(--u)); align-self: center; }
+.payMain dd { margin: 0; font-weight: 500; }
+.payQr { display: grid; justify-items: center; gap: calc(.5 * var(--u)); flex: none; }
+.payQr img { width: calc(13 * var(--u)); height: calc(13 * var(--u)); object-fit: contain; display: block; }
+.payQr span { font-size: calc(1.05 * var(--u)); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
 .fine { margin: calc(1.6 * var(--u)) 0 0; font-size: calc(1.15 * var(--u)); letter-spacing: .08em; color: var(--muted); }
 .accept { margin-top: calc(3.4 * var(--u)); border: calc(.15 * var(--u)) solid var(--ink); padding: calc(2.6 * var(--u)) calc(3 * var(--u)); display: grid; gap: calc(2 * var(--u)); }
 .sign { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(3 * var(--u)); }

@@ -1,4 +1,4 @@
--- 20270807000000_picture_wallet.sql
+-- 20270808000000_picture_wallet.sql
 --
 -- Picture credits (owner, 2026-11-18). Every paid picture press (Studio Image, Edit PI Customize image, the
 -- quotation image studio's Clean up and Change it) takes credits from a wallet before the paid fal call is made.

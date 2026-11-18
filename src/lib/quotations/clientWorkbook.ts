@@ -44,6 +44,9 @@ export type WorkbookInput = {
   /** By picture path. A path with no entry leaves that product's picture cell empty. */
   pictures: ReadonlyMap<string, SheetPicture>
   logo?: SheetPicture | null
+  /** The bank account and UPI QR (20270807000000), printed below the totals; nothing prints when it is absent or empty. */
+  payment?: { account_holder: string; bank: string; account_no: string; ifsc: string; branch: string; upi_id: string } | null
+  qr?: SheetPicture | null
 }
 
 export const BRAND = 'B9472E'
@@ -279,6 +282,34 @@ export async function buildClientWorkbook(input: WorkbookInput): Promise<Uint8Ar
   for (const g of t.gst) { r++; gstRows.push(total(`GST @${g.rate}%`, { formula: `ROUND(${A}${taxRow}*${g.rate}/100,0)`, result: g.gst })) }
   r++
   total('Total including GST', { formula: `${A}${taxRow}${gstRows.map(x => `+${A}${x}`).join('')}`, result: t.grand }, { strong: true })
+
+  // ── payment details and the UPI QR (owner, 18 Nov 2026) ─────────────────────────────────────────────
+  const pay = input.payment
+  if (pay && (pay.account_no || pay.upi_id)) {
+    r += 2
+    ws.mergeCells(r, 1, r, LAST)
+    const ph = ws.getCell(r, 1)
+    ph.value = 'Pay by bank transfer or UPI'
+    ph.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF' + INK } }
+    ph.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + SAND } }
+    ph.alignment = { vertical: 'middle' }
+    ws.getRow(r).height = 24
+    const first = r + 1
+    for (const [k, v] of [['Account name', pay.account_holder], ['Bank', pay.bank], ['Account no.', pay.account_no], ['IFSC', pay.ifsc], ['Branch', pay.branch], ['UPI ID', pay.upi_id]] as [string, string][]) {
+      if (!v) continue
+      r++
+      label(r, 1, k, 2)
+      value(r, 3, v, 5, true)
+      ws.getRow(r).height = 21
+    }
+    if (input.qr) {
+      for (let x = r + 1; x < first + 6; x++) ws.getRow(x).height = 21 // room for the QR beside the details
+      r = Math.max(r, first + 5)
+      const id = wb.addImage({ base64: toBase64(input.qr.bytes), extension: imageType(input.qr.bytes) })
+      const f = fitPicture(input.qr.width, input.qr.height, 120, 120)
+      ws.addImage(id, { tl: { col: 6.2, row: first - 1 + 0.15 }, ext: f })
+    }
+  }
 
   // ── transport and notes, then the way to use it ─────────────────────────────────────────────────────
   const note = (name: string, text: string) => {

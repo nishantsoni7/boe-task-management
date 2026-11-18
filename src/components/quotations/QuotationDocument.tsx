@@ -12,6 +12,7 @@ import {
   type TableRow,
 } from '@/lib/quotations/documentPlan'
 import { WORK_PULL, workSetFor } from '@/lib/quotations/documentWork'
+import type { PaymentDetails } from '@/lib/quotations/api'
 import d from './document.module.css'
 import { Pic } from './Pic'
 
@@ -96,7 +97,28 @@ function Page({ n, section, kicker, title, children, cls }: { n: number; section
   )
 }
 
-export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUrl: (path: string) => string }) {
+/** The bank account and the UPI QR, in a compact block on the terms page. Nothing prints until an administrator has filled in an account number or a UPI id. */
+export const hasPayment = (p: PaymentDetails | null | undefined): p is PaymentDetails => !!p && !!(p.account_no || p.upi_id)
+function PayBlock({ p }: { p: PaymentDetails }) {
+  const rows: [string, string][] = ([['Account name', p.account_holder], ['Bank', p.bank], ['Account no.', p.account_no], ['IFSC', p.ifsc], ['Branch', p.branch], ['UPI ID', p.upi_id]] as [string, string][]).filter(([, v]) => v)
+  return (
+    <div className={d.pay}>
+      <div className={d.payMain}>
+        <h3>Pay by bank transfer or UPI</h3>
+        <dl>{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+      </div>
+      {p.qr_image ? (
+        <div className={d.payQr}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={p.qr_image} alt="UPI QR code" />
+          <span>Scan to pay</span>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; pictureUrl: (path: string) => string; payment?: PaymentDetails | null }) {
   // Pictures below the first screen load as the reader scrolls to them (a quotation can hold 60 pictures of a few hundred KB each).
   // Printing needs every one of them, so the moment a print starts they all load.
   useEffect(() => {
@@ -308,6 +330,7 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
             <li>Design, size and finish unchanged once finalised</li>
             <li>One single point of contact for the project</li></ul></div>
         </div>
+        {hasPayment(payment) ? <PayBlock p={payment} /> : null}
         {hasNotes && !notesPage ? notesBox : null}
         <p className={d.fine}>The full terms and conditions (7 expectations, 23 terms) follow on the next {termPages.length === 1 ? 'page' : 'pages'} and are part of this quotation.</p>
         <div className={d.accept}>

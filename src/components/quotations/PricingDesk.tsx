@@ -107,7 +107,7 @@ export function reasonText(r: PriceReason): string {
 }
 
 const STATE_TEXT: Record<PriceState['state'], string> = {
-  not_needed: 'No approval needed', to_ask: 'Needs price approval', requested: 'Waiting for the pricing desk',
+  not_needed: 'No approval needed', to_ask: 'Prices are outside the usual limits', requested: 'Waiting for the pricing desk',
   approved: 'Prices approved', returned: 'Sent back by the pricing desk',
 }
 
@@ -128,7 +128,7 @@ export function PriceCard({ id, price, mayEdit, dirty, busy, onAsk, onDecide }: 
           {price.reasons.map((r, i) => <div key={i}>{reasonText(r)}</div>)}
           {price.note && <div style={{ marginTop: 4 }}>“{price.note}”{price.by ? ` · ${price.by}` : ''}</div>}
         </div>
-        {price.blocked && <div className={`${s.small} ${s.muted}`}>The client link and Confirm → PI wait for approval.</div>}
+        {price.state !== 'approved' && <div className={`${s.small} ${s.muted}`}>Optional: you can share the client link and Confirm → PI without it.</div>}
         {dirty && <div className={`${s.small} ${s.dirty}`}>Save first: approval is for the saved prices.</div>}
         {mayEdit && !dirty && (price.state === 'to_ask' || price.state === 'returned') && (
           <button className={`${s.btn} ${s.btnPrimary}`} disabled={busy} onClick={onAsk}>Ask for price approval</button>

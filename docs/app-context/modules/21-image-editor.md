@@ -107,7 +107,7 @@ Verified against checkout `852e0493`. Module key `image_editor`, route `/image-e
 
 - **One read of your own row (2026-11-12, #711 merged as `72c57977`, no SQL).** `/image-editor` reads the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.
 
-## 13. Picture credits: the wallet and the tracking page (PR pending, migration `20270807000000`, NOT applied)
+## 13. Picture credits: the wallet and the tracking page (PR pending, migration `20270808000000`, NOT applied)
 
 **What it is.** Every paid picture press takes credits from a wallet BEFORE the paid fal call: Studio Image (1 credit), Edit PI Customize image, the quotation image studio's Clean up and Change it (2 credits each). 1 credit is about Rs 4 (costs in `src/lib/imageCredits/costs.ts`). It also records every press for the founders' tracking page.
 

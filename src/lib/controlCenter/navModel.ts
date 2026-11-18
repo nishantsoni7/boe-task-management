@@ -192,11 +192,11 @@ export const NAV_HUBS: readonly NavHub[] = [
       },
       {
         id: 'quotation-price-approval', label: 'Quotation price approval', href: `${MAIN_PATH}/quotation-price-approval`,
-        description: 'Switch price approval on quotations on or off, and set the discount and price limits that trigger it.',
+        description: 'Price approval limits, who sees price suggestions, and the bank account and UPI QR printed on quotations.',
         short: 'Switch price approval on or off',
         affects: 'Every quotation, and the pricing desk', related: ['sales-team', 'by-module'],
         keywords: ['quotation', 'quotations', 'price approval', 'approve prices', 'pricing desk', 'discount limit',
-          'switch off', 'disable', 'ask for price approval'],
+          'switch off', 'disable', 'ask for price approval', 'price suggestions', 'payment details', 'bank account', 'upi', 'qr code'],
       },
     ],
   },
