@@ -1327,6 +1327,8 @@ describe('the applied migrations are frozen', () => {
       '20270803000000_day_close_hold_decision.sql',
       // Quotation requests go to the owner or Nitish: an action, three functions, a guard trigger, three admin read policies, Nitish's grants.
       '20270804000000_quotation_request_receivers.sql',
+      // The request page shows its quotation: one read-only function.
+      '20270805000000_quotation_for_request.sql',
     ])
   })
 
@@ -1868,6 +1870,7 @@ describe('the applied migrations are frozen', () => {
       '20270802000100_day_close_attendance_hold.sql',
       '20270803000000_day_close_hold_decision.sql',
       '20270804000000_quotation_request_receivers.sql',
+      '20270805000000_quotation_for_request.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

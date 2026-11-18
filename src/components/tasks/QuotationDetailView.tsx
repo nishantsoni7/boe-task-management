@@ -8,7 +8,7 @@ import { ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
 import { formatDateTime } from '@/lib/ui'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { TaskAttachmentGallery } from '@/components/tasks/TaskAttachmentGallery'
-import { MakeInQuotations } from '@/components/quotations/QuotationLinks'
+import { RequestQuotation } from '@/components/quotations/QuotationLinks'
 import type { GalleryEntry } from '@/lib/tasks/taskGallery'
 import {
   attachmentStatusLabel, failureSummary, type PendingAttachment,
@@ -58,6 +58,8 @@ interface Props {
   /** The assignee who may send the quotation. */
   canSend:       boolean
   canReopen:     boolean
+  /** The salesperson who raised it, once it is sent: reopen it with what to change (owner, 18 Nov 2026). */
+  canAskChange:  boolean
   canMessage:    boolean
   requestFiles:  readonly GalleryEntry[]
   sent:          SentQuotation | null
@@ -66,9 +68,10 @@ interface Props {
   supabase:      SupabaseClient
   onOpenFile:    (path: string, fileName: string) => void
   composer:      QuotationComposer
-  onSend:        () => void
+  /** Sends the attached file(s); the reason the quotation went as Excel leads the note. */
+  onSend:        (excelReason: string) => void
   onPostMessage: () => void
-  onReopen:      () => void
+  onReopen:      (changeNote?: string) => void
   reopening:     boolean
   /** The activity card, rendered by the page (it owns edit/delete of updates). */
   timeline:      ReactNode
@@ -99,6 +102,9 @@ export function QuotationDetailView(p: Props) {
   const prio = PRIORITY[task.priority] ?? PRIORITY.low
   const [mode, setMode] = useState<'send' | 'message'>('send')
   const [now] = useState(() => Date.now())
+  const [excelReason, setExcelReason] = useState('')
+  const [asking, setAsking] = useState(false)
+  const [changeNote, setChangeNote] = useState('')
   const sending = p.canSend && !done && mode === 'send'
   const gate = quotationSendGate(c.attachments)
   const failed = c.attachments.some(a => a.status === 'failed')
@@ -172,7 +178,7 @@ export function QuotationDetailView(p: Props) {
             </div>
           </div>
 
-          {p.canSend && !done && task.id && <MakeInQuotations supabase={p.supabase} taskId={task.id} />}
+          {task.id && <RequestQuotation supabase={p.supabase} taskId={task.id} canMake={p.canSend && !done} />}
 
           <TaskAttachmentGallery
             entries={p.requestFiles}
@@ -211,7 +217,7 @@ export function QuotationDetailView(p: Props) {
               {p.canReopen && (
                 <button
                   type="button"
-                  onClick={p.onReopen}
+                  onClick={() => p.onReopen()}
                   disabled={p.reopening}
                   style={{
                     alignSelf: 'flex-start', padding: '7px 16px', borderRadius: '8px',
@@ -222,6 +228,30 @@ export function QuotationDetailView(p: Props) {
                 >
                   {p.reopening ? 'Reopening…' : 'Reopen for revision'}
                 </button>
+              )}
+              {p.canAskChange && !asking && (
+                <button type="button" className="boe-btn" onClick={() => setAsking(true)} style={{ alignSelf: 'flex-start' }}>
+                  Ask for a change
+                </button>
+              )}
+              {p.canAskChange && asking && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <label style={{ fontSize: '12.5px', color: colors.secondary }} htmlFor="qr-change-note">
+                    What should change? The request goes back on the quotation team’s list with this note.
+                  </label>
+                  <textarea
+                    id="qr-change-note" className="boe-input" rows={3} maxLength={1000} value={changeNote}
+                    onChange={e => setChangeNote(e.target.value)} placeholder="e.g. Client wants 30 chairs instead of 24, and a walnut finish"
+                    style={{ resize: 'vertical', fontSize: '13px' }}
+                  />
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                    <button type="button" className="boe-btn boe-btn-primary" disabled={p.reopening || changeNote.trim().length < 3}
+                      onClick={() => p.onReopen(changeNote.trim())}>
+                      {p.reopening ? 'Sending…' : 'Send the change'}
+                    </button>
+                    <button type="button" className="boe-btn" onClick={() => { setAsking(false); setChangeNote('') }} disabled={p.reopening}>Cancel</button>
+                  </div>
+                </div>
               )}
             </div>
             {p.sent && p.sent.files.length > 0 && (
@@ -239,7 +269,7 @@ export function QuotationDetailView(p: Props) {
             <div className="boe-card" style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px', background: '#ffffff' }}>
               {p.canSend && !done ? (
                 <div role="tablist" style={{ display: 'flex', gap: '6px' }}>
-                  {([['send', 'Your quotation'], ['message', 'Message sales']] as const).map(([key, label]) => (
+                  {([['send', 'Send as Excel'], ['message', 'Message sales']] as const).map(([key, label]) => (
                     <button
                       key={key}
                       type="button"
@@ -264,7 +294,7 @@ export function QuotationDetailView(p: Props) {
 
               <p style={{ margin: 0, fontSize: '12.5px', color: colors.secondary }}>
                 {sending
-                  ? `Attach the quotation file(s) and add a note for ${requester} if needed. Sending completes this request and tells ${requester}.`
+                  ? `Building it in BOE One is the default. Only when that is not possible: attach the Excel, say why, and send. Sending completes this request and tells ${requester}.`
                   : `Messages and files you post here appear in the Timeline below.`}
               </p>
 
@@ -275,6 +305,15 @@ export function QuotationDetailView(p: Props) {
                 onDragLeave={c.onDragLeave}
                 onDrop={c.onDrop}
               >
+                {sending && (
+                  <input
+                    className="boe-input" value={excelReason} maxLength={120}
+                    onChange={e => setExcelReason(e.target.value)}
+                    aria-label="Why this quotation goes as Excel"
+                    placeholder="Why Excel? e.g. client’s own format, rush, products the app cannot price yet"
+                    style={{ width: '100%', boxSizing: 'border-box', fontSize: '12.5px', marginBottom: '8px' }}
+                  />
+                )}
                 <textarea
                   value={c.note}
                   onChange={e => c.setNote(e.target.value)}
@@ -355,14 +394,14 @@ export function QuotationDetailView(p: Props) {
                 {sending ? (
                   <button
                     type="button"
-                    onClick={p.onSend}
-                    disabled={c.saving || !gate.ok}
-                    title={!gate.ok ? gate.message : undefined}
+                    onClick={() => p.onSend(excelReason.trim())}
+                    disabled={c.saving || !gate.ok || !excelReason.trim()}
+                    title={!gate.ok ? gate.message : !excelReason.trim() ? 'Say why this quotation goes as Excel' : undefined}
                     style={{
                       display: 'inline-flex', alignItems: 'center', gap: '6px',
                       padding: '9px 20px', borderRadius: '8px', border: `1.5px solid ${colors.green}`,
                       background: colors.green, color: '#ffffff', fontSize: '13px', fontWeight: 700, fontFamily: font.body,
-                      cursor: c.saving || !gate.ok ? 'not-allowed' : 'pointer', opacity: c.saving || !gate.ok ? 0.55 : 1,
+                      cursor: c.saving || !gate.ok || !excelReason.trim() ? 'not-allowed' : 'pointer', opacity: c.saving || !gate.ok || !excelReason.trim() ? 0.55 : 1,
                     }}
                   >
                     <Send size={14} />

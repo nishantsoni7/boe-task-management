@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Quotation requests: the request page shows its quotation, Excel needs a reason, the salesperson asks for a change (branch `feat/request-shows-quotation`; PR number added at the stamp) · migration `20270805000000_quotation_for_request` (one read-only function)
+- **Owner direction:** Task Management is the front door, the work happens in Quotations, Excel stays allowed and fades out (no hard date). Step 1 of the transition plan.
+- **The quotation on the request** (`RequestQuotation` in `QuotationLinks.tsx`, read by `quotation_for_request(task)`, same `quotation_sees` rule as `quotation_for_pi`): number, status, value before GST, "version N · sent … · client opened …", Open builder / PDF / WhatsApp (when shared and a phone is known). With none yet, the maker gets **Build in BOE One** (the default).
+- **Send as Excel:** the old file answer is now the tab "Send as Excel" and needs a one-line reason, which leads the sent note ("Sent as Excel: …"); `saveComment(lead?)`.
+- **Ask for a change:** the salesperson (creator) reopens a sent request with a note (`/api/restore-task` takes `reason`, Timeline "Change asked: …"); the maker keeps "Reopen for revision". Quotation reopening stays silent.
+- Two buttons passed their click event straight to handlers that now take text (`onClick={saveComment}`, `onClick={handleReopen}`, and the maker's reopen): wrapped. Tests: `requestQuotation.test.ts`; pins in `quotationSend`, `commentPreviewDelivery`, `submitButtonBalance`, both migration ledgers.
+
 ## 2026-11-18 — Quotation requests: a Requests page in Quotations, the dashboard card for whoever receives requests, and a notice for each new request (PR #920, merged 18 Nov 2026 11:40 IST as `829b7893`, live 11:43 IST) · no SQL (needs 20270804000000)
 - **Quotations › Requests** (`/quotations/requests`, `RequestsScreen.tsx`, `requestTabs.ts`): Pending (longest waiting first, the wait coloured at 2 and 4 days) and Completed (newest first), search, columns Lead / From / Sent to / Priority / Waiting or Completed; the same read as Tasks › Quotation requests, so the owner sees every request, Nitish his, a salesperson theirs; a row opens the request in Tasks; "New request" for those who may raise one. New "Requests" item in the Quotations menu.
 - **Dashboard:** the Quotation Requests card is shown to everybody who receives requests (`receivesQuotations` in `src/lib/permissions/quotations.ts`: an administrator or `task_management.receive_quotations`), judged for the displayed person under View As; others keep Overdue Tasks.
