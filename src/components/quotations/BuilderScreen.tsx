@@ -9,6 +9,7 @@ import { sendFeedback, type FeedbackDoc } from '@/lib/pricing/learning/api'
 import type { DiffersReport } from '@/components/pricing/training/TaughtPrice'
 import { Check, ChevronDown, ChevronRight, FileUp, Copy, FileCheck2, FileSpreadsheet, Info, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
 import { draftDetailHref } from '@/lib/orders/draftsView'
+import { saveProblem } from '@/lib/quotations/saveCheck'
 import { fetchVersions, issuedAt } from '@/lib/quotations/versions'
 import { askBeforeLeaving } from '@/lib/navigation/leaveGuard'
 import { conversionProblems, type ConversionProblem } from '@/lib/quotations/piWorkbook'
@@ -149,10 +150,14 @@ export default function BuilderScreen() {
     if (!base || !h || saving) return
     const problem = !h.client_name.trim() ? 'Enter the client’s name.'
       : h.client_email.trim() && !EMAIL_OK.test(h.client_email.trim()) ? EMAIL_PROBLEM
-      : areas.some(a => !a.name.trim() || !(a.multiplier >= 1)) ? 'Every room type needs a name and at least 1 room.'
-      : lines.some(l => !l.name.trim()) ? 'Every product needs a name.'
-      : lines.some(l => !(Number(l.qty) > 0)) ? 'Every product needs a quantity above 0.'
       : null
+    // Says which room type or product, and brings that product into view (saveCheck.ts).
+    const onLine = problem ? null : saveProblem(areas, lines)
+    if (onLine) {
+      setMsg({ tone: 'bad', text: onLine.text })
+      if (onLine.lineKey) document.getElementById(`line-${onLine.lineKey}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      return
+    }
     // The email box lives in the advanced section: open it, or the message points at a box nobody can see.
     if (problem) { if (problem === EMAIL_PROBLEM) setAdvOpen(true); setMsg({ tone: 'bad', text: problem }); return }
     setSaving(true)

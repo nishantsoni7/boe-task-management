@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `be5c6acb` — Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
-- Commits on this branch: 287
+- Commit: `1b46ecbb` — Day Close held days at payroll: Count the day or Mark absent
+- Commits on this branch: 288
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 217
 - Migrations: 477 (first `20260530_create_positions.sql`, latest `20270803000000_day_close_hold_decision.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
-- Test files: 898   Next.js 16.2.6, React 19.2.4
+- Test files: 899   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `1b46ecbb` 2026-11-18 Day Close held days at payroll: Count the day or Mark absent
 - `be5c6acb` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
 - `96f42ae7` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `a32a4c69` 2026-11-18 Docs: record 20270802000000 and 20270802000100 as applied (no SQL) (#916)
@@ -38,7 +39,6 @@
 - `ebaa0f44` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
 - `935c8901` 2026-11-18 Quotations: New quotation's Cancel and x work again; dialogs close on Escape; deep-link parameters leave the address (#908)
 - `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
-- `413a70c2` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes (#906)
 
 ## Pages by top-level area
 
@@ -172,7 +172,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 21 source, 16 test
+- `src/lib/quotations` — 22 source, 17 test
 - `src/lib/salesLeads` — 16 source, 16 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
