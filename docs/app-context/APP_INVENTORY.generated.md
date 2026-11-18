@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a2df0ae2` — Day Close: tell the person who gave a task when it is moved to a new date
-- Commits on this branch: 279
+- Commit: `389f4eea` — Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 283
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 215
 - Migrations: 476 (first `20260530_create_positions.sql`, latest `20270802000100_day_close_attendance_hold.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
@@ -14,6 +14,10 @@
 
 ## Latest 25 commits
 
+- `389f4eea` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- `ada80bbc` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `5c7d359b` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date (no SQL) (#914)
+- `0f041ffd` 2026-11-18 Docs: regenerate the app inventory
 - `a2df0ae2` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date
 - `4ce1b6a1` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `5db5a11d` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (migrations 20270802000000 + 20270802000100) (#913)
@@ -35,10 +39,6 @@
 - `713b6697` 2026-11-18 Quotations: plan a product name's lines at the width the live table really has (#904)
 - `22f041f1` 2026-11-18 Quotations: practical fixes from the module review; crop draws on first open (#903)
 - `25fd59ee` 2026-11-18 Quotations: the PDF shows products and prices in one table; the salesperson's own details (#902)
-- `62939430` 2026-11-18 Quotations: crop by drawing a box, and change a made picture again with comments (#901)
-- `aa521cd8` 2026-11-18 Quotations: copy and paste a product picture with the keyboard (#900)
-- `d2a9b142` 2026-11-18 Quotations: who sees the suggested prices (everyone, or only the administrator who switches it) (#899)
-- `b71cb3e6` 2026-11-18 Orders: the hidden page is built only in the browser (React #418), and #897 stamped (#898)
 
 ## Pages by top-level area
 

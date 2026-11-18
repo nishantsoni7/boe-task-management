@@ -190,7 +190,7 @@ Shipped in PR #746 (`22d9f772`, deployed 13:45 IST). `20270704000000` APPLIED to
 
 **Scoreboard note.** Its `plan_on_time` and `closed_before_leaving` parts read strikes, so with no new strikes they are full marks. The Scoreboard is paused, and PR 2 gives it its own switch.
 
-## 11. The attendance hold (2026-11-18, PR 2 of 2; migrations `20270802000000` + `20270802000100`, NOT YET APPLIED)
+## 11. The attendance hold (2026-11-18, PR #913 merged `5db5a11`; migrations `20270802000000` + `20270802000100` APPLIED 2026-11-18, verified by query)
 
 **The consequence of the one rule** (owner: "they should get notified that their attendance for the next day will not be marked… on the next day… your punch in has not been considered because yesterday's work was not completed"). Agreed: a **hold that clears itself**, never an automatic deduction.
 
