@@ -22,19 +22,19 @@ const REAL: QuoteLine[] = [
 ]
 
 describe('quotation totals', () => {
-  test('the real Shamshabad quote adds up to the PDF to the rupee, CGST + SGST as Base44 printed it', () => {
+  test('the real Shamshabad quote adds up to the PDF to the rupee, one GST line (not split into CGST + SGST: owner, 18 Nov 2026)', () => {
     const t = computeTotals({ gst_mode: 'cgst_sgst', discount_pct: 0, fabric_amount: 0, packing_amount: 0 }, areas, REAL)
     assert.equal(t.subtotal, 20179800)
     assert.equal(t.areaTotal.a, 4743000)
     assert.equal(t.areaTotal.b, 15436800)
-    assert.deepEqual(t.gst, [{ rate: 18, base: 20179800, igst: 0, cgst: 1816182, sgst: 1816182 }])
+    assert.deepEqual(t.gst, [{ rate: 18, base: 20179800, gst: 3632364 }])
     assert.equal(t.grand, 23812164)
     assert.equal(t.pieces, 669)
   })
 
-  test('IGST gives the same total under one head', () => {
+  test('the GST mode of the header does not change the totals', () => {
     const t = computeTotals({ gst_mode: 'igst', discount_pct: 0, fabric_amount: 0, packing_amount: 0 }, areas, REAL)
-    assert.deepEqual(t.gst, [{ rate: 18, base: 20179800, igst: 3632364, cgst: 0, sgst: 0 }])
+    assert.deepEqual(t.gst, [{ rate: 18, base: 20179800, gst: 3632364 }])
     assert.equal(t.grand, 23812164)
   })
 
@@ -45,17 +45,14 @@ describe('quotation totals', () => {
     assert.equal(t.subtotal, 18000)
   })
 
-  test('discount, fabric and packing: value before GST, decor at 12% keeps its own rate', () => {
+  test('discount, fabric and packing: value before GST, one GST line at 18% on all of it, whatever a line stored', () => {
     const lines = [L({ qty_mode: 'fixed', qty: 10, unit_price: 10000 }), L({ qty_mode: 'fixed', qty: 10, unit_price: 2000, tax_rate: 12 })]
     const t = computeTotals({ gst_mode: 'igst', discount_pct: 10, fabric_amount: 5000, packing_amount: 3000 }, areas, lines)
     assert.equal(t.subtotal, 120000)
     assert.equal(t.discount, 12000)
     assert.equal(t.taxable, 116000)
-    assert.deepEqual(t.gst, [
-      { rate: 18, base: 98000, igst: 17640, cgst: 0, sgst: 0 },
-      { rate: 12, base: 18000, igst: 2160, cgst: 0, sgst: 0 },
-    ])
-    assert.equal(t.grand, 116000 + 17640 + 2160)
+    assert.deepEqual(t.gst, [{ rate: 18, base: 116000, gst: 20880 }])
+    assert.equal(t.grand, 116000 + 20880)
   })
 
   test('quantity: per room × rooms, fixed, or a line with no room type', () => {

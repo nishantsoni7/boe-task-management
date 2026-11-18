@@ -41,7 +41,9 @@ export type QuoteMoney = {
   packing_amount: number
 }
 
-export type GstRow = { rate: number; base: number; igst: number; cgst: number; sgst: number }
+// One GST amount per rate (owner, 18 Nov 2026: "GST @18%, no division: this is a PI and we are not sure whether it will be the same state
+// or a different state delivery"). The split into CGST + SGST or IGST is decided later, on the invoice; the header's gst_mode only goes on the PI draft.
+export type GstRow = { rate: number; base: number; gst: number }
 
 export type Totals = {
   lineQty: Record<string, number>
@@ -56,7 +58,8 @@ export type Totals = {
   grand: number
 }
 
-export const GST_RATES = [0, 5, 12, 18, 28] as const
+/** Everything is billed at 18% (owner, 18 Nov 2026: "we bill everything at 18%, so there is no need to divide it into GST slabs"). */
+export const GST_RATE = 18
 
 /** The quantity a line stands for: a fixed number, or so many per room × the rooms of its room type. */
 export function lineQty(line: Pick<QuoteLine, 'qty_mode' | 'qty' | 'area_key'>, areas: readonly QuoteArea[]): number {
@@ -71,7 +74,6 @@ export function computeTotals(money: QuoteMoney, areas: readonly QuoteArea[], li
   const lineQtyMap: Record<string, number> = {}
   const lineTotal: Record<string, number> = {}
   const areaTotal: Record<string, number> = {}
-  const byRate = new Map<number, number>()
   let subtotal = 0
   let pieces = 0
   for (const l of lines) {
@@ -84,22 +86,14 @@ export function computeTotals(money: QuoteMoney, areas: readonly QuoteArea[], li
     pieces += qty
     const ak = l.area_key ?? ''
     areaTotal[ak] = (areaTotal[ak] ?? 0) + total
-    byRate.set(l.tax_rate, (byRate.get(l.tax_rate) ?? 0) + total)
   }
   const pct = Math.min(100, Math.max(0, Number(money.discount_pct) || 0))
   const discount = Math.round((subtotal * pct) / 100)
   const extras = Math.max(0, Number(money.fabric_amount) || 0) + Math.max(0, Number(money.packing_amount) || 0)
   const taxable = subtotal - discount + extras
-  // Fabric and packing are taxed with the furniture (18%). The discount is shared out across the rates.
-  if (extras > 0) byRate.set(18, (byRate.get(18) ?? 0))
-  const gst: GstRow[] = [...byRate.entries()].sort((a, b) => b[0] - a[0]).map(([rate, sum]) => {
-    const base = Math.round(sum * (1 - pct / 100)) + (rate === 18 ? extras : 0)
-    const half = Math.round((base * rate) / 200)
-    return money.gst_mode === 'cgst_sgst'
-      ? { rate, base, igst: 0, cgst: half, sgst: half }
-      : { rate, base, igst: Math.round((base * rate) / 100), cgst: 0, sgst: 0 }
-  }).filter(r => r.base > 0)
-  const gstTotal = gst.reduce((s, r) => s + r.igst + r.cgst + r.sgst, 0)
+  // One GST line: 18% of the value before GST (products less discount, plus fabric and packing). A line's own tax_rate is not used.
+  const gst: GstRow[] = taxable > 0 ? [{ rate: GST_RATE, base: taxable, gst: Math.round((taxable * GST_RATE) / 100) }] : []
+  const gstTotal = gst.reduce((s, r) => s + r.gst, 0)
   return { lineQty: lineQtyMap, lineTotal, areaTotal, pieces, subtotal, discount, taxable, gst, gstTotal, grand: taxable + gstTotal }
 }
 

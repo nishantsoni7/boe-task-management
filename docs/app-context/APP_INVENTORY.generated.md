@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a08a1d5f` — Docs: stamp #929 (shared image model on Nano Banana 2) as merged (#930)
-- Commits on this branch: 1488
+- Commit: `3e268b41` — Picture credits: a wallet and a tracking page for every paid picture press (limits ship off; migration 20270807000000 not applied)
+- Commits on this branch: 1489
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 483 (first `20260530_create_positions.sql`, latest `20270807000000_picture_wallet.sql`)
 - Tables ever created: 268 (dropped at some point: 8)   SQL functions: 1070   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `3e268b41` 2026-11-18 Picture credits: a wallet and a tracking page for every paid picture press (limits ship off; migration 20270807000000 not applied)
 - `a08a1d5f` 2026-11-18 Docs: stamp #929 (shared image model on Nano Banana 2) as merged (#930)
 - `6bca071d` 2026-11-18 Images: the shared image model moves from Nano Banana Pro to Nano Banana 2 (about US$0.08 a picture against US$0.15; no SQL) (#929)
 - `aae6360f` 2026-11-18 Docs: stamp #924 (logo marks on quotation pictures) as merged and backfilled (#928)
@@ -38,7 +39,6 @@
 - `935c8901` 2026-11-18 Quotations: New quotation's Cancel and x work again; dialogs close on Escape; deep-link parameters leave the address (#908)
 - `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
 - `413a70c2` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes (#906)
-- `f9998cbe` 2026-11-18 Docs: stamp #904 (quotation name width) as merged (#905)
 
 ## Pages by top-level area
 
@@ -174,7 +174,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 27 source, 22 test
+- `src/lib/quotations` — 28 source, 22 test
 - `src/lib/salesLeads` — 16 source, 16 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
