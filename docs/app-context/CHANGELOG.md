@@ -4,6 +4,9 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Quotations: a save that would fail says which product (or room type) and brings it into view (branch `fix/quotation-save-names-product`; PR number added at the stamp) · no SQL
+- Before: "Every product needs a name / a quantity above 0" without saying which, and a name over 160 characters, dimensions over 80, a quantity or price out of range came back as the database's own check message. New `saveProblem` (`src/lib/quotations/saveCheck.ts`) checks the database's limits before the save, in page order, and says e.g. `"Bed" in Deluxe: needs a quantity above 0.` or `Product 2 in Suite: needs a name.`; the builder scrolls that product into view (`ProductLine` rows carry `id="line-<key>"`). Test: `saveCheck.test.ts`.
+
 ## 2026-11-18 — Day Close: the person who gave a task is told when it is moved to a new date (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
 - Close my day's "move to a new date" now also sends the task's giver a task notice: "Dhruv moved the due date to Mon, 23 Nov: <reason>", badge "Date moved", opening the task. It is never sent for a Self Task or to the mover.
 - No new notification type: the ordinary task notice (`task_acknowledged` with the task's id), so it shows in the Tasks inbox and is pushed like any task update.

@@ -5,29 +5,21 @@
 
 ## Snapshot
 
-- Commit: `a2df0ae2` — Day Close: tell the person who gave a task when it is moved to a new date
-- Commits on this branch: 279
+- Commit: `5c7d359b` — Day Close: tell the person who gave a task when it is moved to a new date (no SQL) (#914)
+- Commits on this branch: 1473
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 215
 - Migrations: 476 (first `20260530_create_positions.sql`, latest `20270802000100_day_close_attendance_hold.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
-- Test files: 897   Next.js 16.2.6, React 19.2.4
+- Test files: 898   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `a2df0ae2` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date
-- `4ce1b6a1` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `5c7d359b` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date (no SQL) (#914)
 - `5db5a11d` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (migrations 20270802000000 + 20270802000100) (#913)
-- `b24fcb87` 2026-11-18 Docs: regenerate the app inventory
-- `588a367a` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
-- `e9c0afd7` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch
 - `ca56337c` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it (no SQL) (#911)
-- `7a83d356` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `1354334d` 2026-11-18 Docs: stamp #908, #909, #910 as merged (#912)
-- `5d43ab99` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `c315ef04` 2026-11-18 Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (#910)
-- `48b0bc5b` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it
 - `13ae93e7` 2026-11-18 Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5 (#909)
-- `ebaa0f44` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
 - `935c8901` 2026-11-18 Quotations: New quotation's Cancel and x work again; dialogs close on Escape; deep-link parameters leave the address (#908)
 - `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
 - `413a70c2` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes (#906)
@@ -39,6 +31,14 @@
 - `aa521cd8` 2026-11-18 Quotations: copy and paste a product picture with the keyboard (#900)
 - `d2a9b142` 2026-11-18 Quotations: who sees the suggested prices (everyone, or only the administrator who switches it) (#899)
 - `b71cb3e6` 2026-11-18 Orders: the hidden page is built only in the browser (React #418), and #897 stamped (#898)
+- `e8b22498` 2026-11-18 Page speed: Orders pages start loading while the access check runs (#897)
+- `10ab1a4f` 2026-11-18 Docs: stamp the PI read beside the first group (#895) as merged e4d923f2, deployed 00:02 IST, checked live (#896)
+- `e4d923f2` 2026-11-17 Page speed: the PI draft page starts reading the PI beside its first group (#895)
+- `b6aa2787` 2026-11-17 Docs: stamp the PI draft shared reads (#893) as merged 272fc217, deployed 23:16 IST, checked live (#894)
+- `272fc217` 2026-11-17 Page speed: the PI draft page reads the cost sheet and the sample type once (#893)
+- `64d8204c` 2026-11-17 Docs: stamp the no-double-ask fix (#891) as merged c5fe668a, deployed 21:52 IST, checked live (#892)
+- `c5fe668a` 2026-11-17 Page speed: putting the saved copy back no longer asks twice (#891)
+- `15fa364f` 2026-11-17 Docs: stamp the saved-copy fix (#889) as merged 6aa09ddd, deployed 21:12 IST, 27 module pages checked live (#890)
 
 ## Pages by top-level area
 
@@ -172,7 +172,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 21 source, 16 test
+- `src/lib/quotations` — 22 source, 17 test
 - `src/lib/salesLeads` — 16 source, 16 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test

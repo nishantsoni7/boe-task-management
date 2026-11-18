@@ -51,7 +51,7 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
   useEffect(() => () => forgetPicture(target), [target])
   useEffect(() => { if (!flash) return; const t = setTimeout(() => setFlash(''), 2500); return () => clearTimeout(t) }, [flash])
   return (
-    <div className={s.pl}>
+    <div className={s.pl} id={`line-${l.key}`}>
       <div className={s.plPic} onMouseEnter={() => pointAtPicture(target)} onMouseLeave={() => pointAtPicture(null)} onFocus={() => pointAtPicture(target)}
         title={editable ? 'Point here and press Ctrl+C to copy this picture, or Ctrl+V to paste one' : l.image_path ? 'Point here and press Ctrl+C to copy this picture' : undefined}>
         {l.image_path
