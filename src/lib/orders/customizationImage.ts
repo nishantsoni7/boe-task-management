@@ -17,8 +17,12 @@
 //
 // No React, no network: every rule is a function a test can pin.
 
-/** Image model: edits a picture from an instruction plus reference images. One request per press. */
-export const PI_IMAGE_EDIT_MODEL = 'fal-ai/nano-banana-pro/edit'
+/**
+ * Image model: edits a picture from an instruction plus reference images. One request per press.
+ * Shared by Edit PI's Customize image and the quotation image studio (Clean up and Change it).
+ * Nano Banana 2 (was Nano Banana Pro, 18 Nov 2026): about US$0.08 a picture against US$0.15, same request fields.
+ */
+export const PI_IMAGE_EDIT_MODEL = 'fal-ai/nano-banana-2/edit'
 
 /** The model that turns sales wording into exact instructions. */
 export const PI_INTERPRET_MODEL = 'claude-opus-5-5'

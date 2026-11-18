@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `009a3d72` — Quotations: the logo mark is optional per quotation, on by default (migration 20270806000200)
-- Commits on this branch: 1482
+- Commit: `746cf467` — Quotations: the logo mark on every picture the client sees, optional per quotation; clean originals in a private bucket (migrations 20270806000000, 20270806000200) (#924)
+- Commits on this branch: 1485
 - Pages (`page.tsx`): 210   API routes (`route.ts`): 219
 - Migrations: 482 (first `20260530_create_positions.sql`, latest `20270806000200_quotation_picture_mark_switch.sql`)
 - Tables ever created: 265 (dropped at some point: 8)   SQL functions: 1066   Enums: 0
@@ -14,8 +14,11 @@
 
 ## Latest 25 commits
 
-- `009a3d72` 2026-11-18 Quotations: the logo mark is optional per quotation, on by default (migration 20270806000200)
-- `2d3c49fc` 2026-11-18 Quotations: the logo mark on every picture the client sees; clean originals in a private bucket (migration 20270806000000)
+- `746cf467` 2026-11-18 Quotations: the logo mark on every picture the client sees, optional per quotation; clean originals in a private bucket (migrations 20270806000000, 20270806000200) (#924)
+- `3e886ceb` 2026-11-18 Docs: stamp #926 as merged (the builder's top area redone, 1360 px cap kept) (#927)
+- `7ea6f66d` 2026-11-18 Quotations: the builder's top area redone: Request | Status | Share as three compact cards, a four-field Client grid, the page capped at 1360 px (no SQL) (#926)
+- `a7058855` 2026-11-18 Docs: stamp #923 as merged and applied; rename its migration to 20270806000100 (the number was already taken by quotation_picture_originals) (#925)
+- `14dea70a` 2026-11-18 Quotations: the builder page tidied: request on top, City, no PI draft card, one-line Saved (migration 20270806000000, not applied) (#923)
 - `10b5b012` 2026-11-18 Quotation requests: the request page shows its quotation, Excel needs a reason, the salesperson asks for a change (migration 20270805000000, read-only) (#922)
 - `a5ef42ef` 2026-11-18 Docs: stamp #919 and #920 as merged; migration 20270804000000 applied (#921)
 - `829b7893` 2026-11-18 Quotation requests: Requests page in Quotations, dashboard card for every receiver, a notice for each new request (#920)
@@ -36,9 +39,6 @@
 - `713b6697` 2026-11-18 Quotations: plan a product name's lines at the width the live table really has (#904)
 - `22f041f1` 2026-11-18 Quotations: practical fixes from the module review; crop draws on first open (#903)
 - `25fd59ee` 2026-11-18 Quotations: the PDF shows products and prices in one table; the salesperson's own details (#902)
-- `62939430` 2026-11-18 Quotations: crop by drawing a box, and change a made picture again with comments (#901)
-- `aa521cd8` 2026-11-18 Quotations: copy and paste a product picture with the keyboard (#900)
-- `d2a9b142` 2026-11-18 Quotations: who sees the suggested prices (everyone, or only the administrator who switches it) (#899)
 
 ## Pages by top-level area
 
