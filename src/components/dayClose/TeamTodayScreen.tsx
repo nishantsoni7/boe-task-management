@@ -157,7 +157,7 @@ export function TeamTodayScreen() {
 
       {error && <p className={styles.error} role="alert">{error}</p>}
 
-      {tab === 'today' && <TodayTab team={team} nowMinutes={nowMinutes} onChanged={load} />}
+      {tab === 'today' && <TodayTab team={team} nowMinutes={nowMinutes} />}
       {tab === 'people' && team.viewer.manages && (
         <>
           <Members onChanged={load} />
@@ -173,13 +173,13 @@ export function TeamTodayScreen() {
   )
 }
 
-function TodayTab({ team, nowMinutes, onChanged }: { team: Team; nowMinutes: number; onChanged: () => Promise<void> }) {
+function TodayTab({ team, nowMinutes }: { team: Team; nowMinutes: number }) {
   const ctx = { date: team.date, today: team.today, nowMinutes, workingDay: team.workingDay, planDue: team.planDue, closeOpens: team.closeOpens }
   const rows = sortRoster(team.rows.map(r => ({ ...r, status: rosterStatus(r, ctx) })))
   const count = (g: Group) => rows.filter(r => r.status.group === g).length
   const present = rows.filter(r => r.status.group !== 'away')
   const totals = {
-    filed: present.filter(r => r.plan?.submitted_at).length,
+    in: present.filter(r => r.punch.checkInAt).length,
     closed: present.filter(r => r.plan?.closed_at).length,
     done: rows.reduce((n, r) => n + r.counts.done, 0),
     total: rows.reduce((n, r) => n + r.counts.total, 0),
@@ -189,11 +189,11 @@ function TodayTab({ team, nowMinutes, onChanged }: { team: Team; nowMinutes: num
   return (
     <>
       <div className={tt.top}>
-        <NeedsDecision team={team} onDecided={onChanged} />
+        <NeedsDecision team={team} />
         <section className={`${tt.card} ${tt.pulse}`} aria-labelledby="pulse-heading">
           <h2 id="pulse-heading" className={tt.eyebrow}>{isToday ? 'The day so far' : 'That day'}</h2>
           <div className={tt.kpis}>
-            <Kpi n={totals.filed} of={present.length} label="Planned" />
+            <Kpi n={totals.in} of={present.length} label="In" />
             <Kpi n={totals.closed} of={present.length} label="Closed" />
             <Kpi n={totals.done} of={totals.total} label="Tasks done" />
           </div>
@@ -217,8 +217,8 @@ function TodayTab({ team, nowMinutes, onChanged }: { team: Team; nowMinutes: num
             <table className={tt.table}>
               <thead>
                 <tr>
-                  <th scope="col">Person</th><th scope="col">In</th><th scope="col">Plan</th><th scope="col">Tasks today</th>
-                  <th scope="col">Close</th><th scope="col">Calls · WhatsApp</th><th scope="col">Overdue</th><th scope="col">Strikes (month)</th>
+                  <th scope="col">Person</th><th scope="col">In</th><th scope="col">Tasks today</th>
+                  <th scope="col">Close</th><th scope="col">Calls · WhatsApp</th><th scope="col">Overdue</th>
                   <th scope="col"><span className={tt.srOnly}>Details</span></th>
                 </tr>
               </thead>
@@ -228,7 +228,7 @@ function TodayTab({ team, nowMinutes, onChanged }: { team: Team; nowMinutes: num
                   if (inGroup.length === 0) return null
                   return (
                     <Fragment key={g}>
-                      <tr className={tt.group}><td colSpan={9}>{GROUP_LABEL[g]} · {inGroup.length}</td></tr>
+                      <tr className={tt.group}><td colSpan={7}>{GROUP_LABEL[g]} · {inGroup.length}</td></tr>
                       {inGroup.map(r => <PersonRow key={r.id} row={r} status={r.status} />)}
                     </Fragment>
                   )
@@ -240,8 +240,8 @@ function TodayTab({ team, nowMinutes, onChanged }: { team: Team; nowMinutes: num
       </section>
 
       <p className={tt.footnote}>
-        Before the plan is due a missing plan shows grey, not red. Strikes are written each night at 11:15 pm for the
-        day just ending. Days off, holidays, approved full-day leave and days with no punch on the machine never get a strike.
+        The one rule: before leaving, every task due (and anything overdue) is finished or moved to a new date with a
+        reason. Nothing is red before it is due. No morning plan and no strikes (owner, 2026-11-18).
       </p>
     </>
   )
@@ -267,15 +267,16 @@ function DayBar({ nowMinutes, planDue, closeOpens }: { nowMinutes: number; planD
         <div className={tt.timelineMark} style={{ left: at(nowMinutes) }} />
       </div>
       <div className={tt.timelineLabels} style={{ marginTop: 6 }} aria-hidden="true">
-        <span>{clock(OFFICE_START_MINUTES)}</span><span>Plan {clock(planDue)}</span><span>Close {clock(closeOpens)}</span><span>{clock(OFFICE_END_MINUTES)}</span>
+        <span>{clock(OFFICE_START_MINUTES)}</span><span>In by {clock(planDue)}</span><span>Close {clock(closeOpens)}</span><span>{clock(OFFICE_END_MINUTES)}</span>
       </div>
     </div>
   )
 }
 
-function NeedsDecision({ team, onDecided }: { team: Team; onDecided: () => Promise<void> }) {
+function NeedsDecision({ team }: { team: Team }) {
   const leave = team.lockedLeave ?? []
-  const n = team.openStrikes.length + leave.length
+  // Strikes retired (owner, 2026-11-18): only the leave locked by pending work waits on the reviewer here.
+  const n = leave.length
   const canDecide = team.viewer.isReviewer
   return (
     <section className={tt.card} aria-labelledby="needs-heading">
@@ -285,7 +286,6 @@ function NeedsDecision({ team, onDecided }: { team: Team; onDecided: () => Promi
       </div>
       {n === 0 && <p className={tt.muted}>Nothing is waiting for you.</p>}
       {n > 0 && !canDecide && <p className={tt.muted}>Only {team.reviewer?.name ?? 'the reviewer'} decides these.</p>}
-      {team.openStrikes.map(s => <StrikeRow key={s.id} s={s} canDecide={canDecide} onDecided={onDecided} />)}
       {leave.map(l => (
         <div key={l.requestId} className={tt.decision}>
           <span className={`${tt.chip} ${tt.chipAmber}`}>Leave locked</span>
@@ -315,7 +315,6 @@ function PersonRow({ row, status }: { row: Row; status: RosterStatus }) {
             : row.punch.checkInAt ? istClock(row.punch.checkInAt)
             : status.issues.includes('No punch') ? <span className={tt.bad}>No punch</span> : '—'}
         </td>
-        <td><span className={`${tt.chip} ${TONE[status.plan.tone]}`}>{status.plan.text}</span></td>
         <td className={tt.num}>
           {away ? '—' : (
             <>
@@ -327,7 +326,6 @@ function PersonRow({ row, status }: { row: Row; status: RosterStatus }) {
         <td>{status.close ? <span className={`${tt.chip} ${TONE[status.close.tone]}`}>{status.close.text}</span> : '—'}</td>
         <td className={tt.num}>{row.calls.call} · {row.calls.whatsapp}</td>
         <td className={`${tt.num} ${row.overdueTasks > 0 ? tt.bad : ''}`}>{row.overdueTasks}</td>
-        <td className={tt.num}>{row.monthStrikes}</td>
         <td>
           <button type="button" className={tt.detailsBtn} onClick={() => setOpen(o => !o)} aria-expanded={open} aria-controls={detailId}
             aria-label={`${open ? 'Hide' : 'Show'} ${row.name}'s day`}>
@@ -337,7 +335,7 @@ function PersonRow({ row, status }: { row: Row; status: RosterStatus }) {
       </tr>
       {open && (
         <tr className={tt.detailRow} id={detailId}>
-          <td colSpan={9}>
+          <td colSpan={7}>
             <PersonDetail row={row} status={status} />
           </td>
         </tr>
@@ -378,61 +376,6 @@ function PersonDetail({ row, status }: { row: Row; status: RosterStatus }) {
         </ul>
       )}
       {row.plan?.close_note && <p className={tt.muted}><strong>End of day:</strong> {row.plan.close_note}</p>}
-    </div>
-  )
-}
-
-function strikeDetail(s: Strike): string {
-  const d = s.detail ?? {}
-  if (s.kind === 'no_plan' || s.kind === 'plan_late') {
-    return `Due ${String(d.due ?? '')}${d.filed_at ? `, filed ${istClock(String(d.filed_at))}` : ''}`
-  }
-  if (s.kind === 'day_not_closed') {
-    return d.punch_out_at ? `Last punch ${istClock(String(d.punch_out_at))}` : 'No punch-out'
-  }
-  if (s.kind === 'closed_after_leaving') {
-    return `Last punch ${istClock(String(d.punch_out_at ?? ''))}, closed ${istClock(String(d.closed_at ?? ''))}`
-  }
-  return ''
-}
-
-function StrikeRow({ s, canDecide, onDecided }: { s: Strike & { name: string; label: string }; canDecide: boolean; onDecided: () => Promise<void> }) {
-  const [note, setNote] = useState('')
-  const [waiving, setWaiving] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const decide = async (decision: 'upheld' | 'waived') => {
-    setBusy(true)
-    const r = await dayCloseFetch(`/api/day-close/strikes/${s.id}`, { body: { decision, note } })
-    setBusy(false)
-    if (!r.ok) { setError(r.error); return }
-    await onDecided()
-  }
-  return (
-    <div className={tt.decision}>
-      <span className={`${tt.chip} ${tt.chipRed}`}>Strike</span>
-      <div className={tt.decisionText}>
-        <p className={tt.decisionTitle}>{s.name} · {s.label}</p>
-        <p className={tt.decisionSub}>{dayLabel(s.work_date)} · {strikeDetail(s)}</p>
-      </div>
-      {canDecide && (
-        <div className={tt.decisionActions}>
-          {waiving ? (
-            <>
-              <input className={tt.noteInput} value={note} maxLength={1000} onChange={e => setNote(e.target.value)} autoFocus
-                placeholder="Why waive it?" aria-label={`Why waive ${s.name}'s strike`} />
-              <button type="button" className="boe-btn boe-btn-ghost" disabled={busy} onClick={() => { setWaiving(false); setNote('') }}>Cancel</button>
-              <button type="button" className="boe-btn boe-btn-primary" disabled={busy || note.trim().length < 3} onClick={() => decide('waived')}>Waive</button>
-            </>
-          ) : (
-            <>
-              <button type="button" className="boe-btn boe-btn-ghost" disabled={busy} onClick={() => setWaiving(true)}>Waive…</button>
-              <button type="button" className="boe-btn boe-btn-primary" disabled={busy} onClick={() => decide('upheld')}>Uphold</button>
-            </>
-          )}
-        </div>
-      )}
-      {error && <p className={tt.error} role="alert">{error}</p>}
     </div>
   )
 }

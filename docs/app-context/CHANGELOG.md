@@ -4,6 +4,17 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Day Close simplified: one rule, no morning plan, no strikes, "move to a new date" really moves the task (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
+- **Owner ask.** "Keep it very simple, minimal, so that it doesn't create a resistance for the new employees", yet foolproof. Agreed: one rule, "before you leave, every task due today (and anything overdue) is Done or moved to a new date with a reason".
+- **Changed.**
+  - No 10:30 plan; Close my day works without one.
+  - No new strikes.
+  - Carry-overs now move the task's due date, written into the task's history.
+  - Team Today: no Plan or Strikes columns; "In" replaces "Planned".
+- **Next (PR 2).** The attendance hold, its notifications, proof as a written line, and a separate Scoreboard switch.
+- **Proof.** Day Close tests updated, `moveDueDates.test.ts` added, plus `tsc`, eslint, full `npm test` and `next build`.
+- **Rollback.** Revert the PR; nothing in the database changed.
+
 ## 2026-11-18 — Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (PR #910, merged 18 Nov 2026 06:52 IST as `c315ef04`, live 06:55 IST) · no SQL
 - The builder ("Valid until", the WhatsApp text, the Excel sheet) and the print / PDF page dated a quotation from its FIRST send, so a version sent later could print a "valid until" already in the past. They now use the newest sent version's date, else the first send, else the day it was made: the rule the client link (`quotation_public`) already followed. New `issuedAt` in `src/lib/quotations/versions.ts`; the builder reads the versions with the Versions card's own query key (no extra call); the print page waits for them so a PDF never carries the old date. Test: `issuedAt.test.ts`.
 - The "Valid for (days)" box was NOT brought back: rule 18 of the redesign (owner, 13 Nov 2026) removed it; `valid_days` stays 7 by default.

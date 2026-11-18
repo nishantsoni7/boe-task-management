@@ -71,7 +71,7 @@ describe('while paused', () => {
     assert.deepEqual(prompt.body, { today: '2026-11-13', prompt: { kind: 'none' } })
   })
 
-  test('the nightly check writes no strike, even for somebody who came in and did nothing', async () => {
+  test('the nightly check writes no strike, paused or live (strikes retired, owner 2026-11-18)', async () => {
     db.rows('users').find(u => u.id === DHRUV)!.minop_user_id = '17'
     db.tables.minop_punches = [
       { minop_user_id: '17', punch_at: '2026-11-13T04:32:00.000Z', punch_local: '2026-11-13 10:02:00', first_seen_at: '2026-11-13T04:32:30.000Z' },
@@ -80,7 +80,8 @@ describe('while paused', () => {
     assert.deepEqual(await evaluateDay(svc(), '2026-11-13'), { date: '2026-11-13', judged: 0, written: 0 })
     assert.equal(db.rows('day_strikes').length, 0)
     setLive(true)
-    assert.equal((await evaluateDay(svc(), '2026-11-13')).written, 2)
+    assert.equal((await evaluateDay(svc(), '2026-11-13')).written, 0)
+    assert.equal(db.rows('day_strikes').length, 0)
   })
 
   test('leave sent with work pending is not locked', async () => {

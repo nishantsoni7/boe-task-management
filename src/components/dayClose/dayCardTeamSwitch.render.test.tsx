@@ -1,8 +1,9 @@
 /**
  * THE TODAY CARD AND THE TEAM SWITCH, ACTUALLY RENDERED (20270704000000).
  *
- * While the switch is off the card keeps what is useful (the task list and "File today's plan") but drops the
- * red "Your plan was due" banner, which is about a rule that is paused. Once live, the banner is back.
+ * While the switch is off the card keeps what is useful (the task list and "Close my day") but drops the red
+ * "tasks still open" banner, which is about a rule that is paused. Once live, the banner is back.
+ * No morning plan and no strikes any more (owner, 2026-11-18).
  *
  * Run: npm run test:file -- src/components/dayClose/dayCardTeamSwitch.render.test.tsx
  */
@@ -31,7 +32,7 @@ before(async () => {
 const myDay = (live: boolean | undefined) => ({
   member: true, live, today: '2026-11-13', workingDay: true, planDue: 630, closeOpens: 1080,
   plan: null, tasks: [], counts: { total: 0, done: 0, carried: 0, open: 0 },
-  prompt: { kind: 'file_plan', late: true, due: '10:30 am' },
+  prompt: { kind: 'close_day', open: 2 },
   punch: { checkInAt: null, checkOutAt: null },
 })
 
@@ -42,19 +43,23 @@ function render(day: ReturnType<typeof myDay>): string {
 }
 
 describe('the Today card', () => {
-  test('paused: no "plan was due" banner, but the card and "File today’s plan" stay', () => {
+  test('paused: no red banner, but the card and "Close my day" stay; no plan to file', () => {
     const html = render(myDay(false))
-    assert.doesNotMatch(html, /Your plan was due/)
-    assert.doesNotMatch(html, /recorded as a strike/)
+    assert.doesNotMatch(html, /still open/)
+    assert.doesNotMatch(html, /strike/)
+    assert.doesNotMatch(html, /File today/)
     assert.match(html, /Today · /)
-    assert.match(html, /File today’s plan/)
+    assert.match(html, /Close my day/)
   })
 
   test('a switch that is missing from the answer is paused too', () => {
-    assert.doesNotMatch(render(myDay(undefined)), /Your plan was due/)
+    assert.doesNotMatch(render(myDay(undefined)), /still open/)
   })
 
-  test('live: the red banner is back', () => {
-    assert.match(render(myDay(true)), /Your plan was due at 10:30 am/)
+  test('live: the red banner is back, with the one rule and no strike', () => {
+    const html = render(myDay(true))
+    assert.match(html, /2 tasks are still open/)
+    assert.match(html, /finish each task or move it to a new date with a reason/)
+    assert.doesNotMatch(html, /strike/)
   })
 })

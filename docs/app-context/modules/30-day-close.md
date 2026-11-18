@@ -1,5 +1,7 @@
 # 30 - Day Close (staff accountability: plan, proof, close, strikes)
 
+> **Simplified 2026-11-18 (owner: "keep it very simple, minimal, so it doesn't create resistance").** One rule: *before you leave, every task due today (and anything overdue) is Done, or moved to a new date with a reason.* No morning plan; no strikes; "move to a new date" really moves the task. See §10. Where older sections below mention the plan or strikes, §10 wins.
+
 > **Apply-state correction (2026-11-13).** The six migrations `20270622000000`, `20270624000000`, `20270625000000`, `20270626000000`, `20270627000000` and `20270628000000` were **not** in production when their PRs merged. Team Today showed "Something went wrong" and the scoreboard tables were missing (`to_regclass` checks all false). After a `backup-all.mjs` backup, the owner applied all six in order through the SQL Editor on 2026-11-13; a check then showed every table and column present. **Lesson:** after "Migration applied", confirm with a `to_regclass` / `information_schema` query before merging.
 
 **History.**
@@ -158,3 +160,33 @@ Shipped in PR #746 (`22d9f772`, deployed 13:45 IST). `20270704000000` APPLIED to
 - **Tests.** `src/lib/dayClose/teamSwitch.test.ts` (15: reads, strip, strikes, leave lock, score / vote / Star Seller cards, the switch, the counting rule), `dayCardTeamSwitch.render.test.tsx`, `leaveLock.test.ts` (fixture now `team_live: true`), `supabase/tests/day_close_team_switch_pglite.mjs` (7 checks: starts paused, proof off while paused, on when live, re-apply keeps the choice, closed to the browser).
 - **Trap.** Another open PR (#744) adds a Top 5 switch to the same settings table and the same Scoreboard files; both are independent (different columns), expect a mechanical merge-in for whichever lands second, and the migration ledger lists in `participantAndOrderTotalSecurity.test.ts`.
 - **Team Today on a phone (2026-11-15, PR #799 squash-merged 10:36 IST as `e6663b40`, deployed 10:38 IST, verified live, no SQL).** Found by the 390px sweep of every page: `/tasks/team-today` and `/performance/team` (same `teamToday.module.css`) could be dragged sideways to 836px. The roster table's `.srOnly` labels are `position: absolute` and nothing between them and the page was positioned, so they escaped `.scroll` (overflow-x auto). Fix: `.scroll { overflow-x: auto; position: relative; }`; the table still scrolls inside its card. Pinned by `src/app/phoneSweepLayout.test.ts`. **Trap:** any absolute child of a scroll box needs a positioned ancestor inside that box.
+
+## 10. Simplified: one rule, no plan, no strikes (2026-11-18, PR 1 of 2)
+
+**Owner ask.** Rate the system for new staff and make it "very simple, minimal", yet foolproof. Rated 6/10; the plan to reach 9/10 was agreed with the owner's recommended choices.
+
+**PR 1 (no SQL).**
+
+| Change | Where |
+|---|---|
+| **No morning plan.** `dayPrompt` never asks for a plan; the only ask is `close_day` from 6:00 pm. `file_plan` is gone from `/api/day-close/me`, `filePlan` from the server, the button from the Today card and the amber/red plan lines from the Modules strip | `rules.ts`, `server.ts`, `DayCard.tsx`, `DayStrip.tsx`, `me/route.ts` |
+| **Close my day without a filed plan.** The day's list is the open tasks due today or before | `closeDay` |
+| **No strikes.** `evaluateDay` writes nothing (the cron still calls it). Strikes already written stay on record but are not shown or counted on Team Today | `evaluateDay`, `TeamTodayScreen`, `teamView.ts` |
+| **"Move to a new date" really moves the task.** Each carry-over sets the task's `due_date` to the new date and writes `due_date_changed` into the task's history with the reason. Own tasks only | `moveDueDates` |
+| **Team Today.** No Plan or Strikes columns. "In" replaces "Planned". A person needs attention for no punch after 10:30, not closed after 6:30 pm, or overdue work | `teamView.ts`, `TeamTodayScreen.tsx` |
+
+**PR 2 (next, with one migration).**
+- **The attendance hold.** The next day's punch is recorded but "not counted" until yesterday's work is closed. It clears by itself when the work is closed; the owner can lift it; unresolved holds go to payroll for the owner to decide. Nothing is deducted automatically.
+- Notifications at punch-out, at 11:15 pm and at the next punch-in.
+- Proof can be a written line.
+- A separate Scoreboard switch, starting off.
+- The person who gave a task is told when it is moved.
+
+**Tests.**
+- `rules.test.ts`: no morning ask.
+- `teamView.test.ts`: rewritten, 13 tests.
+- `moveDueDates.test.ts`: 2 tests.
+- `dayCardTeamSwitch.render.test.tsx`, `redesign.render.test.tsx`, `leaveLock.test.ts` and `teamSwitch.test.ts`: no strikes.
+
+**Scoreboard note.** Its `plan_on_time` and `closed_before_leaving` parts read strikes, so with no new strikes they are full marks. The Scoreboard is paused, and PR 2 gives it its own switch.
+

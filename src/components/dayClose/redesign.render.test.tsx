@@ -55,7 +55,8 @@ describe('Team Today', () => {
   test('decisions first, then one table worst first: attention, on track, away', () => {
     const html = draw(TeamTodayScreen, ['day-close', 'team', null], team)
     assert.match(html, /Needs your decision/)
-    assert.match(html, /Dhruv · No plan filed/)
+    assert.doesNotMatch(html, /No plan filed/, 'strikes retired (2026-11-18): an old open strike is not shown')
+    assert.doesNotMatch(html, /Strikes|Planned/)
     assert.match(html, /Leave locked/)
     assert.match(html, /href="\/attendance\/requests"/)
     const attention = html.indexOf('Needs attention · 1')
