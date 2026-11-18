@@ -229,7 +229,6 @@ describe('the split is real, and points one way only', () => {
     for (const path of [
       'src/app/tasks/create/page.tsx',
       'src/app/tasks/assigned-by-me/page.tsx',
-      'src/app/tasks/quotation-requests/new/page.tsx',
       'src/components/meetings/MeetingTaskModal.tsx',
       'src/components/meetings/DiscussionTaskModal.tsx',
     ]) {
@@ -238,5 +237,11 @@ describe('the split is real, and points one way only', () => {
       assert.equal(/assignmentNotificationWriter/.test(text), false,
         `${path} must not import the writer`)
     }
+  })
+
+  test('the quotation request form asks for the notice through the browser half only (owner, 18 Nov 2026)', () => {
+    const text = readFileSync(join(ROOT, 'src/app/tasks/quotation-requests/new/page.tsx'), 'utf8')
+    assert.ok(text.includes("import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'"))
+    assert.equal(/assignmentNotificationWriter/.test(text), false, 'never the writer')
   })
 })

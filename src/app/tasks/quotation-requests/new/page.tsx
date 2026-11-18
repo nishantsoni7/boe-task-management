@@ -16,6 +16,7 @@ import { deriveQuotationCapabilities } from '@/lib/permissions/quotations'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { useQueryClient } from '@tanstack/react-query'
 import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
+import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
 import { initialReceiver, receiverRefusal, rememberReceiver, rememberedReceiver, type Receiver } from '@/lib/tasks/quotationReceivers'
 
 // Who makes the quotation is picked on the form (owner, 18 Nov 2026), from quotation_request_receivers()
@@ -168,9 +169,6 @@ export default function NewQuotationRequestPage() {
       return
     }
 
-    // No notification: a quotation request is silent, and a new task is
-    // announced by the acknowledgment section. See
-    // src/lib/notifications/taskNotificationPolicy.ts.
     const { error: logErr } = await supabase.from('task_activity_log').insert({
       task_id: task.id, actor_id: session.user.id,
       action: 'created', note: 'Quotation request submitted',
@@ -195,6 +193,11 @@ export default function NewQuotationRequestPage() {
         created_by: session.user.id,
       })
     }
+
+    // The person it was sent to is told (owner, 18 Nov 2026): "Quotation request sent to you". After the files, so
+    // the request they open is complete. A failure here never undoes the request; it is only logged.
+    const told = await requestAssignmentNotification(task.id)
+    if (!told.ok) console.error('[quotation request] notification not sent:', told.reason)
 
     // The list caches its rows, so the request just raised would not be in the
     // cached copy the user lands on next. Marking it stale is what puts the new

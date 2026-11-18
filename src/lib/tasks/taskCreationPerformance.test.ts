@@ -165,10 +165,12 @@ describe('every creation screen writes its activity row and requests no notifica
   ]
 
   for (const path of SCREENS) {
-    test(`${path} writes the created activity row and nothing to the notification route`, () => {
+    // The quotation request form alone tells the person a new request was sent to (owner, 18 Nov 2026).
+    const notifies = path === 'src/app/tasks/quotation-requests/new/page.tsx'
+    test(`${path} writes the created activity row and ${notifies ? 'tells the receiver' : 'nothing to the notification route'}`, () => {
       const src = codeOf(read(path))
       assert.ok(src.includes("const { error: logErr } = await supabase.from('task_activity_log').insert({"))
-      assert.equal(src.includes('requestAssignmentNotification'), false)
+      assert.equal(src.includes('requestAssignmentNotification'), notifies)
       assert.equal(src.includes('notify-assignment'), false)
     })
   }

@@ -168,12 +168,14 @@ describe('what the Dashboard around it keeps', () => {
   const PAGE = read('src/app/dashboard/page.tsx')
   const CSS = read('src/app/dashboard/quotationRequests.module.css')
 
-  test('one list on the page, the old rows are gone, and only admins get the card', () => {
+  test('one list on the page, the old rows are gone, and only the people who receive requests get the card', () => {
     assert.equal(PAGE.split('<QuotationRequestsList').length - 1, 1)
     assert.equal(PAGE.includes('QuotationRequestsSection'), false)
     assert.ok(PAGE.includes('now={now.getTime()}'), 'the page owns the clock')
-    const slot = PAGE.slice(PAGE.indexOf('{isAdmin ? ('), PAGE.indexOf('<QuotationPanel'))
-    assert.match(slot, /^\{isAdmin \? \(\s*$/)
+    // The owner and Nitish (18 Nov 2026): an administrator, or whoever holds task_management.receive_quotations.
+    const slot = PAGE.slice(PAGE.indexOf('{receivesQuotations ? ('), PAGE.indexOf('<QuotationPanel'))
+    assert.match(slot, /^\{receivesQuotations \? \(\s*$/)
+    assert.ok(PAGE.includes('const receivesQuotations = isAdmin || deriveQuotationCapabilities(subject.subjectRole,'))
   })
 
   test('the panel keeps its title, count, empty state and the click that returns to the Dashboard', () => {

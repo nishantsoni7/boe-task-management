@@ -22,6 +22,8 @@ import { useProfile } from '@/hooks/queries/useProfile'
 import { useActiveUsers, warmMyTasksCaches } from '@/hooks/queries/useMyTasks'
 import { useTopTasks, type TopTasksData } from '@/hooks/queries/useTopTasks'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
+import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
+import { deriveQuotationCapabilities } from '@/lib/permissions/quotations'
 import { useTaskCreationReport } from '@/hooks/queries/useTaskReports'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { GlanceBar } from './GlanceBar'
@@ -122,6 +124,9 @@ export default function DashboardPage() {
   // The session check that came with it is not lost: ModuleGuard already sends a
   // caller with no session to /login and does not render this page at all.
   const { ready: permsReady, userId: signedInUserId } = usePermissionContext()
+  // Who is sent quotation requests (the owner, Nitish; 20270804000000): their dashboard shows the Quotation Requests card.
+  // The DISPLAYED person under View As, so the owner sees Nitish's dashboard as Nitish does.
+  const subject = useDisplaySubject()
 
   // Unchanged semantics: `loggedInId` is the real signed-in user (profile, Top 3,
   // top-tasks invalidation), `currentUserId` is the EFFECTIVE one — the viewed
@@ -540,6 +545,7 @@ export default function DashboardPage() {
   const overdueTasks   = tasks.filter(t => isOverdue(t.due_date, t.status)).sort(compareByUrgency)
   const waitingTasks   = tasks.filter(t => t.status === 'waiting')
   const isAdmin        = (viewAsProfile ?? profile)?.role === 'admin'
+  const receivesQuotations = isAdmin || deriveQuotationCapabilities(subject.subjectRole, subject.subjectPermissionsByModule.get('task_management') ?? []).receivesQuotations
 
   const todayStart     = new Date(now); todayStart.setHours(0, 0, 0, 0)
   const dueTodayTasks  = tasks.filter(t => {
@@ -597,7 +603,7 @@ export default function DashboardPage() {
               onPreview={task => setSelectedTask(task)}
               onViewAll={() => setPreviewList({ title: 'Unacknowledged Tasks', items: unacknowledgedForMe })}
             />
-            {isAdmin ? (
+            {receivesQuotations ? (
               <QuotationPanel
                 tasks={quotationTasks}
                 userMap={mergedUserMap}

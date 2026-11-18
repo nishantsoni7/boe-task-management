@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `8da1de82` — Day Close held days at payroll: Count the day or Mark absent (migration 20270803000000) (#917)
-- Commits on this branch: 1476
-- Pages (`page.tsx`): 209   API routes (`route.ts`): 217
+- Commit: `8cbf2543` — Quotation requests go to the owner or Nitish: a required Send to, the owner sees every request (migration 20270804000000, apply before merge)
+- Commits on this branch: 1477
+- Pages (`page.tsx`): 210   API routes (`route.ts`): 217
 - Migrations: 478 (first `20260530_create_positions.sql`, latest `20270804000000_quotation_request_receivers.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1063   Enums: 0
-- Test files: 900   Next.js 16.2.6, React 19.2.4
+- Test files: 901   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `8cbf2543` 2026-11-18 Quotation requests go to the owner or Nitish: a required Send to, the owner sees every request (migration 20270804000000, apply before merge)
 - `8da1de82` 2026-11-18 Day Close held days at payroll: Count the day or Mark absent (migration 20270803000000) (#917)
 - `07d292f3` 2026-11-18 Quotations: a save that would fail says which product and brings it into view (#915)
 - `a32a4c69` 2026-11-18 Docs: record 20270802000000 and 20270802000100 as applied (no SQL) (#916)
@@ -38,7 +39,6 @@
 - `10ab1a4f` 2026-11-18 Docs: stamp the PI read beside the first group (#895) as merged e4d923f2, deployed 00:02 IST, checked live (#896)
 - `e4d923f2` 2026-11-17 Page speed: the PI draft page starts reading the PI beside its first group (#895)
 - `b6aa2787` 2026-11-17 Docs: stamp the PI draft shared reads (#893) as merged 272fc217, deployed 23:16 IST, checked live (#894)
-- `272fc217` 2026-11-17 Page speed: the PI draft page reads the cost sheet and the sample type once (#893)
 
 ## Pages by top-level area
 
@@ -73,7 +73,7 @@
 - **pricing** (5): `/pricing`, `/pricing/logic`, `/pricing/training`, `/pricing/training/[id]`, `/pricing/woods`
 - **q** (1): `/q/[token]`
 - **quick-start-guide** (1): `/quick-start-guide`
-- **quotations** (7): `/quotations`, `/quotations/[id]`, `/quotations/[id]/print`, `/quotations/learning`, `/quotations/learning/[id]`, `/quotations/learning/new`, `/quotations/reports`
+- **quotations** (8): `/quotations`, `/quotations/[id]`, `/quotations/[id]/print`, `/quotations/learning`, `/quotations/learning/[id]`, `/quotations/learning/new`, `/quotations/reports`, `/quotations/requests`
 - **reset-password** (1): `/reset-password`
 - **sales** (9): `/sales`, `/sales/board`, `/sales/import`, `/sales/lead-master`, `/sales/lead-master/filtered-chats`, `/sales/lead-master/new`, `/sales/my-day`, `/sales/notifications`, `/sales/team`
 - **samples** (3): `/samples`, `/samples/dispatch/[id]`, `/samples/notifications`
@@ -172,7 +172,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 22 source, 17 test
+- `src/lib/quotations` — 23 source, 18 test
 - `src/lib/salesLeads` — 16 source, 16 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
