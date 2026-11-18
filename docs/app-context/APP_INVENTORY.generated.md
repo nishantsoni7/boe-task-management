@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `5bd9569d` — Quotations: client choices (fabric, finish, stone, rope weave) per product, step 1: builder only (#934)
-- Commits on this branch: 1493
+- Commit: `85db2249` — Docs: stamp #931, #933, #934 and #936 as merged and applied (#937)
+- Commits on this branch: 1495
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 486 (first `20260530_create_positions.sql`, latest `20270809000000_quotation_client_choices_output.sql`)
 - Tables ever created: 269 (dropped at some point: 8)   SQL functions: 1074   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `85db2249` 2026-11-18 Docs: stamp #931, #933, #934 and #936 as merged and applied (#937)
+- `31e7fbdf` 2026-11-18 Quotations: client choices on the PDF, the client link and the Excel (step 2 of 3) (#936)
 - `5bd9569d` 2026-11-18 Quotations: client choices (fabric, finish, stone, rope weave) per product, step 1: builder only (#934)
 - `f1fafd84` 2026-11-18 Docs: stamp #932 (picture credits wallet) as merged and applied (#935)
 - `c7f03dcd` 2026-11-18 Picture credits: a wallet and a tracking page for every paid picture press (limits ship off; migration not applied) (#932)
@@ -37,8 +39,6 @@
 - `5c7d359b` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date (no SQL) (#914)
 - `5db5a11d` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (migrations 20270802000000 + 20270802000100) (#913)
 - `ca56337c` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it (no SQL) (#911)
-- `1354334d` 2026-11-18 Docs: stamp #908, #909, #910 as merged (#912)
-- `c315ef04` 2026-11-18 Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (#910)
 
 ## Pages by top-level area
 

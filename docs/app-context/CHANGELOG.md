@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Picture credits page: the two switches say whether they are ON or OFF, and Limits cannot be ticked while nobody has credits (branch `fix/picture-credits-limits-label`; PR number added at the stamp) · no migration
+- **Found on the live page (owner, 18 Nov 2026):** the Limits box was labelled "Limits are on." while unticked, which read as a status. Both switches on `/image-editor/usage` now show `ON` / `OFF` from the saved setting and say what ticking does. "Limits" is disabled while limits are off and no person has credits (turning them on with an empty list would refuse every press); unticking is always allowed.
+- Only `src/app/image-editor/usage/page.tsx` (labels and one `disabled`) changed; no route, setting or database change. Test: `imageCredits.test.ts` pins the labels and the guard.
+
 ## 2026-11-18 — Quotations: Client choices, step 2 of 3 (the client's copy, the PDF page, the Excel sheet) (PR #936, squash-merged by me on the owner's "Merge when green" 18 Nov 2026 21:10 IST as `31e7fbdf`; Vercel deploy succeeded; migration APPLIED and repaired just before the merge, `quotation_client_doc` checked live) · migration 20270809000000 → APPLIED (function replaced only, no backup needed)
 - **Owner decisions:** layout 2 (one table, a row per product); print BOTH confirmed and to-confirm rows.
 - **Client copy:** `quotation_client_doc` (the client link and every sent version read it) adds `client_choices` to a line that has any: source, name, code, supplier, used_for, photo, status, confirmed_on. The choice's **note** ("anything the factory should know") and the internal note are left out; a line without choices gets no key, so a quotation without choices gets exactly the document it got before. Versions already sent are frozen and unchanged: a choice reaches the client with the next version sent. Function body only: no table or row changes, no backup needed.
