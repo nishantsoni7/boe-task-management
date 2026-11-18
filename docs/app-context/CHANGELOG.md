@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-18 — Picture credits page: the two switches say whether they are ON or OFF, and Limits cannot be ticked while nobody has credits (branch `fix/picture-credits-limits-label`; PR number added at the stamp) · no migration
+## 2026-11-18 — Picture credits page: the two switches say whether they are ON or OFF, and Limits cannot be ticked while nobody has credits (PR #938, squash-merged as `3f50eadd` on 18 Nov 2026; Vercel deploy succeeded, "Backup on merge" green; read live afterwards: "Picture making is ON", "Limits are OFF", the Limits box unticked and locked, and "Left in fal" showing $48.46 once `FAL_BILLING_KEY` was set) · no migration
 - **Found on the live page (owner, 18 Nov 2026):** the Limits box was labelled "Limits are on." while unticked, which read as a status. Both switches on `/image-editor/usage` now show `ON` / `OFF` from the saved setting and say what ticking does. "Limits" is disabled while limits are off and no person has credits (turning them on with an empty list would refuse every press); unticking is always allowed.
 - Only `src/app/image-editor/usage/page.tsx` (labels and one `disabled`) changed; no route, setting or database change. Test: `imageCredits.test.ts` pins the labels and the guard.
 
