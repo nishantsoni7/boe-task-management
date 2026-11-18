@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-18 — The quotation builder's top area redone: Request | Status | Share as three compact cards, a four-field Client grid, the page capped at 1360 px (branch `feat/quotation-layout-v2`; PR number added at the stamp) · no SQL
+## 2026-11-18 — The quotation builder's top area redone: Request | Status | Share as three compact cards, a four-field Client grid, the page capped at 1360 px (PR #926, merged 18 Nov 2026 15:52 IST as `7ea6f66d`; the owner kept the 1360 px cap) · no SQL
 - **Owner direction (screenshot of QT-N-01008, then "Yes, build it" to an approved preview):** "layout it better UI UX... do not take full width for small elements".
 - **Status card** with a four-step tracker, one main action, the PI blocker as one line with "Show which", and the rarer outcomes as quiet buttons; **Share card** and **Request card** as tiles; **Client card** as a grid (lead time is a field, Advanced is a bar at the foot). New files `StatusCard.tsx`, `ShareCard.tsx`, `ClientCard.tsx`; `BuilderScreen` composes them. Behaviour, saved data and rules are unchanged.
 - **`QuotationsLayout` `contentMaxWidth`** (the BoeOsLayout mechanism): the builder is a centred 1360 px column with its header lined up; this changes the 13 Nov "full width" on wide screens only. On a phone the header is one row.
