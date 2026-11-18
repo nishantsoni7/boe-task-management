@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (branch `fix/quotation-valid-until`; PR number added at the stamp) · no SQL
+- The builder ("Valid until", the WhatsApp text, the Excel sheet) and the print / PDF page dated a quotation from its FIRST send, so a version sent later could print a "valid until" already in the past. They now use the newest sent version's date, else the first send, else the day it was made: the rule the client link (`quotation_public`) already followed. New `issuedAt` in `src/lib/quotations/versions.ts`; the builder reads the versions with the Versions card's own query key (no extra call); the print page waits for them so a PDF never carries the old date. Test: `issuedAt.test.ts`.
+- The "Valid for (days)" box was NOT brought back: rule 18 of the redesign (owner, 13 Nov 2026) removed it; `valid_days` stays 7 by default.
+
 ## 2026-11-18 — Quotations: ask before an app link leaves a quotation with unsaved changes (PR #906, merged 18 Nov 2026 06:01 IST as `413a70c2`, live 06:03 IST) · no SQL
 - With unsaved edits, a click on any link to another page (the app's menu, the launcher, a link inside the builder) asks "You have unsaved changes. Leave without saving?"; Cancel stays. Closing or reloading the tab already asked (`beforeunload`). New `src/lib/navigation/leaveGuard.ts` (`askBeforeLeaving`, a document click listener in the capture phase; next/link skips a click whose default was prevented); `leaveGuard.dom.test.ts`. Not covered: the browser's Back button.
 

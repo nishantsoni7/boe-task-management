@@ -9,6 +9,7 @@ import { sendFeedback, type FeedbackDoc } from '@/lib/pricing/learning/api'
 import type { DiffersReport } from '@/components/pricing/training/TaughtPrice'
 import { Check, ChevronDown, ChevronRight, FileUp, Copy, FileCheck2, FileSpreadsheet, Info, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
 import { draftDetailHref } from '@/lib/orders/draftsView'
+import { fetchVersions, issuedAt } from '@/lib/quotations/versions'
 import { askBeforeLeaving } from '@/lib/navigation/leaveGuard'
 import { conversionProblems, type ConversionProblem } from '@/lib/quotations/piWorkbook'
 import { PI_STAGE_LABEL, extrasLeftOutText, makePiDraft, piWorkbookFor, type PiStage } from '@/lib/quotations/toPiDraft'
@@ -66,6 +67,8 @@ export default function BuilderScreen() {
   const seesWhy = subject.ready && canAccessManagementModule({ role: subject.subjectRole, moduleKey: 'pricing', isModuleActive: true, permissions: subject.subjectPermissionsByModule.get('pricing') ?? [] })
   const qc = useQueryClient()
   const quoteQ = useQuery({ queryKey: quotationKeys.one(id), queryFn: () => fetchQuotation(supabase, id), enabled: accessLoaded, retry: false })
+  // The same read (and key) as the Versions card, so it costs no extra call: the newest sent version dates the quotation.
+  const versionsQ = useQuery({ queryKey: ['quotations', 'versions', id, quoteQ.data?.updated_at], queryFn: () => fetchVersions(supabase, id), enabled: accessLoaded && !!quoteQ.data, retry: false })
 
   const [base, setBase] = useState<Quotation | null>(null)
   const [h, setH] = useState<Header | null>(null)
@@ -221,7 +224,7 @@ export default function BuilderScreen() {
   if (quoteQ.isError) return layout('Quotation', <div className={`${s.notice} ${s.noticeBad}`}>{errorText(quoteQ.error)} <Link href="/quotations">Back to quotations</Link></div>)
   if (!base || !h || !totals) return <LoadingScreen />
 
-  const issued = istDateOf(base.sent_at ?? base.created_at)
+  const issued = istDateOf(issuedAt(versionsQ.data, base.sent_at, base.created_at))
   const link = base.share_token ? `${typeof window === 'undefined' ? '' : window.location.origin}/q/${base.share_token}` : ''
   const waText = `Hello${h.contact_name ? ' ' + h.contact_name.split(' ')[0] : ''}, here is our quotation ${base.quote_no} for ${h.project_name || h.client_name}: ${formatINR(totals.grand)} including GST, valid until ${formatDateIN(validUntil(issued, h.valid_days))}.\nView it with pictures and save the PDF here: ${link}\n– ${profile?.full_name ?? ''}, Best of Exports`
   const copy = async () => {
