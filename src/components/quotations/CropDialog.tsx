@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react'
 import { RotateCw } from 'lucide-react'
 import { CropBox, WHOLE, renderCrop, type Box } from './CropBox'
 import s from './quotations.module.css'
+import { useDialogFocus } from '@/components/salesLeads/useDialogFocus'
 
 export function CropDialog({ src, onClose, onUse }: { src: string; onClose: () => void; onUse: (picture: Blob) => void }) {
   const [img, setImg] = useState<HTMLImageElement | null>(null)
@@ -28,9 +29,10 @@ export function CropDialog({ src, onClose, onUse }: { src: string; onClose: () =
   // A turn changes which way is up, so the box drawn before it no longer means the same area: start again from the whole.
   const rotate = () => { setTurns(t => (t + 1) % 4); setBox(WHOLE) }
 
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose)
   return (
     <div className={s.scrim} onClick={onClose}>
-      <div className={s.modal} style={{ maxWidth: 620 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="crop-title">
+      <div ref={dialogRef} tabIndex={-1} className={s.modal} style={{ maxWidth: 620 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="crop-title">
         <div className={s.cardHead}><h2 id="crop-title">Crop & rotate</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} aria-label="Close">×</button></div>
         <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>
           {img ? <CropBox img={img} turns={turns} box={box} onBox={setBox} /> : !err && <div className={`${s.small} ${s.muted}`}>Opening the picture…</div>}
