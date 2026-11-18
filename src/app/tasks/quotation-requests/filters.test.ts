@@ -337,8 +337,9 @@ describe('filtersActive', () => {
     assert.equal(filtersActive(withFilters({ dateRange: 'today' })), true)
   })
 
-  test('the filter set is exactly search + assignedBy + priority + dateRange', () => {
-    assert.deepEqual(Object.keys(EMPTY_FILTERS).sort(), ['assignedBy', 'dateRange', 'priority', 'search'])
+  test('the filter set is exactly search + assignedBy + sentTo + priority + dateRange', () => {
+    // sentTo: who the request was sent to, offered to the owner only (18 Nov 2026).
+    assert.deepEqual(Object.keys(EMPTY_FILTERS).sort(), ['assignedBy', 'dateRange', 'priority', 'search', 'sentTo'])
   })
 })
 

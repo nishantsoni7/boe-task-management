@@ -270,7 +270,7 @@ describe('dependencies', () => {
   })
 
   test('removing a parent takes its dependants with it', () => {
-    assert.deepEqual(dependentActionsToRemove('view_quotations', tasksKeys), ['manage_quotations'])
+    assert.deepEqual(dependentActionsToRemove('view_quotations', tasksKeys), ['manage_quotations', 'receive_quotations'])
     // Removing module entry removes everything that hangs off it.
     const offView = dependentActionsToRemove('view', tasksKeys)
     assert.ok(offView.includes('view_quotations'))
@@ -285,6 +285,7 @@ describe('13-15. fail-closed, enforcement agreement, no regression', () => {
       canViewQuotations: false, canManageQuotations: false,
       // Creation is a narrowing of manage, so fail-closed reaches it for free.
       canCreateQuotations: false,
+      canSeeAllQuotations: false,
     })
     assert.equal(deriveOrdersCapabilities(null, []).canViewAllOrders, false)
     assert.equal(deriveFinanceCapabilities(null, []).canViewAllFinance, false)

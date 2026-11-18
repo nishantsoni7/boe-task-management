@@ -96,7 +96,7 @@ Resolvers (SECURITY DEFINER, `search_path = public, pg_temp` pinned by `20270213
 Registered modules and actions (`src/lib/permissions/modules.ts`, verified):
 | module_key | actions |
 |---|---|
-| task_management | view, create, edit, delete, export, manage, view_quotations, manage_quotations |
+| task_management | view, create, edit, delete, export, manage, view_quotations, manage_quotations, receive_quotations (20270804000000) |
 | sample_tracking | view, create, edit, delete, approve, export, manage, dispatch, receive, mark_lost, close |
 | assets_access | view, create, edit, delete, manage, assign, manage_access_records, manage_asset_catalogue |
 | attendance | view, create, edit, delete, approve, export, manage |
@@ -131,7 +131,7 @@ only):** delete, admin, manage, assign, dispatch, receive, mark_lost, close, vie
 approve_order, approve_advance_exception, allocate, allocate_correct, verify_own_payment, align_production, view_pi_commission,
 view_payment_plan, edit_payment_plan, verify, manage_access_records, manage_asset_catalogue, view_team. (ACCESS_CONTROL_V1.md lists a shorter set incl.
 `can_be_order_assignee` - stale; that action no longer exists. The code constant is the truth.)
-`ACTION_DEPENDENCIES` (child -> parent): manage_quotations->view_quotations->view; verify_own_payment->approve; view_all->view_team->view
+`ACTION_DEPENDENCIES` (child -> parent): manage_quotations->view_quotations->view; receive_quotations->view_quotations; verify_own_payment->approve; view_all->view_team->view
 (where registered); approve_order/approve_advance_exception/align_production/view_pi_commission/view_payment_plan->view; edit_payment_plan->view_payment_plan; verify->use;
 manage_access_records/manage_asset_catalogue->view. Turning a parent off turns dependents off (`dependentActionsToRemove`).
 

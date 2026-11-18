@@ -78,12 +78,15 @@ export type QuotationCapabilities = {
    * display gate on one action; there is no RLS, RPC or policy behind it.
    */
   canCreateQuotations: boolean
+  /** Sees every quotation request, not only their own (the owner, 18 Nov 2026; 20270804000000 lets an administrator read them). */
+  canSeeAllQuotations: boolean
 }
 
 export const NO_QUOTATION_CAPABILITIES: QuotationCapabilities = {
   canViewQuotations: false,
   canManageQuotations: false,
   canCreateQuotations: false,
+  canSeeAllQuotations: false,
 }
 
 export function deriveQuotationCapabilities(
@@ -95,6 +98,7 @@ export function deriveQuotationCapabilities(
       canViewQuotations: true,
       canManageQuotations: true,
       canCreateQuotations: false,
+      canSeeAllQuotations: true,
     }
   }
 
@@ -116,6 +120,7 @@ export function deriveQuotationCapabilities(
     // Every non-admin role that could raise a request before still can: the
     // grant that decides it is the same one, unchanged.
     canCreateQuotations: canManageQuotations,
+    canSeeAllQuotations: false,
   }
 }
 
