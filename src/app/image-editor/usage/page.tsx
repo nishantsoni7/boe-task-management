@@ -18,7 +18,7 @@ import { isAdminRole } from '@/lib/permissions/moduleVisibility'
 import { colors } from '@/lib/tokens'
 import { formatINR } from '@/lib/currency'
 import { TOOL_LABEL, type CreditTool } from '@/lib/imageCredits/costs'
-import { daysOfBalanceLeft, rupees, type CreditReport, type FalBalance } from '@/lib/imageCredits/report'
+import { creditsLeft, daysOfBalanceLeft, rupees, type CreditReport, type FalBalance } from '@/lib/imageCredits/report'
 
 type Settings = { enabled: boolean; enforce: boolean; monthly_pool: number; daily_cap: number; inr_per_usd: number }
 type Payload = {
@@ -239,7 +239,7 @@ function Body({ data, form, setForm, newPerson, setNewPerson, edits, setEdits, s
       <div className="boe-card" style={{ padding: 14 }}>
         <h3 style={{ margin: '0 0 6px', fontSize: 14 }}>Credits for each person (used only while limits are on)</h3>
         {allowances.length > 0 && (
-          <Table head={['Person', 'Credits a month', 'Used this month', '']}>
+          <Table head={['Person', 'Credits a month', 'Used this month', 'Left this month', '']}>
             {allowances.map(a => (
               <tr key={a.user_id}>
                 <td style={td}>{name(a.user_id)}</td>
@@ -248,6 +248,7 @@ function Body({ data, form, setForm, newPerson, setNewPerson, edits, setEdits, s
                     value={edits[a.user_id] ?? String(a.monthly_credits)} onChange={e => setEdits({ ...edits, [a.user_id]: e.target.value })} />
                 </td>
                 <td style={td}>{used.get(a.user_id) ?? 0}</td>
+                <td style={td}>{creditsLeft(a.monthly_credits, used.get(a.user_id) ?? 0)}</td>
                 <td style={td}>
                   <button className="boe-btn" disabled={saving} onClick={() => void send('/api/image-credits/allowance', { userId: a.user_id, monthlyCredits: Number(edits[a.user_id] ?? a.monthly_credits) })}>Save</button>{' '}
                   <button className="boe-btn" disabled={saving} onClick={() => void send('/api/image-credits/allowance', { userId: a.user_id, monthlyCredits: null })}>Remove</button>
