@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `5c7d359b` — Day Close: tell the person who gave a task when it is moved to a new date (no SQL) (#914)
-- Commits on this branch: 1473
+- Commit: `da9a877c` — Quotations: a product with no price yet still passes the save check
+- Commits on this branch: 1475
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 215
 - Migrations: 476 (first `20260530_create_positions.sql`, latest `20270802000100_day_close_attendance_hold.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `da9a877c` 2026-11-18 Quotations: a product with no price yet still passes the save check
+- `00576f5e` 2026-11-18 Quotations: a save that would fail says which product and brings it into view
 - `5c7d359b` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date (no SQL) (#914)
 - `5db5a11d` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (migrations 20270802000000 + 20270802000100) (#913)
 - `ca56337c` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it (no SQL) (#911)
@@ -37,8 +39,6 @@
 - `b6aa2787` 2026-11-17 Docs: stamp the PI draft shared reads (#893) as merged 272fc217, deployed 23:16 IST, checked live (#894)
 - `272fc217` 2026-11-17 Page speed: the PI draft page reads the cost sheet and the sample type once (#893)
 - `64d8204c` 2026-11-17 Docs: stamp the no-double-ask fix (#891) as merged c5fe668a, deployed 21:52 IST, checked live (#892)
-- `c5fe668a` 2026-11-17 Page speed: putting the saved copy back no longer asks twice (#891)
-- `15fa364f` 2026-11-17 Docs: stamp the saved-copy fix (#889) as merged 6aa09ddd, deployed 21:12 IST, 27 module pages checked live (#890)
 
 ## Pages by top-level area
 

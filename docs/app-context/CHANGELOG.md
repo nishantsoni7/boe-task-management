@@ -12,7 +12,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - No new notification type: the ordinary task notice (`task_acknowledged` with the task's id), so it shows in the Tasks inbox and is pushed like any task update.
 - **Proof.** `moveDueDates.test.ts` (3), `tsc`, eslint, full `npm test`, `next build`.
 
-## 2026-11-18 — Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (branch `claude/boe1-employee-monitoring-t5ypei`) · migrations `20270802000000` + `20270802000100` (NOT YET APPLIED)
+## 2026-11-18 — Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (branch `claude/boe1-employee-monitoring-t5ypei`) · PR #913 merged `5db5a11` · migrations `20270802000000` + `20270802000100` APPLIED 2026-11-18 (owner; verified by query: type, table and switch all present)
 - **Owner ask.** Leaving with work open means next day's punch "has not been considered", clearly notified; a hold that clears itself, never an automatic deduction (owner chose the recommendation).
 - **Built.**
   - `day_close_holds`, written at 11:15 pm for anyone who came in and left a task due or overdue open.
