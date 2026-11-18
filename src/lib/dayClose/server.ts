@@ -11,6 +11,7 @@
 // Server-side only: it holds the service role.
 
 import type { Caller, ServiceClient } from '@/lib/security/attendancePayrollApiAuth'
+import { insertUserNotifications, type NotificationInsertClient } from '@/lib/notificationWrites'
 import { istAddDays, istDayEndUtc, istDayStartUtc, istToday } from '@/lib/istDate'
 import { buildMachineDay, machineDateOf } from '@/lib/minop/machineDay'
 import { isPlausiblePunchTime } from '@/lib/minop/punches'
@@ -351,7 +352,24 @@ export async function moveDueDates(caller: Caller, all: DayTask[], rows: (Carryo
       note: `Moved at Close my day: ${c.reason}`.slice(0, 2000), old_val: t.due_date, new_val: c.next_date,
     })
     if (log.error) console.error('[day-close] due date history not written:', log.error.message)
+    // A task somebody else gave them: that person is told the new date and why (owner, 2026-11-18). A task
+    // notice like any other ("X moved the due date…", the task's own name in the body), never to the mover.
+    if (t.created_by && t.created_by !== caller.id) {
+      const who = await caller.svc.from('users').select('full_name').eq('id', caller.id).maybeSingle()
+      const name = (who.data?.full_name as string | null) ?? 'Someone'
+      const sent = await insertUserNotifications(caller.svc as unknown as NotificationInsertClient, {
+        user_id: t.created_by, task_id: t.id, type: 'task_acknowledged',
+        title: `${name} moved the due date to ${dayWords(c.next_date)}: ${c.reason}`.slice(0, 300),
+        body: t.title,
+      }, { actorId: caller.id })
+      if (sent.error) console.error('[day-close] the task giver was not told:', sent.error.message)
+    }
   }
+}
+
+/** "Mon, 23 Nov" from an IST date. */
+function dayWords(date: string): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
 }
 
 // ─── Team Today (admins and the reviewer) ────────────────────────────────────

@@ -216,7 +216,7 @@ Shipped in PR #746 (`22d9f772`, deployed 13:45 IST). `20270704000000` APPLIED to
 - The proof rule is unchanged until the migration is applied.
 
 **Not built (follow-ups).**
-- Telling the person who gave a task that it was moved. The task's history records the move; a notification needs its own type.
+- ~~Telling the person who gave a task that it was moved.~~ **Built 2026-11-18:** `moveDueDates` tells them through the ordinary task notice (`task_acknowledged`, the task's id). The title reads "Dhruv moved the due date to Mon, 23 Nov: <reason>", with the inbox badge "Date moved". A Self Task tells nobody.
 - A held day shown inside the Payroll screens. For now Team Today lists unresolved holds, and the owner decides with an attendance correction.
 
 **Tests.**

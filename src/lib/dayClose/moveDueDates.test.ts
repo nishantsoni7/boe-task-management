@@ -17,7 +17,7 @@ const task = (id: string, over: Partial<DayTask> = {}): DayTask => ({
 describe('moving to a new date', () => {
   test('the due date moves and the history says why; a task already on that date is left alone', async () => {
     const all = [task('t1'), task('t2', { due_date: '2026-11-16' })]
-    const db = new MemorySupabase({ tasks: all.map(t => ({ ...t })), task_activity_log: [] })
+    const db = new MemorySupabase({ tasks: all.map(t => ({ ...t })), task_activity_log: [], notifications: [], users: [{ id: DHRUV, full_name: 'Dhruv' }] })
     const caller = { svc: db as unknown as Caller['svc'], id: DHRUV, role: 'member', team: null, isAdmin: false } as Caller
     await moveDueDates(caller, all, [
       { plan_id: 'p', task_id: 't1', reason: 'Vendor sends the swatch on Monday', next_date: '2026-11-16' },
@@ -30,6 +30,21 @@ describe('moving to a new date', () => {
     assert.equal(log[0].old_val, '2026-11-13')
     assert.equal(log[0].new_val, '2026-11-16')
     assert.match(String(log[0].note), /Vendor sends the swatch on Monday/)
+    // The person who gave the task is told the new date and why, once (t2 did not move).
+    const told = db.rows('notifications')
+    assert.equal(told.length, 1)
+    assert.equal(told[0].user_id, OWNER)
+    assert.equal(told[0].task_id, 't1')
+    assert.match(String(told[0].title), /^Dhruv moved the due date to Mon, 16 Nov: Vendor sends the swatch on Monday$/)
+  })
+
+  test('a Self Task moves without telling anybody', async () => {
+    const own = task('t5', { created_by: DHRUV })
+    const db = new MemorySupabase({ tasks: [{ ...own }], task_activity_log: [], notifications: [], users: [{ id: DHRUV, full_name: 'Dhruv' }] })
+    const caller = { svc: db as unknown as Caller['svc'], id: DHRUV, role: 'member', team: null, isAdmin: false } as Caller
+    await moveDueDates(caller, [own], [{ plan_id: 'p', task_id: 't5', reason: 'Later', next_date: '2026-11-17' }])
+    assert.equal(db.rows('tasks')[0].due_date, '2026-11-17')
+    assert.equal(db.rows('notifications').length, 0)
   })
 
   test('never another person\'s task', async () => {
