@@ -230,16 +230,21 @@ export default function BuilderScreen() {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1800) }
     catch { (document.getElementById('q-link') as HTMLInputElement | null)?.select() }
   }
-  // The plain Excel of the saved quotation for the client: lines, quantity, price and totals, no pictures (never the internal PI sheet).
+  // The Excel of the saved quotation for the client (owner, 18 Nov 2026): styled, a picture beside each product, live formulas for editing; never the internal PI sheet.
   const downloadExcel = async () => {
     if (busy) return
     setBusy(true)
     try {
-      const [{ clientSheet, clientSheetFileName }, { downloadWorkbook }] = await Promise.all([import('@/lib/quotations/clientSheet'), import('@/lib/finance/expenseReimbursementExport')])
-      await downloadWorkbook(clientSheetFileName(base.quote_no), [clientSheet({
-        quoteNo: base.quote_no, clientName: h.client_name, projectName: h.project_name, issuedOn: formatDateIN(issued), validUntilOn: formatDateIN(validUntil(issued, h.valid_days)),
-        unit: h.dimension_unit, transportNote: h.transport_note, notes: h.notes,
-      }, h, areas, lines)])
+      const { downloadClientWorkbook } = await import('@/lib/quotations/clientWorkbookDownload')
+      const { missing } = await downloadClientWorkbook({
+        head: {
+          quoteNo: base.quote_no, clientName: h.client_name, projectName: h.project_name, issuedOn: formatDateIN(issued), validUntilOn: formatDateIN(validUntil(issued, h.valid_days)),
+          unit: h.dimension_unit, transportNote: h.transport_note, notes: h.notes,
+          preparedBy: { name: base.owner_display_name ?? base.owner_name ?? '', title: base.owner_title ?? '', phone: base.owner_phone ?? '', email: base.owner_email ?? '' },
+        },
+        money: h, areas, lines, srcOf: picSrc,
+      })
+      if (missing > 0) setMsg({ tone: 'warn', text: `The Excel was downloaded, but ${missing} picture${missing === 1 ? '' : 's'} could not be loaded and ${missing === 1 ? 'is' : 'are'} left out.` })
     } catch (e) { setMsg({ tone: 'bad', text: errorText(e) }) }
     finally { setBusy(false) }
   }
@@ -409,9 +414,7 @@ export default function BuilderScreen() {
                     </select>
                   </td>
                 </tr>
-                {totals.gst.flatMap(r => h.gst_mode === 'cgst_sgst'
-                  ? [<tr key={`c${r.rate}`} className={s.sub}><td>CGST {r.rate / 2}%</td><td>{formatINR(r.cgst)}</td></tr>, <tr key={`s${r.rate}`} className={s.sub}><td>SGST {r.rate / 2}%</td><td>{formatINR(r.sgst)}</td></tr>]
-                  : [<tr key={`i${r.rate}`} className={s.sub}><td>IGST {r.rate}%</td><td>{formatINR(r.igst)}</td></tr>])}
+                {totals.gst.map(r => <tr key={r.rate} className={s.sub}><td>GST @{r.rate}%</td><td>{formatINR(r.gst)}</td></tr>)}
                 <tr className={s.tot}><td>Grand total</td><td>{formatINR(totals.grand)}</td></tr>
               </tbody></table>
             </div>

@@ -41,7 +41,9 @@ export type QuoteMoney = {
   packing_amount: number
 }
 
-export type GstRow = { rate: number; base: number; igst: number; cgst: number; sgst: number }
+// One GST amount per rate (owner, 18 Nov 2026: "GST @18%, no division: this is a PI and we are not sure whether it will be the same state
+// or a different state delivery"). The split into CGST + SGST or IGST is decided later, on the invoice; the header's gst_mode only goes on the PI draft.
+export type GstRow = { rate: number; base: number; gst: number }
 
 export type Totals = {
   lineQty: Record<string, number>
@@ -94,12 +96,9 @@ export function computeTotals(money: QuoteMoney, areas: readonly QuoteArea[], li
   if (extras > 0) byRate.set(18, (byRate.get(18) ?? 0))
   const gst: GstRow[] = [...byRate.entries()].sort((a, b) => b[0] - a[0]).map(([rate, sum]) => {
     const base = Math.round(sum * (1 - pct / 100)) + (rate === 18 ? extras : 0)
-    const half = Math.round((base * rate) / 200)
-    return money.gst_mode === 'cgst_sgst'
-      ? { rate, base, igst: 0, cgst: half, sgst: half }
-      : { rate, base, igst: Math.round((base * rate) / 100), cgst: 0, sgst: 0 }
+    return { rate, base, gst: Math.round((base * rate) / 100) }
   }).filter(r => r.base > 0)
-  const gstTotal = gst.reduce((s, r) => s + r.igst + r.cgst + r.sgst, 0)
+  const gstTotal = gst.reduce((s, r) => s + r.gst, 0)
   return { lineQty: lineQtyMap, lineTotal, areaTotal, pieces, subtotal, discount, taxable, gst, gstTotal, grand: taxable + gstTotal }
 }
 

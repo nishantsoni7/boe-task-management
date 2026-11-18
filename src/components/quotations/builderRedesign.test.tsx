@@ -68,7 +68,7 @@ describe('one dimensions unit for the whole quotation', () => {
     assert.ok(t.includes('Saksham Hospitality Pvt Ltd') && t.includes('GSTIN 36AAAAA0000A1Z5'))
     const plain = text(doc())
     assert.ok(!plain.includes('GSTIN'))
-    assert.ok(!/client_email|@/.test(renderToStaticMarkup(<QuotationDocument doc={{ ...doc(), client_email: 'x@y.example' } as DocData} pictureUrl={p => p} />)))
+    assert.ok(!/client_email|[\w.]+@[\w.]+/.test(renderToStaticMarkup(<QuotationDocument doc={{ ...doc(), client_email: 'x@y.example' } as DocData} pictureUrl={p => p} />)))
   })
   test('a "note for the client" that an older copy still holds keeps printing (nothing is lost on an old version)', () => {
     assert.ok(text(doc({ lines: [line({ client_note: 'Decor, quoted separately' })] })).includes('Note: Decor, quoted separately'))

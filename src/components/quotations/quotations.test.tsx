@@ -56,13 +56,13 @@ describe('the printed quotation (real Resort Shamshabad quote)', () => {
   const html = renderToStaticMarkup(<QuotationDocument doc={REAL} pictureUrl={p => `https://img.example/${p}`} />)
   const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 
-  test('totals: room types, subtotal, IGST and grand total, to the rupee', () => {
+  test('totals: room types, subtotal, GST @18% and grand total, to the rupee', () => {
     assert.ok(text.includes('₹47,43,000'), 'Corporate room total')
     assert.ok(text.includes('₹1,54,36,800'), 'Boho room total')
     assert.ok(text.includes('Subtotal ₹2,01,79,800'))
-    assert.ok(text.includes('IGST (18%) ₹36,32,364'))
+    assert.ok(text.includes('GST @18% ₹36,32,364'))
     assert.ok(text.includes('Grand total ₹2,38,12,164'))
-    assert.ok(!text.includes('CGST'))
+    assert.ok(!/CGST|SGST|IGST/.test(text))
   })
 
   test('room types with their multipliers, per-room quantities and sizes in inches', () => {

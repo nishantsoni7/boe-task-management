@@ -151,7 +151,7 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
   if (doc.packing_amount > 0) included.push('Packing, in the total')
   if (doc.fabric_amount > 0) included.push('Fabric, in the total')
   if (doc.transport_note) included.push(`Transport: ${doc.transport_note}`)
-  included.push(doc.gst_mode === 'cgst_sgst' ? 'GST shown separately as CGST and SGST' : 'GST shown separately as IGST')
+  included.push('GST shown separately')
   const weeks = doc.lead_time_weeks && doc.lead_time_weeks > 0 ? doc.lead_time_weeks : null
 
   const tableRow = (r: TableRow) => {
@@ -278,9 +278,7 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
                 {doc.fabric_amount > 0 && <tr className={d.subr}><td colSpan={3}>Fabric</td><td className={d.r}>{formatINR(doc.fabric_amount)}</td></tr>}
                 {doc.packing_amount > 0 && <tr className={d.subr}><td colSpan={3}>Packing</td><td className={d.r}>{formatINR(doc.packing_amount)}</td></tr>}
                 {(t.discount > 0 || doc.fabric_amount > 0 || doc.packing_amount > 0) && <tr className={d.subr}><td colSpan={3}>Taxable value</td><td className={d.r}>{formatINR(t.taxable)}</td></tr>}
-                {t.gst.flatMap(r => doc.gst_mode === 'cgst_sgst'
-                  ? [<tr key={`c${r.rate}`} className={d.subr}><td colSpan={3}>CGST ({r.rate / 2}%)</td><td className={d.r}>{formatINR(r.cgst)}</td></tr>, <tr key={`s${r.rate}`} className={d.subr}><td colSpan={3}>SGST ({r.rate / 2}%)</td><td className={d.r}>{formatINR(r.sgst)}</td></tr>]
-                  : [<tr key={`i${r.rate}`} className={d.subr}><td colSpan={3}>IGST ({r.rate}%)</td><td className={d.r}>{formatINR(r.igst)}</td></tr>])}
+                {t.gst.map(r => <tr key={r.rate} className={d.subr}><td colSpan={3}>GST @{r.rate}%</td><td className={d.r}>{formatINR(r.gst)}</td></tr>)}
                 <tr className={d.tot}><td colSpan={3}>Grand total</td><td className={d.r}>{formatINR(t.grand)}</td></tr>
               </tbody></table>
               <p className={d.words}>{rupeesInWords(t.grand)}</p>
