@@ -5,7 +5,7 @@ import { beforeEach, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { MemorySupabase } from '../attendance/testing/memorySupabase'
 import type { Caller } from '@/lib/security/attendancePayrollApiAuth'
-import { isOpenOn, liftHold, myHold, nextWorkingDay, onPunches, refreshHolds, writeHolds, MESSAGES } from './hold'
+import { decideHold, isOpenOn, liftHold, loadMonthHolds, myHold, nextWorkingDay, onPunches, refreshHolds, writeHolds, MESSAGES } from './hold'
 
 const OWNER = 'aaaaaaaa-0000-0000-0000-00000000000a'
 const DHRUV = 'eeeeeeee-0000-0000-0000-00000000000e'   // came in, left a task open
@@ -132,5 +132,57 @@ describe('at a punch', () => {
     const seen = ist(WED, '18:40').toISOString()
     db.tables.minop_punches = [{ ...punch('17', WED, '18:40'), first_seen_at: seen }]
     assert.equal(await onPunches(svc(), seen, ist(WED, '18:41')), 0)
+  })
+})
+
+describe('the owner\'s payroll decision on a held day (20270803000000)', () => {
+  const heldOn = (over: Record<string, unknown> = {}) => ({
+    id: 'h1', employee_id: DHRUV, held_date: THU, cause_date: WED, open_tasks: 2, created_at: ist(WED, '23:15').toISOString(),
+    punch_notice_at: null, cleared_at: null, cleared_by: null, clear_reason: null, decision: null, decided_by: null, decided_at: null, ...over,
+  })
+  const later = ist('2026-12-02', '11:00')
+
+  test('the month lists held days to decide and those decided, not ones the person cleared; administrators only', async () => {
+    db.tables.day_close_holds = [
+      heldOn(),
+      heldOn({ id: 'h2', held_date: '2026-11-20', cleared_at: ist('2026-11-20', '11:00').toISOString() }),
+      heldOn({ id: 'h3', held_date: '2026-11-21', decision: 'counted', decided_by: OWNER, decided_at: later.toISOString(), cleared_at: later.toISOString() }),
+      heldOn({ id: 'h4', held_date: '2026-12-01' }),
+    ]
+    assert.equal((await loadMonthHolds(caller(RAKESH, 'member'), 2026, 11)).status, 403)
+    const r = await loadMonthHolds(caller(OWNER, 'admin'), 2026, 11)
+    assert.deepEqual((r.body.holds as { id: string }[]).map(h => h.id), ['h1', 'h3'])
+    assert.equal((r.body.holds as { name: string }[])[0].name, 'Dhruv')
+  })
+
+  test('"Count the day": decided, cleared, the person told, payroll untouched', async () => {
+    db.tables.day_close_holds = [heldOn()]
+    const r = await decideHold(caller(OWNER, 'admin'), 'h1', { decision: 'counted' }, later)
+    assert.equal(r.status, 200)
+    const h = db.rows('day_close_holds')[0]
+    assert.equal(h.decision, 'counted')
+    assert.equal(h.decided_by, OWNER)
+    assert.ok(h.cleared_at)
+    assert.equal(h.correction_id, null)
+    assert.ok(notes(DHRUV).includes(MESSAGES.counted(THU).title))
+    assert.equal((await decideHold(caller(OWNER, 'admin'), 'h1', { decision: 'absent' }, later)).status, 409, 'decided once')
+  })
+
+  test('"Mark absent" needs the month\'s payroll draft; nothing is written without it', async () => {
+    db.tables.day_close_holds = [heldOn()]
+    db.tables.payroll_periods = []
+    const r = await decideHold(caller(OWNER, 'admin'), 'h1', { decision: 'absent' }, later)
+    assert.equal(r.status, 409)
+    assert.match(String(r.body.error), /Generate the payroll draft/)
+    assert.equal(db.rows('day_close_holds')[0].decision, null)
+    assert.deepEqual(notes(DHRUV), [])
+  })
+
+  test('staff cannot decide; a day not over yet, a cleared hold and a wrong word are refused', async () => {
+    db.tables.day_close_holds = [heldOn(), heldOn({ id: 'h2', held_date: '2026-11-20', cleared_at: later.toISOString() })]
+    assert.equal((await decideHold(caller(RAKESH, 'member'), 'h1', { decision: 'counted' }, later)).status, 403)
+    assert.equal((await decideHold(caller(OWNER, 'admin'), 'h1', { decision: 'maybe' }, later)).status, 400)
+    assert.equal((await decideHold(caller(OWNER, 'admin'), 'h1', { decision: 'counted' }, ist(THU, '12:00'))).status, 400)
+    assert.equal((await decideHold(caller(OWNER, 'admin'), 'h2', { decision: 'counted' }, later)).status, 409)
   })
 })

@@ -4,6 +4,16 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Day Close held days at payroll: Count the day or Mark absent, in Attendance → Monthly Review (branch `claude/boe1-employee-monitoring-t5ypei`) · migration `20270803000000` (NOT YET APPLIED)
+- **Owner choice.** A held day left undecided counts as present; the payroll lock names undecided held days but never blocks.
+- **Built.**
+  - "Held days (Day Close)" on Attendance → Monthly Review: **Count the day** (no payroll change) or **Mark absent** (through the existing attendance correction, recalculated).
+  - The person is notified of the decision.
+  - The lock confirmation line.
+  - `day_close_holds` gains decision, decided_by, decided_at and correction_id.
+- **Proof.** `hold.test.ts` (+4), `heldDaysLockNote.test.ts`, PGlite (+2), `tsc`, eslint, full `npm test`, `next build`.
+- **Rollback.** Revert the PR; the migration header has the SQL.
+
 ## 2026-11-18 — Quotations: a save that would fail says which product (or room type) and brings it into view (branch `fix/quotation-save-names-product`; PR number added at the stamp) · no SQL
 - Before: "Every product needs a name / a quantity above 0" without saying which, and a name over 160 characters, dimensions over 80, a quantity or price out of range came back as the database's own check message. New `saveProblem` (`src/lib/quotations/saveCheck.ts`) checks the database's limits before the save, in page order, and says e.g. `"Bed" in Deluxe: needs a quantity above 0.` or `Product 2 in Suite: needs a name.`; the builder scrolls that product into view (`ProductLine` rows carry `id="line-<key>"`). Test: `saveCheck.test.ts`.
 

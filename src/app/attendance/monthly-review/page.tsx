@@ -28,6 +28,7 @@ import type { UserProfile } from '@/lib/types'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { PayrollAttendanceReview } from '@/components/attendanceRequests/PayrollAttendanceReview'
+import { HeldDaysReview } from '@/components/dayClose/HeldDaysReview'
 import { Badge, MONTH_NAMES, MonthPicker, Notice, StateBlock, StatusFilter, istCurrentYearMonth, ui } from '@/components/attendancePayroll/ui'
 import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import { isFutureMonth, selectableYears } from '@/lib/attendance/monthAvailability'
@@ -180,7 +181,13 @@ function MonthlyReviewScreen() {
 
       {view === 'summary'
         ? <AttendanceSummary year={year} month={month} getToken={getToken} />
-        : <PayrollAttendanceReview getToken={getToken} year={year} month={month} />}
+        : (
+          <>
+            {/* Day Close held days, for the owner's payroll decision (2026-11-18). Nothing drawn when there are none. */}
+            <HeldDaysReview year={year} month={month} />
+            <PayrollAttendanceReview getToken={getToken} year={year} month={month} />
+          </>
+        )}
     </AttendancePayrollLayout>
   )
 }

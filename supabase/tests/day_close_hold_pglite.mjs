@@ -1,4 +1,4 @@
-// Database regression suite for 20270802000100 (the attendance hold, proof as a written line, the Scoreboard
+// Database regression suite for 20270802000100 and 20270803000000 (the attendance hold, proof as a written line, the Scoreboard
 // switch). Runs the REAL migrations 20270622000000, 20270624000000, 20270704000000 and then 20270802000100 in an in-memory Postgres (PGlite) over small stubs of
 // tasks, the task activity log and attachments. Run:
 //   node supabase/tests/day_close_hold_pglite.mjs <dir with @electric-sql/pglite installed>
@@ -121,5 +121,19 @@ ok('holds are closed to signed-in and anonymous clients')
 await db.exec(mig('20270802000100_day_close_attendance_hold.sql'))
 assert.equal((await one('select count(*)::int n from public.day_close_holds')).n, 1)
 ok('safe to run again; holds kept')
+
+// ── 20270803000000: the owner's payroll decision ──
+await db.exec(mig('20270803000000_day_close_hold_decision.sql'))
+{
+  await db.query(`insert into public.day_close_holds (employee_id, held_date, cause_date, open_tasks) values ($1, '2026-11-24', '2026-11-23', 2)`, [U.rakesh])
+  const id = (await one(`select id from public.day_close_holds where held_date = '2026-11-24'`)).id
+  await assert.rejects(() => db.query(`update public.day_close_holds set decision = 'counted' where id = $1`, [id]), /decision_complete/)
+  await assert.rejects(() => db.query(`update public.day_close_holds set decision = 'maybe', decided_by = $2, decided_at = now() where id = $1`, [id, U.owner]), /decision/)
+  await assert.rejects(() => db.query(`update public.day_close_holds set decision = 'counted', decided_by = $2, decided_at = now(), correction_id = gen_random_uuid() where id = $1`, [id, U.owner]), /decision_complete/)
+  await db.query(`update public.day_close_holds set decision = 'absent', decided_by = $2, decided_at = now(), correction_id = gen_random_uuid(), cleared_at = now() where id = $1`, [id, U.owner])
+  ok('a decision is counted or absent, with who and when; only "absent" carries a correction')
+}
+await db.exec(mig('20270803000000_day_close_hold_decision.sql'))
+ok('the decision migration is safe to run again')
 
 console.log(`all ${checks} checks passed`)

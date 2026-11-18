@@ -14,6 +14,7 @@ import { ObjectionQueue } from '@/components/objections/ObjectionQueue'
 import { useObjections } from '@/components/objections/useObjections'
 import { employeeStatusLabel, statusTone as objectionTone } from '@/lib/objections'
 import { runLockFlow } from '@/lib/attendance/lockWarning'
+import { heldDaysLockNote } from '@/components/dayClose/heldDaysLockNote'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
 import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import styles from './results.module.css'
@@ -144,8 +145,10 @@ export default function PayrollResultsPage() {
     try {
       // Open attendance-review items need a stated acknowledgement the server
       // checks and records (src/lib/payroll/lockPeriod.ts).
+      // Day Close held days still undecided are named, never blocking (owner, 2026-11-18).
+      const heldNote = period ? await heldDaysLockNote(period.payroll_year, period.payroll_month) : ''
       const outcome = await runLockFlow(token, periodId,
-        `Lock payroll for ${label}?\n\nEmployees who have not yet reviewed will no longer be able to do so. An admin can reopen the period later with a stated reason.`)
+        `Lock payroll for ${label}?\n\nEmployees who have not yet reviewed will no longer be able to do so. An admin can reopen the period later with a stated reason.` + heldNote)
       if (outcome.status === 'error') setLockError(outcome.error ?? 'Lock failed')
       else if (outcome.status === 'locked') await loadData(token)
     } finally {

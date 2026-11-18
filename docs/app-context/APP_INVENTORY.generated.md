@@ -5,40 +5,40 @@
 
 ## Snapshot
 
-- Commit: `da9a877c` — Quotations: a product with no price yet still passes the save check
-- Commits on this branch: 1475
-- Pages (`page.tsx`): 209   API routes (`route.ts`): 215
-- Migrations: 476 (first `20260530_create_positions.sql`, latest `20270802000100_day_close_attendance_hold.sql`)
+- Commit: `1b46ecbb` — Day Close held days at payroll: Count the day or Mark absent
+- Commits on this branch: 288
+- Pages (`page.tsx`): 209   API routes (`route.ts`): 217
+- Migrations: 477 (first `20260530_create_positions.sql`, latest `20270803000000_day_close_hold_decision.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
-- Test files: 898   Next.js 16.2.6, React 19.2.4
+- Test files: 899   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `da9a877c` 2026-11-18 Quotations: a product with no price yet still passes the save check
-- `00576f5e` 2026-11-18 Quotations: a save that would fail says which product and brings it into view
+- `1b46ecbb` 2026-11-18 Day Close held days at payroll: Count the day or Mark absent
+- `be5c6acb` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- `96f42ae7` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `a32a4c69` 2026-11-18 Docs: record 20270802000000 and 20270802000100 as applied (no SQL) (#916)
+- `c2ba309f` 2026-11-18 Docs: record 20270802000000 and 20270802000100 as applied (owner, 2026-11-18, verified by query)
+- `389f4eea` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- `ada80bbc` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `5c7d359b` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date (no SQL) (#914)
+- `0f041ffd` 2026-11-18 Docs: regenerate the app inventory
+- `a2df0ae2` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date
+- `4ce1b6a1` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `5db5a11d` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (migrations 20270802000000 + 20270802000100) (#913)
+- `b24fcb87` 2026-11-18 Docs: regenerate the app inventory
+- `588a367a` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- `e9c0afd7` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch
 - `ca56337c` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it (no SQL) (#911)
+- `7a83d356` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `1354334d` 2026-11-18 Docs: stamp #908, #909, #910 as merged (#912)
+- `5d43ab99` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `c315ef04` 2026-11-18 Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (#910)
+- `48b0bc5b` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it
 - `13ae93e7` 2026-11-18 Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5 (#909)
+- `ebaa0f44` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
 - `935c8901` 2026-11-18 Quotations: New quotation's Cancel and x work again; dialogs close on Escape; deep-link parameters leave the address (#908)
 - `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
-- `413a70c2` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes (#906)
-- `f9998cbe` 2026-11-18 Docs: stamp #904 (quotation name width) as merged (#905)
-- `713b6697` 2026-11-18 Quotations: plan a product name's lines at the width the live table really has (#904)
-- `22f041f1` 2026-11-18 Quotations: practical fixes from the module review; crop draws on first open (#903)
-- `25fd59ee` 2026-11-18 Quotations: the PDF shows products and prices in one table; the salesperson's own details (#902)
-- `62939430` 2026-11-18 Quotations: crop by drawing a box, and change a made picture again with comments (#901)
-- `aa521cd8` 2026-11-18 Quotations: copy and paste a product picture with the keyboard (#900)
-- `d2a9b142` 2026-11-18 Quotations: who sees the suggested prices (everyone, or only the administrator who switches it) (#899)
-- `b71cb3e6` 2026-11-18 Orders: the hidden page is built only in the browser (React #418), and #897 stamped (#898)
-- `e8b22498` 2026-11-18 Page speed: Orders pages start loading while the access check runs (#897)
-- `10ab1a4f` 2026-11-18 Docs: stamp the PI read beside the first group (#895) as merged e4d923f2, deployed 00:02 IST, checked live (#896)
-- `e4d923f2` 2026-11-17 Page speed: the PI draft page starts reading the PI beside its first group (#895)
-- `b6aa2787` 2026-11-17 Docs: stamp the PI draft shared reads (#893) as merged 272fc217, deployed 23:16 IST, checked live (#894)
-- `272fc217` 2026-11-17 Page speed: the PI draft page reads the cost sheet and the sample type once (#893)
-- `64d8204c` 2026-11-17 Docs: stamp the no-double-ask fix (#891) as merged c5fe668a, deployed 21:52 IST, checked live (#892)
 
 ## Pages by top-level area
 
@@ -103,7 +103,7 @@
 - **customer-reviews** (9): `/custom-submissions [DELETE,PATCH,POST,PUT]`, `/draft [PATCH]`, `/generate [POST]`, `/image-groups [DELETE,POST]`, `/images [DELETE,POST]`, `/photos [DELETE,POST]`, `/revise [POST]`, `/test-cards/purge [POST]`, `/whatsapp [POST]`
 - **daily-headlines** (1): ` [GET]`
 - **daily-log** (1): ` [GET,POST]`
-- **day-close** (8): `/evaluate [GET]`, `/holds/[id] [POST]`, `/launcher [GET]`, `/me [GET,POST]`, `/members [GET,POST]`, `/prompt [GET]`, `/strikes/[id] [POST]`, `/team [GET]`
+- **day-close** (10): `/evaluate [GET]`, `/holds [GET]`, `/holds/[id] [POST]`, `/holds/[id]/decide [POST]`, `/launcher [GET]`, `/me [GET,POST]`, `/members [GET,POST]`, `/prompt [GET]`, `/strikes/[id] [POST]`, `/team [GET]`
 - **delete-user** (1): ` [POST]`
 - **deleted-members** (1): ` [GET]`
 - **employee-list** (1): ` [GET]`
@@ -512,7 +512,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270702000000_review_rankings_switch.sql`
 - `20270703000000_sales_admin_can_be_given_leads.sql`
 - `20270703000100_sales_comments_and_due_dates.sql`
 - `20270704000000_day_close_team_switch.sql`
@@ -542,6 +541,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270801000000_quotation_salesperson_card.sql`
 - `20270802000000_day_close_hold_notification_type.sql`
 - `20270802000100_day_close_attendance_hold.sql`
+- `20270803000000_day_close_hold_decision.sql`
 
 ## All SQL function names
 
