@@ -15,6 +15,7 @@
 
 import type { Workbook } from 'exceljs'
 import { computeTotals, type QuoteArea, type QuoteLine, type QuoteMoney } from './math'
+import { CHOICE_KINDS, CHOICE_LABEL, choiceRowsOf, choiceWords, sourceText, statusText } from './choicesDoc'
 import { DEFAULT_CLIENT_NOTE, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS, type TermBlock } from './terms'
 
 /** The first standard term, in the owner's words (18 Nov 2026). */
@@ -103,6 +104,111 @@ const box = { top: thin, left: thin, bottom: thin, right: thin }
 export function clientSheetFileName(quoteNo: string): string {
   const safe = quoteNo.trim().replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'quotation'
   return `${safe} quotation.xlsx`
+}
+
+// ── the second sheet: the client's choices (owner, 18 Nov 2026, layout 2: one table, a row per product) ─────────────────────────────
+// Only when some product has a choice. Confirmed and to-confirm both print; the choice's own note never does. A swatch sits at the top of
+// its cell, the words under it.
+const CH_WIDTHS = [5, 26, 25, 25, 25, 25]
+const CONFIRMED_FILL = 'E3EBDD', WAITING_FILL = 'F2E4C9'
+function addChoicesSheet(wb: Workbook, input: WorkbookInput): void {
+  const rows = choiceRowsOf(input.areas, input.lines)
+  if (rows.length === 0) return
+  const ws = wb.addWorksheet('Client choices', {
+    views: [{ showGridLines: false }],
+    properties: { defaultRowHeight: 20 },
+    pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.6, header: 0.2, footer: 0.3 } },
+    headerFooter: { oddFooter: '&L&8Best of Exports&R&8Page &P of &N' },
+  })
+  CH_WIDTHS.forEach((w, i) => { ws.getColumn(i + 1).width = w })
+  const LASTC = CH_WIDTHS.length
+  const font = (o: { size?: number; bold?: boolean; italic?: boolean; color?: string } = {}) => ({ name: 'Calibri', size: o.size ?? 10.5, bold: !!o.bold, italic: !!o.italic, color: { argb: 'FF' + (o.color ?? INK) } })
+
+  ws.mergeCells(1, 1, 1, LASTC)
+  const title = ws.getCell(1, 1)
+  title.value = 'CLIENT CHOICES'
+  title.font = font({ size: 22, bold: true, color: BRAND })
+  title.alignment = { vertical: 'middle' }
+  ws.getRow(1).height = 40
+  for (let c = 1; c <= LASTC; c++) ws.getCell(1, c).border = { bottom: { style: 'medium', color: { argb: 'FF' + BRAND } } }
+  ws.mergeCells(2, 1, 2, LASTC)
+  const sub = ws.getCell(2, 1)
+  sub.value = [`Quotation ${input.head.quoteNo}`, input.head.clientName, input.head.projectName].filter(Boolean).join('  ·  ')
+  sub.font = font({ size: 11, bold: true })
+  ws.getRow(2).height = 22
+  ws.mergeCells(3, 1, 3, LASTC)
+  const intro = ws.getCell(3, 1)
+  intro.value = 'Fabrics, finishes, stone and rope weaves for your products. Rows marked To confirm still wait for your decision. None of this changes the price.'
+  intro.font = font({ size: 10, italic: true, color: MUTED })
+  intro.alignment = { wrapText: true, vertical: 'top' }
+  ws.getRow(3).height = 20
+
+  const headRow = 5
+  ws.getRow(headRow).height = 26
+  ;['No.', 'Product', ...CHOICE_KINDS.map(k => CHOICE_LABEL[k])].forEach((name, i) => {
+    const c = ws.getCell(headRow, i + 1)
+    c.value = name
+    c.font = font({ size: 10.5, bold: true, color: 'FFFFFF' })
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + BRAND } }
+    c.alignment = { horizontal: i === 0 ? 'center' : 'left', vertical: 'middle' }
+    c.border = box
+  })
+  ws.pageSetup.printTitlesRow = `${headRow}:${headRow}`
+
+  let r = headRow
+  rows.forEach((row, idx) => {
+    r++
+    const cells = CHOICE_KINDS.map(k => row.line.choices?.[k])
+    const lineCount = (c: (typeof cells)[number], width: number) => (c ? [...choiceWords(c), `${sourceText(c)} · ${statusText(c)}`].reduce((n, w) => n + wrappedLines(w, width), 0) : 1)
+    const body = Math.max(wrappedLines(row.line.name, CH_WIDTHS[1]) + (row.area || row.line.is_optional ? 1 : 0), ...cells.map(c => lineCount(c, CH_WIDTHS[2])))
+    const photo = cells.some(c => c?.photo && input.pictures.get(c.photo))
+    ws.getRow(r).height = Math.max(photo ? 0 : 36, 14.5 * body + 10 + (photo ? 56 : 0))
+    const no = ws.getCell(r, 1)
+    no.value = idx + 1
+    no.font = font()
+    no.alignment = { horizontal: 'center', vertical: 'middle' }
+    no.border = box
+    const pc = ws.getCell(r, 2)
+    pc.value = { richText: [{ font: font({ bold: true }), text: row.line.name }, ...((row.area || row.line.is_optional) ? [{ font: font({ size: 9.5, color: MUTED }), text: '\n' + [row.area?.name, row.line.is_optional ? 'Optional' : ''].filter(Boolean).join(' · ') }] : [])] }
+    pc.alignment = { vertical: 'top', wrapText: true }
+    pc.border = box
+    CHOICE_KINDS.forEach((k, i) => {
+      const c = cells[i]
+      const cell = ws.getCell(r, 3 + i)
+      cell.border = box
+      if (!c) {
+        cell.value = 'Not used'
+        cell.font = font({ italic: true, color: MUTED })
+        cell.alignment = { vertical: 'top' }
+        return
+      }
+      const words = choiceWords(c)
+      cell.value = { richText: [
+        ...(words[0] ? [{ font: font({ bold: true }), text: words[0] }] : []),
+        ...words.slice(1).map(w => ({ font: font({ size: 10 }), text: '\n' + w })),
+        { font: font({ size: 9, color: MUTED }), text: (words.length ? '\n' : '') + `${sourceText(c)} · ${statusText(c)}` },
+      ] }
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + (c.status === 'confirmed' ? CONFIRMED_FILL : WAITING_FILL) } }
+      cell.alignment = { vertical: 'bottom', wrapText: true }
+      const pic = c.photo ? input.pictures.get(c.photo) : undefined
+      if (pic) {
+        const id = wb.addImage({ base64: toBase64(pic.bytes), extension: imageType(pic.bytes) })
+        ws.addImage(id, { tl: { col: 2 + i + 0.06, row: r - 1 + 0.04 }, ext: fitPicture(pic.width, pic.height, 96, 56) })
+      }
+    })
+  })
+
+  r += 2
+  for (const [from, to, text] of [[1, 3, 'For the client: name, date and signature'], [4, LASTC, 'For Best of Exports: name and date']] as const) {
+    ws.mergeCells(r, from, r, to)
+    ws.mergeCells(r + 1, from, r + 1, to)
+    const line = ws.getCell(r, from)
+    line.border = { bottom: { style: 'thin', color: { argb: 'FF' + INK } } }
+    const cap = ws.getCell(r + 1, from)
+    cap.value = text
+    cap.font = font({ size: 9, color: MUTED })
+  }
+  ws.getRow(r).height = 40
 }
 
 /** The workbook, as bytes ready to save. */
@@ -358,5 +464,6 @@ export async function buildClientWorkbook(input: WorkbookInput): Promise<Uint8Ar
   const how = ws.getCell(r, 1)
   how.value = 'To change this quotation in Excel: edit Qty, Rate (₹), the discount % or “Counted in total”. Amounts and totals recalculate.'
   how.font = { name: 'Calibri', size: 9, italic: true, color: { argb: 'FF' + MUTED } }
+  addChoicesSheet(wb, input)
   return new Uint8Array(await wb.xlsx.writeBuffer())
 }

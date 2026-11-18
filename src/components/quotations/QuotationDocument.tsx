@@ -12,6 +12,7 @@ import {
   type TableRow,
 } from '@/lib/quotations/documentPlan'
 import { WORK_PULL, workSetFor } from '@/lib/quotations/documentWork'
+import { CHOICE_KINDS, CHOICE_LABEL, choiceRowsOf, choiceWords, planChoicePages, sourceText, statusText } from '@/lib/quotations/choicesDoc'
 import type { PaymentDetails } from '@/lib/quotations/api'
 import d from './document.module.css'
 import { Pic } from './Pic'
@@ -138,6 +139,9 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
   const hasNotes = !!(doc.notes || doc.transport_note)
   const notesPage = noteLinesOf(doc.notes, doc.transport_note) > NOTES_ON_TERMS_LINES
   const tablePages = planTablePages(groups, summaryUnits(sumRows))
+  // the client's choices (fabric, finish, stone, rope weave): one table, a row per product that has any; none, no page (20270809000000)
+  const choiceRows = choiceRowsOf(doc.areas, doc.lines)
+  const choicePages = choiceRows.length ? planChoicePages(choiceRows) : []
   const termPages = planTermsPages([{ heading: EXPECTATIONS_TITLE, items: EXPECTATIONS }, { heading: 'Terms and Conditions', items: TERMS }])
   const work = workSetFor(type)
   const title = doc.project_name || doc.client_name
@@ -151,6 +155,8 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
   const firstTable = n + 1
   n += tablePages.length
   const nNotes = notesPage ? ++n : 0
+  const firstChoice = n + 1
+  n += choicePages.length
   const nTerms = ++n
   const firstAnnex = n + 1
 
@@ -317,6 +323,39 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
       ))}
 
       {notesPage ? <Page n={nNotes} section="Notes" kicker="Notes">{notesBox}</Page> : null}
+
+      {/* ── the client's choices, one table (only when a product has any) ── */}
+      {choicePages.map((rows, ci) => (
+        <Page key={`c${ci}`} n={firstChoice + ci} section="Client choices" kicker="Client choices" title={ci === 0 ? 'What you chose, and what is still open.' : undefined}>
+          {ci === 0 ? <p className={d.chIntro}>Fabrics, finishes, stone and rope weaves for your products. Rows marked To confirm still wait for your decision. None of this changes the price.</p> : null}
+          <table className={`${d.tbl} ${d.chtbl}`}>
+            <thead><tr><th>Product</th>{CHOICE_KINDS.map(k => <th key={k}>{CHOICE_LABEL[k]}</th>)}</tr></thead>
+            <tbody>{rows.map(r => (
+              <tr key={r.line.key}>
+                <td className={d.chProd} data-label="Product"><b className={d.pname}>{r.line.name}</b><small>{[r.area?.name, r.line.is_optional ? 'Optional' : ''].filter(Boolean).join(' · ')}</small></td>
+                {CHOICE_KINDS.map(k => {
+                  const c = r.line.choices?.[k]
+                  if (!c) return <td key={k} data-label={CHOICE_LABEL[k]} className={d.chNone}><span>Not used</span></td>
+                  return (
+                    <td key={k} data-label={CHOICE_LABEL[k]}>
+                      {c.photo ? <div className={d.chSw}><Pic src={pictureUrl(c.photo)} alt={`${CHOICE_LABEL[k]} swatch for ${r.line.name}`} lazy /></div> : null}
+                      {choiceWords(c).map((w, i) => i === 0 ? <b key={i} className={d.chName}>{w}</b> : <span key={i} className={d.chWord}>{w}</span>)}
+                      <span className={d.chSrc}>{sourceText(c)}</span>
+                      <span className={`${d.chChip} ${c.status === 'confirmed' ? d.chOk : d.chWait}`}>{statusText(c)}</span>
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}</tbody>
+          </table>
+          {ci === choicePages.length - 1 ? (
+            <div className={d.chSign}>
+              <div><span>For the client: name, date and signature</span></div>
+              <div><span>For Best of Exports: name and date</span></div>
+            </div>
+          ) : null}
+        </Page>
+      ))}
 
       {/* ── 6 · terms in plain words, and the acceptance ── */}
       <Page n={nTerms} section="Terms and acceptance" kicker="Terms and acceptance" title="What we ask, and how we start.">

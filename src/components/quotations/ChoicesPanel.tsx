@@ -38,7 +38,7 @@ export function ChoicesPanel({ choices, editable, url, onChange, onUpload }: {
           {CHOICE_KINDS.map(k => (
             <ChoiceRow key={k} kind={k} v={choices?.[k]} editable={editable} url={url} onUpload={onUpload} onChange={v => set(k, v)} />
           ))}
-          <p className={`${s.small} ${s.muted}`}>Only kept inside BOE One for now. A choice never changes the price.</p>
+          <p className={`${s.small} ${s.muted}`}>Printed for the client on a “Client choices” page, and in the Excel, with the next version you send (the Note stays inside BOE One). A choice never changes the price.</p>
         </div>
       )}
     </div>

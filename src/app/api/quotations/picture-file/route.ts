@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
-import { ORIGINALS_BUCKET, pictureRequestProblem } from '@/lib/quotations/pictureStore'
+import { ORIGINALS_BUCKET, PICTURE_HOLDERS, linePictureFilter, pictureRequestProblem } from '@/lib/quotations/pictureStore'
 
 export const runtime = 'nodejs'
 
@@ -45,13 +45,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(`${base}/storage/v1/object/public/quotation-images/${path}`, 302)
   }
 
-  // Mark OFF: the picture must belong to this quotation, in its lines or in a version it has sent.
-  const used = await service.from('quotation_lines').select('id').eq('quotation_id', quotationId).eq('image_path', path as string).limit(1)
+  // Mark OFF: the picture must belong to this quotation, in its lines (a product's picture or a client-choice swatch) or in a version it has sent.
+  const used = await service.from('quotation_lines').select('id').eq('quotation_id', quotationId).or(linePictureFilter(path as string)).limit(1)
   let belongs = (used.data ?? []).length > 0
   if (!belongs) {
-    const v = await service.from('quotation_versions').select('version_no').eq('quotation_id', quotationId)
-      .contains('doc', { lines: [{ image_path: path }] }).limit(1)
-    belongs = (v.data ?? []).length > 0
+    const found = await Promise.all(PICTURE_HOLDERS(path as string).map(h => service.from('quotation_versions').select('version_no').eq('quotation_id', quotationId)
+      .contains('doc', { lines: [h] }).limit(1)))
+    belongs = found.some(v => (v.data ?? []).length > 0)
   }
   if (!belongs) return gone(404)
 

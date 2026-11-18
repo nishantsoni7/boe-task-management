@@ -915,4 +915,48 @@ await db.exec(mig('20270808000100_quotation_client_choices.sql'))
   ok('the checker function is closed to anyone signed out')
 }
 
+// ── 20270809: the client's copy carries the choices (never the note); sent versions stay as they were ──
+{
+  const P = n => `00000000-0000-0000-0000-0000000000b2/${String(n).repeat(8)}-1111-1111-1111-111111111111.jpg`
+  const choices = {
+    fabric: { source: 'catalog', name: 'Berlin velvet', code: 'F18', supplier: 'V2 Homes', used_for: 'seat', note: 'FACTORY-ONLY-NOTE', photo: P(4), status: 'confirmed', confirmed_on: '2026-11-18' },
+    stone: { source: 'client', name: 'Their own slate', status: 'to_confirm' },
+  }
+  const id = await rpc(U.sales, 'quotation_create', { client_name: 'Output Hotel' })
+  const header = { client_name: 'Output Hotel', valid_days: 7, gst_mode: 'igst' }
+  const chair = { name: 'O1 Arm chair', qty_fixed: 6, unit_price: 20000, tax_rate: 18, client_choices: choices, internal_note: 'INTERNAL-NOTE-NEVER' }
+  const table = { name: 'O2 Table', qty_fixed: 2, unit_price: 9000, tax_rate: 18 }
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, table] })
+  const tok = await rpc(U.sales, 'quotation_share', id, true) // v1 is frozen BEFORE the new migration
+  await db.exec(mig('20270809000000_quotation_client_choices_output.sql'))
+  const pub = async () => (await as(null, `select public.quotation_public($1) as r`, [tok], 'anon')).rows[0].r
+  assert.ok(!JSON.stringify(await pub()).includes('client_choices'), 'a version sent before the migration is untouched')
+  ok('a version sent before the change still shows no choices to the client')
+
+  assert.equal(await rpc(U.sales, 'quotation_version_create', id, 'choices added'), 2)
+  const p2 = await pub()
+  const c = p2.lines[0].client_choices
+  assert.deepEqual(c.fabric, { source: 'catalog', name: 'Berlin velvet', code: 'F18', supplier: 'V2 Homes', used_for: 'seat', photo: P(4), status: 'confirmed', confirmed_on: '2026-11-18' })
+  assert.deepEqual(c.stone, { source: 'client', name: 'Their own slate', status: 'to_confirm' })
+  assert.ok(!('client_choices' in p2.lines[1]), 'a line without choices carries no key')
+  ok('the next version carries each line\'s choices (both confirmed and to-confirm), and no key on a line without any')
+
+  const text = JSON.stringify(p2)
+  for (const secret of ['FACTORY-ONLY-NOTE', 'INTERNAL-NOTE-NEVER']) assert.ok(!text.includes(secret), secret)
+  assert.ok(!/"note"/.test(JSON.stringify(p2.lines.map(l => l.client_choices ?? {}))), 'the choice note is not in the client copy')
+  ok('the client copy never carries the choice note or the internal note')
+
+  // a quotation with no choices produces the very same client document as before
+  const plain = await rpc(U.sales, 'quotation_create', { client_name: 'Plain Hotel' })
+  await rpc(U.sales, 'quotation_save', plain, { header: { ...header, client_name: 'Plain Hotel' }, areas: [], lines: [table] })
+  const ptok = await rpc(U.sales, 'quotation_share', plain, true)
+  const pp = (await as(null, `select public.quotation_public($1) as r`, [ptok], 'anon')).rows[0].r
+  assert.ok(!JSON.stringify(pp).includes('client_choices'))
+  ok('a quotation without choices gets exactly the document it got before')
+
+  await assert.rejects(() => as(U.sales, `select public.quotation_client_doc($1::uuid)`, [id]), /permission denied/)
+  await assert.rejects(() => as(null, `select public.quotation_client_doc($1::uuid)`, [id], 'anon'), /permission denied/)
+  ok('quotation_client_doc stays closed to signed-in and signed-out callers')
+}
+
 console.log(`all ${checks} checks passed`)

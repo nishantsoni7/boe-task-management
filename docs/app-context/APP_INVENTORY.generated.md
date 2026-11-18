@@ -5,16 +5,18 @@
 
 ## Snapshot
 
-- Commit: `59e9ccbd` — Quotations: client choices (fabric, finish, stone, rope weave) per product, step 1: builder only
-- Commits on this branch: 1491
+- Commit: `5bd9569d` — Quotations: client choices (fabric, finish, stone, rope weave) per product, step 1: builder only (#934)
+- Commits on this branch: 1493
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
-- Migrations: 485 (first `20260530_create_positions.sql`, latest `20270808000100_quotation_client_choices.sql`)
+- Migrations: 486 (first `20260530_create_positions.sql`, latest `20270809000000_quotation_client_choices_output.sql`)
 - Tables ever created: 269 (dropped at some point: 8)   SQL functions: 1074   Enums: 0
-- Test files: 910   Next.js 16.2.6, React 19.2.4
+- Test files: 911   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `59e9ccbd` 2026-11-18 Quotations: client choices (fabric, finish, stone, rope weave) per product, step 1: builder only
+- `5bd9569d` 2026-11-18 Quotations: client choices (fabric, finish, stone, rope weave) per product, step 1: builder only (#934)
+- `f1fafd84` 2026-11-18 Docs: stamp #932 (picture credits wallet) as merged and applied (#935)
+- `c7f03dcd` 2026-11-18 Picture credits: a wallet and a tracking page for every paid picture press (limits ship off; migration not applied) (#932)
 - `8a0b1f21` 2026-11-18 Quotations: nothing waits for price approval, suggestions for the pricing desk, bank account + UPI QR on the quotation (#933)
 - `ff8dedc3` 2026-11-18 Quotations: a styled, editable Excel with pictures and the standard terms; GST as one line (#931)
 - `a08a1d5f` 2026-11-18 Docs: stamp #929 (shared image model on Nano Banana 2) as merged (#930)
@@ -37,8 +39,6 @@
 - `ca56337c` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it (no SQL) (#911)
 - `1354334d` 2026-11-18 Docs: stamp #908, #909, #910 as merged (#912)
 - `c315ef04` 2026-11-18 Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (#910)
-- `13ae93e7` 2026-11-18 Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5 (#909)
-- `935c8901` 2026-11-18 Quotations: New quotation's Cancel and x work again; dialogs close on Escape; deep-link parameters leave the address (#908)
 
 ## Pages by top-level area
 
@@ -174,7 +174,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 28 source, 24 test
+- `src/lib/quotations` — 29 source, 25 test
 - `src/lib/salesLeads` — 16 source, 16 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
@@ -520,7 +520,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270715000000_pricing_learning.sql`
 - `20270716000000_sales_board_summary.sql`
 - `20270717000000_quotation_document_fields.sql`
 - `20270718000000_order_handoff_review_chain.sql`
@@ -550,6 +549,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270807000000_quotation_payment_and_desk.sql`
 - `20270808000000_picture_wallet.sql`
 - `20270808000100_quotation_client_choices.sql`
+- `20270809000000_quotation_client_choices_output.sql`
 
 ## All SQL function names
 
