@@ -20,6 +20,9 @@ import type { QuoteArea, QuoteLine } from '@/lib/quotations/math'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const SCREEN = read('src/components/quotations/BuilderScreen.tsx')
+const CLIENT = read('src/components/quotations/ClientCard.tsx')
+const STATUS = read('src/components/quotations/StatusCard.tsx')
+const SHARE = read('src/components/quotations/ShareCard.tsx')
 const CSS = read('src/components/quotations/quotations.module.css')
 // The text of one CSS rule: from its selector to the closing brace.
 const rule = (selector: string) => {
@@ -36,7 +39,7 @@ const header = (over: Partial<Header> = {}): Header => ({
   client_name: 'Aurora', project_name: 'Resort', contact_name: 'Rahul Mehta', contact_phone: '+91 90000 00001', contact_role: 'Architect',
   client_type: 'architect', supply_state: 'Rajasthan', gst_mode: 'cgst_sgst', discount_pct: 0, fabric_amount: 0, packing_amount: 0,
   transport_note: '', valid_days: 7, notes: '', internal_notes: '', client_email: 'rahul@aurora.example', company_name: '', client_gstin: '',
-  dimension_unit: 'in', project_type: '', seats: null, lead_time_weeks: null, lead_time_reason: '', ...over,
+  dimension_unit: 'in', project_type: '', seats: null, lead_time_weeks: null, lead_time_reason: '', delivery_city: 'Jaipur', ...over,
 })
 const draw = (l: QuoteLine) => renderToStaticMarkup(
   <LineRow l={l} area={null} unit="in" editable qty={2} total={77000} first last url={p => `https://img.example/${p}`}
@@ -73,16 +76,16 @@ describe('Finish is no longer a box (item 3)', () => {
 })
 
 describe('contact person and email (items 5 and 7)', () => {
-  test('both left the main block and sit in Advanced, with the phone and the delivery state staying on top', () => {
-    const basic = SCREEN.slice(SCREEN.indexOf('className={s.clientGrid}'), SCREEN.indexOf('className={s.advBtn}'))
-    assert.ok(basic.includes('q-phone') && basic.includes('q-state') && basic.includes('q-client-name'))
-    assert.ok(!basic.includes('q-contact') && !basic.includes('q-email'))
-    const adv = SCREEN.slice(SCREEN.indexOf('id="q-advanced"'), SCREEN.indexOf('</section>', SCREEN.indexOf('id="q-advanced"')))
+  test('both left the main block and sit in Advanced, with the phone and the city staying on top (the state went down to Advanced on 18 Nov)', () => {
+    const basic = CLIENT.slice(CLIENT.indexOf('className={s.fgrid}'), CLIENT.indexOf('{advOpen && ('))
+    assert.ok(basic.includes('q-phone') && basic.includes('q-city') && basic.includes('q-client-name'))
+    assert.ok(!basic.includes('q-contact') && !basic.includes('q-email') && !basic.includes('q-state'))
+    const adv = CLIENT.slice(CLIENT.indexOf('id="q-advanced"'), CLIENT.indexOf('</section>', CLIENT.indexOf('id="q-advanced"')))
     assert.ok(adv.includes('id="q-contact"') && adv.includes('id="q-email"') && adv.includes('id="q-role"'))
   })
-  test('a save still carries the contact, the role, the email and the delivery state (quotation_save clears the ones a header leaves out)', () => {
+  test('a save still carries the contact, the role, the email, the city and the delivery state (quotation_save clears the ones a header leaves out)', () => {
     const doc = saveDoc(header(), [], [line()], '2026-11-14T00:00:00Z')
-    for (const k of ['contact_name', 'contact_phone', 'contact_role', 'client_email', 'supply_state', 'client_type'] as const) {
+    for (const k of ['contact_name', 'contact_phone', 'contact_role', 'client_email', 'supply_state', 'delivery_city', 'client_type'] as const) {
       assert.equal(doc.header[k], header()[k], k)
     }
     assert.match(SCREEN, /saveDoc\(\{ \.\.\.h, lead_time_weeks: effectiveLeadTime\(h, areas\) \}/, 'the builder sends the whole header')
@@ -93,23 +96,22 @@ describe('contact person and email (items 5 and 7)', () => {
   })
 })
 
-describe('the page rows (items 8 and 9)', () => {
+describe('the page rows (items 8 and 9, redone on 18 Nov 2026)', () => {
   const between = (from: string, to: string) => SCREEN.slice(SCREEN.indexOf(from), SCREEN.indexOf(to))
-  test('the status strip is its own full-width card, above the Client and Share cards', () => {
-    assert.ok(SCREEN.indexOf('s.statusCard') < SCREEN.indexOf('className={s.topRow}'))
-    assert.ok(SCREEN.indexOf('className={s.statusBar}') < SCREEN.indexOf('className={s.topRow}'))
-    assert.match(CSS, /\.statusCard \.statusBar \{ border-bottom: 0;/)
+  test('the top row is three compact cards (request, status, share), then the Client card, then the products', () => {
+    const order = ['className={`${s.band}', '<RequestCard', '<StatusCard', '<ShareCard', '<ClientCard', 'aria-labelledby="q-products"'].map(i => SCREEN.indexOf(i))
+    assert.ok(order.every(i => i > 0), 'every part is on the page')
+    assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
+    assert.match(rule('.band'), /grid-template-columns: minmax\(0, \.9fr\) minmax\(0, 1\.5fr\) minmax\(0, 1\.1fr\);/)
+    assert.match(rule('.bandTwo'), /grid-template-columns: minmax\(0, 1\.5fr\) minmax\(0, 1\.1fr\);/)
+    assert.ok(SCREEN.includes("${hasRequest ? '' : s.bandTwo}"), 'a quotation that did not come from a request has a row of two cards')
   })
-  test('the Client card (60%) and the Share card (40%) share one row, and Share carries the two downloads and the WhatsApp message', () => {
-    const top = between('className={s.topRow}', 'aria-labelledby="q-products"')
-    assert.ok(top.includes('aria-labelledby="q-client"') && top.includes('aria-labelledby="q-share"'))
-    for (const w of ['Download PDF', 'Download Excel', 'Open WhatsApp with the message', 'Create client link', 'Turn the link off']) assert.ok(top.includes(w), w)
-    assert.match(rule('.topRow'), /grid-template-columns: minmax\(0, 3fr\) minmax\(0, 2fr\);/)
+  test('Share carries the two downloads and the WhatsApp message', () => {
+    for (const w of ['Download PDF', 'Download Excel', 'Open WhatsApp with the message', 'Create client link', 'Turn the link off']) assert.ok(SHARE.includes(w), w)
   })
   test('the downloads are made from the saved quotation: disabled while there are unsaved changes', () => {
-    const share = between('aria-labelledby="q-share"', 'aria-labelledby="q-products"')
-    assert.match(share, /dirty\s*\? <button type="button" className=\{s\.btn\} disabled><Printer/)
-    assert.match(share, /onClick=\{downloadExcel\} disabled=\{dirty \|\| busy \|\| lines\.length === 0\}/)
+    assert.match(SHARE, /dirty\s*\? <button type="button" className=\{s\.btn\} disabled><Printer/)
+    assert.match(SHARE, /onClick=\{onExcel\} disabled=\{dirty \|\| busy \|\| lineCount === 0\}/)
   })
   test('Terms and notes (textareas stacked) and History share one row; the bottom grid no longer holds Share or History', () => {
     const pair = between('className={s.pair}', 'className={s.bottom}')
@@ -117,17 +119,73 @@ describe('the page rows (items 8 and 9)', () => {
     assert.ok(!pair.includes('s.grid2'), 'the two notes boxes are stacked, not side by side')
     const bottom = between('className={s.bottom}', '{importing && profile')
     assert.ok(!bottom.includes('Share with the client') && !bottom.includes('<h2>History</h2>'))
-    for (const w of ['RequestCard', 'VersionsCard', 'PriceCard', 'PiCard']) assert.ok(bottom.includes(w), w)
+    // the Quotation request card moved to the top row and the PI draft card is gone (owner, 18 Nov 2026): Versions and Price approval are left
+    for (const w of ['VersionsCard', 'PriceCard']) assert.ok(bottom.includes(w), w)
+    for (const w of ['RequestCard', 'PiCard']) assert.ok(!bottom.includes(w), `${w} is not at the bottom any more`)
     assert.match(rule('.pair'), /repeat\(2, minmax\(0, 1fr\)\);/)
   })
-  test('the Share card is one fixed column whose button labels wrap: on a 320 px phone a label that does not wrap used to push every button past the card', () => {
-    assert.ok(SCREEN.includes('className={`${s.cardBody} ${s.shareBody}`}'))
-    assert.match(rule('.shareBody'), /grid-template-columns: minmax\(0, 1fr\);/)
-    assert.match(rule('.shareBody .btn'), /white-space: normal;/)
+  test('a button label wraps inside its card rather than push past it: on a 320 px phone a label that does not wrap used to widen the whole card', () => {
+    assert.match(rule('.acts2'), /flex-wrap: wrap;/)
+    assert.match(rule('.card'), /min-width: 0;/)
   })
-  test('under 1024 px the two rows stack, and on a phone the download buttons share the width', () => {
-    assert.match(CSS, /@media \(max-width: 1023px\) \{\s*\.topRow, \.pair \{ grid-template-columns: minmax\(0, 1fr\); \}/)
-    assert.match(CSS, /\.shareDl \.btn \{ flex: 1 1 140px; justify-content: center; \}/)
+  test('under 1200 px the top row is two columns, under 1024 px Terms and History stack, and on a phone every grid is one column', () => {
+    assert.match(CSS, /@media \(max-width: 1199px\) \{[^@]*\.band, \.bandTwo \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/)
+    assert.match(CSS, /@media \(max-width: 1023px\) \{\s*\.pair \{ grid-template-columns: minmax\(0, 1fr\); \}/)
+    assert.match(CSS, /\.grid2, \.grid3, \.grid4, \.band, \.bandTwo, \.fgrid, \.leadEdit \{ grid-template-columns: minmax\(0, 1fr\); \}/)
+  })
+})
+
+describe('the tidy-up of 18 Nov 2026 (owner: request on top, no PI draft card, City, one-line Saved, no Total)', () => {
+  const between = (from: string, to: string) => SCREEN.slice(SCREEN.indexOf(from), SCREEN.indexOf(to))
+  test('the Quotation request card is the first card of the top row: after the Needs you strip, before Status', () => {
+    assert.ok(SCREEN.indexOf('<RequestCard') > SCREEN.indexOf('waiting.length > 0'))
+    assert.ok(SCREEN.indexOf('<RequestCard') < SCREEN.indexOf('<StatusCard'))
+  })
+  test('the PI draft card and the PI-format download are gone, but a sent quotation can still become a PI from the Status card', () => {
+    assert.ok(!/PiCard|downloadPi|Download in PI format/.test(SCREEN + STATUS))
+    for (const w of ['Confirm → make PI draft', 'Open the PI draft', 'onClick={onConfirm}', 'Show which', 'Waiting for price approval']) assert.ok(STATUS.includes(w), w)
+    assert.match(SCREEN, /const canConfirm = base\.may_edit && !base\.pi && \(base\.status === 'sent' \|\| base\.status === 'negotiating'\)/)
+    assert.match(STATUS, /disabled=\{off \|\| piProblems\.length > 0 \|\| priceBlocked\}/, 'the same reasons the old card had for waiting')
+  })
+  test('the page header says Saved on one line and no longer carries the total', () => {
+    const actions = between('const actions = (', 'const body = (')
+    assert.ok(!actions.includes('Total') && !actions.includes('formatINR'), 'no Total in the header: it is in the totals card')
+    assert.ok(actions.includes('s.saveState') && actions.includes('Saved') && actions.includes('Unsaved changes'))
+    assert.match(rule('.saveState'), /white-space: nowrap;/)
+    assert.match(rule('.saveState'), /flex-shrink: 0;/)
+  })
+  test('the Client card asks for the city; a well-known city fills the state and the tax, the state box is under Advanced', () => {
+    assert.ok(CLIENT.indexOf('<span>Delivery state</span>') > CLIENT.indexOf('id="q-advanced"'))
+    assert.match(CLIENT, /onChange=\{e => onCity\(e\.target\.value\)\}/)
+    assert.match(SCREEN, /const st = stateOfCity\(v\)/)
+    assert.match(SCREEN, /\.\.\.\(st \? \{ supply_state: st, gst_mode: gstModeForState\(st\) \} : \{\}\)/, 'an unknown city leaves the state and the tax alone')
+    assert.ok(CLIENT.includes('maxLength={80}'), 'the database refuses more than 80 characters')
+  })
+  test('Versions and Price approval fill the bottom row; one alone takes the whole row', () => {
+    assert.match(rule('.bottom'), /display: flex;/)
+    assert.match(CSS, /\.bottom > \* \{ flex: 1 1 0; min-width: 0; \}/)
+  })
+})
+
+describe('the capped page and its header (owner-approved layout, 18 Nov 2026)', () => {
+  test('the builder asks the layout for a centred 1360 px column, as BoeOsLayout does for other modules', () => {
+    assert.ok(SCREEN.includes('contentMaxWidth={1360}'))
+    const layout = read('src/components/layout/QuotationsLayout.tsx')
+    assert.ok(layout.includes('boe-main-content-capped') && layout.includes("'--boe-content-max'") || layout.includes('--boe-content-max'))
+    assert.ok(layout.includes('contentMaxWidth?: number'))
+  })
+  test('on a phone the status pill and "Saved" leave the header (the Status card shows them) and Print keeps its name for a screen reader', () => {
+    const actions = SCREEN.slice(SCREEN.indexOf('const actions = ('), SCREEN.indexOf('const body = ('))
+    assert.ok(actions.includes('<span className={s.hideOnPhone}><StatusPill'))
+    assert.ok(actions.includes('aria-label="Print / PDF"'))
+  })
+  test('the rhythm: 24 px between rows, 16 px between cards, a 16 px section heading, nothing under 12 px (BOE identity)', () => {
+    assert.match(rule('.builder'), /gap: 24px;/)
+    assert.match(rule('.band'), /gap: 16px;/)
+    assert.match(rule('.builder .cardHead h2'), /font-size: 16px;/)
+    const block = CSS.slice(CSS.indexOf("/* THE BUILDER'S TOP AREA"), CSS.indexOf('.advGrid {'))
+    const sizes = [...block.matchAll(/font(?:-size)?: (?:\d+ )?(\d+(?:\.\d+)?)px/g)].map(m => Number(m[1]))
+    assert.ok(sizes.length > 5 && sizes.every(n => n >= 12), `font sizes in the new block: ${sizes.join(', ')}`)
   })
 })
 

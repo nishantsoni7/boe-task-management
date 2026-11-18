@@ -20,11 +20,13 @@ type Props = {
   title: string
   subtitle?: string
   actions?: React.ReactNode
+  /** A centred column no wider than this many px (the header's title and actions line up with it), as BoeOsLayout's contentMaxWidth. The builder uses 1360. */
+  contentMaxWidth?: number
   onSignOut: () => void
   children: React.ReactNode
 }
 
-export function QuotationsLayout({ profile, access, title, subtitle, actions, onSignOut, children }: Props) {
+export function QuotationsLayout({ profile, access, title, subtitle, actions, contentMaxWidth, onSignOut, children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router = useRouter()
@@ -96,7 +98,10 @@ export function QuotationsLayout({ profile, access, title, subtitle, actions, on
         </div>
       </aside>
 
-      <div className="boe-main-content">
+      <div
+        className={`boe-main-content${contentMaxWidth ? ' boe-main-content-capped' : ''}`}
+        style={contentMaxWidth ? { '--boe-content-max': `${contentMaxWidth}px` } as React.CSSProperties : undefined}
+      >
         <div className="boe-page-header">
           <button className="boe-menu-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open menu">☰</button>
           <div className="boe-page-title-group">

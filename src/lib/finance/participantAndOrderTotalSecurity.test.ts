@@ -1331,7 +1331,8 @@ describe('the applied migrations are frozen', () => {
       '20270805000000_quotation_for_request.sql',
       // Logo marks on quotation pictures: a private bucket for the clean originals and two storage policies.
       '20270806000000_quotation_picture_originals.sql',
-      // The logo mark is optional per quotation: one new small table and two functions.
+      // Quotations: the delivery city, one column and quotation_save re-created with one more line; no existing row changes.
+      '20270806000100_quotation_delivery_city.sql',
       '20270806000200_quotation_picture_mark_switch.sql',
     ])
   })
@@ -1875,7 +1876,9 @@ describe('the applied migrations are frozen', () => {
       '20270803000000_day_close_hold_decision.sql',
       '20270804000000_quotation_request_receivers.sql',
       '20270805000000_quotation_for_request.sql',
+      // Logo marks on quotation pictures: a private bucket for the clean originals and two storage policies.
       '20270806000000_quotation_picture_originals.sql',
+      '20270806000100_quotation_delivery_city.sql',
       '20270806000200_quotation_picture_mark_switch.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been

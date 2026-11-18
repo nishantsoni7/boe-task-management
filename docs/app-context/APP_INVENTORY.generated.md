@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `2d3c49fc` — Quotations: the logo mark on every picture the client sees; clean originals in a private bucket (migration 20270806000000)
-- Commits on this branch: 1481
+- Commit: `009a3d72` — Quotations: the logo mark is optional per quotation, on by default (migration 20270806000200)
+- Commits on this branch: 1482
 - Pages (`page.tsx`): 210   API routes (`route.ts`): 219
-- Migrations: 481 (first `20260530_create_positions.sql`, latest `20270806000100_quotation_picture_mark_switch.sql`)
+- Migrations: 482 (first `20260530_create_positions.sql`, latest `20270806000200_quotation_picture_mark_switch.sql`)
 - Tables ever created: 265 (dropped at some point: 8)   SQL functions: 1066   Enums: 0
-- Test files: 905   Next.js 16.2.6, React 19.2.4
+- Test files: 907   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `009a3d72` 2026-11-18 Quotations: the logo mark is optional per quotation, on by default (migration 20270806000200)
 - `2d3c49fc` 2026-11-18 Quotations: the logo mark on every picture the client sees; clean originals in a private bucket (migration 20270806000000)
 - `10b5b012` 2026-11-18 Quotation requests: the request page shows its quotation, Excel needs a reason, the salesperson asks for a change (migration 20270805000000, read-only) (#922)
 - `a5ef42ef` 2026-11-18 Docs: stamp #919 and #920 as merged; migration 20270804000000 applied (#921)
@@ -38,7 +39,6 @@
 - `62939430` 2026-11-18 Quotations: crop by drawing a box, and change a made picture again with comments (#901)
 - `aa521cd8` 2026-11-18 Quotations: copy and paste a product picture with the keyboard (#900)
 - `d2a9b142` 2026-11-18 Quotations: who sees the suggested prices (everyone, or only the administrator who switches it) (#899)
-- `b71cb3e6` 2026-11-18 Orders: the hidden page is built only in the browser (React #418), and #897 stamped (#898)
 
 ## Pages by top-level area
 
@@ -172,7 +172,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 26 source, 21 test
+- `src/lib/quotations` — 27 source, 22 test
 - `src/lib/salesLeads` — 16 source, 16 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
@@ -456,7 +456,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `quotation_areas` — 20270614000000
 - `quotation_events` — 20270614000000
 - `quotation_lines` — 20270614000000
-- `quotation_picture_marks` — 20270806000100
+- `quotation_picture_marks` — 20270806000200
 - `quotation_price_reviews` — 20270617000000
 - `quotation_price_settings` — 20270617000000
 - `quotation_salesperson_cards` — 20270801000000
@@ -513,7 +513,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270710000000_sales_visit_meeting_stage.sql`
 - `20270711000000_sales_value_timeline_gates.sql`
 - `20270713000000_clickup_draft_orders.sql`
 - `20270714000000_quotation_builder_fields.sql`
@@ -542,7 +541,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270804000000_quotation_request_receivers.sql`
 - `20270805000000_quotation_for_request.sql`
 - `20270806000000_quotation_picture_originals.sql`
-- `20270806000100_quotation_picture_mark_switch.sql`
+- `20270806000100_quotation_delivery_city.sql`
+- `20270806000200_quotation_picture_mark_switch.sql`
 
 ## All SQL function names
 
