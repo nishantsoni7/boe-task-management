@@ -6,7 +6,8 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { describeSaveFailure, discardUnsavedDraft, WORKBOOK_UPLOAD_MIME, workbookObjectPath } from '@/lib/orders/saveDraftFlow'
-import { classifyError, pictureUrl, type Quotation } from './api'
+import { classifyError, type Quotation } from './api'
+import { ORIGINALS_BUCKET } from './pictureStore'
 import { toJpeg } from '@/lib/inventory/images'
 import { buildPiWorkbook, fitExtras, piLines } from './piWorkbook'
 
@@ -23,7 +24,7 @@ export type PiDraftResult = { submissionId: string; draftReference: string | nul
 const EXTRA_EDGE_PX = 800
 
 /**
- * Every picture the PI needs, as bytes, from the public quotation bucket. Main pictures always (a line without one is
+ * Every picture the PI needs, as bytes, clean, from the private originals bucket. Main pictures always (a line without one is
  * skipped; the PI then refuses it as before). Each line's other pictures are made smaller and added while the PI stays
  * under its upload limit; a missing or unreadable extra is simply left out, never a reason to fail the PI.
  */
@@ -32,16 +33,17 @@ export async function loadPictures(s: Supabase, q: Pick<Quotation, 'lines'>): Pr
   const paths = [...new Set(lines.map(l => l.image_path).filter((p): p is string => !!p))]
   const out = new Map<string, Uint8Array>()
   await Promise.all(paths.map(async p => {
-    const res = await fetch(pictureUrl(s, p))
-    if (!res.ok) throw new Error('A product picture could not be loaded. Check your connection and try again.')
-    out.set(p, new Uint8Array(await res.arrayBuffer()))
+    // The PI is a factory document: it gets the CLEAN original, not the logo-marked client copy (18 Nov 2026).
+    const { data: blob } = await s.storage.from(ORIGINALS_BUCKET).download(p)
+    if (!blob) throw new Error('A product picture could not be loaded. Check your connection and try again.')
+    out.set(p, new Uint8Array(await blob.arrayBuffer()))
   }))
   const extraPaths = [...new Set(lines.flatMap(l => (l.references ?? []).map(r => r.path)))].filter(p => !out.has(p))
   const extras: { path: string; data: Uint8Array }[] = []
   const loaded = await Promise.all(extraPaths.map(async path => {
     try {
-      const res = await fetch(pictureUrl(s, path))
-      return res.ok ? new Uint8Array(await (await toJpeg(await res.blob(), 0.82, EXTRA_EDGE_PX)).arrayBuffer()) : null
+      const { data: blob } = await s.storage.from(ORIGINALS_BUCKET).download(path)
+      return blob ? new Uint8Array(await (await toJpeg(blob, 0.82, EXTRA_EDGE_PX)).arrayBuffer()) : null
     } catch { return null }
   }))
   loaded.forEach((data, i) => { if (data) extras.push({ path: extraPaths[i], data }) })

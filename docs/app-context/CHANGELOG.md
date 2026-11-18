@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Quotations: the Best of Exports logo mark on every picture the client sees; clean originals move to a private bucket (branch `feat/quotation-picture-marks`; PR number added at the stamp) · migration `20270806000000_quotation_picture_originals` (a bucket and two policies)
+- **Owner request and choice (review page, 18 Nov 2026):** a black translucent strip THROUGH the product, a little below the middle, with the small white icon-and-name logo repeated across it. Numbers in `src/lib/quotations/pictureMark.ts` (`MARK`: strip 6% of the height with a 24 px floor, centred at 58%, 45% dark, logo 45% of the strip, gap 1.7 logos); the only place to change the look.
+- **Burned into the file** (sharp, server side), so saving or screenshotting the picture keeps it. The CLEAN original lives in the new PRIVATE bucket `quotation-originals`; the public `quotation-images` bucket (client link, PDF, every screen) holds the MARKED copy at the SAME path, so no stored path changes.
+- **New pictures:** `uploadPicture` stores the clean file in the originals bucket, then `POST /api/quotations/picture-mark` (uploader only, create/edit access) writes the marked copy. The image studio (`/api/quotations/picture`) reads the clean original and stores both copies. The PI draft (`toPiDraft.loadPictures`) takes the CLEAN original: the PI is a factory document.
+- **Existing pictures:** `scripts/quotations/mark-existing-pictures.ts` (service role, `--env-file`): copies each clean picture to the originals bucket (and to a local safety folder), then marks from the ORIGINAL, so it is safe to re-run. Run once before and once after the code goes live.
+- Tests: `pictureMark.test.ts`, `pictureMarkWiring.test.ts`; both migration ledgers.
+
 ## 2026-11-18 — Quotation requests: the request page shows its quotation, Excel needs a reason, the salesperson asks for a change (branch `feat/request-shows-quotation`; PR number added at the stamp) · migration `20270805000000_quotation_for_request` (one read-only function)
 - **Owner direction:** Task Management is the front door, the work happens in Quotations, Excel stays allowed and fades out (no hard date). Step 1 of the transition plan.
 - **The quotation on the request** (`RequestQuotation` in `QuotationLinks.tsx`, read by `quotation_for_request(task)`, same `quotation_sees` rule as `quotation_for_pi`): number, status, value before GST, "version N · sent … · client opened …", Open builder / PDF / WhatsApp (when shared and a phone is known). With none yet, the maker gets **Build in BOE One** (the default).

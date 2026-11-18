@@ -1,5 +1,6 @@
 import type { createClient } from '@/lib/supabase/client'
 import { toJpeg } from '@/lib/inventory/images'
+import { ORIGINALS_BUCKET } from './pictureStore'
 import { toDimensionUnit, type DimensionUnit, type GstMode, type LineRef, type QtyMode, type QuoteArea, type QuoteLine } from './math'
 
 // Thin typed wrappers over the database functions of 20270614000000. No API route in between: every function
@@ -233,11 +234,18 @@ export const shareQuotation = (s: Supabase, id: string, on: boolean) =>
 
 // ── pictures ──────────────────────────────────────────────────────────────
 
+// The clean picture goes to the PRIVATE originals bucket; the server then writes the logo-marked copy to the public
+// bucket at the same path (owner, 18 Nov 2026: pictures the client sees carry the Best of Exports mark).
 export async function uploadPicture(s: Supabase, userId: string, file: Blob): Promise<string> {
   const jpeg = await toJpeg(file)
   const path = `${userId}/${crypto.randomUUID()}.jpg`
-  const { error } = await s.storage.from(QUOTATION_BUCKET).upload(path, jpeg, { contentType: 'image/jpeg', upsert: false, cacheControl: '31536000' })
+  const { error } = await s.storage.from(ORIGINALS_BUCKET).upload(path, jpeg, { contentType: 'image/jpeg', upsert: false, cacheControl: '31536000' })
   if (error) throw new QuotationError('unknown', error.message || 'The picture could not be uploaded')
+  const res = await fetch('/api/quotations/picture-mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) }).catch(() => null)
+  if (!res || !res.ok) {
+    const why = res ? ((await res.json().catch(() => null)) as { error?: string } | null)?.error : null
+    throw new QuotationError('unknown', why || 'The picture could not be prepared. Check your connection and try again.')
+  }
   return path
 }
 
