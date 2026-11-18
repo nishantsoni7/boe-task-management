@@ -1334,6 +1334,8 @@ describe('the applied migrations are frozen', () => {
       // Quotations: the delivery city, one column and quotation_save re-created with one more line; no existing row changes.
       '20270806000100_quotation_delivery_city.sql',
       '20270806000200_quotation_picture_mark_switch.sql',
+      // Quotations: no gate on price approval, suggestions for the pricing desk, payment details table; only function bodies and a new table.
+      '20270807000000_quotation_payment_and_desk.sql',
     ])
   })
 
@@ -1880,6 +1882,8 @@ describe('the applied migrations are frozen', () => {
       '20270806000000_quotation_picture_originals.sql',
       '20270806000100_quotation_delivery_city.sql',
       '20270806000200_quotation_picture_mark_switch.sql',
+      // Quotations: no gate on price approval, suggestions for the pricing desk, payment details table; only function bodies and a new table.
+      '20270807000000_quotation_payment_and_desk.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

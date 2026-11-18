@@ -83,7 +83,7 @@ export type QueueRow = {
 /** Who sees the suggested prices (20270731000000): everyone, or only the people listed. */
 /** The salesperson's details printed on their quotations, filled in once and editable (20270801000000). */
 export type MyCard = { saved: boolean; name: string; title: string; phone: string; email: string; updated_at?: string }
-export type SuggestionSettings = { everyone: boolean; for_me: boolean; shown_to: string[]; may_change: boolean; updated_at: string }
+export type SuggestionSettings = { everyone: boolean; desk: boolean; for_me: boolean; shown_to: string[]; may_change: boolean; updated_at: string }
 export type PriceSettings = { max_discount_pct: number | null; min_price_pct: number | null; updated_at: string; may_change: boolean }
 
 export type PublicQuotation = {
@@ -285,5 +285,12 @@ export const fetchMyCard = (s: Supabase) => call<MyCard>(() => s.rpc('quotation_
 export const saveMyCard = (s: Supabase, card: Pick<MyCard, 'name' | 'title' | 'phone' | 'email'>) => call<MyCard>(() => s.rpc('quotation_my_card_save', { p: card }))
 export const fetchSuggestionSettings = (s: Supabase) => call<SuggestionSettings>(() => s.rpc('quotation_suggestions_get'))
 export const saveSuggestionSettings = (s: Supabase, everyone: boolean) => call<SuggestionSettings>(() => s.rpc('quotation_suggestions_set', { p_everyone: everyone }))
+/** The bank account and UPI QR printed on a quotation (20270807000000). The Customer ID is only in the administrator's own read. */
+export type PaymentDetails = { account_holder: string; bank: string; account_no: string; ifsc: string; branch: string; upi_id: string; qr_image: string | null }
+export type PaymentSettings = PaymentDetails & { customer_id: string; updated_at: string }
+/** For the printed quotation: pass the client link's token on the public page, nothing on the signed-in one. Null when not allowed. */
+export const fetchPaymentDetails = (s: Supabase, token?: string) => call<PaymentDetails | null>(() => s.rpc('quotation_payment_details', { p_token: token ?? null }))
+export const fetchPaymentSettings = (s: Supabase) => call<PaymentSettings>(() => s.rpc('quotation_payment_get'))
+export const savePaymentSettings = (s: Supabase, data: Partial<Omit<PaymentSettings, 'updated_at'>>) => call<PaymentSettings>(() => s.rpc('quotation_payment_set', { p_data: data }))
 export const savePriceSettings = (s: Supabase, maxDiscount: number | null, minPrice: number | null) =>
   call<PriceSettings>(() => s.rpc('quotation_price_settings_set', { p_max_discount_pct: maxDiscount, p_min_price_pct: minPrice }))

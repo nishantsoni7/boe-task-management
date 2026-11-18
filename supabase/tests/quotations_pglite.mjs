@@ -809,4 +809,49 @@ await db.exec(mig('20270806000100_quotation_delivery_city.sql'))
   ok('the client link and the frozen version do not carry the city')
 }
 
+// ── 20270731 + 20270807: price suggestions for the pricing desk, no gate on price approval, payment details ──
+await db.exec(mig('20270731000000_quotation_suggestions_switch.sql'))
+await db.exec(mig('20270807000000_quotation_payment_and_desk.sql'))
+{
+  // qp is the "Pricing Hotel" quotation priced under 90% of the last order: it needed approval above and the link was refused
+  let g2 = await rpc(U.sales, 'quotation_get', qp)
+  assert.equal(g2.price.state, 'to_ask'); assert.equal(g2.price.blocked, false)
+  const tok = await rpc(U.sales, 'quotation_share', qp, true)
+  assert.match(tok, /^[0-9a-f]{32}$/)
+  ok('a price outside the limits still shows the optional ask, but the client link is no longer held back')
+
+  const sg = async uid => await rpc(uid, 'quotation_suggestions_get')
+  const s0 = await sg(U.admin)
+  assert.deepEqual([s0.everyone, s0.desk], [false, true])
+  assert.equal((await sg(U.admin)).for_me, true); assert.equal((await sg(U.editor)).for_me, true)
+  assert.equal((await sg(U.sales)).for_me, false); assert.equal((await sg(U.manager)).for_me, false)
+  ok('suggestions start as the pricing desk: the administrator and an editor with view all see them, a salesperson and a viewer do not')
+  assert.equal((await rpc(U.admin, 'quotation_suggestions_set', true)).everyone, true)
+  assert.equal((await sg(U.sales)).for_me, true)
+  assert.equal((await rpc(U.admin, 'quotation_suggestions_set', false)).desk, true)
+  await fails(U.editor, `select public.quotation_suggestions_set(true)`, [], /only an administrator/)
+  ok('only an administrator widens or narrows who sees suggestions')
+
+  const det = async (uid, token, role) => (await as(uid, `select public.quotation_payment_details($1) as r`, [token], role)).rows[0].r
+  const d1 = await det(U.sales, null)
+  assert.equal(d1.account_no, '99982000009999'); assert.equal(d1.upi_id, '9829383706@hdfc'); assert.ok(!('customer_id' in d1))
+  assert.equal(await det(null, null, 'anon'), null)
+  assert.equal((await det(null, tok, 'anon')).ifsc, 'HDFC0004204')
+  assert.equal(await det(null, 'f'.repeat(32), 'anon'), null)
+  assert.equal(await det(U.nobody, null), null)
+  ok('payment details: staff with Quotations access or a valid client link read them (no Customer ID); anyone else gets nothing')
+
+  assert.equal((await rpc(U.admin, 'quotation_payment_get')).customer_id, '271662686')
+  await fails(U.editor, `select public.quotation_payment_get()`, [], /only an administrator/)
+  await fails(U.sales, `select public.quotation_payment_set($1::jsonb)`, [{ bank: 'x' }], /only an administrator/)
+  await assert.rejects(() => as(null, `select public.quotation_payment_get()`, [], 'anon'), /permission denied/)
+  await assert.rejects(() => as(U.sales, 'select * from public.quotation_payment_details'), /permission denied/)
+  await fails(U.admin, `select public.quotation_payment_set($1::jsonb)`, [{ nonsense: 1 }], /unknown field/)
+  const upd = await rpc(U.admin, 'quotation_payment_set', { ifsc: ' hdfc0004204 ', qr_image: 'data:image/png;base64,AAAA' })
+  assert.deepEqual([upd.ifsc, upd.bank, upd.qr_image], ['HDFC0004204', 'HDFC Bank', 'data:image/png;base64,AAAA'])
+  assert.equal((await rpc(U.admin, 'quotation_payment_set', { qr_image: '' })).qr_image, null)
+  await fails(U.admin, `select public.quotation_payment_set($1::jsonb)`, [{ qr_image: 'javascript:alert(1)' }], /check constraint/)
+  ok('only an administrator changes the payment settings; a key left out keeps its value; the QR must be a PNG or JPG data URL')
+}
+
 console.log(`all ${checks} checks passed`)
