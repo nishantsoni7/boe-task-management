@@ -286,6 +286,7 @@ describe('13-15. fail-closed, enforcement agreement, no regression', () => {
       // Creation is a narrowing of manage, so fail-closed reaches it for free.
       canCreateQuotations: false,
       canSeeAllQuotations: false,
+      receivesQuotations: false,
     })
     assert.equal(deriveOrdersCapabilities(null, []).canViewAllOrders, false)
     assert.equal(deriveFinanceCapabilities(null, []).canViewAllFinance, false)

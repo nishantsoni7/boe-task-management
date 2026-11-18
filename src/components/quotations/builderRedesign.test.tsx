@@ -200,7 +200,7 @@ describe('the builder page', () => {
   test('every class the quotation screens use is in the module stylesheet (a missing one fails silently, with no styling)', () => {
     const css = read('src/components/quotations/quotations.module.css')
     const defined = new Set([...css.matchAll(/\.([A-Za-z_][\w-]*)/g)].map(m => m[1]))
-    const files = ['BuilderScreen', 'ProductLine', 'PictureViewer', 'RequestCard', 'PricingDesk', 'VersionsCard', 'ListScreen', 'ReportsScreen', 'ImportDialog', 'StudioDialog', 'QuotationLinks']
+    const files = ['BuilderScreen', 'ProductLine', 'PictureViewer', 'RequestCard', 'PricingDesk', 'VersionsCard', 'ListScreen', 'ReportsScreen', 'ImportDialog', 'StudioDialog', 'QuotationLinks', 'RequestsScreen']
     for (const f of files) {
       const used = [...new Set([...read(`src/components/quotations/${f}.tsx`).matchAll(/\bs\.([A-Za-z_]\w*)/g)].map(m => m[1]))]
       assert.deepEqual(used.filter(c => !defined.has(c)), [], `${f}.tsx uses a class that quotations.module.css does not define`)

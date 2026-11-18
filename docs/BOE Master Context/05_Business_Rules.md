@@ -594,8 +594,11 @@ Notification noise should be minimized.
 
 ## Quotation requests are silent (September 2026)
 
-* No quotation event writes a notification — creation, comment, completion,
-  reopening or cancellation. A quotation is identified by
+* **Except one start (owner, 18 Nov 2026):** a NEW request tells the person it
+  was sent to (the owner or Nitish), titled "Quotation request sent to you".
+  Its two endings tell the person who raised it (October 2026).
+* No other quotation event writes a notification — comment, reopening, status
+  moves. A quotation is identified by
   `tasks.task_type = 'quotation_request'`, never by its title.
 * Quotation workflows, activity history and the Quotation sidebar counts are
   unchanged.

@@ -80,6 +80,8 @@ export type QuotationCapabilities = {
   canCreateQuotations: boolean
   /** Sees every quotation request, not only their own (the owner, 18 Nov 2026; 20270804000000 lets an administrator read them). */
   canSeeAllQuotations: boolean
+  /** Is sent quotation requests to make (an administrator, or task_management.receive_quotations; 20270804000000). */
+  receivesQuotations: boolean
 }
 
 export const NO_QUOTATION_CAPABILITIES: QuotationCapabilities = {
@@ -87,6 +89,7 @@ export const NO_QUOTATION_CAPABILITIES: QuotationCapabilities = {
   canManageQuotations: false,
   canCreateQuotations: false,
   canSeeAllQuotations: false,
+  receivesQuotations: false,
 }
 
 export function deriveQuotationCapabilities(
@@ -99,6 +102,7 @@ export function deriveQuotationCapabilities(
       canManageQuotations: true,
       canCreateQuotations: false,
       canSeeAllQuotations: true,
+      receivesQuotations: true,
     }
   }
 
@@ -121,6 +125,7 @@ export function deriveQuotationCapabilities(
     // grant that decides it is the same one, unchanged.
     canCreateQuotations: canManageQuotations,
     canSeeAllQuotations: false,
+    receivesQuotations: canViewQuotations && allowed('receive_quotations'),
   }
 }
 

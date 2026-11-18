@@ -333,7 +333,12 @@ describe('9-10. every creation path goes through the trusted operation', () => {
   // A new task is silent (taskNotificationPolicy.ts), so no creation screen
   // asks the route any more — the request could only ever come back
   // `skipped_acknowledgment`. The route stays for tabs still on an older build.
-  for (const path of [...CLIENT_PATHS, 'src/components/meetings/DiscussionTaskModal.tsx']) {
+  // EXCEPT the quotation request form (owner, 18 Nov 2026): a new request tells the person it was sent to.
+  const QUOTATION_FORM = 'src/app/tasks/quotation-requests/new/page.tsx'
+  test(`9. ${QUOTATION_FORM} requests the notice through the trusted route`, () => {
+    assert.ok(read(QUOTATION_FORM).includes('await requestAssignmentNotification(task.id)'))
+  })
+  for (const path of [...CLIENT_PATHS, 'src/components/meetings/DiscussionTaskModal.tsx'].filter(p => p !== QUOTATION_FORM)) {
     test(`9. ${path} no longer requests an assignment notification`, () => {
       const src = read(path)
       assert.equal(src.includes('requestAssignmentNotification'), false)
