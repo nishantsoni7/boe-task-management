@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (branch `fix/quotation-valid-until`; PR number added at the stamp) · no SQL
+- The builder ("Valid until", the WhatsApp text, the Excel sheet) and the print / PDF page dated a quotation from its FIRST send, so a version sent later could print a "valid until" already in the past. They now use the newest sent version's date, else the first send, else the day it was made: the rule the client link (`quotation_public`) already followed. New `issuedAt` in `src/lib/quotations/versions.ts`; the builder reads the versions with the Versions card's own query key (no extra call); the print page waits for them so a PDF never carries the old date. Test: `issuedAt.test.ts`.
+- The "Valid for (days)" box was NOT brought back: rule 18 of the redesign (owner, 13 Nov 2026) removed it; `valid_days` stays 7 by default.
+
 ## 2026-11-18 — Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5 (branch `fix/quotation-size-to-inches`; PR number added at the stamp) · no SQL
 - **Owner rule:** a size not in inches or cm is converted to inches by default and rounded to the nearest 0.5 (8.3 → 8.5, 8.2 → 8). New `sizeToInches` in `src/lib/quotations/math.ts`: "2000 x 900 x 450 mm" → "78.5 × 35.5 × 17.5", 6'6" x 3' → "78 × 36". Inches, cm, a part with no unit and text it cannot read stay as typed.
 - Applied when the Dimensions box is left on an inches quotation (`ProductLine.tsx`) and to every imported line (`importBoq.addToQuote`: client file, Excel, PI). Test: `sizeToInches.test.ts`.

@@ -5,16 +5,16 @@
 
 ## Snapshot
 
-- Commit: `906a2012` — Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5
+- Commit: `5a346c10` — Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past
 - Commits on this branch: 1467
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 474 (first `20260530_create_positions.sql`, latest `20270801000000_quotation_salesperson_card.sql`)
 - Tables ever created: 263 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
-- Test files: 894   Next.js 16.2.6, React 19.2.4
+- Test files: 895   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `906a2012` 2026-11-18 Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5
+- `5a346c10` 2026-11-18 Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past
 - `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
 - `413a70c2` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes (#906)
 - `f9998cbe` 2026-11-18 Docs: stamp #904 (quotation name width) as merged (#905)
@@ -172,7 +172,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 21 source, 15 test
+- `src/lib/quotations` — 21 source, 16 test
 - `src/lib/salesLeads` — 16 source, 16 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test

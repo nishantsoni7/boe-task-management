@@ -26,6 +26,11 @@ async function call<T>(run: () => PromiseLike<{ data: T | null; error: { message
   if (error) throw classifyError(error)
   return data as T
 }
+/** The day the client's copy is dated: the newest sent version, else the first send, else the day it was made; the same rule as the client link (quotation_public). */
+export function issuedAt(versions: readonly VersionRow[] | null | undefined, sentAt: string | null, createdAt: string): string {
+  const newest = (versions ?? []).reduce<VersionRow | null>((a, v) => (!a || v.version_no > a.version_no ? v : a), null)
+  return newest?.created_at ?? sentAt ?? createdAt
+}
 export const fetchVersions = (s: Supabase, id: string) => call<VersionRow[]>(() => s.rpc('quotation_versions', { p_id: id }))
 /** version 0 = the quotation as saved now. */
 export const fetchVersionDoc = (s: Supabase, id: string, no: number) => call<VersionDoc>(() => s.rpc('quotation_version_get', { p_id: id, p_version_no: no }))

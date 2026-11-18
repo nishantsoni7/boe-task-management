@@ -10,6 +10,7 @@ import { useQuotations } from '@/hooks/useQuotations'
 import { createClient } from '@/lib/supabase/client'
 import { errorText, fetchPublic, fetchQuotation, pictureUrl, quotationKeys } from '@/lib/quotations/api'
 import { documentFileName } from '@/lib/quotations/documentPlan'
+import { fetchVersions, issuedAt } from '@/lib/quotations/versions'
 import { QuotationDocument } from './QuotationDocument'
 import { MyDetailsDialog, MyDetailsReminder } from './MyDetails'
 import p from './screens.module.css'
@@ -52,7 +53,9 @@ export function PrintScreen() {
   const { supabase, profile, loading, accessLoaded } = useQuotations()
   const [details, setDetails] = useState(false)
   const q = useQuery({ queryKey: quotationKeys.one(id), queryFn: () => fetchQuotation(supabase, id), enabled: accessLoaded, retry: false })
-  if (loading || q.isLoading || (!q.data && !q.isError)) return <LoadingScreen />
+  // The newest sent version dates the print, as on the client link; waited for, so a PDF never carries the first send's date.
+  const vq = useQuery({ queryKey: ['quotations', 'versions', id, q.data?.updated_at], queryFn: () => fetchVersions(supabase, id), enabled: accessLoaded && !!q.data, retry: false })
+  if (loading || q.isLoading || (!q.data && !q.isError) || (!!q.data && vq.isLoading)) return <LoadingScreen />
   if (q.isError || !q.data) return <div className={p.page}><div className={p.msg}>{errorText(q.error)}</div></div>
   const x = q.data
   // the salesperson who owns it fills in, or changes, the details it prints (20270801000000)
@@ -66,7 +69,7 @@ export function PrintScreen() {
       {mine && !x.owner_card_saved && <div className={p.bar}><div style={{ flex: 1 }}><MyDetailsReminder supabase={supabase} /></div></div>}
       {details && <MyDetailsDialog supabase={supabase} onClose={() => setDetails(false)} />}
       <QuotationDocument pictureUrl={path => pictureUrl(supabase, path)} doc={{
-        quote_no: x.quote_no, issued_at: x.sent_at ?? x.created_at, valid_days: x.header.valid_days, client_name: x.header.client_name,
+        quote_no: x.quote_no, issued_at: issuedAt(vq.data, x.sent_at, x.created_at), valid_days: x.header.valid_days, client_name: x.header.client_name,
         project_name: x.header.project_name || null, contact_name: x.header.contact_name || null, salesperson: x.owner_display_name ?? x.owner_name, salesperson_title: x.owner_title,
         company_name: x.header.company_name || null, client_gstin: x.header.client_gstin || null, dimension_unit: x.header.dimension_unit,
         project_type: x.header.project_type || null, seats: x.header.seats, lead_time_weeks: x.header.lead_time_weeks,
