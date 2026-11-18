@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `8cbf2543` — Quotation requests go to the owner or Nitish: a required Send to, the owner sees every request (migration 20270804000000, apply before merge)
-- Commits on this branch: 1477
+- Commit: `7719416c` — Quotation requests: a Requests page in Quotations, the dashboard card for every receiver, a notice for each new request
+- Commits on this branch: 1478
 - Pages (`page.tsx`): 210   API routes (`route.ts`): 217
 - Migrations: 478 (first `20260530_create_positions.sql`, latest `20270804000000_quotation_request_receivers.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1063   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `7719416c` 2026-11-18 Quotation requests: a Requests page in Quotations, the dashboard card for every receiver, a notice for each new request
 - `8cbf2543` 2026-11-18 Quotation requests go to the owner or Nitish: a required Send to, the owner sees every request (migration 20270804000000, apply before merge)
 - `8da1de82` 2026-11-18 Day Close held days at payroll: Count the day or Mark absent (migration 20270803000000) (#917)
 - `07d292f3` 2026-11-18 Quotations: a save that would fail says which product and brings it into view (#915)
@@ -38,7 +39,6 @@
 - `e8b22498` 2026-11-18 Page speed: Orders pages start loading while the access check runs (#897)
 - `10ab1a4f` 2026-11-18 Docs: stamp the PI read beside the first group (#895) as merged e4d923f2, deployed 00:02 IST, checked live (#896)
 - `e4d923f2` 2026-11-17 Page speed: the PI draft page starts reading the PI beside its first group (#895)
-- `b6aa2787` 2026-11-17 Docs: stamp the PI draft shared reads (#893) as merged 272fc217, deployed 23:16 IST, checked live (#894)
 
 ## Pages by top-level area
 
