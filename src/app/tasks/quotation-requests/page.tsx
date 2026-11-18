@@ -11,7 +11,7 @@ import { useUserNames } from '@/hooks/queries/useMyTasks'
 import { ExternalLink, Plus, Building2, User } from 'lucide-react'
 import {
   DATE_FILTERS, PRIORITY_FILTERS,
-  applyQuotationFilters, assignedByOptions, assignerName,
+  applyQuotationFilters, assignedByOptions, assignerName, sentToOptions,
   filtersActive,
   type DateFilterKey, type QuotationFilters,
 } from './filters'
@@ -63,6 +63,7 @@ const DATE_KEYS     = DATE_FILTERS.map(d => d.key)
 const LIST_PARAMS = {
   tab:        enumParam(['pending', 'closed'] as const, 'pending'),
   assignedBy: idParam(),
+  sentTo:     idParam(),
   priority:   optionParam(PRIORITY_KEYS),
   date:       enumParam(DATE_KEYS, 'all' as DateFilterKey),
   q:          textParam(),
@@ -92,10 +93,12 @@ function formatDate(d: string | null): string | null {
 }
 
 function RequestCard({
-  task, userMap, onClick, onView,
+  task, userMap, sentTo, onClick, onView,
 }: {
   task: Task
   userMap: Record<string, string>
+  /** Who makes the quotation; shown to the owner, who sees every request. */
+  sentTo?: string
   onClick: () => void
   onView: () => void
 }) {
@@ -152,6 +155,11 @@ function RequestCard({
             {assignerName(task, userMap)}
           </span>
         </div>
+        {sentTo && (
+          <div style={{ fontSize: '12px', color: colors.muted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: '1px' }}>
+            → {sentTo}
+          </div>
+        )}
       </div>
 
       {/* Priority — moved out of the customer cell into its own column, which
@@ -208,6 +216,7 @@ function QuotationRequestsContent() {
   const filters: QuotationFilters = useMemo(() => ({
     search:     state.q,
     assignedBy: state.assignedBy || 'all',
+    sentTo:     state.sentTo     || 'all',
     priority:   state.priority   || 'all',
     dateRange:  state.date,
   }), [state])
@@ -253,6 +262,8 @@ function QuotationRequestsContent() {
   // Request button: reviewing and responding are their part of the workflow,
   // raising one is not. See src/lib/permissions/quotations.ts.
   const canCreateQuotations = quotationCaps.canCreateQuotations
+  // The owner sees every request, with who it was sent to; Nitish and the sales team see their own (owner, 18 Nov 2026).
+  const seeAll = quotationCaps.canSeeAllQuotations
 
   const handleLogout = async () => {
     await supabase.auth.signOut()
@@ -274,7 +285,7 @@ function QuotationRequestsContent() {
   // fetch a row it may not show. `enabled` is what holds it now — the query does
   // not fire until the resolved context has granted the permission, exactly as
   // the previous version held it by awaiting the resolve first.
-  const { data, isPending, isError } = useQuotationRequests(userId, ready && canViewQuotations)
+  const { data, isPending, isError } = useQuotationRequests(userId, ready && canViewQuotations, seeAll)
 
   const tasks = data?.rows ?? NO_TASKS
   // A FAILED OR CAPPED READ IS NOT AN EMPTY WORKLOAD — see useQuotationRequests.
@@ -320,6 +331,8 @@ function QuotationRequestsContent() {
     return opts
   }, [tabTasks, userMap, filters.assignedBy])
 
+  const receiverOptions = useMemo(() => sentToOptions(tabTasks, userMap), [tabTasks, userMap])
+
   // Validated against every request the user can see, not just this tab's — an
   // assigner with rows only in Closed is still a real selection while Pending is
   // open. Only an id matching nobody at all is dropped.
@@ -338,7 +351,7 @@ function QuotationRequestsContent() {
   // Phone (owner, 2026-11-05, phone phase 4): the three selects sit in ONE
   // Filter sheet beside the search box; this counts the ones that are set.
   const phoneFilterCount =
-    (filters.assignedBy !== 'all' ? 1 : 0) + (filters.priority !== 'all' ? 1 : 0) + (filters.dateRange !== 'all' ? 1 : 0)
+    (filters.assignedBy !== 'all' ? 1 : 0) + (filters.sentTo !== 'all' ? 1 : 0) + (filters.priority !== 'all' ? 1 : 0) + (filters.dateRange !== 'all' ? 1 : 0)
 
   const visibleTasks = useMemo(() => {
     const filtered = applyQuotationFilters(tabTasks, filters)
@@ -438,6 +451,11 @@ function QuotationRequestsContent() {
                 options: [{ value: 'all', label: 'Anyone' }, ...assignerOptions.map(a => ({ value: a.id, label: a.name }))],
                 onChange: v => setState({ assignedBy: v === 'all' ? '' : v }),
               },
+              ...(seeAll ? [{
+                id: 'qtn-sent-to', label: 'Sent to', value: filters.sentTo,
+                options: [{ value: 'all', label: 'Everyone' }, ...receiverOptions.map(a => ({ value: a.id, label: a.name }))],
+                onChange: (v: string) => setState({ sentTo: v === 'all' ? '' : v }),
+              }] : []),
               {
                 id: 'qtn-priority', label: 'Priority', value: filters.priority,
                 options: [{ value: 'all', label: 'Any priority' }, ...PRIORITY_FILTERS.map(p => ({ value: p.key, label: p.label }))],
@@ -452,7 +470,7 @@ function QuotationRequestsContent() {
             activeCount={phoneFilterCount}
             resultCount={visibleTasks.length}
             noun={['request', 'requests']}
-            onClearAll={() => setState({ assignedBy: '', priority: '', date: 'all' })}
+            onClearAll={() => setState({ assignedBy: '', sentTo: '', priority: '', date: 'all' })}
           />
 
           {/* Search + filters. Form controls only — the toggle to the left stays
@@ -483,6 +501,19 @@ function QuotationRequestsContent() {
               <option value="all">Anyone</option>
               {assignerOptions.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
             </select>
+
+            {seeAll && (
+              <select
+                className="boe-input"
+                aria-label="Filter by who the request was sent to"
+                value={filters.sentTo}
+                onChange={e => setState({ sentTo: e.target.value === 'all' ? '' : e.target.value })}
+                style={{ ...COMPACT_CONTROL, width: '140px' }}
+              >
+                <option value="all">Sent to anyone</option>
+                {receiverOptions.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            )}
 
             <select
               className="boe-input"
@@ -519,7 +550,7 @@ function QuotationRequestsContent() {
                 // inside the debounce window cannot re-apply itself afterwards.
                 onClick={() => {
                   setSearchInput('')
-                  setState({ q: '', assignedBy: '', priority: '', date: 'all' })
+                  setState({ q: '', assignedBy: '', sentTo: '', priority: '', date: 'all' })
                 }}
                 title="Reset search and filters"
                 aria-label="Reset search and filters"
@@ -554,7 +585,7 @@ function QuotationRequestsContent() {
             letterSpacing: '0.07em', color: colors.muted,
           }}>
             <div style={{ paddingLeft: '6px' }}>Customer</div>
-            <div style={{ paddingLeft: '4px' }}>Assigned By</div>
+            <div style={{ paddingLeft: '4px' }}>{seeAll ? 'From → To' : 'Assigned By'}</div>
             <div style={{ paddingLeft: '4px' }}>Priority</div>
             <div style={{ paddingLeft: '4px' }}>Created Date</div>
             <div style={{ paddingLeft: '4px' }}>Notes</div>
@@ -610,6 +641,7 @@ function QuotationRequestsContent() {
                   key={task.id}
                   task={task}
                   userMap={userMap}
+                  sentTo={seeAll ? (userMap[task.assigned_to]?.trim() || 'Unknown') : undefined}
                   onClick={() => router.push(taskDetailHref(task.id, returnTo))}
                   onView={() => router.push(taskDetailHref(task.id, returnTo))}
                 />

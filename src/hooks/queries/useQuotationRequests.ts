@@ -73,21 +73,22 @@ export type QuotationRequestsResult = { rows: Task[]; complete: boolean }
 export function useQuotationRequests(
   userId: string | null | undefined,
   allowed: boolean,
+  /** An administrator sees every request (tasks_quotation_requests_admin_read, 20270804000000); anybody else their own. */
+  seeAll = false,
 ) {
   return useQuery<QuotationRequestsResult>({
-    queryKey: quotationRequestsKey(userId),
+    queryKey: [...quotationRequestsKey(userId), seeAll],
     queryFn: async () => {
       const done = perfStart('task.list.load')
       try {
         const supabase = createClient()
-        const result = await fetchAllRows<Task>((from, to) => supabase
-          .from('tasks')
-          .select(QTN_COLUMNS)
-          .eq('task_type', 'quotation_request')
-          .or(`assigned_to.eq.${userId},created_by.eq.${userId}`)
-          .order('created_at', { ascending: false })
-          .order('id', { ascending: false })
-          .range(from, to))
+        const result = await fetchAllRows<Task>((from, to) => {
+          const base = supabase.from('tasks').select(QTN_COLUMNS).eq('task_type', 'quotation_request')
+          return (seeAll ? base : base.or(`assigned_to.eq.${userId},created_by.eq.${userId}`))
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: false })
+            .range(from, to)
+        })
 
         // A FAILED READ IS NOT AN EMPTY WORKLOAD. The tab counts are computed
         // from these rows, so silently accepting a partial answer would

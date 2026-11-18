@@ -152,6 +152,7 @@ export const MODULE_WORDS: Record<string, ModuleWords> = {
     authorities: {
       view_quotations: { label: 'See quotation requests and prices', meaning: 'Customer contact details and quoted commercial terms on quotation tasks.' },
       manage_quotations: { label: 'Submit quotation requests', meaning: 'Create and send quotation requests.' },
+      receive_quotations: { label: 'Receive quotation requests', meaning: 'Appears in Send to on the request form and makes the quotations sent to them.' },
     },
   },
   meetings: {

@@ -38,6 +38,8 @@ export type QuotationFilters = {
   search: string
   /** `created_by` of the request, or 'all'. */
   assignedBy: string
+  /** `assigned_to` of the request (who makes the quotation), or 'all'. Offered to an administrator only. */
+  sentTo: string
   priority: TaskPriority | 'all'
   dateRange: DateFilterKey
 }
@@ -45,6 +47,7 @@ export type QuotationFilters = {
 export const EMPTY_FILTERS: QuotationFilters = {
   search:     '',
   assignedBy: 'all',
+  sentTo:     'all',
   priority:   'all',
   dateRange:  'all',
 }
@@ -137,6 +140,7 @@ export function filtersActive(f: QuotationFilters): boolean {
   return (
     f.search.trim() !== '' ||
     f.assignedBy !== 'all' ||
+    f.sentTo     !== 'all' ||
     f.priority   !== 'all' ||
     f.dateRange  !== 'all'
   )
@@ -153,6 +157,7 @@ export function applyQuotationFilters<T extends Task>(
 ): T[] {
   return tasks.filter(t =>
     (f.assignedBy === 'all' || assignerId(t) === f.assignedBy) &&
+    (f.sentTo     === 'all' || t.assigned_to === f.sentTo) &&
     (f.priority   === 'all' || t.priority === f.priority) &&
     matchesDateRange(t, f.dateRange, now) &&
     matchesSearch(t, f.search),
@@ -160,6 +165,16 @@ export function applyQuotationFilters<T extends Task>(
 }
 
 // ── Option lists ──────────────────────────────────────────────────────────────
+
+/** The people requests in the current tab were sent to, named from the page's user map. */
+export function sentToOptions(
+  tasks: Pick<Task, 'assigned_to'>[],
+  userMap: Record<string, string>,
+): { id: string; name: string }[] {
+  return [...new Set(tasks.map(t => t.assigned_to).filter(Boolean))]
+    .map(id => ({ id, name: userMap[id]?.trim() || 'Unknown' }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
 
 /** Assigners present in the current tab, named from the page's existing user map. */
 export function assignedByOptions(

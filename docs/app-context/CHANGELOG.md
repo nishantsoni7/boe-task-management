@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Quotation requests go to the owner OR Nitish: a required "Send to", the owner sees every request (branch `feat/quotation-request-makers`; PR number added at the stamp) · migration `20270804000000_quotation_request_receivers`
+- **Owner request:** a salesperson sends a quotation request to the owner or to Nitish; requests arrive on Tasks › Quotation requests; Nitish sees his, the owner sees all; Nitish gets full maker access. Until now every request was assigned to one user found by a hard-coded email.
+- **Database (`20270804000000`):** protected action `task_management.receive_quotations` (off by default, no role default); `quotation_request_receiver(uuid)` / `quotation_request_receivers()` (active administrators + holders); trigger `tasks_quotation_request_receiver` refuses a quotation request created for, or moved to, anybody else (`QUOTATION_REQUEST_RECEIVER`, 42501); read policies `*_quotation_requests_admin_read` on `tasks`, `task_activity_log`, `task_attachments` so an administrator opens every request (storage already allowed admins); Nitish's six grants (Task Management view_quotations + receive_quotations; Quotations view, create, edit, view_all) as employee overrides; self-checks.
+- **Form** (`/tasks/quotation-requests/new`): "Send to" first, a required radio group of the receivers (44 px buttons), the last pick remembered on the device (`src/lib/tasks/quotationReceivers.ts`); the database refusal is said in words.
+- **Register** (`/tasks/quotation-requests`): the owner (`canSeeAllQuotations`, `src/lib/permissions/quotations.ts`) reads every request, sees "→ who" under the requester (header "From → To") and filters by "Sent to"; everybody else is unchanged.
+- **Permissions catalogue:** `receive_quotations` registered (modules.ts), protected (levels.ts), depends on view_quotations, enforced (enforcement.ts), worded (accessCatalog, accessControlChanges).
+- Tests: `src/lib/tasks/quotationReceivers.test.ts`; filter-set, protected-set, dependants and capability pins updated.
+
 ## 2026-11-18 — Day Close held days at payroll: Count the day or Mark absent, in Attendance → Monthly Review (branch `claude/boe1-employee-monitoring-t5ypei`) · migration `20270803000000` (NOT YET APPLIED)
 - **Owner choice.** A held day left undecided counts as present; the payroll lock names undecided held days but never blocks.
 - **Built.**

@@ -322,8 +322,10 @@ export const MODULE_ENFORCEMENT: Record<string, ModuleEnforcement> = {
   // person can do once inside still follows the existing task rules.
   task_management: {
     state: 'partial',
-    enforcedActions: ['view', 'view_quotations', 'manage_quotations'],
-    detail: 'Opening the module and the two quotation permissions are enforced. The other Task Management actions are saved but not yet used.',
+    // receive_quotations IS enforced by the database: a request can only be assigned to a holder (or an administrator),
+    // by the tasks_quotation_request_receiver trigger (20270804000000).
+    enforcedActions: ['view', 'view_quotations', 'manage_quotations', 'receive_quotations'],
+    detail: 'Opening the module and the three quotation permissions are enforced. The other Task Management actions are saved but not yet used.',
   },
 
   // The three modules below were 'prepared' — "saved, nothing consults it yet" —
