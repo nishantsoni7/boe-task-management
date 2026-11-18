@@ -22,7 +22,7 @@ import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
 import { formatINR } from '@/lib/currency'
 import { istDateOf } from '@/lib/istDate'
 import {
-  CLIENT_TYPES, STATUS_LABEL, errorKind, errorText, fetchQuotation, pictureUrl, quotationKeys, saveDoc, saveQuotation,
+  CLIENT_TYPES, STATUS_LABEL, errorKind, errorText, fetchQuotation, fetchPictureMark, pictureMarkKey, pictureSrc, quotationKeys, setPictureMark, saveDoc, saveQuotation,
   setStatus as setStatusRpc, shareQuotation, fetchHints, requestPriceApproval, decidePrice, type PriceHint, uploadPicture, type Header, type Quotation, type QuotationStatus,
   fetchSuggestionSettings,
 } from '@/lib/quotations/api'
@@ -68,6 +68,10 @@ export default function BuilderScreen() {
   const seesWhy = subject.ready && canAccessManagementModule({ role: subject.subjectRole, moduleKey: 'pricing', isModuleActive: true, permissions: subject.subjectPermissionsByModule.get('pricing') ?? [] })
   const qc = useQueryClient()
   const quoteQ = useQuery({ queryKey: quotationKeys.one(id), queryFn: () => fetchQuotation(supabase, id), enabled: accessLoaded, retry: false })
+  // The logo mark on pictures (owner, 18 Nov 2026): on unless somebody who may edit this quotation turned it off.
+  const markQ = useQuery({ queryKey: pictureMarkKey(id), queryFn: () => fetchPictureMark(supabase, id), enabled: accessLoaded, retry: false })
+  const markOn = markQ.data !== false
+  const picSrc = (p: string) => pictureSrc(supabase, p, { markOn, quotationId: id })
   // The same read (and key) as the Versions card, so it costs no extra call: the newest sent version dates the quotation.
   const versionsQ = useQuery({ queryKey: ['quotations', 'versions', id, quoteQ.data?.updated_at], queryFn: () => fetchVersions(supabase, id), enabled: accessLoaded && !!quoteQ.data, retry: false })
 
@@ -386,6 +390,11 @@ export default function BuilderScreen() {
               : <Link className={s.btn} href={`/quotations/${id}/print`} target="_blank"><Printer size={15} aria-hidden /> Download PDF</Link>}
             <button type="button" className={s.btn} onClick={downloadExcel} disabled={dirty || busy || lines.length === 0}><FileSpreadsheet size={15} aria-hidden /> Download Excel</button>
           </div>
+          <label className={s.markRow}>
+            <input type="checkbox" role="switch" id="q-mark" checked={markOn} disabled={busy || !base.may_edit || base.status === 'archived' || markQ.data === undefined || markQ.data === null}
+              onChange={e => act(async () => { await setPictureMark(supabase, id, e.target.checked); qc.setQueryData(pictureMarkKey(id), e.target.checked) }, e.target.checked ? 'The Best of Exports logo is on the pictures.' : 'The pictures are clean, without the logo.')} />
+            <span><b>Logo on pictures</b><span className={`${s.small} ${s.muted}`}>{markOn ? 'On: the client link and the PDF show a small Best of Exports strip across each picture.' : 'Off: the client link and the PDF show the clean pictures.'}</span></span>
+          </label>
           {!base.share_token && <div className={s.small}>One link shows the quotation with pictures and a Save as PDF button. No login needed. Turning it on marks a draft as Sent.</div>}
           {base.share_token && (
             <>
@@ -436,7 +445,7 @@ export default function BuilderScreen() {
             </div>
             {g.lines.map((l, li) => (
               <LineRow key={l.key} l={l} area={g.area} unit={unit} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
-                first={li === 0} last={li === g.lines.length - 1} url={p => pictureUrl(supabase, p)}
+                first={li === 0} last={li === g.lines.length - 1} url={picSrc}
                 onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onImprove={() => setStudioFor(l.key)} onView={() => setViewing(l.key)}
                 hint={suggestOn ? hintFor.get(l.name.trim()) : historyOnly(hintFor.get(l.name.trim()))} model={suggestOn ? modelFor.get(l.key) : null} taught={suggestOn ? taught : undefined} onRemove={() => removeLine(l.key)}
                 feedbackCtx={seesWhy ? { clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) } : undefined}
@@ -535,13 +544,13 @@ export default function BuilderScreen() {
       {studioFor && profile && (() => {
         const line = lines.find(x => x.key === studioFor)
         return line?.image_path ? (
-          <StudioDialog supabase={supabase} userId={profile.id} path={line.image_path} url={p => pictureUrl(supabase, p)} onClose={() => setStudioFor(null)}
+          <StudioDialog supabase={supabase} userId={profile.id} path={line.image_path} url={picSrc} onClose={() => setStudioFor(null)}
             wants={line.spec.split('\n').find(t => t.startsWith(WANTS))?.slice(WANTS.length)} swatch={line.references?.find(r => r.kind === 'swatch')?.path}
             onUse={p => { updLine(line.key, { image_path: p }); setStudioFor(null); setMsg({ tone: 'ok', text: 'Picture changed. Save to keep it.' }) }} />
         ) : null
       })()}
       {viewing && viewerAt >= 0 && (
-        <PictureViewer items={viewerItems} index={viewerAt} url={p => pictureUrl(supabase, p)} onIndex={i => setViewing(viewerItems[i]?.key ?? null)} onClose={() => setViewing(null)} />
+        <PictureViewer items={viewerItems} index={viewerAt} url={picSrc} onIndex={i => setViewing(viewerItems[i]?.key ?? null)} onClose={() => setViewing(null)} />
       )}
     </div>
   )

@@ -11,3 +11,17 @@ export function storedPictureProblem(path: unknown, userId: string): string | nu
   if (path.split('/')[0] !== userId) return 'Only the person who uploaded a picture can mark it.'
   return null
 }
+
+const TOKEN = /^[0-9a-f]{32}$/
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+/** A reason the picture-file request is not valid, or null: a picture path, and exactly one of a client token or a quotation id. */
+export function pictureRequestProblem(path: unknown, token: unknown, id: unknown): string | null {
+  if (typeof path !== 'string' || !PATH.test(path)) return 'That picture path is not valid.'
+  const hasToken = typeof token === 'string' && token !== ''
+  const hasId = typeof id === 'string' && id !== ''
+  if (hasToken === hasId) return 'Give the client token or the quotation id, not both and not neither.'
+  if (hasToken && !TOKEN.test(token as string)) return 'That link is not valid.'
+  if (hasId && !UUID.test(id as string)) return 'That quotation id is not valid.'
+  return null
+}

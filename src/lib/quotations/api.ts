@@ -249,6 +249,23 @@ export async function uploadPicture(s: Supabase, userId: string, file: Blob): Pr
   return path
 }
 
+// ── the logo mark switch (20270806000200): on unless somebody who may edit the quotation turned it off ──────────────
+export const pictureMarkKey = (id: string) => ['quotations', 'pictureMark', id] as const
+export const fetchPictureMark = (s: Supabase, id: string) => call<boolean | null>(() => s.rpc('quotation_picture_mark_get', { p_id: id }))
+export const setPictureMark = (s: Supabase, id: string, on: boolean) => call<boolean>(() => s.rpc('quotation_picture_mark_set', { p_id: id, p_on: on }))
+
+/**
+ * Where a picture is shown from. On the client link (a token) every picture goes through the server, which redirects to
+ * the marked copy or, with the mark OFF, returns the clean one. For staff: the marked public copy, or with the mark OFF
+ * the same server route (signed in). markOn is undefined until the switch has loaded, which counts as on.
+ */
+export function pictureSrc(s: Supabase, path: string, o: { token?: string; quotationId?: string; markOn?: boolean } = {}): string {
+  const q = `path=${encodeURIComponent(path)}`
+  if (o.token) return `/api/quotations/picture-file?${q}&t=${encodeURIComponent(o.token)}`
+  if (o.markOn === false && o.quotationId) return `/api/quotations/picture-file?${q}&q=${encodeURIComponent(o.quotationId)}`
+  return pictureUrl(s, path)
+}
+
 /** An absolute, public address: the client link shows pictures without a session. */
 export const pictureUrl = (s: Supabase, path: string) => s.storage.from(QUOTATION_BUCKET).getPublicUrl(path).data.publicUrl
 
