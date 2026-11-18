@@ -505,7 +505,8 @@ export default function AllOrdersPage() {
 
       if (searchParams.get('deleted') === '1') {
         setDeletedBanner(true)
-        router.replace('/orders/all')
+        // The History API, not router.replace: on a page opened straight from a link, router.replace left the parameter in the address.
+        window.history.replaceState(null, '', '/orders/all')
       }
 
       setPageLoading(false)

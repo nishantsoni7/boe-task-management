@@ -359,7 +359,8 @@ describe('deep links', () => {
     // path. The replace used to rebuild /finance/received?view=… from scratch,
     // which dropped the reader's filters and, on Payments to Verify, left the
     // page altogether.
-    assert.ok(view.includes('router.replace(pathWithSearch(pathname, mergeSearchParams(searchParams.toString(), { payment: null, action: null })), { scroll: false })'))
+    // The History API since 18 Nov 2026: router.replace could leave them in the address on a page opened from a link.
+    assert.ok(view.includes("window.history.replaceState(null, '', pathWithSearch(pathname, mergeSearchParams(searchParams.toString(), { payment: null, action: null })))"))
   })
 
   test('the resolution runs exactly once', () => {

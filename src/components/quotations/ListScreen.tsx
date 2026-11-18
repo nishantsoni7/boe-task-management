@@ -18,6 +18,7 @@ import { SUPPLY_STATES, formatDateIN, gstModeForState } from '@/lib/quotations/m
 import { ImportDialog } from './ImportDialog'
 import s from './quotations.module.css'
 import { Pic } from './Pic'
+import { useDialogFocus } from '@/components/salesLeads/useDialogFocus'
 
 type StatusFilter = 'open' | 'all' | QuotationStatus
 const OPEN: QuotationStatus[] = ['draft', 'sent', 'negotiating']
@@ -51,7 +52,9 @@ export default function ListScreen() {
 
   if (loading) return <LoadingScreen />
   const showNew = params.get('new') === '1' && access.create
-  const closeNew = () => router.replace('/quotations')
+  // The History API, not router.replace: on a page opened straight at ?new=1 (the menu's New quotation, a refresh),
+  // router.replace left ?new=1 in the address, so Cancel and × did nothing.
+  const closeNew = () => window.history.replaceState(null, '', '/quotations')
 
   return (
     <QuotationsLayout
@@ -138,7 +141,7 @@ function Row({ r, scope, url, onOpen }: { r: ListRow; scope: 'mine' | 'all'; url
   )
 }
 
-function NewQuotation({ onClose, onCreated, create }: {
+export function NewQuotation({ onClose, onCreated, create }: {
   onClose: () => void; onCreated: (id: string) => void
   create: (d: { client_name: string; project_name?: string; contact_name?: string; contact_phone?: string; contact_role?: string; client_type?: string; supply_state?: string }) => Promise<string>
 }) {
@@ -157,9 +160,10 @@ function NewQuotation({ onClose, onCreated, create }: {
       onCreated(id)
     } catch (x) { setErr(errorText(x)); setBusy(false) }
   }
+  const dialogRef = useDialogFocus<HTMLFormElement>(() => { if (!(busy || f.client_name.trim())) onClose() })
   return (
     <div className={s.scrim} onClick={busy || f.client_name.trim() ? undefined : onClose}>
-      <form className={s.modal} onClick={e => e.stopPropagation()} onSubmit={submit} aria-labelledby="newq-title">
+      <form ref={dialogRef} tabIndex={-1} className={s.modal} onClick={e => e.stopPropagation()} onSubmit={submit} aria-labelledby="newq-title">
         <div className={s.cardHead}><h2 id="newq-title">New quotation</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} aria-label="Close">×</button></div>
         <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>
           <div className={s.grid2}>
