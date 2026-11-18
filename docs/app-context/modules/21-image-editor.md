@@ -107,7 +107,7 @@ Verified against checkout `852e0493`. Module key `image_editor`, route `/image-e
 
 - **One read of your own row (2026-11-12, #711 merged as `72c57977`, no SQL).** `/image-editor` reads the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.
 
-## 13. Picture credits: the wallet and the tracking page (PR pending, migration `20270808000000`, NOT applied)
+## 13. Picture credits: the wallet and the tracking page (PR #932 merged as `c7f03dcd` 18 Nov 2026, migration `20270808000000` APPLIED 18 Nov 2026; limits OFF)
 
 **What it is.** Every paid picture press takes credits from a wallet BEFORE the paid fal call: Studio Image (1 credit), Edit PI Customize image, the quotation image studio's Clean up and Change it (2 credits each). 1 credit is about Rs 4 (costs in `src/lib/imageCredits/costs.ts`). It also records every press for the founders' tracking page.
 
@@ -121,7 +121,7 @@ Verified against checkout `852e0493`. Module key `image_editor`, route `/image-e
 
 **Doors not covered.** The Anthropic "Understand" step in Customize image (billed by Anthropic, not fal) and `scripts/image-editor-smoke.mjs`. The per-minute limiter in each route stays: it is a burst guard, in memory per instance, not a spend cap.
 
-**Rollout.** (1) Owner applies the migration (`supabase db push --dry-run` first; only this file pending). Nothing uses it until step 2. (2) Merge and deploy. (3) Create a fal BILLING-preset key and set `FAL_BILLING_KEY` in Vercel if the balance is wanted. (4) Watch the page for about two weeks. (5) Set allowances for the people who get credits (founders; the Star Seller; optionally a small baseline for everyone), then switch "Limits are on". Rollback: revert the PR; the tables are then unused (drop them in a later migration if wanted).
+**Rollout.** (1) Owner applied the migration with `supabase db query --linked --file` then `supabase migration repair --status applied 20270808000000 --linked`, NOT `db push` (nine older local-only migrations would have needed `--include-all`). The first version, `20270807000000`, collided with `quotation_payment_and_desk` already applied on the live database, so `migration list` showed it as applied while the tables did not exist: pick a version after reading the REMOTE history, and prove "applied" with a `to_regclass` probe. Nothing uses it until step 2. (2) Merge and deploy. (3) Create a fal BILLING-preset key and set `FAL_BILLING_KEY` in Vercel if the balance is wanted. (4) Watch the page for about two weeks. (5) Set allowances for the people who get credits (founders; the Star Seller; optionally a small baseline for everyone), then switch "Limits are on". Rollback: revert the PR; the tables are then unused (drop them in a later migration if wanted).
 
 **Traps.** Turning limits on with no allowances blocks everyone: add allowances first. Sales staff without an allowance see "not switched on for your account". The day and month follow India time (the SQL uses `Asia/Kolkata`). Deleting a user keeps their ledger rows (shown as "Former member").
 
