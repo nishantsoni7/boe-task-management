@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `48b0bc5b` — Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it
-- Commits on this branch: 266
+- Commit: `5d43ab99` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 270
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 474 (first `20260530_create_positions.sql`, latest `20270801000000_quotation_salesperson_card.sql`)
 - Tables ever created: 263 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
@@ -14,8 +14,12 @@
 
 ## Latest 25 commits
 
+- `5d43ab99` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `c315ef04` 2026-11-18 Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (#910)
 - `48b0bc5b` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it
+- `13ae93e7` 2026-11-18 Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5 (#909)
 - `ebaa0f44` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- `935c8901` 2026-11-18 Quotations: New quotation's Cancel and x work again; dialogs close on Escape; deep-link parameters leave the address (#908)
 - `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
 - `413a70c2` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes (#906)
 - `f9998cbe` 2026-11-18 Docs: stamp #904 (quotation name width) as merged (#905)
@@ -35,10 +39,6 @@
 - `c5fe668a` 2026-11-17 Page speed: putting the saved copy back no longer asks twice (#891)
 - `15fa364f` 2026-11-17 Docs: stamp the saved-copy fix (#889) as merged 6aa09ddd, deployed 21:12 IST, 27 module pages checked live (#890)
 - `6aa09ddd` 2026-11-17 Page speed: a put-back saved copy is always asked again (the Quotations freeze), with #886 (#889)
-- `b499978f` 2026-11-17 Docs: stamp the revert of #886 (#887) as merged d463a576, deployed 19:41 IST, Quotations and My Tasks checked live (#888)
-- `d463a576` 2026-11-17 Revert #886: putting the saved copy back froze Quotations (#887)
-- `1bf19da5` 2026-11-17 Page speed: the saved copy comes back in the right shape, then is put back after sign-in again (#886)
-- `f645047d` 2026-11-17 Docs: stamp the loader lines library (#882) as merged 0a7be599, live 18:20 IST (no SQL) (#884)
 
 ## Pages by top-level area
 
