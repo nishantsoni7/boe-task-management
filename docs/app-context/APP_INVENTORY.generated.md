@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1b46ecbb` — Day Close held days at payroll: Count the day or Mark absent
-- Commits on this branch: 288
+- Commit: `c46f0ee9` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 292
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 217
 - Migrations: 477 (first `20260530_create_positions.sql`, latest `20270803000000_day_close_hold_decision.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
@@ -14,7 +14,11 @@
 
 ## Latest 25 commits
 
+- `c46f0ee9` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `8da1de82` 2026-11-18 Day Close held days at payroll: Count the day or Mark absent (migration 20270803000000) (#917)
+- `c5253a43` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `1b46ecbb` 2026-11-18 Day Close held days at payroll: Count the day or Mark absent
+- `07d292f3` 2026-11-18 Quotations: a save that would fail says which product and brings it into view (#915)
 - `be5c6acb` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
 - `96f42ae7` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `a32a4c69` 2026-11-18 Docs: record 20270802000000 and 20270802000100 as applied (no SQL) (#916)
@@ -35,10 +39,6 @@
 - `5d43ab99` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `c315ef04` 2026-11-18 Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (#910)
 - `48b0bc5b` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it
-- `13ae93e7` 2026-11-18 Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5 (#909)
-- `ebaa0f44` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
-- `935c8901` 2026-11-18 Quotations: New quotation's Cancel and x work again; dialogs close on Escape; deep-link parameters leave the address (#908)
-- `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
 
 ## Pages by top-level area
 

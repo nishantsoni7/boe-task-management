@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-18 — Day Close held days at payroll: Count the day or Mark absent, in Attendance → Monthly Review (branch `claude/boe1-employee-monitoring-t5ypei`) · migration `20270803000000` (NOT YET APPLIED)
+## 2026-11-18 — Day Close held days at payroll: Count the day or Mark absent, in Attendance → Monthly Review (branch `claude/boe1-employee-monitoring-t5ypei`) · PR #917 merged · migration `20270803000000` APPLIED 2026-11-18 (owner; verified by query: day_close_holds.decision present)
 - **Owner choice.** A held day left undecided counts as present; the payroll lock names undecided held days but never blocks.
 - **Built.**
   - "Held days (Day Close)" on Attendance → Monthly Review: **Count the day** (no payroll change) or **Mark absent** (through the existing attendance correction, recalculated).
