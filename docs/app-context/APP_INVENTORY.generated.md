@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `5d43ab99` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- Commits on this branch: 270
-- Pages (`page.tsx`): 209   API routes (`route.ts`): 214
-- Migrations: 474 (first `20260530_create_positions.sql`, latest `20270801000000_quotation_salesperson_card.sql`)
-- Tables ever created: 263 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
-- Test files: 896   Next.js 16.2.6, React 19.2.4
+- Commit: `7a83d356` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 272
+- Pages (`page.tsx`): 209   API routes (`route.ts`): 215
+- Migrations: 476 (first `20260530_create_positions.sql`, latest `20270802000100_day_close_attendance_hold.sql`)
+- Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
+- Test files: 897   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `7a83d356` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `1354334d` 2026-11-18 Docs: stamp #908, #909, #910 as merged (#912)
 - `5d43ab99` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `c315ef04` 2026-11-18 Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (#910)
 - `48b0bc5b` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it
@@ -37,8 +39,6 @@
 - `272fc217` 2026-11-17 Page speed: the PI draft page reads the cost sheet and the sample type once (#893)
 - `64d8204c` 2026-11-17 Docs: stamp the no-double-ask fix (#891) as merged c5fe668a, deployed 21:52 IST, checked live (#892)
 - `c5fe668a` 2026-11-17 Page speed: putting the saved copy back no longer asks twice (#891)
-- `15fa364f` 2026-11-17 Docs: stamp the saved-copy fix (#889) as merged 6aa09ddd, deployed 21:12 IST, 27 module pages checked live (#890)
-- `6aa09ddd` 2026-11-17 Page speed: a put-back saved copy is always asked again (the Quotations freeze), with #886 (#889)
 
 ## Pages by top-level area
 
@@ -103,7 +103,7 @@
 - **customer-reviews** (9): `/custom-submissions [DELETE,PATCH,POST,PUT]`, `/draft [PATCH]`, `/generate [POST]`, `/image-groups [DELETE,POST]`, `/images [DELETE,POST]`, `/photos [DELETE,POST]`, `/revise [POST]`, `/test-cards/purge [POST]`, `/whatsapp [POST]`
 - **daily-headlines** (1): ` [GET]`
 - **daily-log** (1): ` [GET,POST]`
-- **day-close** (7): `/evaluate [GET]`, `/launcher [GET]`, `/me [GET,POST]`, `/members [GET,POST]`, `/prompt [GET]`, `/strikes/[id] [POST]`, `/team [GET]`
+- **day-close** (8): `/evaluate [GET]`, `/holds/[id] [POST]`, `/launcher [GET]`, `/me [GET,POST]`, `/members [GET,POST]`, `/prompt [GET]`, `/strikes/[id] [POST]`, `/team [GET]`
 - **delete-user** (1): ` [POST]`
 - **deleted-members** (1): ` [GET]`
 - **employee-list** (1): ` [GET]`
@@ -152,7 +152,7 @@
 - `src/lib/controlCenter` — 2 source, 2 test
 - `src/lib/customerReviews` — 30 source, 41 test
 - `src/lib/dailySplash` — 4 source, 2 test
-- `src/lib/dayClose` — 6 source, 6 test
+- `src/lib/dayClose` — 7 source, 7 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
 - `src/lib/finance` — 60 source, 75 test
@@ -299,6 +299,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `customer_review_test_cards` — 20261017000000
 - `daily_work_logs` — 20260606_add_d
 - `day_close_carryovers` — 20270624000000
+- `day_close_holds` — 20270802000100
 - `day_close_leave_locks` — 20270622000000
 - `day_close_members` — 20270622000000
 - `day_close_settings` — 20270622000000
@@ -511,8 +512,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270629000000_quotation_links.sql`
-- `20270701000000_finance_confirmed_payments_order_search.sql`
 - `20270702000000_review_rankings_switch.sql`
 - `20270703000000_sales_admin_can_be_given_leads.sql`
 - `20270703000100_sales_comments_and_due_dates.sql`
@@ -541,6 +540,8 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270730000000_for_you_bundle.sql`
 - `20270731000000_quotation_suggestions_switch.sql`
 - `20270801000000_quotation_salesperson_card.sql`
+- `20270802000000_day_close_hold_notification_type.sql`
+- `20270802000100_day_close_attendance_hold.sql`
 
 ## All SQL function names
 

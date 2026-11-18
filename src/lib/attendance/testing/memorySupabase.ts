@@ -86,6 +86,7 @@ class Query implements PromiseLike<{ data: unknown; error: PgError | null; count
   private op: 'select' | 'insert' | 'update' | 'upsert' | 'delete' = 'select'
   private payload: Row | Row[] | null = null
   private conflict: string[] = []
+  private ignoreDuplicates = false
   private returning = false
 
   constructor(private db: MemorySupabase, private table: string) {}
@@ -93,8 +94,11 @@ class Query implements PromiseLike<{ data: unknown; error: PgError | null; count
   select(_cols?: string, _opts?: unknown) { if (this.op !== 'select') this.returning = true; return this }
   insert(rows: Row | Row[]) { this.op = 'insert'; this.payload = rows; return this }
   update(patch: Row) { this.op = 'update'; this.payload = patch; return this }
-  upsert(row: Row | Row[], opts?: { onConflict?: string }) {
-    this.op = 'upsert'; this.payload = row; this.conflict = (opts?.onConflict ?? 'id').split(','); return this
+  upsert(row: Row | Row[], opts?: { onConflict?: string; ignoreDuplicates?: boolean }) {
+    this.op = 'upsert'; this.payload = row; this.conflict = (opts?.onConflict ?? 'id').split(',')
+    // As PostgREST: with ignoreDuplicates an existing row is left as it is and not returned.
+    this.ignoreDuplicates = opts?.ignoreDuplicates === true
+    return this
   }
   delete() { this.op = 'delete'; return this }
 
@@ -162,6 +166,7 @@ class Query implements PromiseLike<{ data: unknown; error: PgError | null; count
       const row: Row = { id: randomUUID(), created_at: new Date().toISOString(), ...(DEFAULTS[this.table]?.() ?? {}), ...src }
       if (this.op === 'upsert') {
         const existing = this.rows().find(r => this.conflict.every(c => r[c] === row[c]))
+        if (existing && this.ignoreDuplicates) continue
         if (existing) { const { id: _id, ...rest } = row; void _id; Object.assign(existing, rest); written.push(existing); continue }
       }
       const err = this.db.beforeInsert(this.table, row)

@@ -111,8 +111,11 @@ describe('while paused', () => {
     assert.equal((db.tables.scoreboard_daily ?? []).length, 0)
   })
 
-  test('once live, the vote card is offered inside its window', async () => {
+  test('once live, the vote card is offered inside its window, but only with the Scoreboard switch on too (2026-11-18)', async () => {
     setLive(true)
+    const off = await loadVote(caller(DHRUV, 'member'), new Date('2026-11-29T06:00:00Z'))
+    assert.equal(off.body.open, false, 'Day Close live alone does not show the Scoreboard')
+    settings().scoreboard_live = true
     const vote = await loadVote(caller(DHRUV, 'member'), new Date('2026-11-29T06:00:00Z'))
     assert.equal(vote.body.open, true)
     assert.equal(vote.body.canVote, true)

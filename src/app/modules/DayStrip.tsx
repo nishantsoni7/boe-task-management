@@ -4,6 +4,7 @@
 //
 // Owner, 2026-11-12: whoever is switched on must not be able to say they missed it.
 //
+//   red    "Your punch-in today is not counted yet"        while an attendance hold is open (hold.ts)
 //   red    "3 tasks are still open"                        from 6:00 pm until the day is closed
 // (2026-11-18: no morning plan and no strikes any more; the evening close is the only ask.)
 //
@@ -16,6 +17,7 @@
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { TriangleAlert } from 'lucide-react'
 import { useDayPrompt } from '@/hooks/queries/useDayPrompt'
+import { dayLabel } from '@/components/dayClose/api'
 import styles from './punchStrip.module.css'
 
 export function DayStrip({ userId, enabled }: { userId: string | null; enabled: boolean }) {
@@ -24,12 +26,15 @@ export function DayStrip({ userId, enabled }: { userId: string | null; enabled: 
   const p = data.prompt
 
   // No morning plan and no strikes (owner, 2026-11-18): the strip asks only for the evening close.
-  if (p.kind !== 'close_day') return null
+  if (p.kind !== 'close_day' && p.kind !== 'on_hold') return null
   const tone = styles.missing
-  const title = p.open > 0
-    ? `${p.open} ${p.open === 1 ? 'task is' : 'tasks are'} still open`
-    : 'Close your day before you punch out'
-  const detail = 'Before you leave, finish each task or move it to a new date with a reason, then close your day.'
+  // The attendance hold first (2026-11-18): today's punch is not counted until yesterday's work is closed.
+  const title = p.kind === 'on_hold'
+    ? 'Your punch-in today is not counted yet'
+    : p.open > 0 ? `${p.open} ${p.open === 1 ? 'task is' : 'tasks are'} still open` : 'Close your day before you punch out'
+  const detail = p.kind === 'on_hold'
+    ? `${p.open} ${p.open === 1 ? 'task' : 'tasks'} from ${dayLabel(p.causeDate)} ${p.open === 1 ? 'is' : 'are'} still open. Finish or move ${p.open === 1 ? 'it' : 'them'} to a new date, and today counts at once.`
+    : 'Before you leave, finish each task or move it to a new date with a reason, then close your day. Otherwise tomorrow’s attendance will be on hold.'
 
   const Icon = TriangleAlert
   return (

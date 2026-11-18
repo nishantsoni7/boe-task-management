@@ -190,3 +190,39 @@ Shipped in PR #746 (`22d9f772`, deployed 13:45 IST). `20270704000000` APPLIED to
 
 **Scoreboard note.** Its `plan_on_time` and `closed_before_leaving` parts read strikes, so with no new strikes they are full marks. The Scoreboard is paused, and PR 2 gives it its own switch.
 
+## 11. The attendance hold (2026-11-18, PR 2 of 2; migrations `20270802000000` + `20270802000100`, NOT YET APPLIED)
+
+**The consequence of the one rule** (owner: "they should get notified that their attendance for the next day will not be marked… on the next day… your punch in has not been considered because yesterday's work was not completed"). Agreed: a **hold that clears itself**, never an automatic deduction.
+
+| When | What happens | Code |
+|---|---|---|
+| From 6:00 pm, work open | Red on the Today card and the Modules strip: "N tasks are still open… Otherwise tomorrow's attendance will be on hold." | `DayCard`, `DayStrip` |
+| A punch after 5:30 pm with work open | Notification "You left with work open", once a day | `onPunches` (Minop webhook, `after()`) |
+| 11:15 pm | Anyone who came in and still has a task due that day or overdue open gets the next working day on hold, and a notification. Never for a Sunday, a holiday, approved full-day leave, or no punch | `writeHolds` (the `/api/day-close/evaluate` cron) |
+| A punch-in on a held day | Notification "Your punch-in is not counted yet", once. Red strip and Today banner all day | `onPunches`, `loadMyPromptWithHold`, `loadMyDayWithHold` |
+| The work is finished or moved to a later date | The hold clears by itself, with a "Today is counted" notification. Checked whenever the day is read, after Close my day, and at a punch | `refreshHolds` |
+| The owner | Team Today → "Needs your decision" lists every open hold. "Lift hold…" takes a reason. A past hold says "decide at payroll" (an attendance correction). A held person needs attention in the table | `loadTeamWithHolds`, `liftHold`, `POST /api/day-close/holds/[id]` |
+
+**Database.**
+- **`20270802000000`** adds the notification type `day_close_hold` on its own. Apply it first. The Attendance & Payroll inbox filters on this type.
+- **`20270802000100`** does three things:
+  - creates `day_close_holds`, one row per person per held day (unique), with the cause date, the number of open tasks, `punch_notice_at`, and cleared / lifted with a reason. It is closed to the browser.
+  - adds **`day_close_settings.scoreboard_live`**, default off. The Scoreboard is shown only when the team switch AND this switch are on (`scoreboardIsLive`). There is a second row in Control Center → Day Close & Scoreboard.
+  - restates the **proof check** to accept a written line of 10 characters or more as well.
+
+**Fails quiet.**
+- Before the migrations, every hold read answers "none" and writes are logged and skipped.
+- The Scoreboard reads its switch as off.
+- The proof rule is unchanged until the migration is applied.
+
+**Not built (follow-ups).**
+- Telling the person who gave a task that it was moved. The task's history records the move; a notification needs its own type.
+- A held day shown inside the Payroll screens. For now Team Today lists unresolved holds, and the owner decides with an attendance correction.
+
+**Tests.**
+- `hold.test.ts`: 10 tests.
+- `supabase/tests/day_close_hold_pglite.mjs`: 8 checks.
+- `teamSwitch.test.ts`: the vote needs the Scoreboard switch.
+- `launcherBatch.test.ts`, `attendancePayrollNotifications.test.ts`: updated.
+- MemorySupabase now honours `ignoreDuplicates` on upsert, as PostgREST does.
+

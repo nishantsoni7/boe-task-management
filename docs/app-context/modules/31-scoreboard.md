@@ -1,5 +1,7 @@
 # 31 - BOE Scoreboard (one monthly score, seen twice a day)
 
+> **Own switch (2026-11-18, `20270802000100`).** The Scoreboard now shows only when the team switch AND `day_close_settings.scoreboard_live` are on (`scoreboardIsLive` in `src/lib/dayClose/server.ts`). The switch starts off and is in Control Center → Day Close & Scoreboard. With strikes retired, `plan_on_time` and `closed_before_leaving` give full marks; revisit them before turning the Scoreboard on.
+
 > **Apply-state correction (2026-11-13).** The six migrations `20270622000000`, `20270624000000`, `20270625000000`, `20270626000000`, `20270627000000` and `20270628000000` were **not** in production when their PRs merged. Team Today showed "Something went wrong" and the scoreboard tables were missing (`to_regclass` checks all false). After a `backup-all.mjs` backup, the owner applied all six in order through the SQL Editor on 2026-11-13; a check then showed every table and column present. **Lesson:** after "Migration applied", confirm with a `to_regclass` / `information_schema` query before merging.
 
 > **Paused for the team (2026-11-13, `20270704000000`).** The whole Scoreboard (cards, evening line, vote, Star Seller, the nightly record) is OFF for the team until the owner switches it on in Control Center > Day Close & Scoreboard. It shares the one switch with Day Close: see dossier 30 section 9. Paused days are not recorded; fill them later with `/api/scoreboard/snapshot?from=&to=`. Admin screens (targets, ratings, Monthly Review) are unaffected.

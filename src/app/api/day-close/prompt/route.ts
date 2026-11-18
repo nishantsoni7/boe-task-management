@@ -3,10 +3,10 @@
 
 import { NextRequest } from 'next/server'
 import { dayCloseRoute } from '@/lib/dayClose/route'
-import { loadMyPrompt } from '@/lib/dayClose/server'
+import { loadMyPromptWithHold } from '@/lib/dayClose/hold'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
-  return dayCloseRoute(req, 'prompt', caller => loadMyPrompt(caller))
+  return dayCloseRoute(req, 'prompt', caller => loadMyPromptWithHold(caller))
 }

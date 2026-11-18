@@ -4,6 +4,19 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (branch `claude/boe1-employee-monitoring-t5ypei`) · migrations `20270802000000` + `20270802000100` (NOT YET APPLIED)
+- **Owner ask.** Leaving with work open means next day's punch "has not been considered", clearly notified; a hold that clears itself, never an automatic deduction (owner chose the recommendation).
+- **Built.**
+  - `day_close_holds`, written at 11:15 pm for anyone who came in and left a task due or overdue open.
+  - Notifications at punch-out after 5:30 pm, at 11:15 pm, at the next punch-in, and when the hold clears.
+  - A red strip and Today banner while on hold.
+  - Team Today: lists holds, "Lift hold…" with a reason, and "decide at payroll" for past holds.
+  - Proof accepts a written line of 10 characters or more.
+  - `scoreboard_live`, starting off, with a Control Center row.
+- **Safe before the migrations.** No holds, the Scoreboard off, and the proof rule as before.
+- **Proof.** `hold.test.ts` (10), PGlite (8), updated Day Close / launcher / notification tests, `tsc`, eslint, full `npm test`, `next build`.
+- **Rollback.** Revert the PR; the migration header has the SQL.
+
 ## 2026-11-18 — Day Close simplified: one rule, no morning plan, no strikes, "move to a new date" really moves the task (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
 - **Owner ask.** "Keep it very simple, minimal, so that it doesn't create a resistance for the new employees", yet foolproof. Agreed: one rule, "before you leave, every task due today (and anything overdue) is Done or moved to a new date with a reason".
 - **Changed.**

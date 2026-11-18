@@ -202,6 +202,7 @@ const TYPE_BADGES: Record<string, { label: string; color: string; bg: string }> 
   attendance_request_submitted: { label: 'Request',         color: colors.amber, bg: colors.amberTint },
   attendance_request_decided:   { label: 'Request decided', color: colors.blue,  bg: colors.blueTint  },
   attendance_machine_stopped:   { label: 'Machine',         color: colors.red,   bg: colors.redTint   },
+  day_close_hold:               { label: 'Day Close',       color: colors.red,   bg: colors.redTint   },
   // Sales. Red = a lead is slipping; amber = waiting on the person; blue = news about a lead.
   sales_lead_allotted:          { label: 'New lead',        color: colors.blue,  bg: colors.blueTint  },
   sales_followups_due:          { label: 'Follow-ups',      color: colors.amber, bg: colors.amberTint },
@@ -332,6 +333,19 @@ export function getNotificationMeta(n: Notification): NotificationMeta {
       badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
       href: '/attendance/today',
       actionLabel: 'Open Today',
+    }
+  }
+
+  // ── Day Close, the attendance hold ─────────────────────────────────────────
+  // To the person themselves: the Today card on Task Management is where the open work is closed.
+  if (type === 'day_close_hold') {
+    return {
+      category: 'other',
+      heading: 'Day Close',
+      headingIsActor: false,
+      badge: TYPE_BADGES[type] ?? NEUTRAL_BADGE,
+      href: '/dashboard',
+      actionLabel: 'Open my day',
     }
   }
 

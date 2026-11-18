@@ -78,6 +78,8 @@ type Team = {
   rows: Row[]
   openStrikes: (Strike & { name: string; label: string })[]
   lockedLeave?: { requestId: string; employeeId: string; name: string; requestType: string; startDate: string; endDate: string; words: string }[]
+  /** Attendance holds still open on or before this day (hold.ts, 2026-11-18). */
+  holds?: { id: string; employee_id: string; name: string; held_date: string; cause_date: string; open_tasks: number; punch_notice_at: string | null }[]
 }
 
 type Tab = 'today' | 'people' | 'ratings'
@@ -157,7 +159,7 @@ export function TeamTodayScreen() {
 
       {error && <p className={styles.error} role="alert">{error}</p>}
 
-      {tab === 'today' && <TodayTab team={team} nowMinutes={nowMinutes} />}
+      {tab === 'today' && <TodayTab team={team} nowMinutes={nowMinutes} onChanged={load} />}
       {tab === 'people' && team.viewer.manages && (
         <>
           <Members onChanged={load} />
@@ -173,9 +175,15 @@ export function TeamTodayScreen() {
   )
 }
 
-function TodayTab({ team, nowMinutes }: { team: Team; nowMinutes: number }) {
+function TodayTab({ team, nowMinutes, onChanged }: { team: Team; nowMinutes: number; onChanged: () => Promise<void> }) {
   const ctx = { date: team.date, today: team.today, nowMinutes, workingDay: team.workingDay, planDue: team.planDue, closeOpens: team.closeOpens }
-  const rows = sortRoster(team.rows.map(r => ({ ...r, status: rosterStatus(r, ctx) })))
+  // A person whose attendance is on hold for this day needs attention, whatever else the day says.
+  const heldToday = new Set((team.holds ?? []).filter(h => h.held_date === team.date).map(h => h.employee_id))
+  const rows = sortRoster(team.rows.map(r => {
+    const status = rosterStatus(r, ctx)
+    if (!heldToday.has(r.id) || status.group === 'away') return { ...r, status }
+    return { ...r, status: { ...status, group: 'attention' as const, issues: ['On hold', ...status.issues] } }
+  }))
   const count = (g: Group) => rows.filter(r => r.status.group === g).length
   const present = rows.filter(r => r.status.group !== 'away')
   const totals = {
@@ -189,7 +197,7 @@ function TodayTab({ team, nowMinutes }: { team: Team; nowMinutes: number }) {
   return (
     <>
       <div className={tt.top}>
-        <NeedsDecision team={team} />
+        <NeedsDecision team={team} onChanged={onChanged} />
         <section className={`${tt.card} ${tt.pulse}`} aria-labelledby="pulse-heading">
           <h2 id="pulse-heading" className={tt.eyebrow}>{isToday ? 'The day so far' : 'That day'}</h2>
           <div className={tt.kpis}>
@@ -273,10 +281,12 @@ function DayBar({ nowMinutes, planDue, closeOpens }: { nowMinutes: number; planD
   )
 }
 
-function NeedsDecision({ team }: { team: Team }) {
+function NeedsDecision({ team, onChanged }: { team: Team; onChanged: () => Promise<void> }) {
   const leave = team.lockedLeave ?? []
-  // Strikes retired (owner, 2026-11-18): only the leave locked by pending work waits on the reviewer here.
-  const n = leave.length
+  const holds = team.holds ?? []
+  // Strikes retired (owner, 2026-11-18). Waiting here: attendance holds (lift one with a reason, or decide at
+  // payroll), and leave locked by pending work.
+  const n = holds.length + leave.length
   const canDecide = team.viewer.isReviewer
   return (
     <section className={tt.card} aria-labelledby="needs-heading">
@@ -286,6 +296,7 @@ function NeedsDecision({ team }: { team: Team }) {
       </div>
       {n === 0 && <p className={tt.muted}>Nothing is waiting for you.</p>}
       {n > 0 && !canDecide && <p className={tt.muted}>Only {team.reviewer?.name ?? 'the reviewer'} decides these.</p>}
+      {holds.map(h => <HoldRow key={h.id} h={h} today={team.today} canLift={team.viewer.manages} onLifted={onChanged} />)}
       {leave.map(l => (
         <div key={l.requestId} className={tt.decision}>
           <span className={`${tt.chip} ${tt.chipAmber}`}>Leave locked</span>
@@ -299,6 +310,50 @@ function NeedsDecision({ team }: { team: Team }) {
         </div>
       ))}
     </section>
+  )
+}
+
+function HoldRow({ h, today, canLift, onLifted }: {
+  h: NonNullable<Team['holds']>[number]; today: string; canLift: boolean; onLifted: () => Promise<void>
+}) {
+  const [lifting, setLifting] = useState(false)
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const lift = async () => {
+    setBusy(true)
+    const r = await dayCloseFetch(`/api/day-close/holds/${h.id}`, { body: { reason } })
+    setBusy(false)
+    if (!r.ok) { setError(r.error); return }
+    await onLifted()
+  }
+  const past = h.held_date < today
+  return (
+    <div className={tt.decision}>
+      <span className={`${tt.chip} ${tt.chipRed}`}>On hold</span>
+      <div className={tt.decisionText}>
+        <p className={tt.decisionTitle}>{h.name} · attendance {dayLabel(h.held_date)}</p>
+        <p className={tt.decisionSub}>
+          Left {h.open_tasks} {h.open_tasks === 1 ? 'task' : 'tasks'} open on {dayLabel(h.cause_date)}
+          {past ? ' · still not closed: decide at payroll (count the day, or mark it absent with an attendance correction)' : ' · clears by itself once closed'}
+        </p>
+      </div>
+      {canLift && (
+        <div className={tt.decisionActions}>
+          {lifting ? (
+            <>
+              <input className={tt.noteInput} value={reason} maxLength={500} onChange={e => setReason(e.target.value)} autoFocus
+                placeholder="Why lift it?" aria-label={`Why lift ${h.name}'s hold`} />
+              <button type="button" className="boe-btn boe-btn-ghost" disabled={busy} onClick={() => { setLifting(false); setReason('') }}>Cancel</button>
+              <button type="button" className="boe-btn boe-btn-primary" disabled={busy || reason.trim().length < 3} onClick={lift}>Lift hold</button>
+            </>
+          ) : (
+            <button type="button" className="boe-btn boe-btn-ghost" onClick={() => setLifting(true)}>Lift hold…</button>
+          )}
+        </div>
+      )}
+      {error && <p className={tt.error} role="alert">{error}</p>}
+    </div>
   )
 }
 

@@ -268,6 +268,8 @@ export function isTaskDueForPlan(task: { status: string; due_date: string | null
 export type DayPrompt =
   | { kind: 'none' }
   | { kind: 'close_day'; open: number }
+  /** The attendance hold (hold.ts, 2026-11-18): yesterday's work is not closed, so today is not counted yet. */
+  | { kind: 'on_hold'; open: number; causeDate: string }
   | { kind: 'closed' }
 
 export function dayPrompt(input: {

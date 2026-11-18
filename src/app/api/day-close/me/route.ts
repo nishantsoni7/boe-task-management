@@ -8,19 +8,20 @@
 
 import { NextRequest } from 'next/server'
 import { dayCloseRoute, jsonBody } from '@/lib/dayClose/route'
-import { closeDay, loadMyDay, type Result } from '@/lib/dayClose/server'
+import type { Result } from '@/lib/dayClose/server'
+import { closeDayWithHold, loadMyDayWithHold } from '@/lib/dayClose/hold'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
-  return dayCloseRoute(req, 'me', caller => loadMyDay(caller))
+  return dayCloseRoute(req, 'me', caller => loadMyDayWithHold(caller))
 }
 
 export async function POST(req: NextRequest) {
   const body = await jsonBody(req)
   return dayCloseRoute(req, 'me', async (caller): Promise<Result> => {
     switch (body.action) {
-      case 'close_day': return closeDay(caller, body)
+      case 'close_day': return closeDayWithHold(caller, body)
       default: return { status: 400, body: { error: 'Unknown action.' } }
     }
   })
