@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-18 — Quotations: ask before an app link leaves a quotation with unsaved changes (branch `fix/quotation-leave-warning`; PR number added at the stamp) · no SQL
+## 2026-11-18 — Quotations: ask before an app link leaves a quotation with unsaved changes (PR #906, merged 18 Nov 2026 06:01 IST as `413a70c2`, live 06:03 IST) · no SQL
 - With unsaved edits, a click on any link to another page (the app's menu, the launcher, a link inside the builder) asks "You have unsaved changes. Leave without saving?"; Cancel stays. Closing or reloading the tab already asked (`beforeunload`). New `src/lib/navigation/leaveGuard.ts` (`askBeforeLeaving`, a document click listener in the capture phase; next/link skips a click whose default was prevented); `leaveGuard.dom.test.ts`. Not covered: the browser's Back button.
 
 ## 2026-11-18 — Quotations: a product name's lines are planned at the width the live table really has (PR #904, merged 18 Nov 2026 02:18 IST as `713b6697`) · no SQL
