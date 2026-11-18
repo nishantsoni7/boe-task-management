@@ -173,17 +173,18 @@ describe('the builder page', () => {
   const SCREEN = read('src/components/quotations/BuilderScreen.tsx')
   test('the right-hand column is gone: the quotation request and status on top, client beside share, products, totals, terms beside history, then the cards', () => {
     const at = (needle: string) => SCREEN.indexOf(needle)
-    const order = ['<RequestCard', 'className={s.statusBar}', 'className={s.topRow}', 'Advanced client details', 'id="q-share"', 'id="q-products"', 'id="q-extra"', 'className={s.pair}', 'id="q-terms"', '<h2>History</h2>', 'className={s.bottom}'].map(at)
+    const order = ['<RequestCard', '<StatusCard', '<ShareCard', '<ClientCard', 'id="q-products"', 'id="q-extra"', 'className={s.pair}', 'id="q-terms"', '<h2>History</h2>', 'className={s.bottom}'].map(at)
     assert.ok(order.every(i => i > 0), 'every section is on the page')
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
     assert.ok(!/\bs\.split\b|\bs\.sticky\b|Valid for \(days\)/.test(SCREEN), 'no side column, no Valid for box')
   })
   test('the Advanced client details are closed until opened and hold the fields the owner named', () => {
     assert.match(SCREEN, /const \[advOpen, setAdvOpen\] = useState\(false\)/)
-    const adv = SCREEN.slice(SCREEN.indexOf('id="q-advanced"'), SCREEN.indexOf('</section>', SCREEN.indexOf('id="q-advanced"')))
+    const CLIENT = read('src/components/quotations/ClientCard.tsx')
+    const adv = CLIENT.slice(CLIENT.indexOf('id="q-advanced"'), CLIENT.indexOf('</section>', CLIENT.indexOf('id="q-advanced"')))
     // the project type (its box lives in LeadTime.tsx) and the delivery state moved down on 18 Nov 2026; the city took the state's place on top
     for (const id of ['q-company', 'q-type', '<ProjectTypeField', 'q-project', 'q-contact', 'q-role', 'q-email', 'q-state', 'q-gst"', 'q-gstin']) assert.ok(adv.includes(id), id)
-    const basic = SCREEN.slice(SCREEN.indexOf('className={s.clientGrid}'), SCREEN.indexOf('className={s.advBtn}'))
+    const basic = CLIENT.slice(CLIENT.indexOf('className={s.fgrid}'), CLIENT.indexOf('{advOpen && ('))
     for (const id of ['q-client-name', 'q-phone', 'q-city', '<LeadTime']) assert.ok(basic.includes(id), id)
     assert.ok(!/q-company|q-gstin|q-type|q-project|q-contact|q-role|q-email|q-state|ProjectTypeField/.test(basic), 'nothing from Advanced on top: the contact person and the email moved down (13 Nov list, items 5 and 7), the state and the project type on 18 Nov')
   })
@@ -199,7 +200,7 @@ describe('the builder page', () => {
   test('every class the quotation screens use is in the module stylesheet (a missing one fails silently, with no styling)', () => {
     const css = read('src/components/quotations/quotations.module.css')
     const defined = new Set([...css.matchAll(/\.([A-Za-z_][\w-]*)/g)].map(m => m[1]))
-    const files = ['BuilderScreen', 'ProductLine', 'PictureViewer', 'RequestCard', 'PricingDesk', 'VersionsCard', 'ListScreen', 'ReportsScreen', 'ImportDialog', 'StudioDialog', 'QuotationLinks', 'RequestsScreen']
+    const files = ['BuilderScreen', 'StatusCard', 'ShareCard', 'ClientCard', 'LeadTime', 'ProductLine', 'PictureViewer', 'RequestCard', 'PricingDesk', 'VersionsCard', 'ListScreen', 'ReportsScreen', 'ImportDialog', 'StudioDialog', 'QuotationLinks', 'RequestsScreen']
     for (const f of files) {
       const used = [...new Set([...read(`src/components/quotations/${f}.tsx`).matchAll(/\bs\.([A-Za-z_]\w*)/g)].map(m => m[1]))]
       assert.deepEqual(used.filter(c => !defined.has(c)), [], `${f}.tsx uses a class that quotations.module.css does not define`)

@@ -56,7 +56,7 @@ describe('the Client card block', () => {
   test('choosing a restaurant asks for the seats, and the lead time appears once they are typed', () => {
     const log: Partial<Header>[] = []
     const ui = mount(createElement(Parent, { start: {}, areas: [], log })); cleanup = () => ui.unmount()
-    assert.match(ui.text(), /Not printed/); assert.match(ui.text(), /Choose the project type \(Hotel, Resort, Restaurant, Café or Brewery\) under Advanced client details/)
+    assert.match(ui.text(), /Not printed/); assert.match(ui.text(), /Set a project type under Advanced client details/)
     setSelect(ui.one<HTMLSelectElement>('#q-ptype'), 'restaurant')
     assert.deepEqual(log[0], { project_type: 'restaurant' })
     assert.match(ui.text(), /Add the seats to see it/)
@@ -103,8 +103,10 @@ describe('the builder uses it', () => {
   test('the Client card holds the block, and a save writes the effective lead time, not a stale one', async () => {
     const { readFileSync } = await import('node:fs')
     const src = readFileSync('src/components/quotations/BuilderScreen.tsx', 'utf8')
-    assert.ok(src.includes('<LeadTime h={h} areas={areas} editable={editable}'))
-    assert.ok(src.includes('<ProjectTypeField h={h} editable={editable}'), 'the Project type box is in Advanced client details')
+    const card = readFileSync('src/components/quotations/ClientCard.tsx', 'utf8')
+    assert.ok(card.includes('<LeadTime h={h} areas={areas} editable={editable}'), 'the lead time is a field of the Client card grid')
+    assert.ok(card.includes('<ProjectTypeField h={h} editable={editable}'), 'the Project type box is in Advanced client details')
+    assert.ok(src.includes('<ClientCard h={h} areas={areas} editable={editable}'))
     assert.ok(src.includes('saveDoc({ ...h, lead_time_weeks: effectiveLeadTime(h, areas) }, areas, lines, base.updated_at)'))
   })
 })
