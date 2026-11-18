@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `22f041f1` — Quotations: practical fixes from the module review; crop draws on first open (#903)
-- Commits on this branch: 1462
+- Commit: `cbd1e73f` — Quotations: ask before an app link leaves a quotation with unsaved changes
+- Commits on this branch: 1464
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 474 (first `20260530_create_positions.sql`, latest `20270801000000_quotation_salesperson_card.sql`)
 - Tables ever created: 263 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
-- Test files: 891   Next.js 16.2.6, React 19.2.4
+- Test files: 892   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `cbd1e73f` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes
+- `713b6697` 2026-11-18 Quotations: plan a product name's lines at the width the live table really has (#904)
 - `22f041f1` 2026-11-18 Quotations: practical fixes from the module review; crop draws on first open (#903)
 - `25fd59ee` 2026-11-18 Quotations: the PDF shows products and prices in one table; the salesperson's own details (#902)
 - `62939430` 2026-11-18 Quotations: crop by drawing a box, and change a made picture again with comments (#901)
@@ -37,8 +39,6 @@
 - `08012448` 2026-11-17 Revert #880: putting the saved copy back crashed My Tasks (#883)
 - `0a7be599` 2026-11-17 Loading screens: fresh lines from a library of 304 instead of the same eight (#882)
 - `f69dd49e` 2026-11-17 Docs: stamp the saved-copy fix (#880) as merged 2cd29029, deployed 17:38 IST, tested live (#881)
-- `eecc186d` 2026-11-17 Docs: stamp the Draft Orders order page redesign (#878) as merged c7737d28, deployed 17:23 IST (no SQL) (#879)
-- `2cd29029` 2026-11-17 Page speed: the saved copy is put back after sign-in finishes (#880)
 
 ## Pages by top-level area
 
@@ -162,7 +162,7 @@
 - `src/lib/meta` — 11 source, 8 test
 - `src/lib/minop` — 13 source, 11 test
 - `src/lib/modules` — 7 source, 8 test
-- `src/lib/navigation` — 5 source, 8 test
+- `src/lib/navigation` — 6 source, 9 test
 - `src/lib/notifications` — 9 source, 25 test
 - `src/lib/orders` — 113 source, 173 test
 - `src/lib/payroll` — 36 source, 36 test
