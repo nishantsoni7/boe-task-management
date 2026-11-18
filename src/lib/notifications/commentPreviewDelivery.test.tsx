@@ -159,7 +159,7 @@ describe('1-2. the exact comment writer passes its own activity id', () => {
   test('1. Task Detail inserts the comment, reads the row back, and sends THAT id', () => {
     // The one comment writer in the product. Asserted as a sequence, because
     // the id being sent is worth nothing if it is not the id just returned.
-    const save = TASK_DETAIL.slice(TASK_DETAIL.indexOf('const saveComment = async ()'),
+    const save = TASK_DETAIL.slice(TASK_DETAIL.indexOf('const saveComment = async (lead?: string)'),
                                   TASK_DETAIL.indexOf('const saveDescription'))
     assert.ok(save.length > 0, 'saveComment must exist')
 
@@ -172,7 +172,9 @@ describe('1-2. the exact comment writer passes its own activity id', () => {
     assert.ok(save.includes("action: 'comment_added'"), 'as a comment notification')
 
     // The comment text goes into `note`, which is the column the feed reads.
-    assert.ok(save.includes('note:           commentNote.trim() || null'))
+    // commentNote, led by the screen's own first line when there is one (the Excel reason, 18 Nov 2026).
+    assert.ok(save.includes('note:           noteText || null'))
+    assert.ok(save.includes("const noteText = [lead?.trim(), commentNote.trim()].filter(Boolean).join("))
   })
 
   test('1b. it is the ONLY comment writer — nothing else can create one unlinked', () => {

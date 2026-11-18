@@ -155,7 +155,7 @@ describe('5-6. no collateral damage', () => {
 
   test('6b. Send Update is untouched', () => {
     // A different button, a few hundred lines away, that also used to be blue.
-    const send = PAGE.slice(PAGE.indexOf('onClick={saveComment}'))
+    const send = PAGE.slice(PAGE.indexOf('onClick={() => { void saveComment() }}'))
     assert.ok(send.includes('Send Update') || PAGE.includes('Send Update'))
     assert.equal(send.slice(0, 1200).includes('boe-task-action-submit'), false)
   })
