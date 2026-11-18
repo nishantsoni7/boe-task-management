@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Quotation page tidied: the request on top, City, no PI draft card, one-line Saved (branch `feat/quotation-page-tidy`; PR number added at the stamp) · migration `20270806000000_quotation_delivery_city` (NOT APPLIED: one column, `quotation_save` re-created)
+- **Owner direction (three screenshots of QT-MS-01007, then "Go with the recommended choice on all three"):** the Quotation request card first on the page; the PI draft card deleted; Project type off the Client card; City instead of Delivery state; "Saved" on one line and no Total in the header; everything arranged neatly.
+- **City:** new column `quotations.delivery_city`; the Client card asks for it, and a well-known city fills the state and the tax (`cities.ts`); Delivery state and GST type are side by side under Advanced client details. Not on the client's copy.
+- **Project type** moved to Advanced client details; Seats and Lead time stay on the card. The lead-time rule and the printed document are unchanged.
+- **PI draft card deleted**, with its "Download in PI format (.xlsx)". **Confirm → make PI draft** and **Open the PI draft** moved into the Status bar; nothing is sent to anyone, the PI stays a Draft.
+- **Apply state:** NOT APPLIED. Take a backup first, apply before the merge. Rollback by hand: re-create `quotation_save` from `20270721000000`, drop `quotations.delivery_city`. Rehearsed on PGlite (`quotations_pglite.mjs`, 72 checks); not rehearsed on the linked database.
+- **Not seen** signed in, in a browser or on a phone. Tests: `cities.test.ts`, `builderPolish.test.tsx`, `builderRedesign.test.tsx`, `leadTime.dom.test.tsx`, both migration ledgers.
+
 ## 2026-11-18 — Quotation requests: the request page shows its quotation, Excel needs a reason, the salesperson asks for a change (branch `feat/request-shows-quotation`; PR number added at the stamp) · migration `20270805000000_quotation_for_request` (one read-only function)
 - **Owner direction:** Task Management is the front door, the work happens in Quotations, Excel stays allowed and fades out (no hard date). Step 1 of the transition plan.
 - **The quotation on the request** (`RequestQuotation` in `QuotationLinks.tsx`, read by `quotation_for_request(task)`, same `quotation_sees` rule as `quotation_for_pi`): number, status, value before GST, "version N · sent … · client opened …", Open builder / PDF / WhatsApp (when shared and a phone is known). With none yet, the maker gets **Build in BOE One** (the default).

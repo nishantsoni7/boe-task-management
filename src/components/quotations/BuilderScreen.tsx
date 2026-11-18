@@ -13,7 +13,8 @@ import { saveProblem } from '@/lib/quotations/saveCheck'
 import { fetchVersions, issuedAt } from '@/lib/quotations/versions'
 import { askBeforeLeaving } from '@/lib/navigation/leaveGuard'
 import { conversionProblems, type ConversionProblem } from '@/lib/quotations/piWorkbook'
-import { PI_STAGE_LABEL, extrasLeftOutText, makePiDraft, piWorkbookFor, type PiStage } from '@/lib/quotations/toPiDraft'
+import { PI_STAGE_LABEL, extrasLeftOutText, makePiDraft, type PiStage } from '@/lib/quotations/toPiDraft'
+import { CITY_NAMES, stateOfCity } from '@/lib/quotations/cities'
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
@@ -41,7 +42,7 @@ import { VersionsCard } from './VersionsCard'
 import { RequestCard } from './RequestCard'
 import { PriceCard } from './PricingDesk'
 import { LineRow } from './ProductLine'
-import { LeadTime, effectiveLeadTime } from './LeadTime'
+import { LeadTime, ProjectTypeField, effectiveLeadTime } from './LeadTime'
 import { PictureViewer, viewerItemsOf } from './PictureViewer'
 import { MyDetailsReminder } from './MyDetails'
 import { productType } from '@/lib/pricing/features'
@@ -207,19 +208,6 @@ export default function BuilderScreen() {
       setMsg({ tone: 'bad', text: errorText(e) })
     } finally { setBusy(false); setPiStage(null) }
   }
-  const downloadPi = async () => {
-    if (!base || busy) return
-    setBusy(true)
-    try {
-      const { bytes, extrasLeftOut } = await piWorkbookFor(supabase, base)
-      if (extrasLeftOut) setMsg({ tone: 'warn', text: extrasLeftOutText(extrasLeftOut) })
-      const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }))
-      const a = document.createElement('a')
-      a.href = url; a.download = `${base.quote_no} PI.xlsx`; a.click()
-      setTimeout(() => URL.revokeObjectURL(url), 2000)
-    } catch (e) { setMsg({ tone: 'bad', text: errorText(e) }) }
-    finally { setBusy(false) }
-  }
 
   if (loading) return <LoadingScreen />
   const layout = (title: string, body: React.ReactNode, subtitle?: string, actions?: React.ReactNode) => (
@@ -285,12 +273,24 @@ export default function BuilderScreen() {
   const viewerAt = viewing ? viewerItems.findIndex(x => x.key === viewing) : -1
   const goTo = (target: string) => document.getElementById(target)?.scrollIntoView({ block: 'center' })
   const waiting = needsYou(base)
+  // Confirm → PI draft lives in the Status bar (the PI draft card is gone, owner 18 Nov 2026). It works on the SAVED quotation.
+  const piProblems = conversionProblems(base.areas, base.lines)
+  const canConfirm = base.may_edit && !base.pi && (base.status === 'sent' || base.status === 'negotiating')
+  const priceBlocked = !!base.price?.blocked
+  // A city the list knows fills in the state, and with it the tax; any other city leaves the state as it is.
+  const setCity = (v: string) => {
+    const st = stateOfCity(v)
+    setH(p => (p ? { ...p, delivery_city: v, ...(st ? { supply_state: st, gst_mode: gstModeForState(st) } : {}) } : p)); touch()
+  }
+  const setState = (v: string) => {
+    setH(p => (p ? { ...p, supply_state: v, gst_mode: SUPPLY_STATES.some(x => x.toLowerCase() === v.trim().toLowerCase()) ? gstModeForState(v) : p.gst_mode } : p)); touch()
+  }
+  const stateKnown = SUPPLY_STATES.some(x => x.toLowerCase() === h.supply_state.trim().toLowerCase())
 
   const actions = (
     <>
       <StatusPill status={base.status} />
-      {dirty ? <span className={s.dirty}>Unsaved changes</span> : <span className={`${s.small} ${s.muted}`}><Check size={13} aria-hidden /> Saved</span>}
-      <span className={`${s.hdrTotal} ${s.hideOnPhone}`}><span className={s.muted}>Total</span> <b className={s.num}>{formatINR(totals.grand)}</b> <span className={s.muted}>incl. GST</span></span>
+      {dirty ? <span className={`${s.dirty} ${s.saveState}`}>Unsaved changes</span> : <span className={`${s.small} ${s.muted} ${s.saveState}`}><Check size={13} aria-hidden /> Saved</span>}
       <Link className={s.btn} href={`/quotations/${id}/print`} target="_blank"><Printer size={15} aria-hidden /> Print / PDF</Link>
       {editable && <button className={`${s.btn} ${s.btnPrimary}`} onClick={save} disabled={!dirty || saving}><Save size={15} aria-hidden /> {saving ? 'Saving…' : 'Save'}</button>}
     </>
@@ -308,6 +308,9 @@ export default function BuilderScreen() {
       {!base.may_edit && <div className={s.notice}>You can read this quotation. Only its owner, or someone with Edit and See all, can change it.</div>}
       {base.may_edit && LOCKED.includes(base.status) && <div className={`${s.notice} ${s.noticeWarn}`}>This quotation is {STATUS_LABEL[base.status].toLowerCase()} and cannot be changed. {base.status !== 'confirmed' || access.admin ? 'Reopen it from the Status bar to edit.' : 'Only an administrator can reopen it.'}</div>}
 
+      {/* a quotation made from a quotation request: who asked, and Send to sales, before anything else (owner, 18 Nov 2026) */}
+      {profile && <RequestCard id={REQUEST_CARD_ID} supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
+
       {waiting.length > 0 && (
         <div className={`${s.notice} ${s.noticeWarn} ${s.needs}`} role="status">
           <Info size={16} aria-hidden />
@@ -323,12 +326,19 @@ export default function BuilderScreen() {
         <div className={s.statusBar}>
           <span className={s.lab}>Status</span>
           <StatusPill status={base.status} />
+          {base.pi && <span className={`${s.small} ${s.muted}`}>Confirmed into PI draft <b>{base.pi.draft_reference ?? ''}</b> ({base.pi.status.replace(/_/g, ' ')})</span>}
           <span className={s.spacer} />
+          {base.pi && <Link className={`${s.btn} ${s.btnSm} ${s.btnPrimary}`} href={draftDetailHref(base.pi.id)}><FileCheck2 size={15} aria-hidden /> Open the PI draft</Link>}
           {base.may_edit && (
             <>
               {base.status === 'draft' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} title={dirty ? 'Save first' : undefined} onClick={() => moveTo('sent')}>Mark sent</button>}
               {(base.status === 'sent' || base.status === 'draft') && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} title={dirty ? 'Save first' : undefined} onClick={() => moveTo('negotiating')}>Negotiating</button>}
-              {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} onClick={() => moveTo('confirmed')} title="Confirmed without making a PI from it">Confirmed, no PI</button>}
+              {canConfirm && (
+                <button className={`${s.btn} ${s.btnSm} ${s.btnPrimary}`} disabled={busy || dirty || piProblems.length > 0 || priceBlocked} title={dirty ? 'Save first' : undefined} onClick={confirmToPi}>
+                  <FileCheck2 size={15} aria-hidden /> {piStage ? PI_STAGE_LABEL[piStage] : 'Confirm → make PI draft'}
+                </button>
+              )}
+              {!LOCKED.includes(base.status) &&<button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} onClick={() => moveTo('confirmed')} title="Confirmed without making a PI from it">Confirmed, no PI</button>}
               {!LOCKED.includes(base.status) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} title={dirty ? 'Save first' : undefined} onClick={() => setLostNote('')}>Lost…</button>}
               {base.status !== 'archived' && base.status !== 'confirmed' && <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} title={dirty ? 'Save first' : undefined} onClick={() => moveTo('archived')}>Archive</button>}
               {LOCKED.includes(base.status) && (base.status !== 'confirmed' || access.admin) && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('negotiating')}>Reopen</button>}
@@ -341,6 +351,11 @@ export default function BuilderScreen() {
             </div>
           )}
           {base.may_edit && dirty && !LOCKED.includes(base.status) && <span className={`${s.small} ${s.muted}`} style={{ flexBasis: '100%' }}>Save your changes before confirming.</span>}
+          {canConfirm && piProblems.length > 0 && (
+            <div className={`${s.notice} ${s.noticeWarn} ${s.piNotes}`}><b>Before it can become a PI:</b>{piProblems.map(p => <div key={p.code}>{PROBLEM_TEXT[p.code]}{p.lines.length ? `: ${p.lines.slice(0, 6).join(', ')}${p.lines.length > 6 ? ` and ${p.lines.length - 6} more` : ''}` : ''}</div>)}</div>
+          )}
+          {canConfirm && piProblems.length === 0 && !dirty && <span className={`${s.small} ${s.muted} ${s.piNotes}`}>Confirm makes a PI draft in Orders from the saved quotation and opens it. Nothing is sent to anyone: the PI stays a Draft until you submit it there. The quotation then becomes Confirmed.</span>}
+          {canConfirm && priceBlocked && <span className={`${s.small} ${s.muted} ${s.piNotes}`}>Waiting for price approval (see Price approval).</span>}
         </div>
       </section>
 
@@ -351,25 +366,28 @@ export default function BuilderScreen() {
           <div className={s.clientGrid}>
             <label className={s.field}><span>Client name *</span><input id="q-client-name" className={s.input} value={h.client_name} onChange={e => updH('client_name', e.target.value)} disabled={!editable} /></label>
             <label className={s.field}><span>Contact phone</span><input id="q-phone" className={s.input} value={h.contact_phone} inputMode="tel" onChange={e => updH('contact_phone', e.target.value)} disabled={!editable} /></label>
-            <label className={s.field}><span>Delivery state</span><input id="q-state" className={s.input} list="q-states" value={h.supply_state} disabled={!editable}
-              onChange={e => { const v = e.target.value; setH(p => (p ? { ...p, supply_state: v, gst_mode: SUPPLY_STATES.some(x => x.toLowerCase() === v.trim().toLowerCase()) ? gstModeForState(v) : p.gst_mode } : p)); touch() }} />
-              <datalist id="q-states">{SUPPLY_STATES.map(x => <option key={x} value={x} />)}</datalist>
-              <span className={s.taxChip}>Tax: {h.gst_mode === 'igst' ? 'IGST (outside Rajasthan)' : 'CGST + SGST (within Rajasthan)'}</span>
-              {h.supply_state.trim() && !SUPPLY_STATES.some(x => x.toLowerCase() === h.supply_state.trim().toLowerCase()) && <span className={s.small} style={{ color: '#8A5A00' }} role="status">Pick the state from the list: it decides CGST + SGST or IGST.</span>}</label>
+            <label className={s.field}><span>City</span><input id="q-city" className={s.input} list="q-cities" maxLength={80} autoComplete="off" placeholder="Where it is delivered" value={h.delivery_city} disabled={!editable} onChange={e => setCity(e.target.value)} />
+              <datalist id="q-cities">{CITY_NAMES.map(x => <option key={x} value={x} />)}</datalist>
+              <span className={s.taxChip}>Tax: {h.gst_mode === 'igst' ? 'IGST (outside Rajasthan)' : 'CGST + SGST (within Rajasthan)'}{h.supply_state.trim() ? ` · ${h.supply_state.trim()}` : ''}</span>
+              {h.delivery_city.trim() && !h.supply_state.trim() && <span className={s.small} style={{ color: '#8A5A00' }} role="status">State not found for this city: add it under Advanced client details.</span>}</label>
           </div>
           {h.supply_state && gstModeForState(h.supply_state) !== h.gst_mode && <div className={`${s.notice} ${s.noticeWarn}`} style={{ marginTop: 12 }}>Delivery to {h.supply_state} is normally {gstModeForState(h.supply_state) === 'igst' ? 'IGST' : 'CGST + SGST'}: BOE is registered in Rajasthan. Check before sending (GST type is under Advanced client details).</div>}
           <LeadTime h={h} areas={areas} editable={editable} onChange={patch => { setH(p => (p ? { ...p, ...patch } : p)); touch() }} />
           <button type="button" className={s.advBtn} aria-expanded={advOpen} aria-controls="q-advanced" onClick={() => setAdvOpen(o => !o)}>
-            {advOpen ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />} Advanced client details <span className={s.hintTxt}>Company, client type, project, contact person, their role, email, GST, GSTIN</span>
+            {advOpen ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />} Advanced client details <span className={s.hintTxt}>Company, client type, project type, project, contact person, their role, email, state, GST type, GSTIN</span>
           </button>
           {advOpen && (
             <div id="q-advanced" className={s.advBody}>
               <label className={s.field}><span>Company name</span><input id="q-company" className={s.input} maxLength={160} value={h.company_name} onChange={e => updH('company_name', e.target.value)} disabled={!editable} /></label>
               <label className={s.field}><span>Client type</span><select id="q-type" className={s.input} value={h.client_type} onChange={e => updH('client_type', e.target.value)} disabled={!editable}><option value="">Choose…</option>{CLIENT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
+              <ProjectTypeField h={h} editable={editable} onChange={patch => { setH(p => (p ? { ...p, ...patch } : p)); touch() }} />
               <label className={s.field}><span>Project</span><input id="q-project" className={s.input} value={h.project_name} onChange={e => updH('project_name', e.target.value)} disabled={!editable} /></label>
               <label className={s.field}><span>Contact person</span><input id="q-contact" className={s.input} value={h.contact_name} onChange={e => updH('contact_name', e.target.value)} disabled={!editable} /></label>
               <label className={s.field}><span>Their role</span><input id="q-role" className={s.input} value={h.contact_role} onChange={e => updH('contact_role', e.target.value)} disabled={!editable} /></label>
               <label className={s.field}><span>Email ID</span><input id="q-email" className={s.input} type="email" inputMode="email" autoComplete="off" maxLength={160} placeholder="name@company.com" value={h.client_email} onChange={e => updH('client_email', e.target.value)} disabled={!editable} /></label>
+              <label className={s.field}><span>Delivery state</span><input id="q-state" className={s.input} list="q-states" value={h.supply_state} disabled={!editable} onChange={e => setState(e.target.value)} />
+                <datalist id="q-states">{SUPPLY_STATES.map(x => <option key={x} value={x} />)}</datalist>
+                {h.supply_state.trim() && !stateKnown && <span className={s.small} style={{ color: '#8A5A00' }} role="status">Pick the state from the list: it decides CGST + SGST or IGST.</span>}</label>
               <label className={s.field}><span>GST type</span><select id="q-gst" className={s.input} value={h.gst_mode} onChange={e => updH('gst_mode', e.target.value as Header['gst_mode'])} disabled={!editable}><option value="igst">IGST (outside Rajasthan)</option><option value="cgst_sgst">CGST + SGST (within Rajasthan)</option></select></label>
               <label className={s.field}><span>GSTIN</span><input id="q-gstin" className={s.input} maxLength={20} autoComplete="off" value={h.client_gstin} onChange={e => updH('client_gstin', e.target.value.toUpperCase())} disabled={!editable} /></label>
             </div>
@@ -516,16 +534,10 @@ export default function BuilderScreen() {
       </div>
 
       <div className={s.bottom}>
-        <div className={s.bcol}>
-          {profile && <RequestCard id={REQUEST_CARD_ID} supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
-          <VersionsCard supabase={supabase} base={base} dirty={dirty} busy={busy} onSent={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />
-        </div>
-        <div className={s.bcol}>
-          <PriceCard id={PRICE_CARD_ID} price={base.price} mayEdit={base.may_edit} dirty={dirty} busy={busy}
-            onAsk={() => act(() => requestPriceApproval(supabase, id), 'Sent to the pricing desk.')}
-            onDecide={(approve, note) => act(() => decidePrice(supabase, id, approve, note), approve ? 'Prices approved.' : 'Sent back to the salesperson.')} />
-          <PiCard base={base} dirty={dirty} busy={busy} stage={piStage} onConfirm={confirmToPi} onDownload={downloadPi} />
-        </div>
+        <VersionsCard supabase={supabase} base={base} dirty={dirty} busy={busy} onSent={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />
+        <PriceCard id={PRICE_CARD_ID} price={base.price} mayEdit={base.may_edit} dirty={dirty} busy={busy}
+          onAsk={() => act(() => requestPriceApproval(supabase, id), 'Sent to the pricing desk.')}
+          onDecide={(approve, note) => act(() => decidePrice(supabase, id, approve, note), approve ? 'Prices approved.' : 'Sent back to the salesperson.')} />
       </div>
 
       {importing && profile && (
@@ -569,43 +581,4 @@ const PROBLEM_TEXT: Record<ConversionProblem['code'], string> = {
   QTY_MISSING: 'Give a quantity above 0 to',
   PRICE_MISSING: 'Give a price above ₹0 to',
   PICTURE_MISSING: 'Add a picture to (Orders needs one for every product)',
-}
-
-/** The PI this quotation became, or Confirm → PI draft; and the PI-format download. Works on the SAVED quotation. */
-function PiCard({ base, dirty, busy, stage, onConfirm, onDownload }: {
-  base: Quotation; dirty: boolean; busy: boolean; stage: PiStage | null; onConfirm: () => void; onDownload: () => void
-}) {
-  const problems = conversionProblems(base.areas, base.lines)
-  const canConfirm = base.may_edit && !base.pi && (base.status === 'sent' || base.status === 'negotiating')
-  const priceBlocked = !!base.price?.blocked
-  if (!base.pi && !canConfirm && base.lines.length === 0) return null
-  return (
-    <section className={s.card}>
-      <div className={s.cardHead}><h2>PI draft</h2></div>
-      <div className={s.cardBody} style={{ display: 'grid', gap: 8 }}>
-        {base.pi && (
-          <>
-            <div className={s.small}>Confirmed into PI draft <b>{base.pi.draft_reference ?? ''}</b> ({base.pi.status.replace(/_/g, ' ')}).</div>
-            <Link className={`${s.btn} ${s.btnPrimary}`} href={draftDetailHref(base.pi.id)}><FileCheck2 size={15} aria-hidden /> Open the PI draft</Link>
-          </>
-        )}
-        {canConfirm && (
-          <>
-            {problems.length > 0
-              ? <div className={`${s.notice} ${s.noticeWarn}`}><b>Before it can become a PI:</b>{problems.map(p => <div key={p.code}>{PROBLEM_TEXT[p.code]}{p.lines.length ? `: ${p.lines.slice(0, 6).join(', ')}${p.lines.length > 6 ? ` and ${p.lines.length - 6} more` : ''}` : ''}</div>)}</div>
-              : <div className={s.small}>Makes a PI draft in Orders from the saved quotation, through the same checks as an uploaded PI, then opens it. Optional products are left out.</div>}
-            <button className={`${s.btn} ${s.btnPrimary}`} disabled={busy || dirty || problems.length > 0 || priceBlocked} onClick={onConfirm}>
-              <FileCheck2 size={15} aria-hidden /> {stage ? PI_STAGE_LABEL[stage] : 'Confirm → make PI draft'}
-            </button>
-            {dirty && <div className={`${s.small} ${s.dirty}`}>Save first, then confirm.</div>}
-            {priceBlocked && <div className={`${s.small} ${s.muted}`}>Waiting for price approval (see Price approval).</div>}
-          </>
-        )}
-        {!base.pi && !canConfirm && base.may_edit && base.status === 'draft' && <div className={`${s.small} ${s.muted}`}>Send it (or mark it Negotiating) before confirming it into a PI.</div>}
-        {base.lines.length > 0 && (
-          <button className={`${s.btn} ${s.btnSm}`} disabled={busy || dirty} onClick={onDownload}><FileSpreadsheet size={15} aria-hidden /> Download in PI format (.xlsx)</button>
-        )}
-      </div>
-    </section>
-  )
 }
