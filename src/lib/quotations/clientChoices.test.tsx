@@ -94,8 +94,9 @@ describe('the builder wiring', () => {
     assert.match(row, /<ChoicesPanel choices=\{l\.choices\}/)
     assert.match(read('src/components/quotations/BuilderScreen.tsx'), /onUploadSwatch=\{f => \(profile \? uploadPicture\(supabase, profile\.id, f\)/)
   })
-  test('the client views are not given the choices in this step', () => {
-    for (const f of ['QuotationDocument.tsx', 'DocumentScreens.tsx']) assert.ok(!/choices/i.test(read('src/components/quotations/' + f)), f)
-    assert.ok(!/choices/i.test(read('src/lib/quotations/clientWorkbook.ts')))
+  test('the client views draw the choices from step 2 on (migration 20270809000000): the document, the Excel sheet and the shared helpers, never the note', () => {
+    assert.ok(read('src/components/quotations/QuotationDocument.tsx').includes('choiceRowsOf(doc.areas, doc.lines)'))
+    assert.ok(read('src/lib/quotations/clientWorkbook.ts').includes('addChoicesSheet(wb, input)'))
+    assert.ok(!read('src/lib/quotations/choicesDoc.ts').includes('.note'), 'the choice note is never read for the client')
   })
 })

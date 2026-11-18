@@ -1340,6 +1340,8 @@ describe('the applied migrations are frozen', () => {
       '20270808000000_picture_wallet.sql',
       // Quotations: client choices, one column with a default on the lines and quotation_save re-created with one more field; no existing row changes.
       '20270808000100_quotation_client_choices.sql',
+      // Quotations: the client's copy carries the client choices (never the note); one function body replaced, no table or row changes.
+      '20270809000000_quotation_client_choices_output.sql',
     ])
   })
 
@@ -1891,6 +1893,8 @@ describe('the applied migrations are frozen', () => {
       '20270808000000_picture_wallet.sql',
       // Quotations: client choices, one column with a default on the lines and quotation_save re-created with one more field; no existing row changes.
       '20270808000100_quotation_client_choices.sql',
+      // Quotations: the client's copy carries the client choices (never the note); one function body replaced, no table or row changes.
+      '20270809000000_quotation_client_choices_output.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
