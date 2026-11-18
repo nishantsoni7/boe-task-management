@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `14dea70a` — Quotations: the builder page tidied: request on top, City, no PI draft card, one-line Saved (migration 20270806000000, not applied) (#923)
-- Commits on this branch: 1481
+- Commit: `a7058855` — Docs: stamp #923 as merged and applied; rename its migration to 20270806000100 (the number was already taken by quotation_picture_originals) (#925)
+- Commits on this branch: 1482
 - Pages (`page.tsx`): 210   API routes (`route.ts`): 217
 - Migrations: 480 (first `20260530_create_positions.sql`, latest `20270806000100_quotation_delivery_city.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1064   Enums: 0
-- Test files: 903   Next.js 16.2.6, React 19.2.4
+- Test files: 904   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `a7058855` 2026-11-18 Docs: stamp #923 as merged and applied; rename its migration to 20270806000100 (the number was already taken by quotation_picture_originals) (#925)
 - `14dea70a` 2026-11-18 Quotations: the builder page tidied: request on top, City, no PI draft card, one-line Saved (migration 20270806000000, not applied) (#923)
 - `10b5b012` 2026-11-18 Quotation requests: the request page shows its quotation, Excel needs a reason, the salesperson asks for a change (migration 20270805000000, read-only) (#922)
 - `a5ef42ef` 2026-11-18 Docs: stamp #919 and #920 as merged; migration 20270804000000 applied (#921)
@@ -38,7 +39,6 @@
 - `62939430` 2026-11-18 Quotations: crop by drawing a box, and change a made picture again with comments (#901)
 - `aa521cd8` 2026-11-18 Quotations: copy and paste a product picture with the keyboard (#900)
 - `d2a9b142` 2026-11-18 Quotations: who sees the suggested prices (everyone, or only the administrator who switches it) (#899)
-- `b71cb3e6` 2026-11-18 Orders: the hidden page is built only in the browser (React #418), and #897 stamped (#898)
 
 ## Pages by top-level area
 

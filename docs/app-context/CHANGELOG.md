@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — The quotation builder's top area redone: Request | Status | Share as three compact cards, a four-field Client grid, the page capped at 1360 px (branch `feat/quotation-layout-v2`; PR number added at the stamp) · no SQL
+- **Owner direction (screenshot of QT-N-01008, then "Yes, build it" to an approved preview):** "layout it better UI UX... do not take full width for small elements".
+- **Status card** with a four-step tracker, one main action, the PI blocker as one line with "Show which", and the rarer outcomes as quiet buttons; **Share card** and **Request card** as tiles; **Client card** as a grid (lead time is a field, Advanced is a bar at the foot). New files `StatusCard.tsx`, `ShareCard.tsx`, `ClientCard.tsx`; `BuilderScreen` composes them. Behaviour, saved data and rules are unchanged.
+- **`QuotationsLayout` `contentMaxWidth`** (the BoeOsLayout mechanism): the builder is a centred 1360 px column with its header lined up; this changes the 13 Nov "full width" on wide screens only. On a phone the header is one row.
+- **Tests:** new `topRow.test.tsx`; `builderPolish`, `builderRedesign`, `leadTime.dom` read the new files; 369 quotation and ledger tests, tsc and eslint clean. Drawn in headless Edge from the real components at 1900, 1366 and 390 px. **Not seen** signed in or on a real phone. Rollback: revert the commit (no data or SQL).
+
 ## 2026-11-18 — Quotation page tidied: the request on top, City, no PI draft card, one-line Saved (PR #923, merged 18 Nov 2026 14:11 IST as `14dea70a`) · migration `20270806000100_quotation_delivery_city` (APPLIED 18 Nov 2026, afternoon: one column, `quotation_save` re-created; first merged as `20270806000000`, renamed)
 - **Owner direction (three screenshots of QT-MS-01007, then "Go with the recommended choice on all three"):** the Quotation request card first on the page; the PI draft card deleted; Project type off the Client card; City instead of Delivery state; "Saved" on one line and no Total in the header; everything arranged neatly.
 - **City:** new column `quotations.delivery_city`; the Client card asks for it, and a well-known city fills the state and the tax (`cities.ts`); Delivery state and GST type are side by side under Advanced client details. Not on the client's copy.

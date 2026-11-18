@@ -79,26 +79,70 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .needs { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .needs ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; flex: 1; min-width: 0; }
 .needs li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.statusBar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 16px; background: var(--boe-surface-quiet); border-bottom: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel) var(--boe-radius-panel) 0 0; }
-.statusBar .lab { font: 600 12px var(--boe-font-body); color: var(--boe-text-muted); margin-right: 2px; }
-.statusCard .statusBar { border-bottom: 0; border-radius: var(--boe-radius-panel); }
-.lostBox { flex-basis: 100%; display: grid; gap: 6px; max-width: 520px; }
-.clientGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; }
-.taxChip { font-size: 12px; color: var(--boe-text-muted); }
-/* The status card's PI line: why Confirm is not ready yet (the button itself sits with the other status buttons) */
-.piNotes { flex-basis: 100%; display: grid; gap: 6px; }
-/* Seats and lead time (20270717000000); the Project type box is under Advanced client details */
-.leadRow { display: grid; grid-template-columns: minmax(0, 180px) minmax(0, 1fr); gap: 12px 14px; align-items: start; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--boe-border); }
-.leadRowNoSeats { grid-template-columns: minmax(0, 1fr); }
-.leadBox { display: grid; gap: 4px; min-width: 0; align-content: start; }
-.leadLab { font-size: 12px; font-weight: 600; color: var(--boe-text-strong); }
-.leadLine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 36px; }
-.leadEdit { display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr); gap: 10px; margin-top: 6px; padding: 12px; border-radius: 10px; background: var(--boe-surface-quiet); border: 1px solid var(--boe-border); }
+
+/* THE BUILDER'S TOP AREA (owner-approved preview, 18 Nov 2026): one row of three compact cards (Request | Status | Share), then the Client card
+   as a grid of fields. QuotationsLayout caps the page at 1360 px (contentMaxWidth), so nothing stretches on a wide screen.
+   Spacing: 24 px between rows, 16 px between cards, 20 px inside a card. */
+.builder { gap: 24px; }
+.builder .cardHead { padding: 14px 20px; }
+.builder .cardHead h2 { font-size: 16px; }
+.builder .cardBody { padding: 20px; }
+.band { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.5fr) minmax(0, 1.1fr); gap: 16px; align-items: stretch; }
+.bandTwo { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.1fr); }
+.tile { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
+.tileLab { display: flex; align-items: center; gap: 8px; margin: 0; font: 600 12px var(--boe-font-body); letter-spacing: .05em; text-transform: uppercase; color: var(--boe-text-muted); }
+.tileTitle { font: 600 15px/1.35 var(--boe-font-body); color: var(--boe-text); }
+.tileMeta { margin-top: 2px; font-size: 13px; color: var(--boe-text-muted); }
+.tileText { margin: 0; font-size: 12.5px; line-height: 1.5; color: var(--boe-text-muted); max-width: 52ch; }
+.tileAct { margin-top: auto; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.tileAct .chip { gap: 4px; }
+.tileNote { display: grid; gap: 8px; max-width: 520px; }
+.acts2 { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.btnQuiet { border-color: transparent; background: transparent; color: var(--boe-text-strong); }
+.btnQuiet:hover { background: var(--boe-surface-sunken); }
+.btnQuietDanger:hover { color: var(--boe-error); }
+
+/* where the quotation is in its life: done steps are ticked, the current one wears its status colour */
+.steps { list-style: none; margin: 2px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 520px; }
+.steps[data-s='draft'] { --cur-fg: var(--boe-pending-fg); --cur-bg: var(--boe-pending-bg); }
+.steps[data-s='sent'] { --cur-fg: var(--boe-working-fg); --cur-bg: var(--boe-working-bg); }
+.steps[data-s='negotiating'] { --cur-fg: var(--boe-waiting-fg); --cur-bg: var(--boe-waiting-bg); }
+.steps[data-s='confirmed'] { --cur-fg: var(--boe-completed-fg); --cur-bg: var(--boe-completed-bg); }
+.step { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; font-size: 12.5px; color: var(--boe-text-muted); }
+.step::before { content: ''; position: absolute; top: 10px; right: 50%; width: 100%; height: 2px; background: var(--boe-border); }
+.step:first-child::before { display: none; }
+.dot { position: relative; z-index: 1; width: 22px; height: 22px; box-sizing: border-box; border-radius: 50%; background: var(--boe-surface); border: 2px solid var(--boe-border-strong); display: flex; align-items: center; justify-content: center; }
+.stepDone { color: var(--boe-text-strong); }
+.stepDone .dot { background: var(--boe-completed-bg); border-color: var(--boe-completed-fg); color: var(--boe-completed-fg); }
+.stepDone::before, .stepCur::before { background: var(--boe-completed-fg); opacity: .45; }
+.stepCur { color: var(--boe-text); font-weight: 600; }
+.stepCur .dot { background: var(--cur-fg); border-color: var(--cur-fg); box-shadow: 0 0 0 4px var(--cur-bg); }
+.stepCur .dot::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--boe-surface); }
+
+/* why the main action waits: one calm line, the list is one click away; the rarer outcomes are quiet text buttons */
+.hint { border: 1px solid var(--boe-warning-border); background: var(--boe-waiting-bg); color: #5E440A; border-radius: var(--boe-radius-control); font-size: 12.5px; line-height: 1.45; }
+.hint summary { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; cursor: pointer; list-style: none; }
+.hint summary::-webkit-details-marker { display: none; }
+.hint summary svg { flex: none; margin-top: 1px; }
+.hintMore { margin-left: auto; padding-left: 12px; white-space: nowrap; font-weight: 600; color: var(--boe-brand-ink); }
+.hint[open] .hintMore { display: none; }
+.hintBody { display: grid; gap: 8px; padding: 0 12px 10px 36px; }
+.hintRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.hintRow .chip { background: rgba(255, 255, 255, .7); }
+.outcomes { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--boe-border); }
+.outcomesLab { font-size: 12.5px; color: var(--boe-text-muted); margin-right: 4px; }
+.quietRow { display: flex; gap: 2px; flex-wrap: wrap; }
+
+/* the Client card: a plain grid of fields; Advanced is a slim bar at the foot of the card */
+.fgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 20px; align-items: start; }
+.fhint { margin-top: 4px; font-size: 12px; color: var(--boe-text-muted); line-height: 1.4; }
+.leadTile { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 4px 0 10px; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); background: var(--boe-surface-quiet); font-size: 14px; }
+.cardFoot { padding: 6px 20px; border-top: 1px solid var(--boe-border); background: var(--boe-surface-quiet); border-radius: 0 0 var(--boe-radius-panel) var(--boe-radius-panel); }
+.advToggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 0; border: 0; background: none; font: 600 13px var(--boe-font-body); color: var(--boe-text-strong); cursor: pointer; text-align: left; }
+.advToggle .hintTxt { font-weight: 400; color: var(--boe-text-muted); font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.advGrid { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--boe-border); }
+.leadEdit { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 150px) minmax(0, 1fr); gap: 10px; padding: 12px; border-radius: 10px; background: var(--boe-surface-quiet); border: 1px solid var(--boe-border); }
 .leadActs { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
-.advBtn { display: flex; align-items: center; gap: 8px; width: 100%; margin-top: 14px; padding: 9px 12px; border: 1px dashed var(--boe-border-strong); border-radius: var(--boe-radius-control); background: var(--boe-surface-quiet); color: var(--boe-text-strong); font: 600 13px var(--boe-font-body); text-align: left; cursor: pointer; }
-.advBtn:hover { background: var(--boe-surface-hover); }
-.advBtn .hintTxt { font-weight: 400; color: var(--boe-text-muted); font-size: 12.5px; }
-.advBody { margin-top: 10px; padding: 14px; border-radius: 10px; background: var(--boe-surface-quiet); border: 1px solid var(--boe-border); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; }
 
 .segLab { font-size: 12.5px; color: var(--boe-text-muted); }
 .seg { display: inline-flex; border: 1px solid var(--boe-border-strong); border-radius: var(--boe-radius-control); overflow: hidden; background: var(--boe-surface); }
@@ -200,22 +244,7 @@ textarea.t3 { min-height: 86px; }
 /* Versions and Price approval: side by side, or the one that shows takes the full row (each draws nothing when it has nothing to say) */
 .bottom { display: flex; gap: 16px; align-items: flex-start; }
 .bottom > * { flex: 1 1 0; min-width: 0; }
-/* The Quotation request card, first on the page: one line of who asked and what, with Send to sales at the right */
-.reqCard { border-left: 4px solid var(--boe-brand); }
-.reqRow { display: flex; align-items: center; gap: 14px; padding: 12px 16px; flex-wrap: wrap; }
-.reqIcon { color: var(--boe-brand); flex-shrink: 0; }
-.reqMain { display: grid; gap: 2px; min-width: 0; flex: 1 1 280px; }
-.reqLab { margin: 0; font: 600 11.5px var(--boe-font-body); letter-spacing: .05em; text-transform: uppercase; color: var(--boe-text-muted); }
-.reqAct { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.reqAct .chip { gap: 4px; }
-.reqNote { display: grid; gap: 8px; padding: 0 16px 14px 50px; max-width: 700px; }
-.reqErr { margin: 0 16px 14px; }
-.topRow { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
 .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-.shareDl { display: flex; flex-wrap: wrap; gap: 8px; }
-/* one fixed column: a button label that does not wrap would otherwise widen the whole card past its edge on a 320 px phone */
-.shareBody { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
-.shareBody .btn { white-space: normal; text-align: center; }
 .linkBox { display: flex; gap: 6px; }
 .event { display: flex; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--boe-surface-sunken); font-size: 12.5px; }
 .event:last-child { border-bottom: 0; }
@@ -242,7 +271,8 @@ textarea.t3 { min-height: 86px; }
 
 /* narrower screens: the product's numbers panel goes under its boxes, lined up with them */
 @media (max-width: 1199px) {
-  .clientGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .band, .bandTwo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .fgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pl { grid-template-columns: 180px minmax(0, 1fr); }
   .plRight { grid-column: 2; justify-self: start; width: 100%; max-width: 420px; }
 }
@@ -251,15 +281,20 @@ textarea.t3 { min-height: 86px; }
 }
 /* under 1024px the Client and Share cards, and Terms and History, sit one under the other */
 @media (max-width: 1023px) {
-  .topRow, .pair { grid-template-columns: minmax(0, 1fr); }
+  .pair { grid-template-columns: minmax(0, 1fr); }
 }
 /* phone */
 @media (max-width: 767px) {
-  .grid2, .grid3, .grid4, .clientGrid, .advBody, .leadRow, .leadRowNoSeats, .leadEdit { grid-template-columns: minmax(0, 1fr); }
+  .grid2, .grid3, .grid4, .band, .bandTwo, .fgrid, .leadEdit { grid-template-columns: minmax(0, 1fr); }
   .bottom { flex-direction: column; align-items: stretch; }
-  .reqAct { flex: 1 1 100%; } .reqAct .btn { flex: 1; justify-content: center; }
-  .reqNote { padding-left: 16px; }
-  .shareDl .btn { flex: 1 1 140px; justify-content: center; }
+  .tile { padding: 16px; }
+  .builder { gap: 16px; }
+  .builder .cardHead { padding: 12px 16px; }
+  .builder .cardBody { padding: 16px; }
+  .builder .cardHead .spacer { flex-basis: 100%; height: 0; }
+  .cardFoot { padding: 4px 16px; }
+  .advToggle .hintTxt { display: none; }
+  .quietRow .btn { min-height: 44px; }
   .pl { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 12px; }
   .plPic { flex-direction: row; align-items: center; gap: 14px; }
   .plPicBtn, .plPicEmpty { width: 140px; height: 118px; flex-shrink: 0; }
