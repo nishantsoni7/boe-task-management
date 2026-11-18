@@ -14,9 +14,12 @@ type Props = {
   id: string; base: Quotation; dirty: boolean; busy: boolean; lineCount: number; phone: string
   link: string; waText: string; copied: boolean
   onCopy: () => void; onExcel: () => void; onShare: (on: boolean) => void
+  /** The logo on the pictures (20270806000200): undefined until it has loaded; changing it is for people who may edit. */
+  markOn?: boolean | null; onMark?: (on: boolean) => void
 }
 
-export function ShareCard({ id, base, dirty, busy, lineCount, phone, link, waText, copied, onCopy, onExcel, onShare }: Props) {
+export function ShareCard({ id, base, dirty, busy, lineCount, phone, link, waText, copied, onCopy, onExcel, onShare, markOn, onMark }: Props) {
+  const on = markOn !== false
   return (
     <section className={`${s.card} ${s.tile}`} aria-labelledby="q-share">
       <h2 id="q-share" className={s.tileLab}><Share2 size={15} aria-hidden /> Share with the client</h2>
@@ -26,6 +29,11 @@ export function ShareCard({ id, base, dirty, busy, lineCount, phone, link, waTex
           : <Link className={s.btn} href={`/quotations/${id}/print`} target="_blank"><Printer size={15} aria-hidden /> Download PDF</Link>}
         <button type="button" className={s.btn} onClick={onExcel} disabled={dirty || busy || lineCount === 0}><FileSpreadsheet size={15} aria-hidden /> Download Excel</button>
       </div>
+      {onMark && <label className={s.markRow}>
+        <input type="checkbox" role="switch" id="q-mark" checked={on} onChange={e => onMark(e.target.checked)}
+          disabled={busy || !base.may_edit || base.status === 'archived' || markOn === undefined || markOn === null} />
+        <span><b>Logo on pictures</b><span className={`${s.small} ${s.muted}`}>{on ? 'On: the client link and the PDF show a small Best of Exports strip across each picture.' : 'Off: the client link and the PDF show the clean pictures.'}</span></span>
+      </label>}
       {!base.share_token && <p className={s.tileText}>One link shows the quotation with pictures and a Save as PDF button. No login needed. Turning it on marks a draft as Sent.</p>}
       {base.share_token && (
         <>

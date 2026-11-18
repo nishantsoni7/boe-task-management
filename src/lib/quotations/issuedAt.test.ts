@@ -27,6 +27,7 @@ describe('the screens use it', () => {
     const print = readFileSync('src/components/quotations/DocumentScreens.tsx', 'utf8')
     assert.match(builder, /const issued = istDateOf\(issuedAt\(versionsQ\.data, base\.sent_at, base\.created_at\)\)/)
     assert.match(print, /issued_at: issuedAt\(vq\.data, x\.sent_at, x\.created_at\)/)
-    assert.match(print, /\(!!q\.data && vq\.isLoading\)\) return <LoadingScreen \/>/)
+    // Waits for the versions (and, since 18 Nov 2026, for the logo-mark switch) before drawing.
+    assert.match(print, /\(!!q\.data && \(vq\.isLoading \|\| mq\.isLoading\)\)\) return <LoadingScreen \/>/)
   })
 })

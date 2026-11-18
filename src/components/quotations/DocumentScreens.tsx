@@ -8,7 +8,7 @@ import { ArrowLeft, Download, UserRound } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
 import { createClient } from '@/lib/supabase/client'
-import { errorText, fetchPublic, fetchQuotation, pictureUrl, quotationKeys } from '@/lib/quotations/api'
+import { errorText, fetchPublic, fetchPictureMark, fetchQuotation, pictureMarkKey, pictureSrc, quotationKeys } from '@/lib/quotations/api'
 import { documentFileName } from '@/lib/quotations/documentPlan'
 import { fetchVersions, issuedAt } from '@/lib/quotations/versions'
 import { QuotationDocument } from './QuotationDocument'
@@ -55,7 +55,9 @@ export function PrintScreen() {
   const q = useQuery({ queryKey: quotationKeys.one(id), queryFn: () => fetchQuotation(supabase, id), enabled: accessLoaded, retry: false })
   // The newest sent version dates the print, as on the client link; waited for, so a PDF never carries the first send's date.
   const vq = useQuery({ queryKey: ['quotations', 'versions', id, q.data?.updated_at], queryFn: () => fetchVersions(supabase, id), enabled: accessLoaded && !!q.data, retry: false })
-  if (loading || q.isLoading || (!q.data && !q.isError) || (!!q.data && vq.isLoading)) return <LoadingScreen />
+  // The pictures the client gets: with the logo mark off (20270806000200) the print shows them clean too.
+  const mq = useQuery({ queryKey: pictureMarkKey(id), queryFn: () => fetchPictureMark(supabase, id), enabled: accessLoaded, retry: false })
+  if (loading || q.isLoading || (!q.data && !q.isError) || (!!q.data && (vq.isLoading || mq.isLoading))) return <LoadingScreen />
   if (q.isError || !q.data) return <div className={p.page}><div className={p.msg}>{errorText(q.error)}</div></div>
   const x = q.data
   // the salesperson who owns it fills in, or changes, the details it prints (20270801000000)
@@ -68,7 +70,7 @@ export function PrintScreen() {
       </>} />
       {mine && !x.owner_card_saved && <div className={p.bar}><div style={{ flex: 1 }}><MyDetailsReminder supabase={supabase} /></div></div>}
       {details && <MyDetailsDialog supabase={supabase} onClose={() => setDetails(false)} />}
-      <QuotationDocument pictureUrl={path => pictureUrl(supabase, path)} doc={{
+      <QuotationDocument pictureUrl={path => pictureSrc(supabase, path, { markOn: mq.data !== false, quotationId: id })} doc={{
         quote_no: x.quote_no, issued_at: issuedAt(vq.data, x.sent_at, x.created_at), valid_days: x.header.valid_days, client_name: x.header.client_name,
         project_name: x.header.project_name || null, contact_name: x.header.contact_name || null, salesperson: x.owner_display_name ?? x.owner_name, salesperson_title: x.owner_title,
         company_name: x.header.company_name || null, client_gstin: x.header.client_gstin || null, dimension_unit: x.header.dimension_unit,
@@ -98,7 +100,7 @@ export function PublicScreen() {
   return (
     <div className={p.page}>
       <Bar fileName={documentFileName(q.data.quote_no, q.data.project_name, q.data.client_name)} />
-      <QuotationDocument doc={q.data} pictureUrl={path => pictureUrl(supabase, path)} />
+      <QuotationDocument doc={q.data} pictureUrl={path => pictureSrc(supabase, path, { token })} />
       <p className={p.privacy}>Opening this link is recorded so your Best of Exports contact knows it reached you.</p>
     </div>
   )

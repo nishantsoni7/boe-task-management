@@ -1,8 +1,9 @@
 // POST /api/quotations/picture  { sourcePath, mode: 'clean' | 'change', instruction?, reference? }
 //
-// Image studio for a quotation product picture (phase 4, owner approved 2026-11-12). Reads the saved picture from
-// the public quotation-images bucket, sends it to the same image model Edit PI uses, and stores the result as a NEW
-// picture in the caller's own folder. Nothing on the quotation changes here: the builder shows the result beside
+// Image studio for a quotation product picture (phase 4, owner approved 2026-11-12). Reads the CLEAN original from
+// the private quotation-originals bucket (18 Nov 2026: the public copy carries the logo mark), sends it to the same
+// image model Edit PI uses, and stores the result as a NEW picture in the caller's own folder, clean in the originals
+// bucket and marked in the public one. Nothing on the quotation changes here: the builder shows the result beside
 // the original and the person chooses "Use this picture" (then Save).
 //
 // WHO MAY: a signed-in person whose quotation_my_access() says create, edit or admin (the same people who may
@@ -15,6 +16,8 @@ import { createClient } from '@/lib/supabase/server'
 import { callFal, NO_RETRY_FAILURES, toDataUrl } from '@/lib/imageEditor/falRequest'
 import { PI_IMAGE_EDIT_MODEL } from '@/lib/orders/customizationImage'
 import { sniffImageFormat } from '@/lib/xlsxMediaOptimizer'
+import { markPicture } from '@/lib/quotations/pictureMark'
+import { ORIGINALS_BUCKET } from '@/lib/quotations/pictureStore'
 import { readReference, studioProblem, studioPrompt, type StudioMode } from '@/lib/quotations/pictureStudio'
 
 export const runtime = 'nodejs'
@@ -61,7 +64,7 @@ export async function POST(req: NextRequest) {
   if (rateLimited(user.id)) return fail(429, 'RATE_LIMITED', 'Too many pictures in a minute. Wait a moment and try again.')
 
   // Everything refusable is refused BEFORE the paying call.
-  const { data: blob, error: readErr } = await s.storage.from('quotation-images').download(sourcePath)
+  const { data: blob, error: readErr } = await s.storage.from(ORIGINALS_BUCKET).download(sourcePath)
   if (readErr || !blob) return fail(404, 'SOURCE_MISSING', 'That picture could not be found. Upload it again.')
   const source = Buffer.from(await blob.arrayBuffer())
   if (sniffImageFormat(new Uint8Array(source)) !== 'jpeg') return fail(422, 'SOURCE_UNREADABLE', 'That picture could not be read. Upload it again.')
@@ -95,7 +98,11 @@ export async function POST(req: NextRequest) {
     return fail(422, 'empty_result', 'The image service did not return a usable picture. Please try again.')
   }
   const path = `${user.id}/${crypto.randomUUID()}.jpg`
-  const { error } = await s.storage.from('quotation-images').upload(path, out, { contentType: 'image/jpeg', upsert: false, cacheControl: '31536000' })
+  const stored = await s.storage.from(ORIGINALS_BUCKET).upload(path, out, { contentType: 'image/jpeg', upsert: false, cacheControl: '31536000' })
+  if (stored.error) return fail(500, 'NOT_STORED', 'The picture was made but could not be stored. Please try again.')
+  let marked: Buffer
+  try { marked = await markPicture(out) } catch { return fail(500, 'NOT_STORED', 'The picture was made but could not be prepared. Please try again.') }
+  const { error } = await s.storage.from('quotation-images').upload(path, marked, { contentType: 'image/jpeg', upsert: false, cacheControl: '31536000' })
   if (error) return fail(500, 'NOT_STORED', 'The picture was made but could not be stored. Please try again.')
   return NextResponse.json({ ok: true, path })
 }
