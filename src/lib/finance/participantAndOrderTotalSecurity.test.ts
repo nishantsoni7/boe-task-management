@@ -1323,6 +1323,8 @@ describe('the applied migrations are frozen', () => {
       // Day Close, the attendance hold: the notification type alone first, then the holds table, the Scoreboard switch and proof as a written line.
       '20270802000000_day_close_hold_notification_type.sql',
       '20270802000100_day_close_attendance_hold.sql',
+      // Day Close, the owner's payroll decision on a held day: four columns on day_close_holds.
+      '20270803000000_day_close_hold_decision.sql',
     ])
   })
 
@@ -1862,6 +1864,7 @@ describe('the applied migrations are frozen', () => {
       '20270801000000_quotation_salesperson_card.sql',
       '20270802000000_day_close_hold_notification_type.sql',
       '20270802000100_day_close_attendance_hold.sql',
+      '20270803000000_day_close_hold_decision.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

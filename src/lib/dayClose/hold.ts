@@ -21,6 +21,9 @@ import type { Caller, ServiceClient } from '@/lib/security/attendancePayrollApiA
 import { istAddDays, istDateOf, istDayStartUtc, istMinutesOfDay, istToday } from '@/lib/istDate'
 import { activeMembers, closeDay, isHoliday, loadMyDay, loadMyPrompt, loadTeam, machineTimes, onFullDayLeave, readSettings, viewerOf } from './server'
 import { isSunday } from './rules'
+import { applyAttendanceCorrection } from '@/lib/payroll/attendanceCorrectionService'
+import { fetchAttendanceForPeriod, fetchCurrentCorrections } from '@/lib/payroll/store'
+import { resolveEffectiveAttendance } from '@/lib/attendance/corrections'
 
 export const HOLD_NOTIFICATION_TYPE = 'day_close_hold'
 /** A punch at or after this minute of the IST day is a departure (5:30 pm). */
@@ -90,6 +93,14 @@ export const MESSAGES = {
   cleared: () => ({
     title: 'Today is counted',
     body: 'Thanks. Yesterday’s work is closed, so your attendance today counts.',
+  }),
+  counted: (heldDate: string) => ({
+    title: 'Your held day was counted',
+    body: `Your attendance on ${dayWords(heldDate)} was counted as a normal working day.`,
+  }),
+  absent: (heldDate: string) => ({
+    title: 'Your held day was marked absent',
+    body: `Your attendance on ${dayWords(heldDate)} was marked absent for payroll, because the work left open the day before was never closed.`,
   }),
 }
 
@@ -302,4 +313,97 @@ export async function loadTeamWithHolds(caller: Caller, dateParam: string | null
     for (const x of u.data ?? []) names.set(String(x.id), String(x.full_name ?? 'Unknown'))
   }
   return { ...r, body: { ...r.body, holds: holds.map(h => ({ ...h, name: names.get(h.employee_id) ?? 'Unknown' })) } }
+}
+
+// ─── The owner's payroll decision on a held day (20270803000000, owner 2026-11-18) ──────────────────────────────
+//
+// In Attendance -> Monthly Review the owner sees every held day of the month the person never cleared, and decides:
+//   counted  the day is paid as normal; nothing in payroll changes
+//   absent   applied through the EXISTING attendance correction (versioned, the owner's name, the draft recalculated),
+//            keeping the day's real punches and setting the day to absent
+// A hold left undecided counts as present: nothing is deducted without that click. The person is told the decision.
+
+export type MonthHold = Hold & { name: string; decision: 'counted' | 'absent' | null; decided_at: string | null }
+
+function monthBounds(year: number, month: number): { start: string; end: string } {
+  const mm = String(month).padStart(2, '0')
+  const next = month === 12 ? `${year + 1}-01-01` : `${year}-${String(month + 1).padStart(2, '0')}-01`
+  return { start: `${year}-${mm}-01`, end: istAddDays(next, -1) }
+}
+
+/** The month's held days still to decide, and those decided. Holds cleared by the person or lifted are not shown. */
+export async function loadMonthHolds(caller: Caller, year: number, month: number): Promise<R> {
+  if (!caller.isAdmin) return fail(403, 'Forbidden')
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) return fail(400, 'Choose a month.')
+  const { start, end } = monthBounds(year, month)
+  const { data, error } = await caller.svc.from('day_close_holds')
+    .select(`${HOLD_COLUMNS}, decision, decided_at`)
+    .gte('held_date', start).lte('held_date', end).order('held_date', { ascending: true })
+  // No holds table, or the decision columns not yet there: nothing to show, said plainly.
+  if (error) return ok({ holds: [], available: false })
+  const rows = ((data ?? []) as (Hold & { decision: MonthHold['decision']; decided_at: string | null })[])
+    .filter(h => h.decision !== null || h.cleared_at === null)
+  const ids = [...new Set(rows.map(h => h.employee_id))]
+  const names = new Map<string, string>()
+  if (ids.length) {
+    const u = await caller.svc.from('users').select('id, full_name').in('id', ids)
+    for (const x of u.data ?? []) names.set(String(x.id), String(x.full_name ?? 'Unknown'))
+  }
+  return ok({ available: true, holds: rows.map(h => ({ ...h, name: names.get(h.employee_id) ?? 'Unknown' })) })
+}
+
+/** The owner decides a held day: "counted" or "absent". */
+export async function decideHold(caller: Caller, id: string, body: Record<string, unknown>, now: Date = new Date()): Promise<R> {
+  if (!caller.isAdmin) return fail(403, 'Only an administrator decides a held day for payroll.')
+  const decision = body.decision
+  if (decision !== 'counted' && decision !== 'absent') return fail(400, 'Choose Count the day or Mark absent.')
+  const today = istToday(now)
+
+  const read = await caller.svc.from('day_close_holds').select(`${HOLD_COLUMNS}, decision`).eq('id', id).maybeSingle()
+  if (read.error) return fail(409, 'Held-day decisions need migration 20270803000000 applied first.')
+  const hold = read.data as (Hold & { decision: string | null }) | null
+  if (!hold) return fail(404, 'That hold does not exist.')
+  if (hold.decision) return fail(409, 'This held day was already decided.')
+  if (hold.cleared_at) return fail(409, 'This hold was already cleared, so there is nothing to decide.')
+  if (hold.held_date >= today) return fail(400, 'Decide a held day once it is over.')
+
+  let correctionId: string | null = null
+  if (decision === 'absent') {
+    const [year, month] = hold.held_date.split('-').map(Number)
+    const period = await caller.svc.from('payroll_periods').select('id').eq('payroll_year', year).eq('payroll_month', month).maybeSingle()
+    if (period.error) throw new Error(period.error.message)
+    if (!period.data) return fail(409, 'Generate the payroll draft for this month first; "Mark absent" is applied to the draft.')
+    // The day's punches as payroll sees them now (a correction carries the full pair), the day set to absent.
+    const [raw, current] = await Promise.all([
+      fetchAttendanceForPeriod(caller.svc, hold.employee_id, month, year),
+      fetchCurrentCorrections(caller.svc, hold.employee_id, month, year),
+    ])
+    const eff = resolveEffectiveAttendance(raw.find(r => r.attendance_date === hold.held_date), current.find(c => c.attendance_date === hold.held_date))
+    const outcome = await applyAttendanceCorrection(caller.svc, {
+      periodId: String(period.data.id),
+      employeeId: hold.employee_id,
+      correction: {
+        attendance_date: hold.held_date,
+        corrected_check_in_at: eff.check_in_at,
+        corrected_check_out_at: eff.check_out_at,
+        day_treatment: 'absent',
+        waive_late_arrival: false,
+        waive_early_checkout: false,
+        waive_missing_punch: false,
+        remark: `Day Close hold: ${tasksWord(hold.open_tasks)} left open on ${dayWords(hold.cause_date)} and never closed. Marked absent by the owner.`,
+      },
+      actorId: caller.id,
+      today,
+    })
+    if (!outcome.ok) return fail(outcome.status, `Not marked absent: ${outcome.error}`)
+    correctionId = outcome.correction_id
+  }
+
+  const { data, error } = await caller.svc.from('day_close_holds')
+    .update({ decision, decided_by: caller.id, decided_at: now.toISOString(), correction_id: correctionId, cleared_at: now.toISOString() })
+    .eq('id', id).is('decision', null).select('id')
+  if (error) throw new Error(error.message)
+  if ((data ?? []).length === 0) return fail(409, 'This held day was already decided.')
+  await notify(caller.svc, hold.employee_id, decision === 'counted' ? MESSAGES.counted(hold.held_date) : MESSAGES.absent(hold.held_date))
+  return ok({ decided: decision, correction_id: correctionId })
 }

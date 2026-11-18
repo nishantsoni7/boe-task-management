@@ -217,7 +217,7 @@ Shipped in PR #746 (`22d9f772`, deployed 13:45 IST). `20270704000000` APPLIED to
 
 **Not built (follow-ups).**
 - ~~Telling the person who gave a task that it was moved.~~ **Built 2026-11-18:** `moveDueDates` tells them through the ordinary task notice (`task_acknowledged`, the task's id). The title reads "Dhruv moved the due date to Mon, 23 Nov: <reason>", with the inbox badge "Date moved". A Self Task tells nobody.
-- A held day shown inside the Payroll screens. For now Team Today lists unresolved holds, and the owner decides with an attendance correction.
+- ~~A held day shown inside the Payroll screens.~~ Built 2026-11-18, see §12.
 
 **Tests.**
 - `hold.test.ts`: 10 tests.
@@ -225,4 +225,32 @@ Shipped in PR #746 (`22d9f772`, deployed 13:45 IST). `20270704000000` APPLIED to
 - `teamSwitch.test.ts`: the vote needs the Scoreboard switch.
 - `launcherBatch.test.ts`, `attendancePayrollNotifications.test.ts`: updated.
 - MemorySupabase now honours `ignoreDuplicates` on upsert, as PostgREST does.
+
+## 12. Held days at payroll (2026-11-18; migration `20270803000000`, NOT YET APPLIED)
+
+**Owner's choice (a).** A held day left undecided counts as present. The payroll lock names undecided held days but never blocks.
+
+| Where | What |
+|---|---|
+| **Attendance → Monthly Review** (the decisions view) | "Held days (Day Close)" lists the month's held days the person never cleared, plus those decided. Holds that cleared themselves, or that the owner lifted, are not shown. One button per day (`HeldDaysReview.tsx`):<br>- **Count the day:** decided, the hold closed, payroll unchanged.<br>- **Mark absent:** asks once more, then applies through the **existing attendance correction** (`applyAttendanceCorrection`: versioned, with the owner's name, refused for a locked month, the draft recalculated). It keeps the day's punches as payroll sees them and sets `day_treatment` to `absent`. It needs the month's payroll draft. |
+| The person | A notification of the decision: "Your held day was counted" / "…was marked absent" |
+| **Lock payroll** (Payroll dashboard and Results) | The confirmation adds "N Day Close held days are still undecided… Locking counts them as present" (`heldDaysLockNote`). It never blocks |
+
+**Routes** (administrators only):
+- `GET /api/day-close/holds?year=&month=` (`loadMonthHolds`)
+- `POST /api/day-close/holds/[id]/decide { decision }` (`decideHold`)
+
+**Database.** `day_close_holds` gains:
+- `decision` ('counted' | 'absent')
+- `decided_by` and `decided_at`
+- `correction_id` (only for absent)
+
+A check keeps them consistent.
+
+**Before the migration** the list is empty, and a decision is refused with "needs migration 20270803000000".
+
+**Tests.**
+- `hold.test.ts`: +4 (the month list, Count the day, Mark absent needs the draft, refusals).
+- `heldDaysLockNote.test.ts`.
+- PGlite: +2 checks.
 

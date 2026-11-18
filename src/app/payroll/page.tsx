@@ -28,6 +28,7 @@ import { DeletePayrollModal, type DeletePayrollPreview } from './DeletePayrollMo
 import { ParticipationModal, type ParticipationMember } from './ParticipationModal'
 import { ISSUE_PARAM, payrollObjectionHref, type AdminObjectionRow } from '@/lib/objections'
 import { runLockFlow } from '@/lib/attendance/lockWarning'
+import { heldDaysLockNote } from '@/components/dayClose/heldDaysLockNote'
 import { Badge, Notice, StateBlock, ui, type Tone } from '@/components/attendancePayroll/ui'
 import { HeaderActions } from '@/components/attendancePayroll/HeaderActions'
 import styles from './page.module.css'
@@ -287,10 +288,12 @@ function PayrollPeriodsPage() {
       // stated acknowledgement it records (src/lib/attendance/lockWarning.ts,
       // src/lib/payroll/lockPeriod.ts). Deliberately no longer says "this
       // cannot be undone": an admin can reopen the month through Unlock Payroll.
+      // Day Close held days still undecided are named, never blocking (owner, 2026-11-18).
+      const heldNote = await heldDaysLockNote(period.payroll_year, period.payroll_month)
       const outcome = await runLockFlow(token, period.id,
         `Lock payroll for ${label}?\n\n` +
         'Regeneration, attendance correction and employee review are disabled while a period is locked. ' +
-        'An admin can reopen it later with a stated reason.')
+        'An admin can reopen it later with a stated reason.' + heldNote)
       if (outcome.status === 'cancelled') return
       if (outcome.status === 'error') { setError(outcome.error ?? 'Lock failed'); return }
       await loadPeriods(token)
