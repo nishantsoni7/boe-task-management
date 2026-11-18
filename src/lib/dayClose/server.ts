@@ -16,8 +16,8 @@ import { buildMachineDay, machineDateOf } from '@/lib/minop/machineDay'
 import { isPlausiblePunchTime } from '@/lib/minop/punches'
 import {
   CLOSE_OPENS_MINUTES, PLAN_DUE_MINUTES, STRIKE_LABEL, UNCLOSED_LOOKBACK_DAYS,
-  countDay, dayPrompt, dayTaskList, dayTaskState, hasPendingWork, isLockedLeaveType, isSunday, isTaskDueForPlan,
-  isTaskOverdue, judgeDay, pendingWorkWords, validateCarryover, validateSummary,
+  countDay, dayPrompt, dayTaskList, dayTaskState, hasPendingWork, isLockedLeaveType, isSunday,
+  isTaskOverdue, pendingWorkWords, validateCarryover, validateSummary,
   type Carryover, type DayTask, type PendingWork, type Plan, type StrikeKind, type StrikeStatus,
 } from './rules'
 
@@ -270,23 +270,6 @@ async function memberPlanForToday(caller: Caller, now: Date): Promise<{ plan: Pl
   return { plan, today }
 }
 
-/** Filing keeps the list of open tasks due today or before, as it is now. At least one is needed. */
-export async function filePlan(caller: Caller, now: Date = new Date()): Promise<Result> {
-  const ctx = await memberPlanForToday(caller, now)
-  if (isResult(ctx)) return ctx
-  if (ctx.plan.submitted_at) return ok({ filed: true, duplicate: true })
-  const tasks = (await tasksForDay(caller.svc, [caller.id], ctx.today, []))
-    .filter(t => t.assigned_to === caller.id && isTaskDueForPlan(t, ctx.today))
-  if (tasks.length === 0) {
-    return fail(400, 'Nothing is due today. Add a Self Task for what you will do today (due today), then file your plan.')
-  }
-  const { data, error } = await caller.svc.from('day_plans')
-    .update({ submitted_at: now.toISOString(), planned_task_ids: tasks.map(t => t.id) })
-    .eq('id', ctx.plan.id).is('submitted_at', null).select('id')
-  if (error) throw new Error(error.message)
-  return ok({ filed: true, count: tasks.length, duplicate: (data ?? []).length === 0 })
-}
-
 /**
  * Closing the day, on the Task Management dashboard: every task of the day is handed in or carried to
  * another day with a reason; the summary is written and also files the day's EOD log (owner, 2026-11-12).
@@ -295,7 +278,6 @@ export async function filePlan(caller: Caller, now: Date = new Date()): Promise<
 export async function closeDay(caller: Caller, body: Record<string, unknown>, now: Date = new Date()): Promise<Result> {
   const ctx = await memberPlanForToday(caller, now)
   if (isResult(ctx)) return ctx
-  if (!ctx.plan.submitted_at) return fail(409, 'File your plan first.')
   const summary = validateSummary(body.summary)
   if (!summary.ok) return fail(400, summary.error)
 
@@ -326,6 +308,9 @@ export async function closeDay(caller: Caller, body: Record<string, unknown>, no
     const { error } = await caller.svc.from('day_close_carryovers').upsert(rows, { onConflict: 'plan_id,task_id' })
     if (error) throw new Error(error.message)
   }
+  // "Moved to a new date" really moves it (owner, 2026-11-18): the task's due date becomes the new date, and
+  // the task's history says so, as when the date is changed on the task itself.
+  await moveDueDates(caller, all, rows)
   // The day's EOD log, from the same words (Performance and the old EOD screen keep reading it).
   const eod = await caller.svc.from('daily_work_logs')
     .upsert({ user_id: caller.id, log_date: ctx.today, summary: summary.value }, { onConflict: 'user_id,log_date' })
@@ -335,6 +320,21 @@ export async function closeDay(caller: Caller, body: Record<string, unknown>, no
     .eq('id', ctx.plan.id).is('closed_at', null)
   if (error) throw new Error(error.message)
   return ok({ closed: true })
+}
+
+/** Each carried task's due date becomes its new date, with the reason in the task's history. Own tasks only. */
+export async function moveDueDates(caller: Caller, all: DayTask[], rows: (Carryover & { plan_id: string })[]): Promise<void> {
+  for (const c of rows) {
+    const t = all.find(x => x.id === c.task_id && x.assigned_to === caller.id)
+    if (!t || t.due_date === c.next_date) continue
+    const up = await caller.svc.from('tasks').update({ due_date: c.next_date }).eq('id', t.id).eq('assigned_to', caller.id)
+    if (up.error) throw new Error(up.error.message)
+    const log = await caller.svc.from('task_activity_log').insert({
+      task_id: t.id, actor_id: caller.id, action: 'due_date_changed',
+      note: `Moved at Close my day: ${c.reason}`.slice(0, 2000), old_val: t.due_date, new_val: c.next_date,
+    })
+    if (log.error) console.error('[day-close] due date history not written:', log.error.message)
+  }
 }
 
 // ─── Team Today (admins and the reviewer) ────────────────────────────────────
@@ -582,41 +582,11 @@ export async function changeMembers(caller: Caller, body: Record<string, unknown
 
 /** Writes the strikes for a date. Idempotent: a strike is written once and a decided one is never touched. */
 export async function evaluateDay(svc: ServiceClient, date: string): Promise<{ date: string; judged: number; written: number }> {
-  // Paused: nobody is struck for a rule the team has not been introduced to.
-  const settings = await readSettings(svc)
-  if (!settings.team_live) return { date, judged: 0, written: 0 }
-  const people = await activeMembers(svc)
-  if (people.length === 0 || isSunday(date)) return { date, judged: 0, written: 0 }
-  const ids = people.map(p => p.id)
-  const minopIds = people.map(p => p.minop_user_id).filter((v): v is string => !!v)
-  const [holiday, leave, times, plansRead] = await Promise.all([
-    isHoliday(svc, date),
-    onFullDayLeave(svc, ids, date),
-    machineTimes(svc, minopIds, date),
-    svc.from('day_plans').select(PLAN_COLUMNS).eq('work_date', date).in('employee_id', ids),
-  ])
-  if (plansRead.error) throw new Error(plansRead.error.message)
-  const plans = new Map(((plansRead.data ?? []) as Plan[]).map(p => [p.employee_id, p]))
-
-  const rows: { employee_id: string; work_date: string; kind: StrikeKind; detail: Record<string, unknown> }[] = []
-  let judged = 0
-  for (const p of people) {
-    const punch = (p.minop_user_id && times.get(p.minop_user_id)) || { checkInAt: null, checkOutAt: null }
-    const plan = plans.get(p.id) ?? null
-    const drafts = judgeDay({
-      date, holiday, fullDayLeave: leave.has(p.id),
-      checkInAt: punch.checkInAt, checkOutAt: punch.checkOutAt,
-      plan, openItems: 0,
-      planDueMinutes: settings.plan_due_minutes,
-    })
-    if (drafts.length || punch.checkInAt || punch.checkOutAt) judged++
-    for (const d of drafts) rows.push({ employee_id: p.id, work_date: date, kind: d.kind, detail: d.detail })
-  }
-  if (rows.length === 0) return { date, judged, written: 0 }
-  const { data, error } = await svc.from('day_strikes')
-    .upsert(rows, { onConflict: 'employee_id,work_date,kind', ignoreDuplicates: true }).select('id')
-  if (error) throw new Error(error.message)
-  return { date, judged, written: (data ?? []).length }
+  // Strikes retired (owner, 2026-11-18): one rule, "before you leave, every task due is Done or moved to a new
+  // date", and its consequence is the attendance hold, not a strike. Nothing is written here any more; the
+  // strikes already written stay on record. The cron still calls this route nightly.
+  void svc
+  return { date, judged: 0, written: 0 }
 }
 
 // ─── Leave while work is pending ─────────────────────────────────────────────

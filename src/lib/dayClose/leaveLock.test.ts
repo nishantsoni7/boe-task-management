@@ -105,16 +105,14 @@ describe('the nightly check', () => {
     assert.deepEqual(await evaluateDay(db as unknown as Caller['svc'], '2026-11-15'), { date: '2026-11-15', judged: 0, written: 0 })
   })
 
-  test('came in, never filed, never closed: two strikes, written once', async () => {
+  test('came in, never closed: no strike any more (strikes retired, owner 2026-11-18)', async () => {
     db.rows('users').find(u => u.id === DHRUV)!.minop_user_id = '17'
     db.tables.minop_punches = [
       { minop_user_id: '17', punch_at: '2026-11-13T04:32:00.000Z', punch_local: '2026-11-13 10:02:00', first_seen_at: '2026-11-13T04:32:30.000Z' },
       { minop_user_id: '17', punch_at: '2026-11-13T13:05:00.000Z', punch_local: '2026-11-13 18:35:00', first_seen_at: '2026-11-13T13:05:30.000Z' },
     ]
     const first = await evaluateDay(db as unknown as Caller['svc'], '2026-11-13')
-    assert.equal(first.written, 2)
-    assert.deepEqual(db.rows('day_strikes').map(s => s.kind).sort(), ['day_not_closed', 'no_plan'])
-    await evaluateDay(db as unknown as Caller['svc'], '2026-11-13')
-    assert.equal(db.rows('day_strikes').length, 2, 'a second run writes nothing new')
+    assert.equal(first.written, 0)
+    assert.equal(db.rows('day_strikes').length, 0)
   })
 })

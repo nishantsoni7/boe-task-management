@@ -4,11 +4,11 @@
 // person's own tasks).
 //
 //   morning   the open tasks due today or before (Self Tasks included); "Add a Self Task" for anything
-//             else; "File today's plan" by 10:30
+//             else. No plan to file (owner, 2026-11-18): today's tasks are the plan
 //   day       tasks are finished in Task Management as always. Finishing one needs proof posted on the
 //             task (the database refuses otherwise); this card only counts
-//   evening   "Close my day": every task not handed in gets a reason and a new date, and the end-of-day
-//             summary, which also files the EOD log. Before the punch-out on the machine.
+//   evening   "Close my day": every task not handed in gets a reason and a new date (the task's due date
+//             really moves), and the end-of-day summary, which also files the EOD log. Before the punch-out.
 //
 // Shown only to somebody switched on; nothing at all otherwise. Every read and write is /api/day-close/me,
 // which takes the person from the bearer token.
@@ -35,7 +35,6 @@ type DayTaskRow = {
 
 type Prompt =
   | { kind: 'none' }
-  | { kind: 'file_plan'; late: boolean; due: string }
   | { kind: 'close_day'; open: number }
   | { kind: 'closed' }
 
@@ -80,7 +79,6 @@ export function DayCard({ enabled }: { enabled: boolean }) {
 
   const plan = day.plan ?? null
   const tasks = day.tasks ?? []
-  const filed = !!plan?.submitted_at
   const closed = !!plan?.closed_at
   const counts = day.counts ?? { total: 0, done: 0, carried: 0, open: 0 }
 
@@ -90,8 +88,7 @@ export function DayCard({ enabled }: { enabled: boolean }) {
         <h2 id="day-card-heading" className={styles.title}>Today · {dayLabel(day.today)}</h2>
         <div className={styles.facts}>
           <span>Punch in <strong>{istClock(day.punch?.checkInAt)}</strong></span>
-          {filed && <span>Plan <strong>{istClock(plan?.submitted_at)}</strong></span>}
-          {filed && <span><strong>{counts.done}</strong>/{counts.total} done</span>}
+          <span><strong>{counts.done}</strong>/{counts.total} done</span>
         </div>
       </div>
 
@@ -122,8 +119,7 @@ export function DayCard({ enabled }: { enabled: boolean }) {
         </div>
       )}
 
-      {!filed && <FilePlan count={tasks.length} onDone={reload} />}
-      {filed && !closed && <CloseDay day={day} tasks={tasks.filter(t => t.state === 'open')} onDone={reload} />}
+      {!closed && <CloseDay day={day} tasks={tasks.filter(t => t.state === 'open')} onDone={reload} />}
       {closed && (
         <div className={`${styles.banner} ${styles.bannerGreen}`}>
           <CircleCheck size={20} aria-hidden="true" />
@@ -143,61 +139,31 @@ function Banner({ day }: { day: MyDay }) {
   // While the team switch is off every message here is about a rule that is paused (due, strike, proof): none is shown.
   if (day.live !== true) return null
   const p = day.prompt
-  if (p?.kind === 'file_plan') {
-    return (
-      <div className={`${styles.banner} ${p.late ? styles.bannerRed : styles.bannerAmber}`} role="status">
-        <TriangleAlert size={20} aria-hidden="true" />
-        <div>
-          <p className={styles.bannerTitle}>{p.late ? `Your plan was due at ${p.due}` : `File today’s plan by ${p.due}`}</p>
-          <p className={styles.bannerText}>Your plan is your tasks due today. Add a Self Task for anything else you will do, then file it.</p>
-        </div>
-      </div>
-    )
-  }
   if (p?.kind === 'close_day') {
     return (
       <div className={`${styles.banner} ${styles.bannerRed}`} role="status">
         <TriangleAlert size={20} aria-hidden="true" />
         <div>
-          <p className={styles.bannerTitle}>Close your day before you punch out</p>
-          <p className={styles.bannerText}>Leaving without closing it is recorded as a strike.</p>
+          <p className={styles.bannerTitle}>
+            {p.open > 0 ? `${p.open} ${p.open === 1 ? 'task is' : 'tasks are'} still open` : 'Close your day before you punch out'}
+          </p>
+          <p className={styles.bannerText}>Before you leave, finish each task or move it to a new date with a reason, then close your day.</p>
         </div>
       </div>
     )
   }
-  if (day.plan?.submitted_at && !day.plan.closed_at) {
+  if (!day.plan?.closed_at) {
     return (
       <div className={`${styles.banner} ${styles.bannerBlue}`}>
         <Clock size={20} aria-hidden="true" />
         <div>
-          <p className={styles.bannerTitle}>Plan filed. Finish each task with proof.</p>
+          <p className={styles.bannerTitle}>Your day is the tasks below. Finish each with proof.</p>
           <p className={styles.bannerText}>Before completing or submitting a task, post an update on it with a photo, a file or a link to the work. Closing the day opens at {clock(day.closeOpens)}.</p>
         </div>
       </div>
     )
   }
   return null
-}
-
-function FilePlan({ count, onDone }: { count: number; onDone: () => Promise<void> }) {
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const file = async () => {
-    if (busy) return
-    setBusy(true)
-    const r = await dayCloseFetch('/api/day-close/me', { body: { action: 'file_plan' } })
-    setBusy(false)
-    if (!r.ok) { setError(r.error); return }
-    await onDone()
-  }
-  return (
-    <div className={styles.form} style={{ marginTop: 0 }}>
-      {error && <p className={styles.error} role="alert">{error}</p>}
-      <button type="button" className={`boe-btn boe-btn-primary ${styles.wide}`} onClick={file} disabled={busy} aria-busy={busy}>
-        {busy ? 'Filing…' : count > 0 ? `File today’s plan (${count} ${count === 1 ? 'task' : 'tasks'})` : 'File today’s plan'}
-      </button>
-    </div>
-  )
 }
 
 type Carry = { reason: string; next_date: string }

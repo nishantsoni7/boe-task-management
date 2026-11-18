@@ -267,7 +267,6 @@ export function isTaskDueForPlan(task: { status: string; due_date: string | null
 
 export type DayPrompt =
   | { kind: 'none' }
-  | { kind: 'file_plan'; late: boolean; due: string }
   | { kind: 'close_day'; open: number }
   | { kind: 'closed' }
 
@@ -283,9 +282,8 @@ export function dayPrompt(input: {
 }): DayPrompt {
   if (!input.workingDay) return { kind: 'none' }
   if (input.plan?.closed_at) return { kind: 'closed' }
+  // No morning plan (owner, 2026-11-18): today's tasks are the plan. The only ask is the evening one.
   const minutes = istMinutesOfDay(input.now)
-  const due = planDueMinutes(input.checkInAt, input.date, input.planDueMinutes ?? PLAN_DUE_MINUTES)
-  if (!input.plan?.submitted_at) return { kind: 'file_plan', late: minutes > due, due: clock(due) }
   if (minutes >= (input.closeOpensMinutes ?? CLOSE_OPENS_MINUTES)) return { kind: 'close_day', open: input.openItems }
   return { kind: 'none' }
 }

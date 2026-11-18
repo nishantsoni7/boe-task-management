@@ -4,6 +4,17 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Day Close simplified: one rule, no morning plan, no strikes, "move to a new date" really moves the task (branch `claude/boe1-employee-monitoring-t5ypei`) · no SQL
+- **Owner ask.** "Keep it very simple, minimal, so that it doesn't create a resistance for the new employees", yet foolproof. Agreed: one rule, "before you leave, every task due today (and anything overdue) is Done or moved to a new date with a reason".
+- **Changed.**
+  - No 10:30 plan; Close my day works without one.
+  - No new strikes.
+  - Carry-overs now move the task's due date, written into the task's history.
+  - Team Today: no Plan or Strikes columns; "In" replaces "Planned".
+- **Next (PR 2).** The attendance hold, its notifications, proof as a written line, and a separate Scoreboard switch.
+- **Proof.** Day Close tests updated, `moveDueDates.test.ts` added, plus `tsc`, eslint, full `npm test` and `next build`.
+- **Rollback.** Revert the PR; nothing in the database changed.
+
 ## 2026-11-18 — Quotations: ask before an app link leaves a quotation with unsaved changes (PR #906, merged 18 Nov 2026 06:01 IST as `413a70c2`, live 06:03 IST) · no SQL
 - With unsaved edits, a click on any link to another page (the app's menu, the launcher, a link inside the builder) asks "You have unsaved changes. Leave without saving?"; Cancel stays. Closing or reloading the tab already asked (`beforeunload`). New `src/lib/navigation/leaveGuard.ts` (`askBeforeLeaving`, a document click listener in the capture phase; next/link skips a click whose default was prevented); `leaveGuard.dom.test.ts`. Not covered: the browser's Back button.
 

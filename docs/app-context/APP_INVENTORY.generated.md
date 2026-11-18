@@ -5,16 +5,19 @@
 
 ## Snapshot
 
-- Commit: `cbd1e73f` — Quotations: ask before an app link leaves a quotation with unsaved changes
-- Commits on this branch: 1464
+- Commit: `ebaa0f44` — Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 265
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 474 (first `20260530_create_positions.sql`, latest `20270801000000_quotation_salesperson_card.sql`)
 - Tables ever created: 263 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
-- Test files: 892   Next.js 16.2.6, React 19.2.4
+- Test files: 893   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `cbd1e73f` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes
+- `ebaa0f44` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
+- `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
+- `413a70c2` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes (#906)
+- `f9998cbe` 2026-11-18 Docs: stamp #904 (quotation name width) as merged (#905)
 - `713b6697` 2026-11-18 Quotations: plan a product name's lines at the width the live table really has (#904)
 - `22f041f1` 2026-11-18 Quotations: practical fixes from the module review; crop draws on first open (#903)
 - `25fd59ee` 2026-11-18 Quotations: the PDF shows products and prices in one table; the salesperson's own details (#902)
@@ -36,9 +39,6 @@
 - `1bf19da5` 2026-11-17 Page speed: the saved copy comes back in the right shape, then is put back after sign-in again (#886)
 - `f645047d` 2026-11-17 Docs: stamp the loader lines library (#882) as merged 0a7be599, live 18:20 IST (no SQL) (#884)
 - `1662190b` 2026-11-17 Docs: stamp the revert of #880 (#883) as merged 08012448, deployed 18:30 IST, My Tasks checked live (#885)
-- `08012448` 2026-11-17 Revert #880: putting the saved copy back crashed My Tasks (#883)
-- `0a7be599` 2026-11-17 Loading screens: fresh lines from a library of 304 instead of the same eight (#882)
-- `f69dd49e` 2026-11-17 Docs: stamp the saved-copy fix (#880) as merged 2cd29029, deployed 17:38 IST, tested live (#881)
 
 ## Pages by top-level area
 
@@ -152,7 +152,7 @@
 - `src/lib/controlCenter` — 2 source, 2 test
 - `src/lib/customerReviews` — 30 source, 41 test
 - `src/lib/dailySplash` — 4 source, 2 test
-- `src/lib/dayClose` — 6 source, 5 test
+- `src/lib/dayClose` — 6 source, 6 test
 - `src/lib/errors` — 1 source, 1 test
 - `src/lib/exhibitionLeads` — 19 source, 9 test
 - `src/lib/finance` — 60 source, 75 test

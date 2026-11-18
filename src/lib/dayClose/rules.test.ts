@@ -87,9 +87,10 @@ describe('what to do now', () => {
   const p = (hhmm: string, plan: { submitted_at: string | null; closed_at: string | null } | null, open = 0) =>
     dayPrompt({ now: new Date(ist(FRI, hhmm)), date: FRI, workingDay: true, plan, openItems: open, checkInAt: ist(FRI, '10:00') })
 
-  test('file the plan, then late', () => {
-    assert.deepEqual(p('10:10', null), { kind: 'file_plan', late: false, due: '10:30 am' })
-    assert.deepEqual(p('10:31', null), { kind: 'file_plan', late: true, due: '10:30 am' })
+  test('no morning plan (owner, 2026-11-18): nothing to do in the morning, even late, even unfiled', () => {
+    assert.deepEqual(p('10:10', null), { kind: 'none' })
+    assert.deepEqual(p('10:31', null), { kind: 'none' })
+    assert.deepEqual(p('18:05', null, 3), { kind: 'close_day', open: 3 })
   })
 
   test('quiet through the day, then close from 18:00, then closed', () => {
