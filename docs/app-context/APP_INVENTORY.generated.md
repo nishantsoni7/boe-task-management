@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `7a83d356` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- Commits on this branch: 272
+- Commit: `e9c0afd7` — Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch
+- Commits on this branch: 251
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 215
 - Migrations: 476 (first `20260530_create_positions.sql`, latest `20270802000100_day_close_attendance_hold.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
@@ -14,13 +14,11 @@
 
 ## Latest 25 commits
 
-- `7a83d356` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `e9c0afd7` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch
+- `ca56337c` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it (no SQL) (#911)
 - `1354334d` 2026-11-18 Docs: stamp #908, #909, #910 as merged (#912)
-- `5d43ab99` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `c315ef04` 2026-11-18 Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (#910)
-- `48b0bc5b` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it
 - `13ae93e7` 2026-11-18 Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5 (#909)
-- `ebaa0f44` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
 - `935c8901` 2026-11-18 Quotations: New quotation's Cancel and x work again; dialogs close on Escape; deep-link parameters leave the address (#908)
 - `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
 - `413a70c2` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes (#906)
@@ -39,6 +37,8 @@
 - `272fc217` 2026-11-17 Page speed: the PI draft page reads the cost sheet and the sample type once (#893)
 - `64d8204c` 2026-11-17 Docs: stamp the no-double-ask fix (#891) as merged c5fe668a, deployed 21:52 IST, checked live (#892)
 - `c5fe668a` 2026-11-17 Page speed: putting the saved copy back no longer asks twice (#891)
+- `15fa364f` 2026-11-17 Docs: stamp the saved-copy fix (#889) as merged 6aa09ddd, deployed 21:12 IST, 27 module pages checked live (#890)
+- `6aa09ddd` 2026-11-17 Page speed: a put-back saved copy is always asked again (the Quotations freeze), with #886 (#889)
 
 ## Pages by top-level area
 
