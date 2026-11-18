@@ -10,6 +10,7 @@ import { PriceHintLine } from './PricingDesk'
 import { TaughtPrice, type DiffersReport } from '@/components/pricing/training/TaughtPrice'
 import type { Library } from '@/lib/pricing/training/match'
 import { Pic } from './Pic'
+import { ChoicesPanel } from './ChoicesPanel'
 import { forgetPicture, pointAtPicture, type PictureTarget } from './pictureClipboard'
 import s from './quotations.module.css'
 
@@ -22,9 +23,9 @@ import s from './quotations.module.css'
  * because the database rewrites the lines and a missing key would wipe it; words typed into Material and Remarks still reach the price model.
  */
 export const REF_LABEL: Record<LineRef['kind'], string> = { swatch: 'Swatch', drawing: 'Drawing', reference: 'Reference' }
-export function LineRow({ l, area, unit, editable, qty, total, first, last, url, onChange, onUpload, onImprove, onView, hint, model, feedbackCtx, taught, onRemove, onMove, onDuplicate }: {
+export function LineRow({ l, area, unit, editable, qty, total, first, last, url, onChange, onUpload, onUploadSwatch, onImprove, onView, hint, model, feedbackCtx, taught, onRemove, onMove, onDuplicate }: {
   l: QuoteLine; area: QuoteArea | null; unit: DimensionUnit; editable: boolean; qty: number; total: number; first: boolean; last: boolean
-  url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onImprove: () => void; onView: () => void
+  url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onUploadSwatch?: (f: File) => Promise<string>; onImprove: () => void; onView: () => void
   hint?: PriceHint; model?: ModelSuggestion | null
   /** Submitted training cases to pick from (Pricing > Training), and where their photos are. */
   taught?: { library: Library; photo: (path: string) => string; differs?: (r: DiffersReport, line: { name: string; size: string | null; material: string | null; finish: string | null; qty: number }) => void }
@@ -131,6 +132,7 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
           <div className={`${s.plPieces} ${s.small} ${s.muted}`}>{l.is_optional ? 'not in the total' : `${qty.toLocaleString('en-IN')} ${qty === 1 ? 'piece' : 'pieces'}`}</div>
         </div>
       </div>
+      <ChoicesPanel choices={l.choices} editable={editable} url={url} onChange={choices => onChange({ choices })} onUpload={onUploadSwatch ?? (() => Promise.reject(new Error("Pictures cannot be added here")))} />
     </div>
   )
 }

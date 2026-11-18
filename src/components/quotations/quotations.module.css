@@ -340,3 +340,25 @@ textarea.t3 { min-height: 86px; }
 .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
 .kpi { border: 1px solid var(--boe-border); border-radius: 10px; padding: 10px 12px; background: var(--boe-surface-quiet); }
 .kpiValue { font: 700 22px var(--boe-font-heading); color: var(--boe-text); font-variant-numeric: tabular-nums; }
+
+/* Client choices under a product (20270808000000). */
+.chWrap { grid-column: 1 / -1; border-top: 1px dashed var(--boe-border); padding-top: 8px; }
+.chToggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 4px 0; font: 600 13px var(--boe-font-body); color: var(--boe-brand-ink); cursor: pointer; min-height: 32px; }
+.chWait { background: var(--boe-warning-bg, #faf0da); color: var(--boe-warning-text, #805b0d); }
+.chDone { background: var(--boe-success-bg, #e8f2ec); color: var(--boe-success-text, #276247); }
+.chBody { display: grid; gap: 10px; margin-top: 6px; }
+.chRow { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 10px; align-items: start; padding: 8px 0; border-top: 1px solid var(--boe-surface-sunken); }
+.chRow:first-child { border-top: 0; }
+.chRow:not([data-open]) { grid-template-columns: 96px minmax(0, 1fr) auto; align-items: center; }
+.chForm { display: grid; gap: 8px; min-width: 0; }
+.chSeg { display: inline-flex; border: 1px solid var(--boe-border-strong); border-radius: var(--boe-radius-control); overflow: hidden; width: fit-content; }
+.chSeg button { border: 0; background: var(--boe-surface); padding: 0 12px; min-height: 32px; font: 600 12.5px var(--boe-font-body); color: var(--boe-text); cursor: pointer; }
+.chSeg button + button { border-left: 1px solid var(--boe-border-strong); }
+.chSeg .chOn { background: var(--boe-brand-ink); color: #fff; }
+.chGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px 10px; }
+.chWide { grid-column: 1 / -1; }
+.chFoot { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+@media (max-width: 700px) {
+  .chRow, .chRow:not([data-open]) { grid-template-columns: minmax(0, 1fr); }
+  .chSeg button, .chToggle { min-height: 44px; }
+}

@@ -854,4 +854,65 @@ await db.exec(mig('20270807000000_quotation_payment_and_desk.sql'))
   ok('only an administrator changes the payment settings; a key left out keeps its value; the QR must be a PNG or JPG data URL')
 }
 
+// ── 20270808: client choices on a line (fabric, finish, stone, rope weave) ──
+await db.exec(mig('20270808000000_quotation_client_choices.sql'))
+{
+  const P = n => `00000000-0000-0000-0000-0000000000b2/${String(n).repeat(8)}-1111-1111-1111-111111111111.jpg`
+  const choices = {
+    fabric: { source: 'catalog', name: 'Berlin velvet', code: 'F18', supplier: 'V2 Homes', used_for: 'seat', photo: P(3), status: 'confirmed', confirmed_on: '2026-11-18' },
+    stone: { source: 'client', name: 'Their own slate', status: 'to_confirm' },
+  }
+  const id = await rpc(U.sales, 'quotation_create', { client_name: 'Choices Hotel' })
+  const header = { client_name: 'Choices Hotel', valid_days: 7, gst_mode: 'igst' }
+  const chair = { name: 'C1 Arm chair', qty_fixed: 6, unit_price: 20000, tax_rate: 18, client_choices: choices }
+  const table = { name: 'T1 Table', qty_fixed: 2, unit_price: 9000, tax_rate: 18 }
+  const lines = async () => (await rpc(U.sales, 'quotation_get', id)).lines.map(l => l.client_choices)
+  const price = async () => (await rpc(U.sales, 'quotation_get', id)).quotation.value_before_gst ?? null
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, { ...table, client_choices: {} }] })
+  assert.deepEqual(await lines(), [choices, {}])
+  ok('save stores the choices of each line and quotation_get returns them')
+
+  const { client_choices: _drop, ...oldChair } = chair
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [oldChair, table] })
+  assert.deepEqual(await lines(), [choices, {}])
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [table, oldChair] })
+  assert.deepEqual(await lines(), [{}, {}])
+  ok('a save without the key (an old tab) keeps a line\'s choices only when the same line sits in the same place, never another line\'s')
+
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [{ ...chair, client_choices: {} }, table] })
+  assert.deepEqual(await lines(), [{}, {}])
+  ok('an empty object clears the choices')
+
+  const bad = [
+    { leather: { source: 'catalog', status: 'to_confirm' } },
+    { fabric: { source: 'shop', status: 'to_confirm' } },
+    { fabric: { source: 'catalog', status: 'locked' } },
+    { fabric: { source: 'catalog', status: 'to_confirm', price: '5' } },
+    { fabric: { source: 'catalog', status: 'to_confirm', name: 'x'.repeat(201) } },
+    { fabric: { source: 'catalog', status: 'to_confirm', photo: '../../etc.jpg' } },
+    { fabric: { source: 'catalog', status: 'to_confirm', confirmed_on: '2026-11-18' } },
+    { fabric: { source: 'catalog', status: 'confirmed', confirmed_on: '18 Nov' } },
+    { fabric: { source: 'catalog', status: 'to_confirm', name: 5 } },
+    [{ source: 'catalog', status: 'to_confirm' }],
+  ]
+  for (const b of bad) await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [id, { header, areas: [], lines: [{ ...table, client_choices: b }] }], /QUOTATION_INVALID/)
+  ok('unknown kinds, sources or statuses, extra fields (a price), over-long text, a bad photo path or date, and a date on an unconfirmed choice are refused')
+
+  // never a price: the same lines with and without choices give the same value before GST, and the client copy has no choices
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, table] })
+  const withC = (await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, table] })).value_before_gst
+  const without = (await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [{ ...chair, client_choices: {} }, table] })).value_before_gst
+  assert.equal(String(withC), String(without))
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, table] })
+  const tok = await rpc(U.sales, 'quotation_share', id, true)
+  const pub = (await as(null, `select public.quotation_public($1) as r`, [tok], 'anon')).rows[0].r
+  assert.ok(!JSON.stringify(pub).includes('Berlin velvet') && !JSON.stringify(pub).includes('client_choices'), 'the client link does not carry the choices')
+  const ver = (await db.query(`select doc from public.quotation_versions where quotation_id = $1`, [id])).rows
+  assert.ok(ver.every(r => !JSON.stringify(r.doc).includes('client_choices')), 'a frozen version does not carry the choices')
+  ok('choices never change the value, and neither the client link nor a frozen version carries them')
+
+  await assert.rejects(() => as(null, `select public.quotation_line_choices_ok('{}'::jsonb)`, [], 'anon'), /permission denied/)
+  ok('the checker function is closed to anyone signed out')
+}
+
 console.log(`all ${checks} checks passed`)
