@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5 (branch `fix/quotation-size-to-inches`; PR number added at the stamp) · no SQL
+- **Owner rule:** a size not in inches or cm is converted to inches by default and rounded to the nearest 0.5 (8.3 → 8.5, 8.2 → 8). New `sizeToInches` in `src/lib/quotations/math.ts`: "2000 x 900 x 450 mm" → "78.5 × 35.5 × 17.5", 6'6" x 3' → "78 × 36". Inches, cm, a part with no unit and text it cannot read stay as typed.
+- Applied when the Dimensions box is left on an inches quotation (`ProductLine.tsx`) and to every imported line (`importBoq.addToQuote`: client file, Excel, PI). Test: `sizeToInches.test.ts`.
+
 ## 2026-11-18 — Quotations: New quotation's Cancel and × work again; quotation dialogs close on Escape; deep-link parameters really leave the address (branch `fix/dialog-close-buttons`; PR number added at the stamp) · no SQL
 - **Owner report:** on New quotation, Cancel and × did nothing. Measured live: on a page opened straight at `/quotations?new=1` (the menu's New quotation, a refresh) `router.replace('/quotations')` committed `/quotations?new=1` again, so the dialog stayed. Opened from the page's own button it closed. Fix: `closeNew` uses `window.history.replaceState` (Next.js follows it), the same fix `MembersWorkspace` already carried.
 - **Same pattern, same fix** where a deep-link parameter is dropped after use: Finance `?new=1` (a refresh reopened the request form), Received Payments `?payment=/&action=`, Confirmed Orders `?deleted=1`, Inventory product `?saved=`.
