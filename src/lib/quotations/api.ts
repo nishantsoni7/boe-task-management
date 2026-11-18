@@ -39,7 +39,7 @@ export type Header = {
   /** 20270717000000. The kind of venue ('' = not set; see documentPlan.PROJECT_TYPES), its seats (restaurant, cafe, brewery) and the lead time in
    *  weeks. The weeks are worked out from the owner's rules and stored; a reason present means a person changed them (the reason stays internal). */
   project_type: string; seats: number | null; lead_time_weeks: number | null; lead_time_reason: string
-  /** 20270806000000. The city it is delivered to, asked on the Client card in place of the state; the state (it decides CGST + SGST or IGST) sits under Advanced client details. */
+  /** 20270806000100. The city it is delivered to, asked on the Client card in place of the state; the state (it decides CGST + SGST or IGST) sits under Advanced client details. */
   delivery_city: string
 }
 

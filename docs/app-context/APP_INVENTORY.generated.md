@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `10b5b012` — Quotation requests: the request page shows its quotation, Excel needs a reason, the salesperson asks for a change (migration 20270805000000, read-only) (#922)
-- Commits on this branch: 1480
+- Commit: `14dea70a` — Quotations: the builder page tidied: request on top, City, no PI draft card, one-line Saved (migration 20270806000000, not applied) (#923)
+- Commits on this branch: 1481
 - Pages (`page.tsx`): 210   API routes (`route.ts`): 217
-- Migrations: 480 (first `20260530_create_positions.sql`, latest `20270806000000_quotation_delivery_city.sql`)
+- Migrations: 480 (first `20260530_create_positions.sql`, latest `20270806000100_quotation_delivery_city.sql`)
 - Tables ever created: 264 (dropped at some point: 8)   SQL functions: 1064   Enums: 0
 - Test files: 903   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `14dea70a` 2026-11-18 Quotations: the builder page tidied: request on top, City, no PI draft card, one-line Saved (migration 20270806000000, not applied) (#923)
 - `10b5b012` 2026-11-18 Quotation requests: the request page shows its quotation, Excel needs a reason, the salesperson asks for a change (migration 20270805000000, read-only) (#922)
 - `a5ef42ef` 2026-11-18 Docs: stamp #919 and #920 as merged; migration 20270804000000 applied (#921)
 - `829b7893` 2026-11-18 Quotation requests: Requests page in Quotations, dashboard card for every receiver, a notice for each new request (#920)
@@ -38,7 +39,6 @@
 - `aa521cd8` 2026-11-18 Quotations: copy and paste a product picture with the keyboard (#900)
 - `d2a9b142` 2026-11-18 Quotations: who sees the suggested prices (everyone, or only the administrator who switches it) (#899)
 - `b71cb3e6` 2026-11-18 Orders: the hidden page is built only in the browser (React #418), and #897 stamped (#898)
-- `e8b22498` 2026-11-18 Page speed: Orders pages start loading while the access check runs (#897)
 
 ## Pages by top-level area
 
@@ -541,7 +541,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270803000000_day_close_hold_decision.sql`
 - `20270804000000_quotation_request_receivers.sql`
 - `20270805000000_quotation_for_request.sql`
-- `20270806000000_quotation_delivery_city.sql`
+- `20270806000100_quotation_delivery_city.sql`
 
 ## All SQL function names
 

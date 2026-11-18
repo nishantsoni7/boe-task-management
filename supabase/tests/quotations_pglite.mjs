@@ -777,8 +777,8 @@ await db.exec(mig('20270801000000_quotation_salesperson_card.sql'))
   ok('the table is closed to direct reads, and the details functions to anyone signed out')
 }
 
-// ── 20270806000000: the delivery city (takes the Delivery state box's place on the Client card; the state stays under Advanced) ──
-await db.exec(mig('20270806000000_quotation_delivery_city.sql'))
+// ── 20270806000100: the delivery city (takes the Delivery state box's place on the Client card; the state stays under Advanced) ──
+await db.exec(mig('20270806000100_quotation_delivery_city.sql'))
 {
   const id = await rpc(U.sales, 'quotation_create', { client_name: 'City Hotel' })
   const g0 = await rpc(U.sales, 'quotation_get', id)
