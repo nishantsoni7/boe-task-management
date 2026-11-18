@@ -23,6 +23,7 @@ import {
   INSTRUCTION_MESSAGES, addChipToInstruction, instructionProblem, suggestInstruction,
 } from '@/lib/orders/customizationImage'
 import { MAX_FEEDBACK_NOTE } from '@/lib/orders/customizationLearning'
+import { CreditNote } from '@/components/imageCredits/CreditNote'
 
 export type RegeneratedPhoto = { storage_path: string; sha256: string; mime_type: string }
 
@@ -243,6 +244,7 @@ export function PiImageRegenerate({
                 <p className="pi-regen-note">Used {understood.applied.rules} company rule{understood.applied.rules === 1 ? '' : 's'}
                   {understood.applied.examples > 0 ? ` and ${understood.applied.examples} similar approved example${understood.applied.examples === 1 ? '' : 's'}` : ''}.</p>
               )}
+              <CreditNote cost={2} refreshKey={working} />
               <div className="pi-regen-actions">
                 <button type="button" className="boe-btn boe-btn-primary" disabled={busy} onClick={() => void regenerate()}>
                   {working === 'regenerate' ? 'Regenerating… (up to a minute)' : preview ? 'Regenerate again' : 'Regenerate picture'}

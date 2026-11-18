@@ -127,8 +127,16 @@ let permissionGrants: Record<string, boolean> = { view: true, create: true }
 let permissionRole: string | null = 'member'
 /** Every resolve_permission action asked for, in order. */
 let permissionCalls: string[] = []
+/** What the picture-credit wallet answers to image_credit_spend, and the wallet calls made ('spend' / 'refund'), in order. */
+let creditAnswer: unknown = { ok: true, ledger_id: 'ledger-1' }
+let creditCalls: string[] = []
 
 function supabaseReply(url: string, init?: RequestInit): Response {
+  if (url.includes('/rpc/image_credit_spend') || url.includes('/rpc/image_credit_refund')) {
+    const spending = url.includes('/rpc/image_credit_spend')
+    creditCalls.push(spending ? 'spend' : 'refund')
+    return new Response(JSON.stringify(spending ? creditAnswer : true), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
   // resolve_permission(p_user_id, p_module_key, p_action_key)
   if (url.includes('/rpc/resolve_permission')) {
     const body = JSON.parse(String(init?.body ?? '{}'))
@@ -198,6 +206,8 @@ beforeEach(() => {
   permissionGrants = { view: true, create: true }
   permissionRole = 'member'
   permissionCalls = []
+  creditAnswer = { ok: true, ledger_id: 'ledger-1' }
+  creditCalls = []
   process.env.NEXT_PUBLIC_SUPABASE_URL = SUPABASE_URL
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'stub-service-key'
   process.env.FAL_KEY = 'stub-fal-key'
@@ -354,6 +364,49 @@ describe('no retry was introduced', () => {
     stubFetch(await chair())
     await post(await chair({ cluttered: true }))
     assert.equal(providerCalls.length, 2)
+  })
+})
+
+// ═══ Picture credits ══════════════════════════════════════════════════════════
+
+describe('picture credits', () => {
+  test('a press takes credits once, before the provider, and refunds nothing when it succeeds', async () => {
+    stubFetch(await chair())
+    const res = await post(await chair({ cluttered: true }))
+    assert.equal(res.status, 200)
+    assert.deepEqual(creditCalls, ['spend'])
+  })
+
+  test('a refused wallet stops the press before any provider request, and says why in plain words', async () => {
+    creditAnswer = { ok: false, code: 'USER_MONTH' }
+    stubFetch(await chair())
+    const res = await post(await chair())
+    assert.equal(res.status, 403)
+    assert.equal(providerCalls.length, 0, 'nothing may be paid for')
+    const payload = await res.json()
+    assert.match(payload.error, /credits/i)
+    assert.equal(payload.noRetry, true)
+  })
+
+  test('a wallet that cannot be checked refuses the press rather than letting it through', async () => {
+    creditAnswer = null
+    stubFetch(await chair())
+    const res = await post(await chair())
+    assert.equal(res.status, 503)
+    assert.equal(providerCalls.length, 0)
+  })
+
+  test('fal refusing the request outright gives the credit back; a server error does not', async () => {
+    for (const [status, expected] of [[429, ['spend', 'refund']], [500, ['spend']]] as const) {
+      creditCalls = []
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(typeof input === 'object' && 'url' in input ? input.url : input)
+        if (url.startsWith(SUPABASE_URL)) return supabaseReply(url, init)
+        return new Response('upstream', { status })
+      }) as typeof globalThis.fetch
+      await post(await chair())
+      assert.deepEqual(creditCalls, expected, `provider status ${status}`)
+    }
   })
 })
 
