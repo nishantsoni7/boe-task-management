@@ -19,6 +19,7 @@ import { sniffImageFormat } from '@/lib/xlsxMediaOptimizer'
 import { markPicture } from '@/lib/quotations/pictureMark'
 import { ORIGINALS_BUCKET } from '@/lib/quotations/pictureStore'
 import { readReference, studioProblem, studioPrompt, type StudioMode } from '@/lib/quotations/pictureStudio'
+import { spendCredits } from '@/lib/imageCredits/spend'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -69,6 +70,10 @@ export async function POST(req: NextRequest) {
   const source = Buffer.from(await blob.arrayBuffer())
   if (sniffImageFormat(new Uint8Array(source)) !== 'jpeg') return fail(422, 'SOURCE_UNREADABLE', 'That picture could not be read. Upload it again.')
 
+  // Picture credits, taken just before the paying call (see src/lib/imageCredits/spend.ts).
+  const spend = await spendCredits(user.id, mode === 'clean' ? 'quotation_clean' : 'quotation_change')
+  if (!spend.ok) return fail(spend.status, spend.code, spend.message, { noRetry: true })
+
   const result = await callFal({
     modelId: PI_IMAGE_EDIT_MODEL,
     apiKey,
@@ -86,6 +91,7 @@ export async function POST(req: NextRequest) {
     },
   })
   if (!result.ok) {
+    await spend.refundIfNotBilled(result.reason)
     console.error('[quotation-picture] failed', { reason: result.reason, status: result.status, requestId: result.requestId, phase: result.phase })
     const status = result.reason === 'rate_limited' ? 429
       : result.reason === 'unsupported_image' || result.reason === 'moderation' || result.reason === 'empty_result' ? 422
