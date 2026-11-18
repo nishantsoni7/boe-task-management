@@ -62,6 +62,23 @@ export async function readSettings(svc: ServiceClient): Promise<DayCloseSettings
   }
 }
 
+/**
+ * The Scoreboard is shown to the team (owner, 2026-11-18): the team switch AND the Scoreboard's own switch
+ * (day_close_settings.scoreboard_live, 20270802000100, off by default). Fails closed: a missing column or a
+ * failed read is "off", so the Scoreboard stays hidden until the owner turns it on.
+ */
+export async function scoreboardIsLive(svc: ServiceClient): Promise<boolean> {
+  if (!(await readSettings(svc)).team_live) return false
+  return scoreboardSwitch(svc)
+}
+
+/** The Scoreboard's own switch as saved; false when it cannot be read (the migration not yet applied). */
+export async function scoreboardSwitch(svc: ServiceClient): Promise<boolean> {
+  const { data, error } = await svc.from('day_close_settings').select('scoreboard_live').eq('singleton', true).maybeSingle()
+  if (error) return false
+  return (data as { scoreboard_live?: boolean } | null)?.scoreboard_live === true
+}
+
 export type Viewer = { isMember: boolean; isReviewer: boolean; seesTeam: boolean; manages: boolean }
 
 export async function viewerOf(caller: Caller, settings: DayCloseSettings): Promise<Viewer> {
@@ -85,7 +102,7 @@ type Person = {
   is_deleted: boolean | null
 }
 
-async function activeMembers(svc: ServiceClient): Promise<Person[]> {
+export async function activeMembers(svc: ServiceClient): Promise<Person[]> {
   const { data, error } = await svc.from('day_close_members').select('employee_id').eq('active', true)
   if (error) throw new Error(error.message)
   const ids = (data ?? []).map(r => String(r.employee_id))
@@ -103,7 +120,7 @@ async function activeMembers(svc: ServiceClient): Promise<Person[]> {
 type MachineTimes = { checkInAt: string | null; checkOutAt: string | null }
 type PunchRow = { minop_user_id: string; punch_at: string; punch_local: string; first_seen_at: string }
 
-async function machineTimes(svc: ServiceClient, minopIds: string[], date: string): Promise<Map<string, MachineTimes>> {
+export async function machineTimes(svc: ServiceClient, minopIds: string[], date: string): Promise<Map<string, MachineTimes>> {
   const out = new Map<string, MachineTimes>()
   if (minopIds.length === 0) return out
   const { data, error } = await svc.from('minop_punches')
@@ -126,14 +143,14 @@ async function machineTimes(svc: ServiceClient, minopIds: string[], date: string
   return out
 }
 
-async function isHoliday(svc: ServiceClient, date: string): Promise<boolean> {
+export async function isHoliday(svc: ServiceClient, date: string): Promise<boolean> {
   const { data, error } = await svc.from('payroll_holidays').select('holiday_date').eq('holiday_date', date).limit(1)
   if (error) throw new Error(error.message)
   return (data ?? []).length > 0
 }
 
 /** People with an approved full-day leave covering the date. */
-async function onFullDayLeave(svc: ServiceClient, ids: string[], date: string): Promise<Set<string>> {
+export async function onFullDayLeave(svc: ServiceClient, ids: string[], date: string): Promise<Set<string>> {
   if (ids.length === 0) return new Set()
   const { data, error } = await svc.from('attendance_requests')
     .select('employee_id')
@@ -515,7 +532,10 @@ export async function loadMembers(caller: Caller): Promise<Result> {
     .filter(u => !u.is_deleted)
     .map(u => ({ id: String(u.id), name: String(u.full_name ?? 'Unknown'), role: String(u.role), member: on.has(String(u.id)) }))
     .sort((a, b) => a.name.localeCompare(b.name))
-  return ok({ people: list, reviewer_id: settings.reviewer_id, viewer, live: settings.team_live, live_since: settings.live_since })
+  return ok({
+    people: list, reviewer_id: settings.reviewer_id, viewer, live: settings.team_live, live_since: settings.live_since,
+    scoreboard_live: await scoreboardSwitch(caller.svc),
+  })
 }
 
 export async function changeMembers(caller: Caller, body: Record<string, unknown>, now: Date = new Date()): Promise<Result> {
@@ -533,6 +553,19 @@ export async function changeMembers(caller: Caller, body: Record<string, unknown
       .update({ reviewer_id: caller.id, updated_by: caller.id, updated_at: stamp }).eq('singleton', true).is('reviewer_id', null)
     if (error) throw new Error(error.message)
     return ok({ saved: true })
+  }
+
+  if (action === 'set_scoreboard_live') {
+    // The Scoreboard's own switch (20270802000100, owner 2026-11-18): an administrator's alone.
+    if (!caller.isAdmin) return fail(403, 'Only an administrator can switch the Scoreboard on or off.')
+    if (typeof body.live !== 'boolean') return fail(400, 'Choose on or off.')
+    const { error } = await caller.svc.from('day_close_settings')
+      .update({ scoreboard_live: body.live, updated_by: caller.id, updated_at: stamp }).eq('singleton', true)
+    if (error) {
+      if (/scoreboard_live/.test(error.message)) return fail(409, 'The Scoreboard switch needs migration 20270802000100 applied first.')
+      throw new Error(error.message)
+    }
+    return ok({ saved: true, scoreboard_live: body.live })
   }
 
   if (action === 'set_live') {

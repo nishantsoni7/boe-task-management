@@ -4,10 +4,10 @@
 
 import { NextRequest } from 'next/server'
 import { dayCloseRoute } from '@/lib/dayClose/route'
-import { loadTeam } from '@/lib/dayClose/server'
+import { loadTeamWithHolds } from '@/lib/dayClose/hold'
 
 export const dynamic = 'force-dynamic'
 
 export async function GET(req: NextRequest) {
-  return dayCloseRoute(req, 'team', caller => loadTeam(caller, req.nextUrl.searchParams.get('date')))
+  return dayCloseRoute(req, 'team', caller => loadTeamWithHolds(caller, req.nextUrl.searchParams.get('date')))
 }

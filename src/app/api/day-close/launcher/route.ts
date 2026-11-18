@@ -17,7 +17,8 @@ import { GET as machineStatus } from '@/app/api/attendance/machine-status/route'
 import { GET as myPunch } from '@/app/api/attendance/my-punch/route'
 import { GET as requestQueue } from '@/app/api/attendance-requests/route'
 import { dayCloseRoute } from '@/lib/dayClose/route'
-import { loadMyPrompt, type Result } from '@/lib/dayClose/server'
+import type { Result } from '@/lib/dayClose/server'
+import { loadMyPromptWithHold } from '@/lib/dayClose/hold'
 import { loadLauncher, parseLauncherParts } from '@/lib/dayClose/launcherBatch'
 import { loadMyScore, loadVote } from '@/lib/scoreboard/server'
 import { loadStarSeller } from '@/lib/scoreboard/starSeller'
@@ -33,7 +34,7 @@ export async function GET(req: NextRequest) {
     return { status: res.status, body: (await res.json().catch(() => ({}))) as Record<string, unknown> }
   }
   return dayCloseRoute(req, 'launcher', caller => loadLauncher(caller, parts, {
-    prompt: c => loadMyPrompt(c),
+    prompt: c => loadMyPromptWithHold(c),
     me: c => loadMyScore(c),
     vote: c => loadVote(c),
     starSeller: c => loadStarSeller(c),

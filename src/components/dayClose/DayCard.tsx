@@ -36,6 +36,7 @@ type DayTaskRow = {
 type Prompt =
   | { kind: 'none' }
   | { kind: 'close_day'; open: number }
+  | { kind: 'on_hold'; open: number; causeDate: string }
   | { kind: 'closed' }
 
 type MyDay = {
@@ -51,6 +52,8 @@ type MyDay = {
   counts?: { total: number; done: number; carried: number; open: number }
   prompt?: Prompt
   punch?: { checkInAt: string | null; checkOutAt: string | null }
+  /** The attendance hold (2026-11-18): a working day whose punch is not counted until older work is closed. */
+  hold?: { held_date: string; cause_date: string; open_tasks: number } | null
 }
 
 export function DayCard({ enabled }: { enabled: boolean }) {
@@ -139,6 +142,24 @@ function Banner({ day }: { day: MyDay }) {
   // While the team switch is off every message here is about a rule that is paused (due, strike, proof): none is shown.
   if (day.live !== true) return null
   const p = day.prompt
+  const hold = day.hold
+  if (hold) {
+    const n = hold.open_tasks
+    return (
+      <div className={`${styles.banner} ${styles.bannerRed}`} role="alert">
+        <TriangleAlert size={20} aria-hidden="true" />
+        <div>
+          <p className={styles.bannerTitle}>
+            {hold.held_date === day.today ? 'Your punch-in today is not counted yet' : `Your attendance on ${dayLabel(hold.held_date)} is on hold`}
+          </p>
+          <p className={styles.bannerText}>
+            {n} {n === 1 ? 'task' : 'tasks'} from {dayLabel(hold.cause_date)} {n === 1 ? 'is' : 'are'} still open. Finish {n === 1 ? 'it' : 'them'} or
+            move {n === 1 ? 'it' : 'them'} to a new date below, and the day counts at once.
+          </p>
+        </div>
+      </div>
+    )
+  }
   if (p?.kind === 'close_day') {
     return (
       <div className={`${styles.banner} ${styles.bannerRed}`} role="status">
@@ -147,7 +168,7 @@ function Banner({ day }: { day: MyDay }) {
           <p className={styles.bannerTitle}>
             {p.open > 0 ? `${p.open} ${p.open === 1 ? 'task is' : 'tasks are'} still open` : 'Close your day before you punch out'}
           </p>
-          <p className={styles.bannerText}>Before you leave, finish each task or move it to a new date with a reason, then close your day.</p>
+          <p className={styles.bannerText}>Before you leave, finish each task or move it to a new date with a reason, then close your day. Otherwise tomorrow’s attendance will be on hold.</p>
         </div>
       </div>
     )
@@ -158,7 +179,7 @@ function Banner({ day }: { day: MyDay }) {
         <Clock size={20} aria-hidden="true" />
         <div>
           <p className={styles.bannerTitle}>Your day is the tasks below. Finish each with proof.</p>
-          <p className={styles.bannerText}>Before completing or submitting a task, post an update on it with a photo, a file or a link to the work. Closing the day opens at {clock(day.closeOpens)}.</p>
+          <p className={styles.bannerText}>Before completing or submitting a task, post an update on it saying what you did (one line is enough), or a photo, a file or a link. Closing the day opens at {clock(day.closeOpens)}.</p>
         </div>
       </div>
     )

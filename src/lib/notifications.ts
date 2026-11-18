@@ -174,6 +174,9 @@ export const ATTENDANCE_PAYROLL_NOTIFICATION_TYPES = [
   // The attendance machine has stopped sending (20270511000000), to every active
   // admin, once a day. The one row here nobody raised: see machineHealth.ts.
   'attendance_machine_stopped',
+  // Day Close, the attendance hold (20270802000000): "you left with work open", "tomorrow is on hold", "your
+  // punch-in is not counted", "today is counted". To the person themselves.
+  'day_close_hold',
 ] as const
 
 // PostgREST `type.in.(...)` fragment for an enum column — the safe equivalent

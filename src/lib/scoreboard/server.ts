@@ -11,7 +11,7 @@ import { istAddDays, istDayEndUtc, istDayStartUtc, istToday } from '@/lib/istDat
 import { buildMachineDay, machineDateOf, MACHINE_ATTENDANCE_FROM } from '@/lib/minop/machineDay'
 import { isPlausiblePunchTime } from '@/lib/minop/punches'
 import { fetchActiveSettings } from '@/lib/payroll/settingsStore'
-import { readSettings as readDayCloseSettings } from '@/lib/dayClose/server'
+import { readSettings as readDayCloseSettings, scoreboardIsLive } from '@/lib/dayClose/server'
 import { dayCloseSince } from '@/lib/dayClose/rules'
 import { monthMessages } from './reviewServer'
 import {
@@ -218,7 +218,7 @@ export async function scoreEveryone(svc: ServiceClient, date: string, dayComplet
 /** Writes the day's scores once. A day already written is left exactly as it was (the table refuses changes). */
 export async function snapshotDay(svc: ServiceClient, date: string): Promise<{ date: string; written: number }> {
   // Paused (20270704000000): no record is written. The days can be filled in later with ?from=&to= once it is live.
-  if (!(await readDayCloseSettings(svc)).team_live) return { date, written: 0 }
+  if (!(await scoreboardIsLive(svc))) return { date, written: 0 }
   const scores = await scoreEveryone(svc, date, true)
   if (scores.length === 0) return { date, written: 0 }
   const rows = scores.map(s => ({
@@ -238,7 +238,7 @@ export async function loadMyScore(caller: Caller, now: Date = new Date()): Promi
   const today = istToday(now)
   const month = monthStartOf(today)
   // Paused (20270704000000): the card draws nothing, and nothing is worked out. An unreadable switch throws: the card stays hidden.
-  if (!(await readDayCloseSettings(svc)).team_live) return ok({ today, month, scored: false, top5: [], mostImproved: null, paused: true })
+  if (!(await scoreboardIsLive(svc))) return ok({ today, month, scored: false, top5: [], mostImproved: null, paused: true })
   const everyone = await scoreEveryone(svc, today, false)
   const me = everyone.find(s => s.id === caller.id) ?? null
 
@@ -373,7 +373,7 @@ export async function saveTarget(caller: Caller, body: Record<string, unknown>, 
 export async function loadVote(caller: Caller, now: Date = new Date()): Promise<Result> {
   const w = voteWindow(now)
   // Paused (20270704000000): no vote card, because the vote feeds a score nobody has been shown yet.
-  if (!(await readDayCloseSettings(caller.svc)).team_live) return ok({ month: w.month, open: false, opensOn: w.opensOn, closesAt: w.closesAt, canVote: false })
+  if (!(await scoreboardIsLive(caller.svc))) return ok({ month: w.month, open: false, opensOn: w.opensOn, closesAt: w.closesAt, canVote: false })
   const people = await scoredPeople(caller.svc)
   const canVote = people.some(p => p.id === caller.id)
   const base = { month: w.month, open: w.open, opensOn: w.opensOn, closesAt: w.closesAt, canVote }
@@ -392,7 +392,7 @@ export async function loadVote(caller: Caller, now: Date = new Date()): Promise<
 
 export async function castVote(caller: Caller, body: Record<string, unknown>, now: Date = new Date()): Promise<Result> {
   const w = voteWindow(now)
-  if (!(await readDayCloseSettings(caller.svc)).team_live) return fail(409, 'The Scoreboard has not been switched on yet.')
+  if (!(await scoreboardIsLive(caller.svc))) return fail(409, 'The Scoreboard has not been switched on yet.')
   if (!w.open) return fail(409, w.closed ? 'This month’s vote has closed.' : `The vote opens on ${w.opensOn}.`)
   const people = await scoredPeople(caller.svc)
   if (!people.some(p => p.id === caller.id)) return fail(403, 'Only people on the Scoreboard vote.')

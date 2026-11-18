@@ -4,6 +4,7 @@ import { handleMinopPathTokenWebhook, type MinopRawDeliveryRow } from '@/lib/min
 import { machineRangeOf, rebuildMachineDays } from '@/lib/minop/machineAttendance'
 import { forwardPunchesToPartner } from '@/lib/minop/partnerFeed'
 import { recordMinopPunches } from '@/lib/minop/punches'
+import { onPunches } from '@/lib/dayClose/hold'
 
 export const runtime = 'nodejs'
 // The push to the operations ERP runs after Minop has its reply, and may retry for up to about 20 seconds.
@@ -56,6 +57,9 @@ async function recordPunches(receivedAt: string, payload: unknown): Promise<void
   const svc = serviceClient()
   if (!svc) return
   await recordMinopPunches(svc, receivedAt, payload)
+  // Day Close's attendance hold (2026-11-18): the punch-in on a held day and the punch-out with work open are
+  // told once Minop has its reply. onPunches never throws, and does nothing while the team switch is off.
+  after(() => onPunches(svc, receivedAt))
 
   // The raw message is safe, so a failure here is logged and left to the nightly sync.
   const range = machineRangeOf(payload)

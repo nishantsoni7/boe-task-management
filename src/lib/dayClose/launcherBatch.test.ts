@@ -102,7 +102,8 @@ describe('the route and the wiring', () => {
     const batch = src('src/app/api/day-close/launcher/route.ts')
     assert.match(batch, /dayCloseRoute\(req, 'launcher'/)
     for (const [loader, route] of [
-      ['loadMyPrompt', 'src/app/api/day-close/prompt/route.ts'],
+      // The strip's loader carries the attendance hold (2026-11-18), in the batch and in the route alike.
+      ['loadMyPromptWithHold', 'src/app/api/day-close/prompt/route.ts'],
       ['loadMyScore', 'src/app/api/scoreboard/me/route.ts'],
       ['loadVote', 'src/app/api/scoreboard/vote/route.ts'],
       ['loadStarSeller', 'src/app/api/scoreboard/star-seller/route.ts'],
