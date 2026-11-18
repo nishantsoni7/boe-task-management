@@ -7,9 +7,9 @@
 import { mount } from '@/lib/testing/domHarness'
 import { afterEach, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { act, createElement, useState } from 'react'
+import { act, createElement, Fragment, useState } from 'react'
 import '@/lib/testing/cssModuleStub'
-import { LeadTime, effectiveLeadTime } from './LeadTime'
+import { LeadTime, ProjectTypeField, effectiveLeadTime } from './LeadTime'
 import type { Header } from '@/lib/quotations/api'
 import type { QuoteArea } from '@/lib/quotations/math'
 
@@ -19,10 +19,12 @@ afterEach(() => { cleanup?.(); cleanup = null })
 const AREAS: QuoteArea[] = [{ key: 'a', name: 'Boho room', style: '', multiplier: 56, unit_label: 'rooms' }]
 const base = { project_type: '', seats: null, lead_time_weeks: null, lead_time_reason: '' } as Header
 
-// The parent the builder is: it holds the header and applies each patch.
+// The parent the builder is: it holds the header and applies each patch. The Project type box sits under Advanced client
+// details and the lead time on the card (18 Nov 2026); both read the same header, so they are drawn together here.
 function Parent({ start, areas = AREAS, log }: { start: Partial<Header>; areas?: QuoteArea[]; log: Partial<Header>[] }) {
   const [h, setH] = useState<Header>({ ...base, ...start })
-  return createElement(LeadTime, { h, areas, editable: true, onChange: (p: Partial<Header>) => { log.push(p); setH(x => ({ ...x, ...p })) } })
+  const onChange = (p: Partial<Header>) => { log.push(p); setH(x => ({ ...x, ...p })) }
+  return createElement(Fragment, null, createElement(ProjectTypeField, { h, editable: true, onChange }), createElement(LeadTime, { h, areas, editable: true, onChange }))
 }
 // the harness types into inputs; a select is chosen the same way a browser does: set the value, then a change event
 const setSelect = (el: HTMLSelectElement, value: string) => {
@@ -54,7 +56,7 @@ describe('the Client card block', () => {
   test('choosing a restaurant asks for the seats, and the lead time appears once they are typed', () => {
     const log: Partial<Header>[] = []
     const ui = mount(createElement(Parent, { start: {}, areas: [], log })); cleanup = () => ui.unmount()
-    assert.match(ui.text(), /Not printed/); assert.match(ui.text(), /Choose Hotel, Resort, Restaurant, Café or Brewery/)
+    assert.match(ui.text(), /Not printed/); assert.match(ui.text(), /Choose the project type \(Hotel, Resort, Restaurant, Café or Brewery\) under Advanced client details/)
     setSelect(ui.one<HTMLSelectElement>('#q-ptype'), 'restaurant')
     assert.deepEqual(log[0], { project_type: 'restaurant' })
     assert.match(ui.text(), /Add the seats to see it/)
@@ -102,6 +104,7 @@ describe('the builder uses it', () => {
     const { readFileSync } = await import('node:fs')
     const src = readFileSync('src/components/quotations/BuilderScreen.tsx', 'utf8')
     assert.ok(src.includes('<LeadTime h={h} areas={areas} editable={editable}'))
+    assert.ok(src.includes('<ProjectTypeField h={h} editable={editable}'), 'the Project type box is in Advanced client details')
     assert.ok(src.includes('saveDoc({ ...h, lead_time_weeks: effectiveLeadTime(h, areas) }, areas, lines, base.updated_at)'))
   })
 })

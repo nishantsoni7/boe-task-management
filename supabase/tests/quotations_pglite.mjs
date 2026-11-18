@@ -777,4 +777,36 @@ await db.exec(mig('20270801000000_quotation_salesperson_card.sql'))
   ok('the table is closed to direct reads, and the details functions to anyone signed out')
 }
 
+// ── 20270806000000: the delivery city (takes the Delivery state box's place on the Client card; the state stays under Advanced) ──
+await db.exec(mig('20270806000000_quotation_delivery_city.sql'))
+{
+  const id = await rpc(U.sales, 'quotation_create', { client_name: 'City Hotel' })
+  const g0 = await rpc(U.sales, 'quotation_get', id)
+  assert.equal(g0.quotation.delivery_city, null, 'an existing quotation starts with no city')
+  const header = { client_name: 'City Hotel', valid_days: 7, gst_mode: 'igst', supply_state: 'Telangana' }
+  const line = { name: 'C1 Chair', qty_fixed: 2, tax_rate: 18, unit_price: 1000 }
+  const city = async () => (await rpc(U.sales, 'quotation_get', id)).quotation.delivery_city
+  await rpc(U.sales, 'quotation_save', id, { expected_updated_at: g0.quotation.updated_at, header: { ...header, delivery_city: '  Hyderabad ' }, areas: [], lines: [line] })
+  assert.equal(await city(), 'Hyderabad')
+  assert.equal((await rpc(U.sales, 'quotation_get', id)).quotation.supply_state, 'Telangana', 'the state is saved beside it')
+  ok('save stores the city (trimmed) next to the state, and quotation_get returns it')
+
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [line] })
+  assert.equal(await city(), 'Hyderabad')
+  ok('a save from a tab opened before the change (no delivery_city key) keeps the city')
+
+  await rpc(U.sales, 'quotation_save', id, { header: { ...header, delivery_city: '   ' }, areas: [], lines: [line] })
+  assert.equal(await city(), null)
+  ok('a blank city clears it')
+
+  await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [id, { header: { ...header, delivery_city: 'x'.repeat(81) }, areas: [], lines: [line] }], /QUOTATION_INVALID/)
+  ok('a city longer than 80 characters is refused')
+
+  await rpc(U.sales, 'quotation_save', id, { header: { ...header, delivery_city: 'Jaipur' }, areas: [], lines: [line] })
+  const tok = await rpc(U.sales, 'quotation_share', id, true)
+  const pub = (await as(null, `select public.quotation_public($1) as r`, [tok], 'anon')).rows[0].r
+  assert.ok(!('delivery_city' in pub), 'the client copy does not carry the city')
+  ok('the client link and the frozen version do not carry the city')
+}
+
 console.log(`all ${checks} checks passed`)

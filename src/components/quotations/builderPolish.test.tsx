@@ -36,7 +36,7 @@ const header = (over: Partial<Header> = {}): Header => ({
   client_name: 'Aurora', project_name: 'Resort', contact_name: 'Rahul Mehta', contact_phone: '+91 90000 00001', contact_role: 'Architect',
   client_type: 'architect', supply_state: 'Rajasthan', gst_mode: 'cgst_sgst', discount_pct: 0, fabric_amount: 0, packing_amount: 0,
   transport_note: '', valid_days: 7, notes: '', internal_notes: '', client_email: 'rahul@aurora.example', company_name: '', client_gstin: '',
-  dimension_unit: 'in', project_type: '', seats: null, lead_time_weeks: null, lead_time_reason: '', ...over,
+  dimension_unit: 'in', project_type: '', seats: null, lead_time_weeks: null, lead_time_reason: '', delivery_city: 'Jaipur', ...over,
 })
 const draw = (l: QuoteLine) => renderToStaticMarkup(
   <LineRow l={l} area={null} unit="in" editable qty={2} total={77000} first last url={p => `https://img.example/${p}`}
@@ -73,16 +73,16 @@ describe('Finish is no longer a box (item 3)', () => {
 })
 
 describe('contact person and email (items 5 and 7)', () => {
-  test('both left the main block and sit in Advanced, with the phone and the delivery state staying on top', () => {
+  test('both left the main block and sit in Advanced, with the phone and the city staying on top (the state went down to Advanced on 18 Nov)', () => {
     const basic = SCREEN.slice(SCREEN.indexOf('className={s.clientGrid}'), SCREEN.indexOf('className={s.advBtn}'))
-    assert.ok(basic.includes('q-phone') && basic.includes('q-state') && basic.includes('q-client-name'))
-    assert.ok(!basic.includes('q-contact') && !basic.includes('q-email'))
+    assert.ok(basic.includes('q-phone') && basic.includes('q-city') && basic.includes('q-client-name'))
+    assert.ok(!basic.includes('q-contact') && !basic.includes('q-email') && !basic.includes('q-state'))
     const adv = SCREEN.slice(SCREEN.indexOf('id="q-advanced"'), SCREEN.indexOf('</section>', SCREEN.indexOf('id="q-advanced"')))
     assert.ok(adv.includes('id="q-contact"') && adv.includes('id="q-email"') && adv.includes('id="q-role"'))
   })
-  test('a save still carries the contact, the role, the email and the delivery state (quotation_save clears the ones a header leaves out)', () => {
+  test('a save still carries the contact, the role, the email, the city and the delivery state (quotation_save clears the ones a header leaves out)', () => {
     const doc = saveDoc(header(), [], [line()], '2026-11-14T00:00:00Z')
-    for (const k of ['contact_name', 'contact_phone', 'contact_role', 'client_email', 'supply_state', 'client_type'] as const) {
+    for (const k of ['contact_name', 'contact_phone', 'contact_role', 'client_email', 'supply_state', 'delivery_city', 'client_type'] as const) {
       assert.equal(doc.header[k], header()[k], k)
     }
     assert.match(SCREEN, /saveDoc\(\{ \.\.\.h, lead_time_weeks: effectiveLeadTime\(h, areas\) \}/, 'the builder sends the whole header')
@@ -117,7 +117,9 @@ describe('the page rows (items 8 and 9)', () => {
     assert.ok(!pair.includes('s.grid2'), 'the two notes boxes are stacked, not side by side')
     const bottom = between('className={s.bottom}', '{importing && profile')
     assert.ok(!bottom.includes('Share with the client') && !bottom.includes('<h2>History</h2>'))
-    for (const w of ['RequestCard', 'VersionsCard', 'PriceCard', 'PiCard']) assert.ok(bottom.includes(w), w)
+    // the Quotation request card moved to the top and the PI draft card is gone (owner, 18 Nov 2026): Versions and Price approval are left
+    for (const w of ['VersionsCard', 'PriceCard']) assert.ok(bottom.includes(w), w)
+    for (const w of ['RequestCard', 'PiCard']) assert.ok(!bottom.includes(w), `${w} is not at the bottom any more`)
     assert.match(rule('.pair'), /repeat\(2, minmax\(0, 1fr\)\);/)
   })
   test('the Share card is one fixed column whose button labels wrap: on a 320 px phone a label that does not wrap used to push every button past the card', () => {
@@ -128,6 +130,39 @@ describe('the page rows (items 8 and 9)', () => {
   test('under 1024 px the two rows stack, and on a phone the download buttons share the width', () => {
     assert.match(CSS, /@media \(max-width: 1023px\) \{\s*\.topRow, \.pair \{ grid-template-columns: minmax\(0, 1fr\); \}/)
     assert.match(CSS, /\.shareDl \.btn \{ flex: 1 1 140px; justify-content: center; \}/)
+  })
+})
+
+describe('the tidy-up of 18 Nov 2026 (owner: request on top, no PI draft card, City, one-line Saved, no Total)', () => {
+  const between = (from: string, to: string) => SCREEN.slice(SCREEN.indexOf(from), SCREEN.indexOf(to))
+  test('the Quotation request card is the first card on the page, above the Needs you strip and the Status bar', () => {
+    assert.ok(SCREEN.indexOf('<RequestCard') > 0)
+    assert.ok(SCREEN.indexOf('<RequestCard') < SCREEN.indexOf('waiting.length > 0'))
+    assert.ok(SCREEN.indexOf('<RequestCard') < SCREEN.indexOf('className={s.statusBar}'))
+  })
+  test('the PI draft card and the PI-format download are gone, but a sent quotation can still become a PI from the Status bar', () => {
+    assert.ok(!/PiCard|downloadPi|Download in PI format/.test(SCREEN))
+    const status = between('className={s.statusBar}', 'className={s.topRow}')
+    for (const w of ['Confirm → make PI draft', 'Open the PI draft', 'onClick={confirmToPi}', 'Before it can become a PI:', 'Waiting for price approval']) assert.ok(status.includes(w), w)
+    assert.match(SCREEN, /const canConfirm = base\.may_edit && !base\.pi && \(base\.status === 'sent' \|\| base\.status === 'negotiating'\)/)
+    assert.match(status, /disabled=\{busy \|\| dirty \|\| piProblems\.length > 0 \|\| priceBlocked\}/, 'the same four reasons the old card had for waiting')
+  })
+  test('the page header says Saved on one line and no longer carries the total', () => {
+    const actions = between('const actions = (', 'const body = (')
+    assert.ok(!actions.includes('Total') && !actions.includes('formatINR'), 'no Total in the header: it is in the totals card')
+    assert.ok(actions.includes('s.saveState') && actions.includes('Saved') && actions.includes('Unsaved changes'))
+    assert.match(rule('.saveState'), /white-space: nowrap;/)
+    assert.match(rule('.saveState'), /flex-shrink: 0;/)
+  })
+  test('the Client card asks for the city; a well-known city fills the state and the tax, the state box is under Advanced', () => {
+    assert.ok(!SCREEN.includes('<span>Delivery state</span>') || SCREEN.indexOf('<span>Delivery state</span>') > SCREEN.indexOf('id="q-advanced"'))
+    assert.match(SCREEN, /const st = stateOfCity\(v\)/)
+    assert.match(SCREEN, /\.\.\.\(st \? \{ supply_state: st, gst_mode: gstModeForState\(st\) \} : \{\}\)/, 'an unknown city leaves the state and the tax alone')
+    assert.ok(SCREEN.includes('maxLength={80}'), 'the database refuses more than 80 characters')
+  })
+  test('Versions and Price approval fill the bottom row; one alone takes the whole row', () => {
+    assert.match(rule('.bottom'), /display: flex;/)
+    assert.match(CSS, /\.bottom > \* \{ flex: 1 1 0; min-width: 0; \}/)
   })
 })
 

@@ -39,6 +39,8 @@ export type Header = {
   /** 20270717000000. The kind of venue ('' = not set; see documentPlan.PROJECT_TYPES), its seats (restaurant, cafe, brewery) and the lead time in
    *  weeks. The weeks are worked out from the owner's rules and stored; a reason present means a person changed them (the reason stays internal). */
   project_type: string; seats: number | null; lead_time_weeks: number | null; lead_time_reason: string
+  /** 20270806000000. The city it is delivered to, asked on the Client card in place of the state; the state (it decides CGST + SGST or IGST) sits under Advanced client details. */
+  delivery_city: string
 }
 
 export type QuotationEvent = { kind: string; detail: Record<string, unknown>; at: string; actor_name: string | null }
@@ -190,6 +192,7 @@ export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation
       client_email: str('client_email'), company_name: str('company_name'), client_gstin: str('client_gstin'), dimension_unit: toDimensionUnit(q.dimension_unit),
       project_type: str('project_type'), seats: q.seats === null || q.seats === undefined ? null : Number(q.seats) || null,
       lead_time_weeks: q.lead_time_weeks === null || q.lead_time_weeks === undefined ? null : Number(q.lead_time_weeks) || null, lead_time_reason: str('lead_time_reason'),
+      delivery_city: str('delivery_city'),
     },
     areas: toAreas(r.areas), lines: toLines(r.lines), events: r.events, pi: r.pi ?? null, price: r.price ?? null, request: r.request ?? null,
   }

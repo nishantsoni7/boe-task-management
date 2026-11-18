@@ -85,9 +85,11 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .lostBox { flex-basis: 100%; display: grid; gap: 6px; max-width: 520px; }
 .clientGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 14px; }
 .taxChip { font-size: 12px; color: var(--boe-text-muted); }
-/* Project type, seats and lead time (20270717000000) */
-.leadRow { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 180px) minmax(0, 1fr); gap: 12px 14px; align-items: start; margin-top: 14px; }
-.leadRowNoSeats { grid-template-columns: minmax(0, 220px) minmax(0, 1fr); }
+/* The status card's PI line: why Confirm is not ready yet (the button itself sits with the other status buttons) */
+.piNotes { flex-basis: 100%; display: grid; gap: 6px; }
+/* Seats and lead time (20270717000000); the Project type box is under Advanced client details */
+.leadRow { display: grid; grid-template-columns: minmax(0, 180px) minmax(0, 1fr); gap: 12px 14px; align-items: start; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--boe-border); }
+.leadRowNoSeats { grid-template-columns: minmax(0, 1fr); }
 .leadBox { display: grid; gap: 4px; min-width: 0; align-content: start; }
 .leadLab { font-size: 12px; font-weight: 600; color: var(--boe-text-strong); }
 .leadLine { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 36px; }
@@ -195,8 +197,19 @@ textarea.t3 { min-height: 86px; }
 .stdTerms dl { margin: 0; display: grid; gap: 6px; }
 .stdTerms dl > div { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 10px; }
 .stdTerms dt { font-weight: 600; } .stdTerms dd { margin: 0; color: var(--boe-text-strong); }
-.bottom { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-.bcol { display: grid; gap: 16px; min-width: 0; align-content: start; }
+/* Versions and Price approval: side by side, or the one that shows takes the full row (each draws nothing when it has nothing to say) */
+.bottom { display: flex; gap: 16px; align-items: flex-start; }
+.bottom > * { flex: 1 1 0; min-width: 0; }
+/* The Quotation request card, first on the page: one line of who asked and what, with Send to sales at the right */
+.reqCard { border-left: 4px solid var(--boe-brand); }
+.reqRow { display: flex; align-items: center; gap: 14px; padding: 12px 16px; flex-wrap: wrap; }
+.reqIcon { color: var(--boe-brand); flex-shrink: 0; }
+.reqMain { display: grid; gap: 2px; min-width: 0; flex: 1 1 280px; }
+.reqLab { margin: 0; font: 600 11.5px var(--boe-font-body); letter-spacing: .05em; text-transform: uppercase; color: var(--boe-text-muted); }
+.reqAct { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.reqAct .chip { gap: 4px; }
+.reqNote { display: grid; gap: 8px; padding: 0 16px 14px 50px; max-width: 700px; }
+.reqErr { margin: 0 16px 14px; }
 .topRow { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; align-items: start; }
 .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .shareDl { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -207,7 +220,8 @@ textarea.t3 { min-height: 86px; }
 .event { display: flex; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--boe-surface-sunken); font-size: 12.5px; }
 .event:last-child { border-bottom: 0; }
 .dirty { color: var(--boe-waiting-fg); font-weight: 600; font-size: 12.5px; }
-.hdrTotal { font-size: 13px; white-space: nowrap; }
+/* "Saved" / "Unsaved changes" in the page header: one line, never squeezed by the buttons beside it */
+.saveState { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; flex-shrink: 0; }
 
 /* the picture pop-up */
 .viewerScrim { position: fixed; inset: 0; background: rgba(48,53,54,.62); z-index: 320; display: flex; align-items: center; justify-content: center; padding: 24px; }
@@ -241,7 +255,10 @@ textarea.t3 { min-height: 86px; }
 }
 /* phone */
 @media (max-width: 767px) {
-  .grid2, .grid3, .grid4, .clientGrid, .advBody, .bottom, .leadRow, .leadRowNoSeats, .leadEdit { grid-template-columns: minmax(0, 1fr); }
+  .grid2, .grid3, .grid4, .clientGrid, .advBody, .leadRow, .leadRowNoSeats, .leadEdit { grid-template-columns: minmax(0, 1fr); }
+  .bottom { flex-direction: column; align-items: stretch; }
+  .reqAct { flex: 1 1 100%; } .reqAct .btn { flex: 1; justify-content: center; }
+  .reqNote { padding-left: 16px; }
   .shareDl .btn { flex: 1 1 140px; justify-content: center; }
   .pl { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 12px; }
   .plPic { flex-direction: row; align-items: center; gap: 14px; }
