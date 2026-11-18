@@ -4,6 +4,9 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Quotations: ask before an app link leaves a quotation with unsaved changes (branch `fix/quotation-leave-warning`; PR number added at the stamp) · no SQL
+- With unsaved edits, a click on any link to another page (the app's menu, the launcher, a link inside the builder) asks "You have unsaved changes. Leave without saving?"; Cancel stays. Closing or reloading the tab already asked (`beforeunload`). New `src/lib/navigation/leaveGuard.ts` (`askBeforeLeaving`, a document click listener in the capture phase; next/link skips a click whose default was prevented); `leaveGuard.dom.test.ts`. Not covered: the browser's Back button.
+
 ## 2026-11-18 — Quotations: a product name's lines are planned at the width the live table really has (branch `fix/quotation-table-name-width`; PR number added at the stamp) · no SQL
 - **Measured live** after #902 on a real quotation: the product column (41.4 units) wraps names at about 44 characters, not 36, so long names were planned a line or more too tall and pages ended early (pages 49 and 64 units empty). `NAME_LINE_CHARS` 36 → 42; `documentLayout.test.ts` pins the ten measured names (exact lines). Render check: no page overflows.
 

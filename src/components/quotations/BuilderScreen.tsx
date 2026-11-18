@@ -9,6 +9,7 @@ import { sendFeedback, type FeedbackDoc } from '@/lib/pricing/learning/api'
 import type { DiffersReport } from '@/components/pricing/training/TaughtPrice'
 import { Check, ChevronDown, ChevronRight, FileUp, Copy, FileCheck2, FileSpreadsheet, Info, Link2, MessageCircle, Plus, Printer, Save, Trash2, X } from 'lucide-react'
 import { draftDetailHref } from '@/lib/orders/draftsView'
+import { askBeforeLeaving } from '@/lib/navigation/leaveGuard'
 import { conversionProblems, type ConversionProblem } from '@/lib/quotations/piWorkbook'
 import { PI_STAGE_LABEL, extrasLeftOutText, makePiDraft, piWorkbookFor, type PiStage } from '@/lib/quotations/toPiDraft'
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
@@ -167,9 +168,11 @@ export default function BuilderScreen() {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); if (dirtyRef.current) save() } }
     const onLeave = (e: BeforeUnloadEvent) => { if (dirtyRef.current) { e.preventDefault(); e.returnValue = '' } }
+    const onLink = askBeforeLeaving(() => dirtyRef.current)
     window.addEventListener('keydown', onKey)
     window.addEventListener('beforeunload', onLeave)
-    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('beforeunload', onLeave) }
+    document.addEventListener('click', onLink, true)
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('beforeunload', onLeave); document.removeEventListener('click', onLink, true) }
   }, [save])
 
   const act = async (run: () => Promise<unknown>, done: string) => {
