@@ -10,6 +10,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { errorText, fetchMyCard, quotationKeys, saveMyCard, type MyCard } from '@/lib/quotations/api'
 import type { createClient } from '@/lib/supabase/client'
 import s from './quotations.module.css'
+import { useDialogFocus } from '@/components/salesLeads/useDialogFocus'
 
 type Supabase = ReturnType<typeof createClient>
 type Fields = Pick<MyCard, 'name' | 'title' | 'phone' | 'email'>
@@ -48,9 +49,10 @@ function Form({ supabase, start, onDone }: { supabase: Supabase; start: Fields; 
 /** The form in a dialog, opened from the reminder or from "My details". */
 export function MyDetailsDialog({ supabase, onClose }: { supabase: Supabase; onClose: () => void }) {
   const q = useQuery({ queryKey: quotationKeys.myCard, queryFn: () => fetchMyCard(supabase), staleTime: 5 * 60_000 })
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose)
   return (
     <div className={s.scrim} onClick={onClose}>
-      <div className={s.modal} style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="my-details-title">
+      <div ref={dialogRef} tabIndex={-1} className={s.modal} style={{ maxWidth: 480 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="my-details-title">
         <div className={s.cardHead}><h2 id="my-details-title">Your details on quotations</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} aria-label="Close">×</button></div>
         <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>
           <div className={`${s.small} ${s.muted}`}>They print on every quotation you own: on page 2 and beside the signature. A blank mobile or e-mail prints nothing.</div>
