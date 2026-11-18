@@ -20,6 +20,7 @@ import { Pic } from './Pic'
 import { REF_LABEL } from './ProductLine'
 import { CropDialog } from './CropDialog'
 import s from './quotations.module.css'
+import { useDialogFocus } from '@/components/salesLeads/useDialogFocus'
 
 type Supabase = ReturnType<typeof createClient>
 export type StartInfo = { client_name: string; project_name: string; supply_state: string; project_type: string }
@@ -141,10 +142,11 @@ export function ImportDialog({ supabase, userId, areas, requestId, start, onClos
   const pct = progress ? Math.round((progress.done / Math.max(1, progress.total)) * 100) : 0
   const title = start ? 'Start from a client file' : 'Import client file'
 
+  const dialogRef = useDialogFocus<HTMLDivElement>(() => { if (!(busy || res)) onClose() })
   return (
     <>
     <div className={s.scrim} onClick={busy || res ? undefined : onClose}>
-      <div className={s.modal} style={{ maxWidth: rows ? 1400 : 640 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="imp-title">
+      <div ref={dialogRef} tabIndex={-1} className={s.modal} style={{ maxWidth: rows ? 1400 : 640 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="imp-title">
         <div className={s.cardHead}><h2 id="imp-title">{title}</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} disabled={!!busy} aria-label="Close">×</button></div>
         <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>
           {!rows && (

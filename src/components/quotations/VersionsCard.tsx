@@ -13,6 +13,7 @@ import { errorText, type Quotation } from '@/lib/quotations/api'
 import { formatDateIN } from '@/lib/quotations/math'
 import { compareDocs, fetchVersionDoc, fetchVersions, sendNewVersion, type Comparison } from '@/lib/quotations/versions'
 import s from './quotations.module.css'
+import { useDialogFocus } from '@/components/salesLeads/useDialogFocus'
 
 type Supabase = ReturnType<typeof createClient>
 
@@ -86,9 +87,10 @@ function CompareDialog({ supabase, id, a: a0, b: b0, versions, onClose }: { supa
       {[...versions, 0].map(n => <option key={n} value={n}>{label(n)}</option>)}
     </select>
   )
+  const dialogRef = useDialogFocus<HTMLDivElement>(onClose)
   return (
     <div className={s.scrim} onClick={onClose}>
-      <div className={s.modal} style={{ maxWidth: 820 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="cmp-title">
+      <div ref={dialogRef} tabIndex={-1} className={s.modal} style={{ maxWidth: 820 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="cmp-title">
         <div className={s.cardHead}><h2 id="cmp-title">Compare</h2><span className={s.spacer} />{pick(a, setA, 'cmp-a')}<span>→</span>{pick(b, setB, 'cmp-b')}<button type="button" className={s.iconBtn} onClick={onClose} aria-label="Close">×</button></div>
         <div className={s.cardBody} style={{ display: 'grid', gap: 12, maxHeight: '70vh', overflow: 'auto' }}>
           {q.isLoading && <div className={s.empty}>Comparing…</div>}

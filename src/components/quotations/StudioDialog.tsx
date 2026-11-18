@@ -15,6 +15,7 @@ import { MAX_INSTRUCTION } from '@/lib/quotations/pictureStudio'
 import { Pic } from './Pic'
 import { CropBox, WHOLE, renderCrop, type Box } from './CropBox'
 import s from './quotations.module.css'
+import { useDialogFocus } from '@/components/salesLeads/useDialogFocus'
 
 type Supabase = ReturnType<typeof createClient>
 type Tab = 'clean' | 'change' | 'crop'
@@ -92,9 +93,10 @@ export function StudioDialog({ supabase, userId, path, url, wants, swatch, onClo
     <button type="button" role="tab" className={s.tab} aria-selected={tab === t} onClick={() => { setTab(t); setResult(null); setEarlier([]); setRefine(''); setErr('') }} disabled={busy}><Icon size={14} aria-hidden /> {label}</button>
   )
 
+  const dialogRef = useDialogFocus<HTMLDivElement>(() => { if (!(busy || result)) onClose() })
   return (
     <div className={s.scrim} onClick={busy || result ? undefined : onClose}>
-      <div className={s.modal} style={{ maxWidth: 820 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="studio-title">
+      <div ref={dialogRef} tabIndex={-1} className={s.modal} style={{ maxWidth: 820 }} onClick={e => e.stopPropagation()} role="dialog" aria-labelledby="studio-title">
         <div className={s.cardHead}><h2 id="studio-title">Improve picture</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} disabled={busy} aria-label="Close">×</button></div>
         <div className={s.tabs} role="tablist">{tabBtn('clean', 'Clean up', Sparkles)}{tabBtn('change', 'Change it', Wand2)}{tabBtn('crop', 'Crop & rotate', Crop)}</div>
         <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>

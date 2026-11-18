@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `01a77d2e` — Docs: stamp #906 (quotation leave warning) as merged (#907)
-- Commits on this branch: 1466
+- Commit: `906a2012` — Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5
+- Commits on this branch: 1467
 - Pages (`page.tsx`): 209   API routes (`route.ts`): 214
 - Migrations: 474 (first `20260530_create_positions.sql`, latest `20270801000000_quotation_salesperson_card.sql`)
 - Tables ever created: 263 (dropped at some point: 8)   SQL functions: 1059   Enums: 0
-- Test files: 893   Next.js 16.2.6, React 19.2.4
+- Test files: 894   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `906a2012` 2026-11-18 Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5
 - `01a77d2e` 2026-11-18 Docs: stamp #906 (quotation leave warning) as merged (#907)
 - `413a70c2` 2026-11-18 Quotations: ask before an app link leaves a quotation with unsaved changes (#906)
 - `f9998cbe` 2026-11-18 Docs: stamp #904 (quotation name width) as merged (#905)
@@ -38,7 +39,6 @@
 - `1bf19da5` 2026-11-17 Page speed: the saved copy comes back in the right shape, then is put back after sign-in again (#886)
 - `f645047d` 2026-11-17 Docs: stamp the loader lines library (#882) as merged 0a7be599, live 18:20 IST (no SQL) (#884)
 - `1662190b` 2026-11-17 Docs: stamp the revert of #880 (#883) as merged 08012448, deployed 18:30 IST, My Tasks checked live (#885)
-- `08012448` 2026-11-17 Revert #880: putting the saved copy back crashed My Tasks (#883)
 
 ## Pages by top-level area
 

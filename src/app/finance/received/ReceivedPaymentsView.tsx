@@ -1076,7 +1076,8 @@ function ReceivedPaymentsViewInner(
       // THIS PAGE'S OWN PATH. It used to replace with /finance/received?view=…
       // whatever the surface, which also took a reader who followed a deep link
       // into Payments to Verify over to Confirmed Payments.
-      router.replace(pathWithSearch(pathname, mergeSearchParams(searchParams.toString(), { payment: null, action: null })), { scroll: false })
+      // The History API, not router.replace: on a page opened straight from a link, router.replace left the parameter in the address.
+      window.history.replaceState(null, '', pathWithSearch(pathname, mergeSearchParams(searchParams.toString(), { payment: null, action: null })))
     }
     resolveDeepLink()
   // eslint-disable-next-line react-hooks/exhaustive-deps
