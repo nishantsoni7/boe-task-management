@@ -210,12 +210,17 @@ function Body({ data, form, setForm, newPerson, setNewPerson, edits, setEdits, s
         <h3 style={{ margin: '0 0 8px', fontSize: 14 }}>Switches</h3>
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, marginBottom: 8 }}>
           <input type="checkbox" checked={settings.enabled} disabled={saving} onChange={() => void toggle('enabled')} />
-          <span><strong>Picture making is on.</strong> Switch it off to stop every picture button for everyone at once.</span>
+          <span><strong>Picture making</strong> is <strong>{settings.enabled ? 'ON' : 'OFF'}</strong>.{' '}
+            {settings.enabled ? 'Untick to stop every picture button for everyone at once.' : 'Every picture button is stopped for everyone. Tick to allow pictures again.'}</span>
         </label>
         <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', fontSize: 13, marginBottom: 10 }}>
-          <input type="checkbox" checked={settings.enforce} disabled={saving} onChange={() => void toggle('enforce')} />
-          <span><strong>Limits are on.</strong> Off: everyone who can use the buttons keeps working and every press is only recorded.
-            On: only people with credits below can make pictures, within their monthly credits, the daily cap and the team pool.</span>
+          {/* Not tickable while nobody has credits: with limits on and an empty list, every press would be refused. */}
+          <input type="checkbox" checked={settings.enforce} disabled={saving || (!settings.enforce && allowances.length === 0)} onChange={() => void toggle('enforce')} />
+          <span><strong>Limits</strong> are <strong>{settings.enforce ? 'ON' : 'OFF'}</strong>.{' '}
+            {settings.enforce
+              ? 'Only people with credits below can make pictures, within their monthly credits, the daily cap and the team pool. Untick to go back to only recording.'
+              : 'Everyone who can use the buttons keeps working and every press is only recorded. Tick to turn limits on: only people with credits below can then make pictures.'}
+            {!settings.enforce && allowances.length === 0 && ' This stays locked until you give at least one person credits below, because with nobody on the list limits would block everyone.'}</span>
         </label>
         <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
           {([['monthlyPool', 'Team credits each month'], ['dailyCap', 'Daily cap per person (credits)'], ['inrPerUsd', '₹ per dollar (display only)']] as const).map(([key, label]) => (

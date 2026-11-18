@@ -168,3 +168,13 @@ test('the wallet functions are reachable by the service role only, and the table
   assert.doesNotMatch(sql, /create policy/i)
   assert.match(sql, /set search_path = public, pg_temp/)
 })
+
+test('the founders’ switches say what state they are in, and limits cannot be ticked while nobody has credits', () => {
+  const page = read('src/app/image-editor/usage/page.tsx')
+  // A box labelled "Limits are on." while unticked reads as a status, which it is not (found on the live page, 18 Nov 2026).
+  assert.doesNotMatch(page, /<strong>(Limits|Picture making) are? on\.<\/strong>/)
+  assert.match(page, /settings\.enforce \? 'ON' : 'OFF'/)
+  assert.match(page, /settings\.enabled \? 'ON' : 'OFF'/)
+  // With limits on and an empty list every press would be refused, so the box stays locked until someone has credits.
+  assert.match(page, /disabled=\{saving \|\| \(!settings\.enforce && allowances\.length === 0\)\}/)
+})
