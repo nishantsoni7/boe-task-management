@@ -4,6 +4,10 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-18 — Quotations: a size in mm, metres or feet becomes inches, rounded to the nearest 0.5 (branch `fix/quotation-size-to-inches`; PR number added at the stamp) · no SQL
+- **Owner rule:** a size not in inches or cm is converted to inches by default and rounded to the nearest 0.5 (8.3 → 8.5, 8.2 → 8). New `sizeToInches` in `src/lib/quotations/math.ts`: "2000 x 900 x 450 mm" → "78.5 × 35.5 × 17.5", 6'6" x 3' → "78 × 36". Inches, cm, a part with no unit and text it cannot read stay as typed.
+- Applied when the Dimensions box is left on an inches quotation (`ProductLine.tsx`) and to every imported line (`importBoq.addToQuote`: client file, Excel, PI). Test: `sizeToInches.test.ts`.
+
 ## 2026-11-18 — Quotations: ask before an app link leaves a quotation with unsaved changes (PR #906, merged 18 Nov 2026 06:01 IST as `413a70c2`, live 06:03 IST) · no SQL
 - With unsaved edits, a click on any link to another page (the app's menu, the launcher, a link inside the builder) asks "You have unsaved changes. Leave without saving?"; Cancel stays. Closing or reloading the tab already asked (`beforeunload`). New `src/lib/navigation/leaveGuard.ts` (`askBeforeLeaving`, a document click listener in the capture phase; next/link skips a click whose default was prevented); `leaveGuard.dom.test.ts`. Not covered: the browser's Back button.
 

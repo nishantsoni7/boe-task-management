@@ -103,6 +103,7 @@ Shell `src/components/layout/QuotationsLayout.tsx` (InventoryLayout's build). La
 
 ## Practical fixes from the module review (2026-11-18, PR #903 merged 02:08 IST as `22f041f1`, no SQL)
 - BuilderScreen: Mark sent / Negotiating / Lost / Archive and the WhatsApp button are off while dirty; a hand-typed state not in `SUPPLY_STATES` shows a warning; the room count and unit may be empty while typing (Save checks). ImportDialog / StudioDialog / New quotation do not close on an outside tap once they hold work. ProductLine pictures are `lazy`.
+- Sizes (18 Nov 2026, branch `fix/quotation-size-to-inches`): a size in mm, metres or feet becomes inches rounded to the nearest 0.5 (`sizeToInches`, math.ts) when the Dimensions box is left on an inches quotation and on every import; inches, cm and unit-less sizes stay as typed.
 - Still open from the review (not done): no local draft (the in-app leave warning is DONE: `askBeforeLeaving` in `src/lib/navigation/leaveGuard.ts`, PR #906, merged 18 Nov 2026 06:01 IST as `413a70c2`, live 06:03 IST; the browser Back button is not covered); a revision keeps the first `sent_at`, so "valid until" can be past on v2 and the validity days have no box; save errors do not name the product; small touch targets for "Use", "Replace", "Remove"; the list stops at 500 without saying so; "Start from a client file" creates then saves (a failed save leaves an empty quotation); PI totals keep paise while the quotation rounds.
 
 ## 7. Traps
