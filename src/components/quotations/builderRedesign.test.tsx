@@ -188,10 +188,8 @@ describe('the builder page', () => {
     for (const id of ['q-client-name', 'q-phone', 'q-city', '<LeadTime']) assert.ok(basic.includes(id), id)
     assert.ok(!/q-company|q-gstin|q-type|q-project|q-contact|q-role|q-email|q-state|ProjectTypeField/.test(basic), 'nothing from Advanced on top: the contact person and the email moved down (13 Nov list, items 5 and 7), the state and the project type on 18 Nov')
   })
-  test('one GST rate for all products, picked in the totals; a quotation with mixed rates says so', () => {
-    assert.match(SCREEN, /id="q-gst-rate"/)
-    assert.match(SCREEN, /Mixed rates/)
-    assert.match(SCREEN, /setLines\(p => p\.map\(l => \(\{ \.\.\.l, tax_rate: rate \}\)\)\)/)
+  test('everything is billed at 18%: no GST rate picker in the totals (owner, 18 Nov 2026)', () => {
+    assert.ok(!SCREEN.includes('q-gst-rate') && !SCREEN.includes('Mixed rates') && !SCREEN.includes('GST_RATES'))
   })
   test('Save stays manual: the Unsaved changes badge, the leave warning and Ctrl+S are still there', () => {
     assert.ok(SCREEN.includes('Unsaved changes') && SCREEN.includes('beforeunload') && /ctrlKey \|\| e\.metaKey/.test(SCREEN))

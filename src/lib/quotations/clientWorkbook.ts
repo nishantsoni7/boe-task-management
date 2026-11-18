@@ -8,8 +8,7 @@
 // preview, a mail client) shows the same figures as the PDF, and the formulas repeat computeTotals' rounding step for step.
 //
 // LAYOUT (owner's corrections, same day): nothing is frozen; GST is shown only in the totals at the bottom, not on each product
-// row; Qty is a plain number; Remarks is the last column, in its own colour; Name, Material and Remarks are narrow. The GST rate of
-// each line still has to live somewhere for the GST formulas, so it sits in a HIDDEN helper column after Remarks.
+// row; Qty is a plain number; Remarks is the last column, in its own colour; Name, Material and Remarks are narrow. GST is one line, 18% of the taxable value.
 //
 // WHAT IT NEVER HAS: the Finish, the internal notes, a cost, the client's own phone or e-mail, a picture path. The salesperson's own
 // name, role, phone and e-mail are on it, as on the PDF. Pictures are the ones the client sees (the logo mark on or off).
@@ -56,10 +55,10 @@ const MUTED = '6B706F'
 const REMARKS_HEAD = '4A5658'
 const REMARKS_BODY = 'EDF1F0'
 
-/** The visible columns, left to right: A..J. Column K is the hidden GST helper. */
+/** The columns, left to right: A..J. */
 export const COLUMNS = ['No.', 'Picture', 'Product', 'Size', 'Material', 'Qty', 'Rate (₹)', 'Amount (₹)', 'Counted in total', 'Remarks'] as const
-const WIDTHS = [5, 17.5, 22, 14, 16, 8, 13, 15, 11, 24, 8]
-const COL = { no: 1, pic: 2, name: 3, size: 4, material: 5, qty: 6, rate: 7, amount: 8, counted: 9, remarks: 10, gst: 11 } as const
+const WIDTHS = [5, 17.5, 22, 14, 16, 8, 13, 15, 11, 24]
+const COL = { no: 1, pic: 2, name: 3, size: 4, material: 5, qty: 6, rate: 7, amount: 8, counted: 9, remarks: 10 } as const
 const LAST = COL.remarks
 
 /** Indian grouping (12,34,567), rupees. */
@@ -118,7 +117,6 @@ export async function buildClientWorkbook(input: WorkbookInput): Promise<Uint8Ar
     headerFooter: { oddFooter: '&L&8Best of Exports&R&8Page &P of &N' },
   })
   WIDTHS.forEach((w, i) => { ws.getColumn(i + 1).width = w })
-  ws.getColumn(COL.gst).hidden = true
 
   const { head, money, areas, lines } = input
   const t = computeTotals(money, areas, lines)
@@ -169,7 +167,6 @@ export async function buildClientWorkbook(input: WorkbookInput): Promise<Uint8Ar
     c.alignment = { horizontal: i >= COL.qty - 1 && i !== COL.remarks - 1 ? 'center' : 'left', vertical: 'middle', wrapText: true }
     c.border = box
   })
-  ws.getCell(headRow, COL.gst).value = 'GST %' // hidden helper, for the GST formulas
   ws.pageSetup.printTitlesRow = `${headRow}:${headRow}`
 
   const known = new Set(areas.map(a => a.key))
@@ -224,7 +221,6 @@ export async function buildClientWorkbook(input: WorkbookInput): Promise<Uint8Ar
       ws.getCell(r, COL.counted).dataValidation = { type: 'list', allowBlank: false, formulae: ['"Yes,No"'], showErrorMessage: true, errorTitle: 'Counted in total', error: 'Choose Yes or No.' }
       put(COL.remarks, remarksText || null)
       ws.getCell(r, COL.remarks).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + REMARKS_BODY } }
-      ws.getCell(r, COL.gst).value = l.tax_rate // hidden helper
       if (pic) {
         const id = wb.addImage({ base64: toBase64(pic.bytes), extension: imageType(pic.bytes) })
         const f = fitPicture(pic.width, pic.height)
@@ -267,26 +263,20 @@ export async function buildClientWorkbook(input: WorkbookInput): Promise<Uint8Ar
   }
   const A = 'H' // the amount column
   const subRow = total('Subtotal', { formula: `SUMIFS(${rng('H')},${rng('I')},"Yes")`, result: t.subtotal }, { bold: true })
-  let pctRef = '0'
   let discRow = 0
   if (money.discount_pct > 0) {
     r++
     discRow = total('Less: Discount', { formula: `ROUND(${A}${subRow}*G${r}/100,0)`, result: t.discount }, { pct: Number(money.discount_pct) })
-    pctRef = `$G$${discRow}`
   }
   const extraRows: number[] = []
   if (money.fabric_amount > 0) { r++; extraRows.push(total('Fabric', money.fabric_amount)) }
   if (money.packing_amount > 0) { r++; extraRows.push(total('Packing', money.packing_amount)) }
-  const extrasRef = extraRows.map(x => `${A}${x}`).join('+')
   r++
   const taxableF = `${A}${subRow}${discRow ? `-${A}${discRow}` : ''}${extraRows.map(x => `+${A}${x}`).join('')}`
   const taxRow = total('Taxable value', { formula: taxableF, result: t.taxable }, { bold: true })
 
   const gstRows: number[] = []
-  for (const g of t.gst) {
-    const base = `ROUND(SUMIFS(${rng('H')},${rng('K')},${g.rate},${rng('I')},"Yes")*(1-${pctRef}/100),0)${g.rate === 18 && extraRows.length ? `+${extrasRef}` : ''}`
-    r++; gstRows.push(total(`GST @${g.rate}%`, { formula: `ROUND((${base})*${g.rate}/100,0)`, result: g.gst }))
-  }
+  for (const g of t.gst) { r++; gstRows.push(total(`GST @${g.rate}%`, { formula: `ROUND(${A}${taxRow}*${g.rate}/100,0)`, result: g.gst })) }
   r++
   total('Total including GST', { formula: `${A}${taxRow}${gstRows.map(x => `+${A}${x}`).join('')}`, result: t.grand }, { strong: true })
 

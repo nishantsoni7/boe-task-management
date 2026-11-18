@@ -167,7 +167,8 @@ export function toLines(rows: DbLine[]): QuoteLine[] {
       material: l.material ?? '', finish: l.finish ?? '', category: l.category ?? '',
       qty_mode: (fixed ? 'fixed' : 'per_unit') as QtyMode, qty: Number(fixed ? l.qty_fixed : l.qty_per_unit) || null,
       unit_price: l.unit_price === null || l.unit_price === undefined ? null : Number(l.unit_price),
-      tax_rate: Number.isFinite(Number(l.tax_rate)) ? Number(l.tax_rate) : 18, image_path: l.image_path, is_optional: !!l.is_optional,
+      tax_rate: 18, // everything is billed at 18% (owner, 18 Nov 2026); an older line stored at 12% is read as 18% and saved so
+      image_path: l.image_path, is_optional: !!l.is_optional,
       client_note: l.client_note ?? '', internal_note: l.internal_note ?? '',
       ...(Array.isArray(l.reference_images) && l.reference_images.length ? { references: l.reference_images } : {}),
     }

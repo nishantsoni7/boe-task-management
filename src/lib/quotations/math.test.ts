@@ -45,17 +45,14 @@ describe('quotation totals', () => {
     assert.equal(t.subtotal, 18000)
   })
 
-  test('discount, fabric and packing: value before GST, decor at 12% keeps its own rate', () => {
+  test('discount, fabric and packing: value before GST, one GST line at 18% on all of it, whatever a line stored', () => {
     const lines = [L({ qty_mode: 'fixed', qty: 10, unit_price: 10000 }), L({ qty_mode: 'fixed', qty: 10, unit_price: 2000, tax_rate: 12 })]
     const t = computeTotals({ gst_mode: 'igst', discount_pct: 10, fabric_amount: 5000, packing_amount: 3000 }, areas, lines)
     assert.equal(t.subtotal, 120000)
     assert.equal(t.discount, 12000)
     assert.equal(t.taxable, 116000)
-    assert.deepEqual(t.gst, [
-      { rate: 18, base: 98000, gst: 17640 },
-      { rate: 12, base: 18000, gst: 2160 },
-    ])
-    assert.equal(t.grand, 116000 + 17640 + 2160)
+    assert.deepEqual(t.gst, [{ rate: 18, base: 116000, gst: 20880 }])
+    assert.equal(t.grand, 116000 + 20880)
   })
 
   test('quantity: per room × rooms, fixed, or a line with no room type', () => {

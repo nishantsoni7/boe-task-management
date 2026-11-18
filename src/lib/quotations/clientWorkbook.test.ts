@@ -103,15 +103,13 @@ describe('the client Excel: what is in it', () => {
 })
 
 describe('the client Excel: the layout corrections of 18 Nov 2026', () => {
-  test('GST is not on the product rows: no GST column is visible, the rate is a hidden helper, and GST appears only as lines in the totals', async () => {
+  test('GST is not on the product rows: no GST column, and GST appears only as one line in the totals', async () => {
     const lines = [line(), line({ key: 'm', name: 'Mirror', qty_mode: 'fixed', qty: 2, unit_price: 5000, tax_rate: 12 })]
     const { ws } = await make({ lines })
     const visibleHeaders = COLUMNS.map((_, i) => text(ws.getCell(HEADER_ROW, i + 1).value))
     assert.ok(!visibleHeaders.some(h => /GST/.test(h)), 'no GST heading among the visible columns')
-    assert.equal(ws.getColumn(11).hidden, true, 'the helper column is hidden')
     for (const row of products(ws)) for (let c = 1; c <= 10; c++) assert.ok(![12, 18].includes(row.getCell(c).value as number), `row ${row.number} column ${c} shows no GST rate`)
-    assert.deepEqual(products(ws).map(r => r.getCell(11).value), [18, 12], 'each line keeps its rate in the hidden helper')
-    assert.ok(totalOf(ws, 'GST @18%') !== undefined && totalOf(ws, 'GST @12%') !== undefined, 'GST lines are at the bottom')
+    assert.ok(totalOf(ws, 'GST @18%') !== undefined && totalOf(ws, 'GST @12%') === undefined, 'one GST line at the bottom, whatever a line stored')
   })
   test('a quantity is a plain number: 56 reads 56, never "56."', async () => {
     const { ws } = await make({ lines: [line({ qty_mode: 'fixed', qty: 56 }), line({ key: 'b', qty_mode: 'fixed', qty: 2.5 })] })
@@ -175,12 +173,12 @@ describe('the client Excel: the totals are the builder\'s totals, and live', () 
   })
   test('the totals are formulas, so a client who edits a quantity, a rate or the discount sees them follow', async () => {
     const { ws } = await make({ money: money({ discount_pct: 5, fabric_amount: 120000 }), areas, lines })
-    for (const label of ['Subtotal', 'Less: Discount', 'Taxable value', 'GST @18%', 'GST @12%', 'Total including GST']) {
+    for (const label of ['Subtotal', 'Less: Discount', 'Taxable value', 'GST @18%', 'Total including GST']) {
       const v = totalOf(ws, label) as { formula?: string } | undefined
       assert.ok(v && typeof v.formula === 'string', `${label} is a formula`)
     }
     assert.match((totalOf(ws, 'Subtotal') as { formula: string }).formula, /^SUMIFS\(\$H\$\d+:\$H\$\d+,\$I\$\d+:\$I\$\d+,"Yes"\)$/)
-    assert.match((totalOf(ws, 'GST @18%') as { formula: string }).formula, /SUMIFS\(.+,\$K\$\d+:\$K\$\d+,18,/)
+    assert.match((totalOf(ws, 'GST @18%') as { formula: string }).formula, /^ROUND\(H\d+\*18\/100,0\)$/)
     let pctRow: ExcelJS.Row | undefined
     ws.eachRow(row => { if (text(row.getCell(4).value) === 'Less: Discount') pctRow = row })
     assert.equal(pctRow!.getCell(7).value, 5, 'the discount % is a cell to change')
@@ -195,7 +193,7 @@ describe('the client Excel: the totals are the builder\'s totals, and live', () 
   test('GST is one line per rate, "GST @18%", whatever the delivery state: never split into CGST, SGST or IGST (owner, 18 Nov 2026)', async () => {
     for (const mode of ['cgst_sgst', 'igst'] as const) {
       const { ws } = await make({ money: money({ gst_mode: mode }), areas, lines })
-      assert.ok(totalOf(ws, 'GST @18%') !== undefined && totalOf(ws, 'GST @12%') !== undefined, mode)
+      assert.ok(totalOf(ws, 'GST @18%') !== undefined, mode)
       assert.ok(!/CGST|SGST|IGST/.test(everything(ws)), `${mode}: no split`)
     }
   })
