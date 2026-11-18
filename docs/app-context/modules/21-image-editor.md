@@ -36,7 +36,7 @@ Verified against checkout `852e0493`. Module key `image_editor`, route `/image-e
 - Bucket `image-editor-results`: private, PNG only, 15 MB limit (`HISTORY_BUCKET`). A second private bucket `image-editor` (name overridable by env `IMAGE_EDITOR_REFERENCE_BUCKET`) holds `studio-reference.png`, created by hand per environment (no migration).
 - Registration `20261020000000_register_image_editor_module.sql`: rows in `app_modules` and `permission_modules`, actions `view` and `create`, admin role defaults; the employee-permission route renames `create` to "Use" for this module only (the label map lives in the Control Center employee route; `permission_actions.display_name` is global).
 - Migration list: `20261020000000_register_image_editor_module`, `20261022000000_image_editor_result_history`. Apply state: both on main and live (feature in use); exact apply confirmations not recorded in memory (unverified).
-- Env vars: `FAL_KEY` (required for generation; server only, never `NEXT_PUBLIC_`), `CRON_SECRET` (required for cleanup; unset => cleanup answers 503 and deletes nothing), optional `IMAGE_EDITOR_REFERENCE_BUCKET`.
+- Env vars: `FAL_KEY` (required for generation; server only, never `NEXT_PUBLIC_`), `CRON_SECRET` (required for cleanup; unset => cleanup answers 503 and deletes nothing), optional `IMAGE_EDITOR_REFERENCE_BUCKET`, optional `FAL_BILLING_KEY` (a SEPARATE fal key with the BILLING read-only preset; only the Picture credits page uses it, to show what is left in fal; unset => "Not connected").
 
 ## 5. Permissions & access
 
@@ -96,7 +96,8 @@ Verified against checkout `852e0493`. Module key `image_editor`, route `/image-e
 ## 11. Open items / next planned work
 
 - Confirm production env (FAL_KEY, CRON_SECRET, reference bucket) and that the cron actually runs (Vercel Cron logs).
-- Possible wide-rollout questions: granting `create` per employee, cost monitoring. No other planned work in memory.
+- Possible wide-rollout questions: granting `create` per employee. Cost monitoring is now the Picture credits wallet (section 13).
+- Picture credits, later (owner, 18 Nov 2026): an alert at 80% of the team pool; Star Seller credits automatic from the Scoreboard (`scoreboard_star_seller`; the Scoreboard is paused for the team); reuse of an already-cleaned picture for the same product; a one-tap "ask a founder for credits".
 
 ## 12. Recheck before changing this module
 
@@ -105,3 +106,23 @@ Verified against checkout `852e0493`. Module key `image_editor`, route `/image-e
 - Run: imageEditor tests, the history SQL suite on a disposable DB; Vercel Cron manual invoke with the secret only on a preview.
 
 - **One read of your own row (2026-11-12, #711 merged as `72c57977`, no SQL).** `/image-editor` reads the profile through `profileQueryOptions`. The cached copy is the one the module shell already loaded through `usePermissionContext`. Before this, each screen read the signed-in person's `users` row again, mostly with `USER_PROFILE_COLUMNS`. No screen used a field outside the 8 shared columns.
+
+## 13. Picture credits: the wallet and the tracking page (PR pending, migration `20270808000000`, NOT applied)
+
+**What it is.** Every paid picture press takes credits from a wallet BEFORE the paid fal call: Studio Image (1 credit), Edit PI Customize image, the quotation image studio's Clean up and Change it (2 credits each). 1 credit is about Rs 4 (costs in `src/lib/imageCredits/costs.ts`). It also records every press for the founders' tracking page.
+
+**Measure first.** The migration ships with `enforce = false`: every press is recorded and NOBODY is refused except by the pause switch, so nobody loses access on the day it ships. The owner turns limits on after reading real numbers. With limits on, a press is refused (`PAUSED`, `NO_ALLOWANCE`, `USER_MONTH`, `USER_DAY`, `POOL`) when the person has no allowance, has used their monthly credits or the daily cap, or the team pool for the month is used up. Month and day are India time. Unused credits do not carry over.
+
+**Tables** (RLS on, no policies, browser roles revoked; service role only): `image_credit_settings` (one row: `enabled`, `enforce`, `monthly_pool` 1500, `daily_cap` 60, `inr_per_usd` 88), `image_credit_allowances` (`user_id`, `monthly_credits`), `image_credit_ledger` (`user_id` nullable `on delete set null`, `tool`, `credits`, `usd_estimate`, `status` charged/refunded). **Functions** (SECURITY DEFINER, `search_path = public, pg_temp`, service role only): `image_credit_spend` (locks the settings row so two presses cannot both pass a limit), `image_credit_refund`, `image_credit_status`, `image_credit_report`.
+
+**Code.** `src/lib/imageCredits/` (`costs`, `spend` with `NOT_BILLED`, `falBalance`, `report`, `note`, `caller`), `src/components/imageCredits/CreditNote.tsx` (the line beside the buttons; shows nothing while limits are off; credits only, never rupees or model names), routes `GET /api/image-credits/me` (any signed-in person), `GET /api/image-credits/report`, `POST /api/image-credits/settings`, `POST /api/image-credits/allowance` (administrators only, `creditCaller(req, true)`), page `/image-editor/usage` ("Picture credits", administrators only, in the module's own nav). The three paid routes call `spendCredits` once, after every free refusal and immediately before the paying call, and `spend.refundIfNotBilled(reason)` on failure.
+
+**Rules.** The check fails CLOSED: if the wallet cannot be read, the press is refused (`UNAVAILABLE`). Credits are returned only for `NOT_BILLED` reasons (fal refused before running: not configured, bad key, no fal credit, unsupported image, moderation, busy); a timeout, a 5xx or an empty answer stays charged, the same "may already have been billed" rule as the no-retry rule. shortcut: assumes fal does not bill those refusals; trim the list if fal's own usage disagrees. `usd_estimate` is the price in `costs.ts` when the press was made; update it when the model changes, or the page drifts from fal's bill. "Pictures" on the page are charged presses; a retry or "Change this result" is another press. The fal balance is read from `GET https://api.fal.ai/v1/account/billing?expand=credits` (`credits.current_balance`, USD) with `FAL_BILLING_KEY`.
+
+**Doors not covered.** The Anthropic "Understand" step in Customize image (billed by Anthropic, not fal) and `scripts/image-editor-smoke.mjs`. The per-minute limiter in each route stays: it is a burst guard, in memory per instance, not a spend cap.
+
+**Rollout.** (1) Owner applies the migration (`supabase db push --dry-run` first; only this file pending). Nothing uses it until step 2. (2) Merge and deploy. (3) Create a fal BILLING-preset key and set `FAL_BILLING_KEY` in Vercel if the balance is wanted. (4) Watch the page for about two weeks. (5) Set allowances for the people who get credits (founders; the Star Seller; optionally a small baseline for everyone), then switch "Limits are on". Rollback: revert the PR; the tables are then unused (drop them in a later migration if wanted).
+
+**Traps.** Turning limits on with no allowances blocks everyone: add allowances first. Sales staff without an allowance see "not switched on for your account". The day and month follow India time (the SQL uses `Asia/Kolkata`). Deleting a user keeps their ledger rows (shown as "Former member").
+
+**Tests.** `supabase/tests/picture_wallet_pglite.mjs` (13 checks on the real migration: measure mode, pause, no allowance, monthly, daily, pool, refund, India month boundary, status, report, closed tables, bad cost, rerun), `src/lib/imageCredits/imageCredits.test.ts` (16: costs, the wallet's answers, refusal list, balance reader, the note, every paid route takes credits first), `src/app/api/image-editor/studio/routeBehaviour.test.ts` (the wallet in the real Studio route), the migration lists in `participantAndOrderTotalSecurity.test.ts`. Run the SQL suite: `node supabase/tests/picture_wallet_pglite.mjs <dir with @electric-sql/pglite installed>`.

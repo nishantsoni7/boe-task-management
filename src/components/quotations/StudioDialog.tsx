@@ -16,6 +16,7 @@ import { Pic } from './Pic'
 import { CropBox, WHOLE, renderCrop, type Box } from './CropBox'
 import s from './quotations.module.css'
 import { useDialogFocus } from '@/components/salesLeads/useDialogFocus'
+import { CreditNote } from '@/components/imageCredits/CreditNote'
 
 type Supabase = ReturnType<typeof createClient>
 type Tab = 'clean' | 'change' | 'crop'
@@ -133,6 +134,7 @@ export function StudioDialog({ supabase, userId, path, url, wants, swatch, onClo
               </div>
             </div>
           )}
+          {tab !== 'crop' && <CreditNote cost={2} refreshKey={busy} />}
           {err && <div className={`${s.notice} ${s.noticeBad}`} role="alert">{err}</div>}
         </div>
         <div className={s.cardHead} style={{ borderTop: '1px solid var(--boe-border)', borderBottom: 0, justifyContent: 'flex-end' }}>

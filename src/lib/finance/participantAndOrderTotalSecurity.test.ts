@@ -1336,8 +1336,10 @@ describe('the applied migrations are frozen', () => {
       '20270806000200_quotation_picture_mark_switch.sql',
       // Quotations: no gate on price approval, suggestions for the pricing desk, payment details table; only function bodies and a new table.
       '20270807000000_quotation_payment_and_desk.sql',
+      // Picture credits: three closed tables (settings, allowances, ledger) and four service-role-only functions; limits ship off; nothing existing changes.
+      '20270808000000_picture_wallet.sql',
       // Quotations: client choices, one column with a default on the lines and quotation_save re-created with one more field; no existing row changes.
-      '20270808000000_quotation_client_choices.sql',
+      '20270808000100_quotation_client_choices.sql',
     ])
   })
 
@@ -1886,8 +1888,9 @@ describe('the applied migrations are frozen', () => {
       '20270806000200_quotation_picture_mark_switch.sql',
       // Quotations: no gate on price approval, suggestions for the pricing desk, payment details table; only function bodies and a new table.
       '20270807000000_quotation_payment_and_desk.sql',
+      '20270808000000_picture_wallet.sql',
       // Quotations: client choices, one column with a default on the lines and quotation_save re-created with one more field; no existing row changes.
-      '20270808000000_quotation_client_choices.sql',
+      '20270808000100_quotation_client_choices.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

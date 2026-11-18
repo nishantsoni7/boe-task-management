@@ -855,7 +855,7 @@ await db.exec(mig('20270807000000_quotation_payment_and_desk.sql'))
 }
 
 // ── 20270808: client choices on a line (fabric, finish, stone, rope weave) ──
-await db.exec(mig('20270808000000_quotation_client_choices.sql'))
+await db.exec(mig('20270808000100_quotation_client_choices.sql'))
 {
   const P = n => `00000000-0000-0000-0000-0000000000b2/${String(n).repeat(8)}-1111-1111-1111-111111111111.jpg`
   const choices = {

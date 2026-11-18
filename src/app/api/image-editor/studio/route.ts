@@ -95,6 +95,7 @@ import {
   PRODUCT_HEIGHT_MIN, PRODUCT_HEIGHT_MAX, SIDE_MARGIN_SHARE, ABOVE_SHARE_OF_LEFTOVER,
 } from '@/lib/imageEditor/studioMaster'
 import { saveResult } from '@/lib/imageEditor/history'
+import { spendCredits } from '@/lib/imageCredits/spend'
 import { enhanceShadows } from '@/lib/imageEditor/shadowLift'
 import { HISTORY_BUCKET } from '@/lib/imageEditor/retention'
 import { randomUUID } from 'node:crypto'
@@ -315,6 +316,11 @@ export async function POST(req: NextRequest) {
     const originalProfile = await measureProfile(prepared.bytes)
 
     // ── [1] Product Shot ────────────────────────────────────────────────────────
+    // ── Picture credits: taken now, after everything that can be refused for free ──────
+    // One credit covers both provider requests. Refunded below only if fal refused stage one outright.
+    const spend = await spendCredits(user.id, 'studio', svc)
+    if (!spend.ok) return NextResponse.json({ error: spend.message, noRetry: true }, { status: spend.status })
+
     const shot = await generateProductShot({
       photograph: prepared.bytes,
       mimeType: prepared.mimeType,
@@ -324,6 +330,7 @@ export async function POST(req: NextRequest) {
     })
 
     if (!shot.ok) {
+      await spend.refundIfNotBilled(shot.reason)
       console.error(
         '[image-editor/studio] product shot failed:',
         `category ${shot.reason}`, `phase ${shot.phase ?? '-'}`,

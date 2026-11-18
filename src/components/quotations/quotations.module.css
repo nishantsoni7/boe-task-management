@@ -341,7 +341,7 @@ textarea.t3 { min-height: 86px; }
 .kpi { border: 1px solid var(--boe-border); border-radius: 10px; padding: 10px 12px; background: var(--boe-surface-quiet); }
 .kpiValue { font: 700 22px var(--boe-font-heading); color: var(--boe-text); font-variant-numeric: tabular-nums; }
 
-/* Client choices under a product (20270808000000). */
+/* Client choices under a product (20270808000100). */
 .chWrap { grid-column: 1 / -1; border-top: 1px dashed var(--boe-border); padding-top: 8px; }
 .chToggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 4px 0; font: 600 13px var(--boe-font-body); color: var(--boe-brand-ink); cursor: pointer; min-height: 32px; }
 .chWait { background: var(--boe-warning-bg, #faf0da); color: var(--boe-warning-text, #805b0d); }

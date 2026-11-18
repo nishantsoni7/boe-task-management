@@ -26,7 +26,7 @@ export type QuoteLine = {
   internal_note: string
   /** Its other pictures (20270721000000): a swatch, a drawing, another reference. Internal: never on the client's copy. */
   references?: LineRef[]
-  /** What the client picked for this product (20270808000000): fabric, finish, stone, rope weave. Internal for now; never changes a price. */
+  /** What the client picked for this product (20270808000100): fabric, finish, stone, rope weave. Internal for now; never changes a price. */
   choices?: LineChoices
 }
 
@@ -34,7 +34,7 @@ export type LineRef = { path: string; kind: 'swatch' | 'drawing' | 'reference'; 
 /** The database allows 8 (quotation_line_refs_ok). */
 export const MAX_LINE_REFS = 8
 
-// ── client choices (20270808000000) ──────────────────────────────────────────────────────────────
+// ── client choices (20270808000100) ──────────────────────────────────────────────────────────────
 export const CHOICE_KINDS = ['fabric', 'finish', 'stone', 'rope_weave'] as const
 export type ChoiceKind = (typeof CHOICE_KINDS)[number]
 export const CHOICE_LABEL: Record<ChoiceKind, string> = { fabric: 'Fabric', finish: 'Finish', stone: 'Stone', rope_weave: 'Rope weave' }

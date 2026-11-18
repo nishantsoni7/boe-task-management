@@ -1,5 +1,5 @@
 /**
- * Client choices, PR 1 (owner, 18 Nov 2026; migration 20270808000000): what is saved, what the database allows, that the client's
+ * Client choices, PR 1 (owner, 18 Nov 2026; migration 20270808000100): what is saved, what the database allows, that the client's
  * copy is untouched, and the builder panel. Run: npm run test:file -- src/lib/quotations/clientChoices.test.tsx
  */
 import { describe, test } from 'node:test'
@@ -13,7 +13,7 @@ import { saveDoc, toLines } from './api'
 import { ChoicesPanel } from '@/components/quotations/ChoicesPanel'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
-const SQL = read('supabase/migrations/20270808000000_quotation_client_choices.sql')
+const SQL = read('supabase/migrations/20270808000100_quotation_client_choices.sql')
 const PHOTO = '11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222.jpg'
 
 const line = (over: Partial<QuoteLine> = {}): QuoteLine => ({
