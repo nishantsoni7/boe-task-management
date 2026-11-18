@@ -39,7 +39,8 @@ export function saveProblem(areas: readonly QuoteArea[], lines: readonly QuoteLi
     const most = l.qty_mode === 'per_unit' ? 100_000 : 1_000_000 // as saveDoc splits it into qty_per_unit / qty_fixed
     if (!(qty > 0)) return say('needs a quantity above 0.')
     if (qty > most) return say(`the quantity can be at most ${fmt(most)}.`)
-    if (!(l.unit_price >= 0) || l.unit_price > MAX_PRICE) return say('the price is not a valid amount.')
+    // No price yet is allowed (the column takes null); a price must be in the column's range.
+    if (l.unit_price !== null && (!(l.unit_price >= 0) || l.unit_price > MAX_PRICE)) return say('the price is not a valid amount.')
   }
   return null
 }

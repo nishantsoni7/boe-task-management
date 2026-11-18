@@ -36,6 +36,7 @@ describe('saveProblem', () => {
     assert.equal(one({ qty: 100001 }, 'fixed'), undefined)
     assert.equal(one({ qty: 1000001 }, 'fixed'), '"Chair" in Deluxe: the quantity can be at most 10,00,000.')
     assert.equal(one({ unit_price: 100_000_000_001 }), '"Chair" in Deluxe: the price is not a valid amount.')
+    assert.equal(one({ unit_price: null }), undefined, 'no price yet still saves')
   })
   test('room types first: a missing name, a long name, a room count out of range', () => {
     assert.deepEqual(saveProblem([area('a', ' ')], []), { text: 'Room type 1 needs a name.' })
