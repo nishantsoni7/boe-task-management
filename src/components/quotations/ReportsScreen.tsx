@@ -14,7 +14,7 @@ import { formatINR } from '@/lib/currency'
 import { istDateOf } from '@/lib/istDate'
 import { errorText } from '@/lib/quotations/api'
 import { formatDateIN } from '@/lib/quotations/math'
-import { downloadCsv, fetchReport, periodRange, toCsv, type Group, type PeriodKey, type Report } from '@/lib/quotations/report'
+import { downloadCsv, fetchReport, lostReasonLabel, periodRange, toCsv, type Group, type PeriodKey, type Report } from '@/lib/quotations/report'
 import s from './quotations.module.css'
 
 const PERIODS: [PeriodKey, string][] = [['week', 'This week'], ['month', 'This month'], ['quarter', 'This quarter'], ['year', 'This financial year'], ['custom', 'Custom']]
@@ -136,9 +136,9 @@ function ReportBody({ r }: { r: Report }) {
           <div className={s.tableWrap}><table className={s.table}><thead><tr><th>Discount</th><th className={s.right}>Decided</th><th className={s.right}>Confirmed</th><th className={s.right}>Win rate</th></tr></thead>
             <tbody>{r.discount.map(d => <tr key={d.bucket} style={{ cursor: 'default' }}><td>{d.bucket}</td><td className={s.right}>{d.decided}</td><td className={s.right}>{d.confirmed}</td><td className={s.right}>{pct(d.win_rate)}</td></tr>)}</tbody></table></div>
         </Section>
-        <Section title="Why quotations were lost" csv={() => downloadCsv(`lost-reasons_${tag}.csv`, toCsv(['Reason', 'Quotations'], r.lost_reasons.map(x => [x.reason, x.n])))}>
+        <Section title="Why quotations were lost" csv={() => downloadCsv(`lost-reasons_${tag}.csv`, toCsv(['Reason', 'Quotations'], r.lost_reasons.map(x => [lostReasonLabel(x), x.n])))}>
           {r.lost_reasons.length === 0 ? <div className={s.empty}>None lost in this period.</div> : (
-            <div className={s.tableWrap}><table className={s.table}><tbody>{r.lost_reasons.map(x => <tr key={x.reason} style={{ cursor: 'default' }}><td>{x.reason}</td><td className={s.right}>{x.n}</td></tr>)}</tbody></table></div>
+            <div className={s.tableWrap}><table className={s.table}><tbody>{r.lost_reasons.map(x => <tr key={x.reason} style={{ cursor: 'default' }}><td>{lostReasonLabel(x)}</td><td className={s.right}>{x.n}</td></tr>)}</tbody></table></div>
           )}
         </Section>
       </div>

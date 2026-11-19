@@ -18,7 +18,7 @@ const names = (n: number) => Array.from({ length: n }, (_, i) => `Chair ${i + 1}
 type Over = Partial<Parameters<typeof StatusCard>[0]>
 const status = (base: Quotation, o: Over = {}) => renderToStaticMarkup(
   <StatusCard base={base} dirty={false} busy={false} isAdmin={false} canConfirm={false} piProblems={[]} priceBlocked={false} piStage={null}
-    lostNote={null} setLostNote={() => {}} onMove={() => {}} onConfirm={() => {}} {...o} />)
+    lostNote={null} setLostNote={() => {}} lostReason="" setLostReason={() => {}} onMove={() => {}} onConfirm={() => {}} {...o} />)
 const button = (html: string, label: string) => html.match(new RegExp(`<button[^>]*>(?:(?!</button>).)*${label}[^<]*</button>`))?.[0] ?? null
 const SENT_OK: Over = { canConfirm: true }
 
@@ -92,7 +92,17 @@ describe('the Status card: what can be done', () => {
     const html = status(quote({ status: 'lost' }))
     assert.ok(html.includes('Reopen') && html.includes('Archive') && !html.includes('Lost…') && !html.includes('Confirmed, no PI'))
     const asking = status(quote({ status: 'sent' }), { lostNote: '' })
-    assert.match(asking, /Why was it lost\?/); assert.match(button(asking, 'Mark lost') ?? '', /disabled/, 'a reason of three letters is needed')
+    assert.match(asking, /Why was it lost\?/); assert.match(button(asking, 'Mark lost') ?? '', /disabled/, 'a reason must be chosen first')
+  })
+  test('the Lost box asks for one of the lead\'s eleven reasons; only "Other" needs words', () => {
+    const asking = status(quote({ status: 'sent' }), { lostNote: '' })
+    assert.equal((asking.match(/<option /g) ?? []).length, 12, 'a prompt and the eleven reasons')
+    assert.match(asking, /Price too high/); assert.match(asking, /Chose another supplier/); assert.match(asking, /Other \(say why\)/)
+    assert.match(asking, /Note \(optional\)/)
+    assert.doesNotMatch(button(status(quote({ status: 'sent' }), { lostNote: '', lostReason: 'price_too_high' }), 'Mark lost') ?? '', /disabled/, 'a reason alone is enough')
+    const other = status(quote({ status: 'sent' }), { lostNote: '', lostReason: 'other' })
+    assert.match(other, /Note \(required\)/); assert.match(button(other, 'Mark lost') ?? '', /disabled/)
+    assert.doesNotMatch(button(status(quote({ status: 'sent' }), { lostNote: 'Client sold the hotel', lostReason: 'other' }), 'Mark lost') ?? '', /disabled/)
   })
   test('a reader who may not edit sees where it is, and no buttons', () => {
     const html = status(quote({ status: 'sent', may_edit: false }))

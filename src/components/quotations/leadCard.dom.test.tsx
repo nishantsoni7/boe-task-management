@@ -155,6 +155,15 @@ describe('the Lead card: nothing happens until a button is pressed, then the lea
     assert.deepEqual([w.args.p_to, w.args.p_expected_from, w.args.p_reason, w.args.p_note], ['dead', 'potential', 'chose_another_supplier', 'Chose another vendor'])
     u.unmount()
   })
+  test('Dead: the reason chosen when the quotation was marked Lost is already selected, and can still be changed', async () => {
+    const events = [{ kind: 'status', detail: { from: 'sent', to: 'lost', note: null, reason: 'price_too_high' }, at: '', actor_name: null }]
+    const sb = fake(info(), { move_sales_lead: { status: 'moved', lead: {} } }); const u = ui(sb, quote('lost', { events })); await u.settle(); await u.settle()
+    u.click(u.button('Mark lead Dead')); await u.settle()
+    assert.equal(u.one<HTMLSelectElement>('#q-lead-reason').value, 'price_too_high')
+    assert.equal(u.button('Mark Dead').disabled, false)
+    u.click(u.button('Mark Dead')); await u.settle(); await u.settle()
+    assert.equal(sb.calls.find(c => c.fn === 'move_sales_lead')!.args.p_reason, 'price_too_high')
+  })
   test('Dead with "Other" needs a note', async () => {
     const u = ui(fake(info()), quote('lost')); await u.settle(); await u.settle()
     u.click(u.button('Mark lead Dead')); await u.settle()

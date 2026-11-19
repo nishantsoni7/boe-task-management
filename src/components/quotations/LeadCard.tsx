@@ -12,7 +12,7 @@ import { AppLink as Link } from '@/components/ui/AppLink'
 import type { createClient } from '@/lib/supabase/client'
 import { istToday } from '@/lib/istDate'
 import { fetchLeadInfo, leadInfoKey, linkLead, type Quotation, type LeadSummary } from '@/lib/quotations/api'
-import { FOLLOW_UP_DAYS, followUpDefault, leadAction, logNote, lostNote } from '@/lib/quotations/leadLink'
+import { FOLLOW_UP_DAYS, followUpDefault, leadAction, logNote, lostNote, lostReason } from '@/lib/quotations/leadLink'
 import { DEAD_REASONS, FACT_LABELS, deadReasonLabel, stageLabel, type Stage } from '@/lib/salesLeads/board'
 import { addComment, fetchLeadPage, moveLead, type SalesLead } from '@/lib/salesLeads/api'
 import s from './quotations.module.css'
@@ -84,7 +84,7 @@ export function LeadCard({ supabase, base, dirty, onChanged }: { supabase: Supab
   const open = (m: Exclude<Mode, null>) => {
     setMsg(null); setMode(m)
     if (m === 'log') setDue(followUpDefault(today))
-    if (m === 'dead') { setReason(''); setNote(lostNote(base.events)) }
+    if (m === 'dead') { setReason(lostReason(base.events)); setNote(lostNote(base.events)) }
   }
 
   const doLog = () => lead && run(async () => {
