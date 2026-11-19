@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `b3fd1a6e` — My Tasks opens sooner: the list reads open work only, Top 3 is one request (no SQL)
+- Commit: `5efcad37` — My Tasks opens sooner: open work only, Top 3 in one request (no SQL) (#942)
 - Commits on this branch: 1500
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 486 (first `20260530_create_positions.sql`, latest `20270809000000_quotation_client_choices_output.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `b3fd1a6e` 2026-11-19 My Tasks opens sooner: the list reads open work only, Top 3 is one request (no SQL)
+- `5efcad37` 2026-11-19 My Tasks opens sooner: open work only, Top 3 in one request (no SQL) (#942)
 - `68597159` 2026-11-19 Docs: stamp #940 (credits left this month) as merged (#941)
 - `83186471` 2026-11-19 Picture credits page: a "Left this month" column for each person (#940)
 - `1442bf52` 2026-11-18 Docs: stamp #938 (picture credits switches say ON or OFF) as merged (#939)
