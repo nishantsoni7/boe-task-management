@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `fbce2378` — Task Management pages start while the access check runs (ModuleGuardStartsEarly; no SQL)
+- Commit: `3bf9a015` — Task Management pages start while the access check runs (no SQL) (#948)
 - Commits on this branch: 1506
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 487 (first `20260530_create_positions.sql`, latest `20270810000000_task_nav_counts.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `fbce2378` 2026-11-19 Task Management pages start while the access check runs (ModuleGuardStartsEarly; no SQL)
+- `3bf9a015` 2026-11-19 Task Management pages start while the access check runs (no SQL) (#948)
 - `adf5ef86` 2026-11-19 Docs: stamp #946 (sidebar badge counts in one call) as merged and verified live (no SQL change) (#947)
 - `616efe75` 2026-11-19 Task Management sidebar: the three badge counts in one call (migration 20270810000000, apply before merge) (#946)
 - `5d3584b6` 2026-11-19 Docs: stamp #942 (My Tasks open-work list, Top 3 in one request) as merged and verified live (no SQL) (#944)
