@@ -123,6 +123,12 @@ Statuses and transitions:
   between 00:00 and 05:30 IST it lags a day (the performance code uses IST via `istDate.ts`).
 - Top 3 Focus: max 3 enforced in the BROWSER (`top3Data.length >= 3` in `/tasks/my`), not by a database constraint; pinned tasks are excluded from the strip once
   completed/cancelled/pending_approval (query filter + trigger). Reorder = DELETE + INSERT renumbering 1..N (no UPDATE policy; `display_order` can contain duplicates).
+- My Tasks first-open reads (19 Nov 2026, PR #TBD, no SQL): `useMyTasks` reads OPEN work only (`status` not `cancelled` and not `completed`, not quotation requests); finished work is `/tasks/my/completed`
+  (DB-paged). Nothing on My Tasks draws `buckets.completed` (no tab for it; `myTasksOpenWorkOnly.test.ts` proves every tab, badge and Task Type count is identical with or without completed rows),
+  so a stale `?tab=completed` bookmark is sent to `/tasks/my/completed` (skeleton meanwhile). VISIBLE SIDE EFFECT: the "Assigned by" filter is built from the loaded list, so a person whose only
+  tasks for you are finished no longer appears in it. `useTopTasks` is ONE request: `user_top_tasks` with the task embedded (`tasks!task_id(...)`, filters on `tasks.status`, no `!inner`, so `pinnedIds`
+  still holds every pin; `shapeTopTasks`), and a failed read now REJECTS (it used to cache "nothing pinned"). Why: a 19 Nov DevTools capture of `/tasks/my` showed ~10 database calls leaving at once,
+  each ~1 s, the list (78.8 kB, 1.3 s) gating the first paint and Top 3 a second call behind it. NOT done (PR B): the 3 sidebar badge counts (`nav-counts` in `DashboardLayout`) as one function.
 - My Tasks row order (Oct 2026, migration `20270424000000` APPLIED 2026-10-28): Important, then Today's Focus pins, then the rest; within a group the person's drag order from
   `user_task_order` (one row per user, `task_ids uuid[]`, upsert; owner-only RLS; display preference, grants nothing). Pure rules: `src/lib/tasks/taskOrder.ts`; hook
   `useTaskOrder`. Desktop only; pointer-driven drag (`useRowDragSort`: live reorder via transforms, edge auto-scroll, Escape cancels, committed once on release) plus a hover "Move to top" button; no cross-group drops; the saved array is the whole active list so it holds in every tab. Action icons are borderless; the pin
@@ -223,7 +229,7 @@ Cancelled pages (Oct 2026): `/tasks/cancelled` and `/tasks/assigned-by-me/cancel
 ## 10. Tests that guard it
 
 Pure: `src/lib/tasks/{taskDetailAccess,myTaskTabs,taskReporting,reviewTransitions,taskReturnPath,activityHeadings,statusChange,acknowledgeTask,taskGallery,attachmentStorage,commentAttachments,quotationSend,quotationWait}.test.ts`; `src/app/dashboard/quotationRequests.render.test.tsx` (the Quotation table: columns, priority bars, wait text and bands, the 8-row cap, click / Enter / Space, what the page keeps).
-Source-contract/shape: `taskNavigationPerformance.test.ts`, `taskCreationPerformance.test.ts`, `taskDetailOpenFromDrawer.test.ts`, `myTasksLoadState.test.ts`, `myTasksRuntimeShape.test.ts`,
+Source-contract/shape: `taskNavigationPerformance.test.ts`, `taskCreationPerformance.test.ts`, `taskDetailOpenFromDrawer.test.ts`, `myTasksLoadState.test.ts`, `myTasksRuntimeShape.test.ts`, `myTasksOpenWorkOnly.test.ts` (open-work list, completed bookmark, Top 3 in one request),
 `myTasksQuickAction.test.ts`, `dashboardViewAsReadOnly.test.ts`, `taskCreateFlow.test.ts`, `taskCreateActions.test.ts`, `assignmentWriteAuthority.test.ts`, `assignmentServerBoundary.test.ts`,
 `topTasksApproval.test.ts`, `taskDrawerBrief.test.ts` (the drawer's headline, reason and last-3-updates rules, plus a source check: one read, no write, 44px close), `changeTaskStatusMigration.test.ts`, `changeTaskStatusNotificationCompat.test.ts`, `acknowledgeCallers.test.ts`, `healthCheckMigrationAudit.test.ts` (pins `20261015000000`, which is applied and frozen — do not edit it),
 `escalationRemovalMigration.test.ts` (pins `20270610000000` line by line against the function it replaced: only the escalation writes and the 72-hour wrapper are gone, the stale block is identical text),

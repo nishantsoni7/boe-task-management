@@ -8,7 +8,8 @@ const MIGRATION_FILE = '20261018000000_unpin_tasks_submitted_for_approval.sql'
 const MIGRATION = fs.readFileSync('supabase/migrations/' + MIGRATION_FILE, 'utf8')
 
 test('Top 3 query excludes tasks awaiting approval', () => {
-  assert.match(HOOK, /\.neq\('status', 'pending_approval'\)/)
+  // The filter sits on the embedded task (the pins and their tasks arrive in one request).
+  assert.match(HOOK, /\.neq\('tasks\.status', 'pending_approval'\)/)
 })
 
 test('submitting for approval removes the personal pin transactionally', () => {
