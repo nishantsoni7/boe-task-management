@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1bf5169d` — Quotations: link a quotation to its Sales lead; a Lead card offers one tap on the lead (#949)
-- Commits on this branch: 1508
+- Commit: `6919b0b4` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 327
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 488 (first `20260530_create_positions.sql`, latest `20270811000000_quotation_lead_link.sql`)
 - Tables ever created: 269 (dropped at some point: 8)   SQL functions: 1077   Enums: 0
@@ -14,9 +14,11 @@
 
 ## Latest 25 commits
 
-- `1bf5169d` 2026-11-19 Quotations: link a quotation to its Sales lead; a Lead card offers one tap on the lead (#949)
+- `6919b0b4` 2026-11-19 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `0f089477` 2026-11-19 Docs: stamp #948 (Task Management starts its pages during the access check) as merged and verified live (no SQL change) (#950)
+- `c2c31d0a` 2026-11-19 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `3bf9a015` 2026-11-19 Task Management pages start while the access check runs (no SQL) (#948)
+- `9aa16d0c` 2026-11-19 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `adf5ef86` 2026-11-19 Docs: stamp #946 (sidebar badge counts in one call) as merged and verified live (no SQL change) (#947)
 - `616efe75` 2026-11-19 Task Management sidebar: the three badge counts in one call (migration 20270810000000, apply before merge) (#946)
 - `5d3584b6` 2026-11-19 Docs: stamp #942 (My Tasks open-work list, Top 3 in one request) as merged and verified live (no SQL) (#944)
@@ -37,8 +39,6 @@
 - `a08a1d5f` 2026-11-18 Docs: stamp #929 (shared image model on Nano Banana 2) as merged (#930)
 - `6bca071d` 2026-11-18 Images: the shared image model moves from Nano Banana Pro to Nano Banana 2 (about US$0.08 a picture against US$0.15; no SQL) (#929)
 - `aae6360f` 2026-11-18 Docs: stamp #924 (logo marks on quotation pictures) as merged and backfilled (#928)
-- `746cf467` 2026-11-18 Quotations: the logo mark on every picture the client sees, optional per quotation; clean originals in a private bucket (migrations 20270806000000, 20270806000200) (#924)
-- `3e886ceb` 2026-11-18 Docs: stamp #926 as merged (the builder's top area redone, 1360 px cap kept) (#927)
 
 ## Pages by top-level area
 
