@@ -118,6 +118,9 @@ export function classifyError(err: Raw): QuotationError {
   // The lead link (20270811000000) also answers with the Sales module's own errors.
   if (/SALES_FORBIDDEN/.test(m)) return new QuotationError('forbidden', 'Your account has no access to Sales, so it cannot link a lead.')
   if (/SALES_NOT_FOUND/.test(m)) return new QuotationError('not_found', 'This lead does not exist or is not yours to see.')
+  // A quotation starts from a Sales lead (20270814000000 / 20270814000100).
+  if (/QUOTATION_LEAD_REQUIRED/.test(m)) return new QuotationError('invalid', 'Choose the Sales lead this quotation is for.')
+  if (/QUOTATION_LEAD_CLOSED/.test(m)) return new QuotationError('invalid', m.replace(/^.*QUOTATION_LEAD_CLOSED:\s*/, ''))
   if (/QUOTATIONS_FORBIDDEN/.test(m) || err.code === '42501') return new QuotationError('forbidden', m.replace(/^.*QUOTATIONS_FORBIDDEN:\s*/, '') || 'You do not have access to this.')
   if (/QUOTATION_NOT_FOUND/.test(m)) return new QuotationError('not_found', 'This quotation does not exist or is not yours to see.')
   if (/QUOTATION_STALE/.test(m)) return new QuotationError('stale', 'Somebody saved this quotation after you opened it. Reload to see their changes; your edits are still on screen.')
@@ -214,8 +217,17 @@ export async function fetchPublic(s: Supabase, token: string): Promise<PublicQuo
 
 // ── writes ────────────────────────────────────────────────────────────────
 
-export const createQuotation = (s: Supabase, data: Partial<Header> & { client_name: string; source?: string }) =>
-  call<string>(() => s.rpc('quotation_create', { p_data: data }))
+/**
+ * Start a quotation FROM a Sales lead (20270814000000): the client's name, phone, e-mail, city, venue and requirement are copied from the lead by
+ * the database, nothing is typed. `ownerId` puts it on somebody else's page (an administrator or the pricing desk only).
+ */
+export const startQuotation = (s: Supabase, leadId: string, o: { ownerId?: string | null; source?: string } = {}) =>
+  call<string>(() => s.rpc('quotation_start', { p_lead: leadId, p_data: { ...(o.ownerId ? { owner_id: o.ownerId } : {}), ...(o.source ? { source: o.source } : {}) } }))
+
+/** The people a quotation may be put on (administrator or pricing desk only), the caller first. */
+export type Maker = { id: string; full_name: string | null }
+export const makersKey = ['quotations', 'makers'] as const
+export const fetchMakers = (s: Supabase) => call<Maker[]>(() => s.rpc('quotation_makers'))
 
 /** The whole quotation in one go; the database refuses it if somebody saved after `expectedUpdatedAt`. */
 export function saveDoc(header: Header, areas: QuoteArea[], lines: QuoteLine[], expectedUpdatedAt: string) {

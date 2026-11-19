@@ -28,7 +28,7 @@ function fake(d: LeadQuotations, refuse: Record<string, string> = {}) {
         calls.push({ fn, args })
         if (fn in refuse) return { data: null, error: { message: refuse[fn] } }
         if (fn === 'quotation_for_lead') return { data: d, error: null }
-        if (fn === 'quotation_create') return { data: 'new-q', error: null }
+        if (fn === 'quotation_start') return { data: 'new-q', error: null }
         return { data: null, error: null }
       },
     },
@@ -89,25 +89,20 @@ describe('the lead popup: its quotations', () => {
 })
 
 describe('the lead popup: Make quotation', () => {
-  test('creates a quotation from the lead (name, number, source), links it, and opens it', async () => {
+  test('starts the quotation FROM the lead in one database call (the database copies the details and links it) and opens it', async () => {
     const sb = fake(data({ quotations: [] })); const { u, pushes } = ui(sb); await ready(u)
     assert.deepEqual(sb.calls.map(c => c.fn), ['quotation_for_lead'], 'opening the popup writes nothing')
     u.click(u.button(/Make quotation/)); await ready(u)
-    const create = sb.calls.find(c => c.fn === 'quotation_create')!
-    assert.deepEqual(create.args, { p_data: { client_name: 'Hotel Aravali', contact_name: 'Hotel Aravali', contact_phone: '+91 98765 43210', source: 'Website' } })
-    assert.deepEqual(sb.calls.find(c => c.fn === 'quotation_link_lead')!.args, { p_id: 'new-q', p_lead: 'lead-1' })
+    const start = sb.calls.find(c => c.fn === 'quotation_start')!
+    assert.deepEqual(start.args, { p_lead: 'lead-1', p_data: {} })
+    assert.ok(!sb.calls.some(c => c.fn === 'quotation_create' || c.fn === 'quotation_link_lead'), 'no typed details, no second call to link')
     assert.deepEqual(pushes, ['/quotations/new-q'])
   })
-  test('if the link fails the quotation is still opened (its own Lead card offers the same lead by phone)', async () => {
-    const sb = fake(data({ quotations: [] }), { quotation_link_lead: 'SALES_FORBIDDEN' }); const { u, pushes } = ui(sb); await ready(u)
+  test('if the quotation cannot be made the reason shows and nothing opens', async () => {
+    const sb = fake(data({ quotations: [] }), { quotation_start: 'QUOTATION_LEAD_CLOSED: Lead 7 is marked Dead; reopen the lead on the Lead Board before making a quotation' }); const { u, pushes } = ui(sb); await ready(u)
     u.click(u.button(/Make quotation/)); await ready(u)
-    assert.deepEqual(pushes, ['/quotations/new-q'])
-  })
-  test('if the quotation cannot be made the reason shows, nothing is linked and nothing opens', async () => {
-    const sb = fake(data({ quotations: [] }), { quotation_create: 'QUOTATIONS_FORBIDDEN: you may not start quotations' }); const { u, pushes } = ui(sb); await ready(u)
-    u.click(u.button(/Make quotation/)); await ready(u)
-    assert.match(u.text(), /you may not start quotations/)
-    assert.ok(!sb.calls.some(c => c.fn === 'quotation_link_lead')); assert.deepEqual(pushes, [])
+    assert.match(u.text(), /marked Dead/)
+    assert.deepEqual(pushes, [])
     assert.equal(u.button(/Make quotation/).disabled, false, 'it can be tried again')
   })
 })

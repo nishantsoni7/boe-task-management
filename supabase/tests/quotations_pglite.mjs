@@ -1170,4 +1170,85 @@ await db.exec(mig('20270808000100_quotation_client_choices.sql'))
   ok('quotation_for_lead is closed to signed-out callers')
 }
 
+// ── 20270814000000 + 20270814000100: a quotation STARTS FROM a Sales lead (details copied from it) ──
+{
+  const L1 = '00000000-0000-0000-0000-0000000001a1' // Hotel Aravali, held by Mohit (sales)
+  const L2 = '00000000-0000-0000-0000-0000000001a2' // Cafe Lake, held by Prerna (sales2)
+  const L3 = '00000000-0000-0000-0000-0000000001a3' // Closed Resort, Dead
+  const L4 = '00000000-0000-0000-0000-0000000001a4' // a lead with no name
+  const DESK = '00000000-0000-0000-0000-0000000000f6' // like Nitish: quotations view + create + edit + view_all, Sales view + assign
+  await db.exec(`
+    alter table public.sales_leads add column email text, add column location text, add column requirement text, add column client_type text;
+    update public.sales_leads set email = 'aravali@example.invalid', location = 'Udaipur', requirement = '80 rooms, teak, ready in 12 weeks', client_type = 'hotel' where id = '${L1}';
+    insert into public.sales_leads (id, name, phone_e164, stage, assigned_to, created_by, dead_reason) values ('${L4}', null, '+919700000004', 'new', '${U.sales}', '${U.sales}', null), ('${L3}', 'Closed Resort', '+919700000003', 'dead', '${U.sales}', '${U.sales}', 'price_too_high');
+    insert into public.users (id, full_name, role) values ('${DESK}', 'Desk Person', 'employee');
+    insert into public.grants values ('${DESK}', 'quotations', 'view'), ('${DESK}', 'quotations', 'create'), ('${DESK}', 'quotations', 'edit'), ('${DESK}', 'quotations', 'view_all'),
+      ('${DESK}', 'sales', 'view'), ('${DESK}', 'sales', 'assign');`)
+  await db.exec(mig('20270814000000_quotation_start_from_lead.sql'))
+  const start = (uid, lead, data = {}) => rpc(uid, 'quotation_start', lead, data)
+  const row = async id => (await db.query('select * from public.quotations where id = $1', [id])).rows[0]
+
+  const q = await start(U.sales, L1)
+  let r = await row(q)
+  assert.deepEqual([r.client_name, r.contact_name, r.contact_phone, r.client_email, r.delivery_city, r.project_type, r.lead_id, r.owner_id, r.created_by, r.source],
+    ['Hotel Aravali', 'Hotel Aravali', '+919876543210', 'aravali@example.invalid', 'Udaipur', 'hotel', L1, U.sales, U.sales, 'Sales lead'])
+  assert.match(r.quote_no, /^QT-MS-\d{5}$/); assert.match(r.internal_notes, /^From lead \d+ · 80 rooms, teak, ready in 12 weeks$/); assert.equal(r.status, 'draft')
+  const ev = (await db.query(`select detail from public.quotation_events where quotation_id = $1 and kind = 'created'`, [q])).rows[0].detail
+  assert.equal(ev.lead_id, L1); assert.ok(ev.lead_no > 0)
+  ok('starting from a lead writes a linked draft with the lead\'s name, phone, e-mail, city, venue and requirement copied in, and the lead on its history')
+
+  r = await row(await start(U.sales, L4))
+  assert.match(r.client_name, /^Lead \d+$/); assert.equal(r.contact_name, null); assert.equal(r.lead_id, L4)
+  ok('a lead with no name still starts a quotation (named "Lead N"; the Client card stays editable)')
+
+  await fails(U.sales, 'select public.quotation_start($1::uuid)', [L3], /QUOTATION_LEAD_CLOSED/)
+  await fails(U.sales, 'select public.quotation_start($1::uuid)', [L2], /SALES_NOT_FOUND/)
+  await fails(U.sales, 'select public.quotation_start($1::uuid)', ['00000000-0000-0000-0000-00000000dead'], /SALES_NOT_FOUND/)
+  ok('a Dead lead, another person\'s lead and a lead that does not exist are refused (the last two give the same answer)')
+
+  await fails(U.nobody, 'select public.quotation_start($1::uuid)', [L1], /QUOTATIONS_FORBIDDEN/)
+  await fails(U.manager, 'select public.quotation_start($1::uuid)', [L1], /QUOTATIONS_FORBIDDEN/)
+  await fails('00000000-0000-0000-0000-0000000000e5', 'select public.quotation_start($1::uuid)', [L1], /SALES_FORBIDDEN/)
+  await fails(null, 'select public.quotation_start($1::uuid)', [L1], /permission denied/, 'anon')
+  ok('no Quotations access, no create right, or no Sales access is refused; a signed-out caller cannot call it at all')
+
+  await fails(U.sales, 'select public.quotation_start($1::uuid, $2::jsonb)', [L1, { owner_id: U.sales2 }], /only an administrator or the pricing desk/)
+  const forSales = await start(DESK, L1, { owner_id: U.sales, source: 'Excel from the client' })
+  r = await row(forSales)
+  assert.deepEqual([r.owner_id, r.created_by, r.source], [U.sales, DESK, 'Excel from the client']); assert.match(r.quote_no, /^QT-MS-/)
+  const forSales2 = await start(U.admin, L1, { owner_id: U.sales })
+  assert.equal((await row(forSales2)).owner_id, U.sales)
+  const mine = await rpc(U.sales, 'quotation_list', 'mine')
+  assert.ok(mine.some(x => x.id === forSales) && mine.some(x => x.id === forSales2))
+  ok('the pricing desk or an administrator can put a quotation on a salesperson\'s page (their initials in the number, their "My quotations"); a salesperson cannot')
+
+  await fails(U.admin, 'select public.quotation_start($1::uuid, $2::jsonb)', [L1, { owner_id: U.nobody }], /cannot own quotations/)
+  await fails(U.admin, 'select public.quotation_start($1::uuid, $2::jsonb)', [L1, { owner_id: U.manager }], /cannot own quotations/)
+  ok('a quotation cannot be put on somebody who cannot make quotations (no grant, or view-only)')
+
+  const names = async uid => (await as(uid, 'select full_name from public.quotation_makers()')).rows.map(x => x.full_name)
+  const list = await names(U.admin)
+  for (const n of ['Mohit Sharma', 'Prerna Purohit', 'Desk Person', 'Quotes Only']) assert.ok(list.includes(n), n)
+  assert.ok(!list.includes('Quotes Only X') && !list.includes('No Grant'))
+  assert.equal((await names(DESK)).includes('Mohit Sharma'), true)
+  await fails(U.sales, 'select * from public.quotation_makers()', [], /only an administrator or the pricing desk/)
+  await fails(U.nobody, 'select * from public.quotation_makers()', [], /QUOTATIONS_FORBIDDEN/)
+  assert.equal((await db.query(`select public.quotation_can_own('${U.manager}') as a, public.quotation_can_own('${U.nobody}') as b`)).rows[0].a, false)
+  ok('quotation_makers lists the people who can make quotations, for the desk and Admin only')
+
+  // quotation_create now needs a lead and is the same code path
+  await db.exec(mig('20270814000100_quotation_lead_required.sql'))
+  await fails(U.sales, 'select public.quotation_create($1::jsonb)', [{ client_name: 'Typed by hand' }], /QUOTATION_LEAD_REQUIRED/)
+  await fails(U.sales, 'select public.quotation_create($1::jsonb)', [{ lead_id: 'not-a-uuid' }], /QUOTATION_INVALID/)
+  await fails(U.nobody, 'select public.quotation_create($1::jsonb)', [{ client_name: 'X' }], /QUOTATIONS_FORBIDDEN/)
+  const viaCreate = await rpc(U.sales, 'quotation_create', { lead_id: L1, client_name: 'IGNORED typed name' })
+  r = await row(viaCreate)
+  assert.deepEqual([r.client_name, r.lead_id], ['Hotel Aravali', L1])
+  ok('quotation_create without a lead is refused; with one it is quotation_start (typed details are ignored, the lead\'s are used)')
+
+  const g = (await db.query(`select has_function_privilege('anon', 'public.quotation_create(jsonb)', 'EXECUTE') as a, has_function_privilege('authenticated', 'public.quotation_create(jsonb)', 'EXECUTE') as b`)).rows[0]
+  assert.deepEqual([g.a, g.b], [false, true])
+  ok('quotation_create is still closed to signed-out callers')
+}
+
 console.log(`all ${checks} checks passed`)
