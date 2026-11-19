@@ -226,7 +226,7 @@ Shipped in PR #746 (`22d9f772`, deployed 13:45 IST). `20270704000000` APPLIED to
 - `launcherBatch.test.ts`, `attendancePayrollNotifications.test.ts`: updated.
 - MemorySupabase now honours `ignoreDuplicates` on upsert, as PostgREST does.
 
-## 12. Held days at payroll (2026-11-18; migration `20270803000000`, NOT YET APPLIED)
+## 12. Held days at payroll (2026-11-18; PR #917 merged; migration `20270803000000` APPLIED 2026-11-18, verified by query)
 
 **Owner's choice (a).** A held day left undecided counts as present. The payroll lock names undecided held days but never blocks.
 
