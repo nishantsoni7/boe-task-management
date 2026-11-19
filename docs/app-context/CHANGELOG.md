@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-18 — Picture credits page: a "Left this month" column for each person (branch `feat/credits-left-column`; PR number added at the stamp) · no migration
+## 2026-11-18 — Picture credits page: a "Left this month" column for each person (PR #940, squash-merged as `83186471` on 19 Nov 2026; Vercel deploy succeeded, "Backup on merge" green; read live afterwards: the column shows 300, 196 and 299 for people with credits; the owner had already turned limits ON and listed seven people, and the first real presses were recorded, 3 pictures and 5 credits, whose estimated cost matched the fal balance drop from $48.46 to $48.26) · no migration
 - **Owner request (18 Nov 2026):** see each person's remaining credits, not only credits and used. The "Credits for each person" table on `/image-editor/usage` gains **Left this month** = monthly credits minus used this month, never below zero (`creditsLeft` in `src/lib/imageCredits/report.ts`; the database's `image_credit_status` already computes the same for the staff note). Read from the saved allowance, so an unsaved edit in the box does not change it.
 - Only that page and the helper changed; no route, setting or database change. Test: `imageCredits.test.ts` (the helper and the page wiring).
 
