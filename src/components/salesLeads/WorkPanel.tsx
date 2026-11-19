@@ -20,6 +20,7 @@ import {
 import { sourceLabel } from '@/lib/salesLeads/constants'
 import { dayHeading, dayLabelLong, dayShort, initialsOf, istDayOf, timeLabel } from '@/lib/salesLeads/format'
 import { eventBy, eventLine, leadTitle } from './LeadBits'
+import { LeadQuotes } from './LeadQuotes'
 import { useDialogFocus } from './useDialogFocus'
 import { useLeadFiles, type QueuedFile } from './useLeadFiles'
 import type { LeadWork } from './useLeadWork'
@@ -608,6 +609,7 @@ function ActivitySide({ detail, work, canWrite, focusLog, onPosted, filling, loa
         </div>
       )}
       {canWrite && <Composer lead={detail.lead} work={work} focus={focusLog} onPosted={onPosted} />}
+      <LeadQuotes lead={detail.lead} work={work} canMake={canWrite} filling={filling} />
       <div className={s.mFeed}>
         {filling && !loadFailed && <p className={s.mNone} role="status">Loading the activity…</p>}
         {loadFailed && (

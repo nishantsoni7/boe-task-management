@@ -1346,6 +1346,8 @@ describe('the applied migrations are frozen', () => {
       '20270810000000_task_nav_counts.sql',
       // Quotations: an optional link to the Sales lead (one nullable column, two functions); existing rows keep no lead, no policy or grant opens.
       '20270811000000_quotation_lead_link.sql',
+      // Quotations: the quotations linked to a lead, for the lead popup (one read-only SECURITY DEFINER function); no table, row, policy or table grant changes.
+      '20270812000000_quotation_for_lead.sql',
     ])
   })
 
@@ -1903,6 +1905,8 @@ describe('the applied migrations are frozen', () => {
       '20270810000000_task_nav_counts.sql',
       // Quotations: an optional link to the Sales lead (one nullable column, two functions); existing rows keep no lead, no policy or grant opens.
       '20270811000000_quotation_lead_link.sql',
+      // Quotations: the quotations linked to a lead, for the lead popup (one read-only SECURITY DEFINER function); no table, row, policy or table grant changes.
+      '20270812000000_quotation_for_lead.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
