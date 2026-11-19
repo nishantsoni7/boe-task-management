@@ -53,7 +53,9 @@ describe('the empty state waits for the query', () => {
   test('the skeleton gate reads isPending', () => {
     assert.ok(PAGE_CODE.includes('isPending: tasksPending'))
     assert.ok(PAGE_CODE.includes('const tasksResolved = !tasksPending'))
-    assert.ok(PAGE_CODE.includes('const showListSkeleton = !tasksResolved'))
+    // …or the person is being sent from a stale ?tab=completed to the paged
+    // history (see myTasksOpenWorkOnly.test.ts): never "No Completed tasks".
+    assert.ok(PAGE_CODE.includes('const showListSkeleton = !tasksResolved || sentToCompletedHistory'))
   })
 
   test('the skeleton branch is chosen before the empty state can be', () => {
@@ -166,6 +168,7 @@ describe('tabs filter already-fetched data', () => {
   test('the assignee scope is still enforced by the query itself', () => {
     assert.ok(HOOK.includes(".eq('assigned_to', userId)"))
     assert.ok(HOOK.includes(".neq('status', 'cancelled')"))
+    assert.ok(HOOK.includes(".neq('status', 'completed')"), 'finished work is the paged history, not this list')
     assert.ok(HOOK.includes(".neq('task_type', 'quotation_request')"))
     assert.ok(HOOK.includes('enabled: isValidUUID(userId)'),
       'no request is made for a non-UUID or absent user')

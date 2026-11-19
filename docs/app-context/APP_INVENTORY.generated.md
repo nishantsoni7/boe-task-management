@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `68597159` — Docs: stamp #940 (credits left this month) as merged (#941)
-- Commits on this branch: 1499
+- Commit: `bdd679ad` — Payment window: stop offering already-matched payments as duplicates, and let a different client name through
+- Commits on this branch: 1500
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 486 (first `20260530_create_positions.sql`, latest `20270809000000_quotation_client_choices_output.sql`)
 - Tables ever created: 269 (dropped at some point: 8)   SQL functions: 1074   Enums: 0
-- Test files: 911   Next.js 16.2.6, React 19.2.4
+- Test files: 912   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `bdd679ad` 2026-11-19 Payment window: stop offering already-matched payments as duplicates, and let a different client name through
 - `68597159` 2026-11-19 Docs: stamp #940 (credits left this month) as merged (#941)
 - `83186471` 2026-11-19 Picture credits page: a "Left this month" column for each person (#940)
 - `1442bf52` 2026-11-18 Docs: stamp #938 (picture credits switches say ON or OFF) as merged (#939)
@@ -38,7 +39,6 @@
 - `829b7893` 2026-11-18 Quotation requests: Requests page in Quotations, dashboard card for every receiver, a notice for each new request (#920)
 - `6513640e` 2026-11-18 Quotation requests go to the owner or Nitish: a required Send to, the owner sees every request (migration 20270804000000, apply before merge) (#919)
 - `8da1de82` 2026-11-18 Day Close held days at payroll: Count the day or Mark absent (migration 20270803000000) (#917)
-- `07d292f3` 2026-11-18 Quotations: a save that would fail says which product and brings it into view (#915)
 
 ## Pages by top-level area
 
@@ -182,7 +182,7 @@
 - `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 12 source, 12 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 26 source, 41 test
+- `src/lib/tasks` — 26 source, 42 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
