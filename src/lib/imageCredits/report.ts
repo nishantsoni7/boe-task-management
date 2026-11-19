@@ -29,3 +29,6 @@ export function daysOfBalanceLeft(balanceUsd: number, usdPrev7: number): number 
 }
 
 export const rupees = (usd: number, inrPerUsd: number): number => Math.round(usd * inrPerUsd)
+
+/** What is left of a person's monthly credits, never below zero (the database function says the same). */
+export const creditsLeft = (monthlyCredits: number, usedThisMonth: number): number => Math.max(monthlyCredits - usedThisMonth, 0)

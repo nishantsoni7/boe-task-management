@@ -5,7 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { COST, CREDIT_TOOLS, TOOL_LABEL } from './costs'
 import { NOT_BILLED, SPEND_REFUSALS, spendCredits, type SpendCode } from './spend'
 import { readFalBalance } from './falBalance'
-import { daysOfBalanceLeft, rupees } from './report'
+import { creditsLeft, daysOfBalanceLeft, rupees } from './report'
 import { creditNoteText } from './note'
 
 const read = (p: string) => readFileSync(p, 'utf8').replace(/\r/g, '')
@@ -128,6 +128,16 @@ test('days of balance left: at the last seven days’ pace, and nothing when the
   assert.equal(daysOfBalanceLeft(50, 0), null)
   assert.equal(daysOfBalanceLeft(-1, 7), null)
   assert.equal(rupees(0.08, 88), 7)
+})
+
+test('credits left: the monthly credits minus what was used, never below zero, and the page shows it for each person', () => {
+  assert.equal(creditsLeft(300, 0), 300)
+  assert.equal(creditsLeft(300, 120), 180)
+  assert.equal(creditsLeft(300, 300), 0)
+  assert.equal(creditsLeft(10, 14), 0)
+  const page = read('src/app/image-editor/usage/page.tsx')
+  assert.match(page, /'Left this month'/)
+  assert.match(page, /creditsLeft\(a\.monthly_credits, used\.get\(a\.user_id\) \?\? 0\)/)
 })
 
 // ── The doors: every paid press takes credits first, and gives them back only on a refusal ───────────────────

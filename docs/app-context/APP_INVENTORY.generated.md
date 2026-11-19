@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `85db2249` — Docs: stamp #931, #933, #934 and #936 as merged and applied (#937)
-- Commits on this branch: 1495
+- Commit: `1442bf52` — Docs: stamp #938 (picture credits switches say ON or OFF) as merged (#939)
+- Commits on this branch: 1497
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 486 (first `20260530_create_positions.sql`, latest `20270809000000_quotation_client_choices_output.sql`)
 - Tables ever created: 269 (dropped at some point: 8)   SQL functions: 1074   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `1442bf52` 2026-11-18 Docs: stamp #938 (picture credits switches say ON or OFF) as merged (#939)
+- `3f50eadd` 2026-11-18 Picture credits page: the switches say ON or OFF, and Limits stay locked while nobody has credits (#938)
 - `85db2249` 2026-11-18 Docs: stamp #931, #933, #934 and #936 as merged and applied (#937)
 - `31e7fbdf` 2026-11-18 Quotations: client choices on the PDF, the client link and the Excel (step 2 of 3) (#936)
 - `5bd9569d` 2026-11-18 Quotations: client choices (fabric, finish, stone, rope weave) per product, step 1: builder only (#934)
@@ -37,8 +39,6 @@
 - `07d292f3` 2026-11-18 Quotations: a save that would fail says which product and brings it into view (#915)
 - `a32a4c69` 2026-11-18 Docs: record 20270802000000 and 20270802000100 as applied (no SQL) (#916)
 - `5c7d359b` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date (no SQL) (#914)
-- `5db5a11d` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (migrations 20270802000000 + 20270802000100) (#913)
-- `ca56337c` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it (no SQL) (#911)
 
 ## Pages by top-level area
 
