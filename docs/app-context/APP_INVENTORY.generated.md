@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `006ad8fe` — Payment window: stop offering already-matched payments as duplicates, and let a different client name through (#943)
-- Commits on this branch: 1501
+- Commit: `da144cb1` — Test: the sidebar-badge pin reads the new places; PR number in the docs (no SQL change)
+- Commits on this branch: 1503
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 487 (first `20260530_create_positions.sql`, latest `20270810000000_task_nav_counts.sql`)
 - Tables ever created: 269 (dropped at some point: 8)   SQL functions: 1075   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `da144cb1` 2026-11-19 Test: the sidebar-badge pin reads the new places; PR number in the docs (no SQL change)
+- `7cbdd1d3` 2026-11-19 Task Management sidebar: the three badge counts in one call (task_nav_counts; migration 20270810000000, not applied)
 - `006ad8fe` 2026-11-19 Payment window: stop offering already-matched payments as duplicates, and let a different client name through (#943)
 - `5efcad37` 2026-11-19 My Tasks opens sooner: open work only, Top 3 in one request (no SQL) (#942)
 - `68597159` 2026-11-19 Docs: stamp #940 (credits left this month) as merged (#941)
@@ -37,8 +39,6 @@
 - `14dea70a` 2026-11-18 Quotations: the builder page tidied: request on top, City, no PI draft card, one-line Saved (migration 20270806000000, not applied) (#923)
 - `10b5b012` 2026-11-18 Quotation requests: the request page shows its quotation, Excel needs a reason, the salesperson asks for a change (migration 20270805000000, read-only) (#922)
 - `a5ef42ef` 2026-11-18 Docs: stamp #919 and #920 as merged; migration 20270804000000 applied (#921)
-- `829b7893` 2026-11-18 Quotation requests: Requests page in Quotations, dashboard card for every receiver, a notice for each new request (#920)
-- `6513640e` 2026-11-18 Quotation requests go to the owner or Nitish: a required Send to, the owner sees every request (migration 20270804000000, apply before merge) (#919)
 
 ## Pages by top-level area
 
