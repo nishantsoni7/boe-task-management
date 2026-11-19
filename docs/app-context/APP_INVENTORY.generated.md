@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `184ca5e0` — Lead popup quotations: docs, both migration ledgers, inventory
-- Commits on this branch: 1512
+- Commit: `d0fe51aa` — Lead popup: the lead's quotations in one line, and Make quotation from the lead (#952)
+- Commits on this branch: 1511
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 489 (first `20260530_create_positions.sql`, latest `20270812000000_quotation_for_lead.sql`)
 - Tables ever created: 269 (dropped at some point: 8)   SQL functions: 1078   Enums: 0
@@ -14,9 +14,8 @@
 
 ## Latest 25 commits
 
-- `184ca5e0` 2026-11-19 Lead popup quotations: docs, both migration ledgers, inventory
-- `ce50af19` 2026-11-19 Merge remote-tracking branch 'origin/main' into feat/lead-popup-quotations
-- `7343533e` 2026-11-19 Lead popup: the lead's quotations in one line, and Make quotation from the lead
+- `d0fe51aa` 2026-11-19 Lead popup: the lead's quotations in one line, and Make quotation from the lead (#952)
+- `c000801a` 2026-11-19 Docs: record 20270803000000 (held-day decision) as applied (no SQL) (#918)
 - `60432cb7` 2026-11-19 Docs: stamp #949 (quotation linked to its Sales lead) as merged and verified live (migration already applied) (#951)
 - `1bf5169d` 2026-11-19 Quotations: link a quotation to its Sales lead; a Lead card offers one tap on the lead (#949)
 - `0f089477` 2026-11-19 Docs: stamp #948 (Task Management starts its pages during the access check) as merged and verified live (no SQL change) (#950)
@@ -39,6 +38,7 @@
 - `8a0b1f21` 2026-11-18 Quotations: nothing waits for price approval, suggestions for the pricing desk, bank account + UPI QR on the quotation (#933)
 - `ff8dedc3` 2026-11-18 Quotations: a styled, editable Excel with pictures and the standard terms; GST as one line (#931)
 - `a08a1d5f` 2026-11-18 Docs: stamp #929 (shared image model on Nano Banana 2) as merged (#930)
+- `6bca071d` 2026-11-18 Images: the shared image model moves from Nano Banana Pro to Nano Banana 2 (about US$0.08 a picture against US$0.15; no SQL) (#929)
 
 ## Pages by top-level area
 
