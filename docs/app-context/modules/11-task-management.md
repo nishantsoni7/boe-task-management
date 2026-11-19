@@ -123,7 +123,7 @@ Statuses and transitions:
   between 00:00 and 05:30 IST it lags a day (the performance code uses IST via `istDate.ts`).
 - Top 3 Focus: max 3 enforced in the BROWSER (`top3Data.length >= 3` in `/tasks/my`), not by a database constraint; pinned tasks are excluded from the strip once
   completed/cancelled/pending_approval (query filter + trigger). Reorder = DELETE + INSERT renumbering 1..N (no UPDATE policy; `display_order` can contain duplicates).
-- My Tasks first-open reads (19 Nov 2026, PR #TBD, no SQL): `useMyTasks` reads OPEN work only (`status` not `cancelled` and not `completed`, not quotation requests); finished work is `/tasks/my/completed`
+- My Tasks first-open reads (19 Nov 2026, PR #942, no SQL): `useMyTasks` reads OPEN work only (`status` not `cancelled` and not `completed`, not quotation requests); finished work is `/tasks/my/completed`
   (DB-paged). Nothing on My Tasks draws `buckets.completed` (no tab for it; `myTasksOpenWorkOnly.test.ts` proves every tab, badge and Task Type count is identical with or without completed rows),
   so a stale `?tab=completed` bookmark is sent to `/tasks/my/completed` (skeleton meanwhile). VISIBLE SIDE EFFECT: the "Assigned by" filter is built from the loaded list, so a person whose only
   tasks for you are finished no longer appears in it. `useTopTasks` is ONE request: `user_top_tasks` with the task embedded (`tasks!task_id(...)`, filters on `tasks.status`, no `!inner`, so `pinnedIds`
