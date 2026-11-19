@@ -159,9 +159,17 @@ describe('a row that displays as Approval Pending is classified as Awaiting Appr
 
   test('5. it is excluded from the My Tasks / In Progress sidebar badge', () => {
     // The sidebar badge counts pending|started|working server-side — the same
-    // three statuses, and pending_approval is not among them.
+    // three statuses, and pending_approval is not among them. That rule now lives in two places that must agree:
+    // the one function the sidebar asks (task_nav_counts, 20270810000000) and the three reads it falls back to
+    // (src/lib/tasks/navCounts.ts), which DashboardLayout reaches only through fetchNavCounts.
     const layout = read('src/components/layout/DashboardLayout.tsx')
-    assert.ok(layout.includes(".in('status', ['pending', 'started', 'working'])"))
+    assert.ok(layout.includes('fetchNavCounts(supabase, effectiveNavUserId)'))
+    const fallback = read('src/lib/tasks/navCounts.ts')
+    assert.ok(fallback.includes(".in('status', ['pending', 'started', 'working'])"))
+    assert.equal(fallback.includes('pending_approval'), false)
+    const fn = read('supabase/migrations/20270810000000_task_nav_counts.sql').replace(/^\s*--.*$/gm, '')
+    assert.match(fn, /t\.status in \('pending', 'started', 'working'\)/)
+    assert.equal(fn.includes('pending_approval'), false)
     assert.equal(layout.includes('pending_approval'), false)
     // And the page-side Task Type counts agree with that exclusion.
     assert.equal(countTaskTypeWorkload([submitted], ME).all, 0)

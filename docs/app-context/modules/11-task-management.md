@@ -67,6 +67,7 @@ API routes: `/api/tasks/[id]/copy` (POST, admin-only Copy & Assign), `/api/tasks
   - `acknowledge_task(task)` (`20270303000000`): assignee only, not creator, not quotation, not already acknowledged (55000), status in pending/started/working/
     waiting/blocked; writes `acknowledged` + `status_changed -> working` history rows atomically; no notification.
   - `cleanup_top_tasks_on_completion()` (AFTER UPDATE OF status): deletes the pin when status in (`pending_approval`, `completed`, `cancelled`) (`20261018000000`).
+  - `task_nav_counts(p_user uuid)` (`20270810000000`, 19 Nov 2026, PR #946, APPLIED to production 19 Nov 2026 at 20:00 IST): the three sidebar badge counts (`my_active`, `assigned_by_me_active`, `quotation_active`) in one read-only SECURITY INVOKER call, the same rules as the three reads it replaces; `fetchNavCounts` (`src/lib/tasks/navCounts.ts`) falls back to those three reads on any failure.
   - `run_task_health_check()` hourly pg_cron job (DB-side, not in `vercel.json`; the cron entry itself is NOT in any migration): since `20270610000000` it writes ONLY the stale flag
     (`tasks.is_stale`/`stale_day_count` and one `stale_flagged` activity line per task). No notification rows since `20261015000000` (about 16k `overdue`/`escalation` rows had accumulated,
     never shown); no "Auto-escalated" activity lines since `20270610000000` (see section 6, "Auto-escalation removed"). Rollback text = the `CREATE OR REPLACE` in `20261015000000`
@@ -128,7 +129,7 @@ Statuses and transitions:
   so a stale `?tab=completed` bookmark is sent to `/tasks/my/completed` (skeleton meanwhile). VISIBLE SIDE EFFECT: the "Assigned by" filter is built from the loaded list, so a person whose only
   tasks for you are finished no longer appears in it. `useTopTasks` is ONE request: `user_top_tasks` with the task embedded (`tasks!task_id(...)`, filters on `tasks.status`, no `!inner`, so `pinnedIds`
   still holds every pin; `shapeTopTasks`), and a failed read now REJECTS (it used to cache "nothing pinned"). Why: a 19 Nov DevTools capture of `/tasks/my` showed ~10 database calls leaving at once,
-  each ~1 s, the list (78.8 kB, 1.3 s) gating the first paint and Top 3 a second call behind it. NOT done (PR B): the 3 sidebar badge counts (`nav-counts` in `DashboardLayout`) as one function.
+  each ~1 s, the list (78.8 kB, 1.3 s) gating the first paint and Top 3 a second call behind it. Follow-up (PR B, PR #946, migration `20270810000000`): the 3 sidebar badge counts (`nav-counts` in `DashboardLayout`) as one function, `task_nav_counts`.
 - My Tasks row order (Oct 2026, migration `20270424000000` APPLIED 2026-10-28): Important, then Today's Focus pins, then the rest; within a group the person's drag order from
   `user_task_order` (one row per user, `task_ids uuid[]`, upsert; owner-only RLS; display preference, grants nothing). Pure rules: `src/lib/tasks/taskOrder.ts`; hook
   `useTaskOrder`. Desktop only; pointer-driven drag (`useRowDragSort`: live reorder via transforms, edge auto-scroll, Escape cancels, committed once on release) plus a hover "Move to top" button; no cross-group drops; the saved array is the whole active list so it holds in every tab. Action icons are borderless; the pin

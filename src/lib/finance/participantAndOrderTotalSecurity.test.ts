@@ -1342,6 +1342,8 @@ describe('the applied migrations are frozen', () => {
       '20270808000100_quotation_client_choices.sql',
       // Quotations: the client's copy carries the client choices (never the note); one function body replaced, no table or row changes.
       '20270809000000_quotation_client_choices_output.sql',
+      // Task Management: the three sidebar badge counts in one read-only SECURITY INVOKER function; no table, row, policy or grant changes.
+      '20270810000000_task_nav_counts.sql',
     ])
   })
 
@@ -1895,6 +1897,8 @@ describe('the applied migrations are frozen', () => {
       '20270808000100_quotation_client_choices.sql',
       // Quotations: the client's copy carries the client choices (never the note); one function body replaced, no table or row changes.
       '20270809000000_quotation_client_choices_output.sql',
+      // Task Management: the three sidebar badge counts in one read-only SECURITY INVOKER function; no table, row, policy or grant changes.
+      '20270810000000_task_nav_counts.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

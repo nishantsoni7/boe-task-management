@@ -9,7 +9,7 @@ import {
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
-import { isValidUUID } from '@/lib/ui'
+import { fetchNavCounts, NO_NAV_COUNTS } from '@/lib/tasks/navCounts'
 import { useViewAs } from '@/hooks/useViewAs'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { createClient } from '@/lib/supabase/client'
@@ -152,41 +152,11 @@ export function DashboardLayout({
   // React Query so remounting on navigation reuses fresh-enough data instead of
   // refetching every time. Skip when the id is not a real UUID (e.g. seed/test
   // placeholder), and wait until an id is resolved before fetching at all.
-  const { data: navCounts = { myActive: 0, assignedByMeActive: 0, quotationActive: 0 } } = useQuery({
+  // ONE request (task_nav_counts, 20270810000000); fetchNavCounts falls back to
+  // the three head-only reads it replaced when the function cannot be used.
+  const { data: navCounts = NO_NAV_COUNTS } = useQuery({
     queryKey: ['nav-counts', effectiveNavUserId],
-    queryFn: async () => {
-      const uid = effectiveNavUserId
-      if (!uid || !isValidUUID(uid)) {
-        return { myActive: 0, assignedByMeActive: 0, quotationActive: 0 }
-      }
-      const [myRes, abmRes, qrRes] = await Promise.all([
-        supabase
-          .from('tasks')
-          .select('id', { count: 'exact', head: true })
-          .eq('assigned_to', uid)
-          .in('status', ['pending', 'started', 'working'])
-          .neq('task_type', 'quotation_request'),
-        supabase
-          .from('tasks')
-          .select('id', { count: 'exact', head: true })
-          .eq('created_by', uid)
-          .neq('assigned_to', uid)
-          .neq('status', 'completed')
-          .neq('status', 'cancelled'),
-        supabase
-          .from('tasks')
-          .select('id', { count: 'exact', head: true })
-          .eq('assigned_to', uid)
-          .eq('task_type', 'quotation_request')
-          .neq('status', 'completed')
-          .neq('status', 'cancelled'),
-      ])
-      return {
-        myActive:           myRes.count  ?? 0,
-        assignedByMeActive: abmRes.count ?? 0,
-        quotationActive:    qrRes.count  ?? 0,
-      }
-    },
+    queryFn: () => fetchNavCounts(supabase, effectiveNavUserId),
     enabled: effectiveNavUserId != null,
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
