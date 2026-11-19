@@ -180,14 +180,23 @@ export function isExactCandidate(c: BankCandidate): boolean {
   return c.amountExact && c.referenceMatch && c.sameAccount && c.nameFit >= 0.99 && c.daysApart <= 3
 }
 
-/** What should stop a person before using this credit. The bank's own reference outweighs a name or a date. */
-export function candidateDoubts(c: BankCandidate, clientName: string | null): string[] {
+/**
+ * What should stop a person before using this credit: the other account, or dates far apart (a bank
+ * reference outweighs the date). A NAME is never a doubt (owner 2026-11-19): Sales write the name the
+ * client gave, and the client usually pays through a company, so a different name is the normal case.
+ * The name stays in the comparison (see nameDiffers) as information.
+ */
+export function candidateDoubts(c: BankCandidate): string[] {
   const doubts: string[] = []
   if (!c.sameAccount) doubts.push('this credit is in the other HDFC account')
   if (c.referenceMatch) return doubts
-  if (c.nameFit < 0.5) doubts.push(clientName ? 'the name does not match' : 'the payment has no client name')
   if (c.daysApart > 3) doubts.push(`the dates are ${c.daysApart} days apart`)
   return doubts
+}
+
+/** The payment names a client and the bank's payer shares none of it. Information, never a stop. */
+export function nameDiffers(c: BankCandidate, clientName: string | null): boolean {
+  return !!clientName?.trim() && c.nameFit < 0.5
 }
 
 export type BankMarkTone = 'ok' | 'match' | 'warn' | 'quiet'
@@ -271,7 +280,7 @@ export function compareCandidate(
       label: 'Name',
       request: p.client_name ?? 'Not identified',
       bank: payerFromNarration(c.narration) ?? '—',
-      verdict: !p.client_name ? '' : c.nameFit >= 0.99 ? 'Same' : c.nameFit >= 0.5 ? 'Partly the same' : 'No match',
+      verdict: !p.client_name ? '' : c.nameFit >= 0.99 ? 'Same' : c.nameFit >= 0.5 ? 'Partly the same' : 'Different name',
       tone: c.nameFit >= 0.5 ? 'same' : 'plain',
     },
     {

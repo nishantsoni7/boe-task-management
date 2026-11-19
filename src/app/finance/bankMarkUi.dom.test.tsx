@@ -126,11 +126,25 @@ describe('a credit that does not plainly fit never gets the red button', () => {
     assert.deepEqual(sent, [{ fn: 'verify_payment_with_bank', args: { p_payment_id: 'P1', p_line_ids: ['L2'] } }])
   })
 
-  test('a name that does not fit is said, and the single match asks first too', () => {
+  test('a different name is said but does not stop the match: the client usually pays through a company', async () => {
     const p = pay({ client_name: 'Another Client', proof_note: null })
+    const { ui, sent, verified } = open(p, markFor(p, [credit({ bank_ref: null })]))
+    assert.ok(ui.text().includes('Different name'))
+    assert.ok(ui.text().includes("The name is different. That is normal when the client's company pays."))
+    assert.ok(!ui.text().includes('Check first'))
+    assert.deepEqual(primary(ui), ['Verify and link'], 'amount, account and date fit: the name alone does not take the button away')
+    ui.click(ui.button('Verify and link'))
+    await ui.settle()
+    assert.deepEqual(sent, [{ fn: 'verify_payment_with_bank', args: { p_payment_id: 'P1', p_line_ids: ['L1'] } }])
+    assert.equal(verified(), 1)
+  })
+
+  test('a different name AND a far date still asks first, and says only the date', () => {
+    const p = pay({ client_name: 'Another Client', proof_note: null, payment_date: '2026-10-01' })
     const { ui } = open(p, markFor(p, [credit({ bank_ref: null })]))
-    assert.ok(ui.text().includes('Check first: the name does not match.'))
-    assert.deepEqual(primary(ui), ['Not this one'], 'the safe answer is the easy one')
+    assert.ok(ui.text().includes('Check first: the dates are 5 days apart.'))
+    assert.ok(!ui.text().includes('the name does not match'))
+    assert.deepEqual(primary(ui), ['Not this one'], 'a date that does not fit keeps the safe answer easy')
   })
 
   test('the other HDFC account offers no way to verify: the payment is corrected first', () => {
