@@ -115,6 +115,9 @@ export function classifyError(err: Raw): QuotationError {
   if (err.code === 'PGRST202' || err.code === '42883' || err.code === '42P01' || /Could not find the function|does not exist/i.test(m)) {
     return new QuotationError('not_set_up', 'Quotations is being set up: its database part has not been applied yet.')
   }
+  // The lead link (20270811000000) also answers with the Sales module's own errors.
+  if (/SALES_FORBIDDEN/.test(m)) return new QuotationError('forbidden', 'Your account has no access to Sales, so it cannot link a lead.')
+  if (/SALES_NOT_FOUND/.test(m)) return new QuotationError('not_found', 'This lead does not exist or is not yours to see.')
   if (/QUOTATIONS_FORBIDDEN/.test(m) || err.code === '42501') return new QuotationError('forbidden', m.replace(/^.*QUOTATIONS_FORBIDDEN:\s*/, '') || 'You do not have access to this.')
   if (/QUOTATION_NOT_FOUND/.test(m)) return new QuotationError('not_found', 'This quotation does not exist or is not yours to see.')
   if (/QUOTATION_STALE/.test(m)) return new QuotationError('stale', 'Somebody saved this quotation after you opened it. Reload to see their changes; your edits are still on screen.')
@@ -295,5 +298,23 @@ export type PaymentSettings = PaymentDetails & { customer_id: string; updated_at
 export const fetchPaymentDetails = (s: Supabase, token?: string) => call<PaymentDetails | null>(() => s.rpc('quotation_payment_details', { p_token: token ?? null }))
 export const fetchPaymentSettings = (s: Supabase) => call<PaymentSettings>(() => s.rpc('quotation_payment_get'))
 export const savePaymentSettings = (s: Supabase, data: Partial<Omit<PaymentSettings, 'updated_at'>>) => call<PaymentSettings>(() => s.rpc('quotation_payment_set', { p_data: data }))
+
+/**
+ * The Sales lead a quotation came from (20270811000000). `lead` is null when nothing is linked, when the lead is not one the caller may
+ * see, or when the caller has no Sales access (`sales_open` false): the card then says only that a lead is linked. `suggest` is the lead
+ * with the quotation's contact phone. `version_no` and `value` are the latest SENT version (the current saved value before any is sent).
+ */
+export type LeadSummary = { id: string; lead_no: number; name: string | null; stage: string; holder_name: string | null }
+export type LeadInfo = {
+  sales_open: boolean; linked: boolean
+  lead: (LeadSummary & { dead_reason: string | null; next_step: string | null; next_due_on: string | null; may_work: boolean; last_logged_at: string | null }) | null
+  suggest: LeadSummary | null
+  version_no: number | null; value: number
+}
+export const leadInfoKey = (id: string) => ['quotations', 'lead', id] as const
+export const fetchLeadInfo = (s: Supabase, id: string) => call<LeadInfo>(() => s.rpc('quotation_lead_info', { p_id: id }))
+/** Link a quotation to a lead the caller can see, or pass null to unlink. */
+export const linkLead = (s: Supabase, id: string, leadId: string | null) => call<null>(() => s.rpc('quotation_link_lead', { p_id: id, p_lead: leadId }))
+
 export const savePriceSettings = (s: Supabase, maxDiscount: number | null, minPrice: number | null) =>
   call<PriceSettings>(() => s.rpc('quotation_price_settings_set', { p_max_discount_pct: maxDiscount, p_min_price_pct: minPrice }))
