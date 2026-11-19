@@ -1329,7 +1329,12 @@ function MyTasksContent() {
   // then the page renders its full chrome with a skeleton where the rows go —
   // never a claim that there is nothing to do.
   const tasksResolved = !tasksPending
-  const showListSkeleton = !tasksResolved
+  // `?tab=completed` is only ever an old bookmark (nothing in the app links to
+  // it): the list no longer carries finished tasks, so it is sent to the paged
+  // history, and the rows area shows its skeleton, not "No Completed tasks",
+  // for the moment that takes.
+  const sentToCompletedHistory = activeTab === 'completed'
+  const showListSkeleton = !tasksResolved || sentToCompletedHistory
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 768)
@@ -1343,6 +1348,10 @@ function MyTasksContent() {
   useEffect(() => {
     if (authReady && !loggedInId) router.push('/login')
   }, [authReady, loggedInId]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (sentToCompletedHistory) router.replace('/tasks/my/completed')
+  }, [sentToCompletedHistory]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Guard view-as against non-admins
   useEffect(() => {
@@ -2015,10 +2024,10 @@ function MyTasksContent() {
                     actionBusy={quickActionTaskId === task.id}
                     isMobile={isMobile}
                     rowRef={rowRef(task.id)}
-                    drag={!isMobile && !viewAsUserId && !!userId && activeTab !== 'completed'
+                    drag={!isMobile && !viewAsUserId && !!userId
                       ? { onPointerDown: e => beginDrag(task.id, e) } : undefined}
                     onMoveTop={
-                      !isMobile && !viewAsUserId && !!userId && activeTab !== 'completed' &&
+                      !isMobile && !viewAsUserId && !!userId &&
                       fullSorted.find(t => groupOfTask(t.id) === groupOfTask(task.id))?.id !== task.id
                         ? () => handleMoveTop(task) : undefined
                     }
