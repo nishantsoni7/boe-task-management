@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `616efe75` — Task Management sidebar: the three badge counts in one call (migration 20270810000000, apply before merge) (#946)
-- Commits on this branch: 1504
+- Commit: `adf5ef86` — Docs: stamp #946 (sidebar badge counts in one call) as merged and verified live (no SQL change) (#947)
+- Commits on this branch: 1505
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 487 (first `20260530_create_positions.sql`, latest `20270810000000_task_nav_counts.sql`)
 - Tables ever created: 269 (dropped at some point: 8)   SQL functions: 1075   Enums: 0
-- Test files: 913   Next.js 16.2.6, React 19.2.4
+- Test files: 915   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `adf5ef86` 2026-11-19 Docs: stamp #946 (sidebar badge counts in one call) as merged and verified live (no SQL change) (#947)
 - `616efe75` 2026-11-19 Task Management sidebar: the three badge counts in one call (migration 20270810000000, apply before merge) (#946)
 - `5d3584b6` 2026-11-19 Docs: stamp #942 (My Tasks open-work list, Top 3 in one request) as merged and verified live (no SQL) (#944)
 - `4eac169b` 2026-11-19 Docs: stamp #943 (payment window: matched payments, different name) as merged (#945)
@@ -38,7 +39,6 @@
 - `7ea6f66d` 2026-11-18 Quotations: the builder's top area redone: Request | Status | Share as three compact cards, a four-field Client grid, the page capped at 1360 px (no SQL) (#926)
 - `a7058855` 2026-11-18 Docs: stamp #923 as merged and applied; rename its migration to 20270806000100 (the number was already taken by quotation_picture_originals) (#925)
 - `14dea70a` 2026-11-18 Quotations: the builder page tidied: request on top, City, no PI draft card, one-line Saved (migration 20270806000000, not applied) (#923)
-- `10b5b012` 2026-11-18 Quotation requests: the request page shows its quotation, Excel needs a reason, the salesperson asks for a change (migration 20270805000000, read-only) (#922)
 
 ## Pages by top-level area
 
@@ -182,7 +182,7 @@
 - `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 12 source, 12 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 27 source, 43 test
+- `src/lib/tasks` — 27 source, 44 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test

@@ -124,6 +124,13 @@ Statuses and transitions:
   between 00:00 and 05:30 IST it lags a day (the performance code uses IST via `istDate.ts`).
 - Top 3 Focus: max 3 enforced in the BROWSER (`top3Data.length >= 3` in `/tasks/my`), not by a database constraint; pinned tasks are excluded from the strip once
   completed/cancelled/pending_approval (query filter + trigger). Reorder = DELETE + INSERT renumbering 1..N (no UPDATE policy; `display_order` can contain duplicates).
+- Task Management pages start while the access check runs (19 Nov 2026, PR #TBD, no SQL): `src/app/tasks/layout.tsx` and `src/app/dashboard/layout.tsx` use `ModuleGuardStartsEarly`
+  (module 08), so on a hard load (new tab, bookmark, first open of the day) the page's reads start with the guard's own two reads instead of after them. Why: measured 19 Nov on a warm
+  hard load of `/tasks/my`, the guard wave took 1.16 s and the page wave 0.6 s after it (rows at about 3.0 s); a warm click from the launcher never waited on the guard. HELD until
+  shown (`useModuleShown`): `useRecordAppOpen(!!profile && shown)` in DashboardLayout (the one write on mount) and the New Quotation Request form (`/tasks/quotation-requests/new`,
+  its first field is autoFocus). AUDITED, no change needed: login redirects (same target as the guard), View As exits (need a non-null profile), `/tasks/quotation-requests` (waits for
+  `ready`), the new-request init effect (its own reads, a read-only rpc), focus effects (open menus only), `useListScrollRestore` (restores only after Back inside a running app, whose
+  answer is already cached, so hidden and restore cannot coincide), no mark-read on open. NOT seen live: the denied path (no second account to try).
 - My Tasks first-open reads (19 Nov 2026, PR #942 merged as `5efcad37`, verified live; the owner has 636 completed tasks that the list used to carry beside 13 open ones; no SQL): `useMyTasks` reads OPEN work only (`status` not `cancelled` and not `completed`, not quotation requests); finished work is `/tasks/my/completed`
   (DB-paged). Nothing on My Tasks draws `buckets.completed` (no tab for it; `myTasksOpenWorkOnly.test.ts` proves every tab, badge and Task Type count is identical with or without completed rows),
   so a stale `?tab=completed` bookmark is sent to `/tasks/my/completed` (skeleton meanwhile). VISIBLE SIDE EFFECT: the "Assigned by" filter is built from the loaded list, so a person whose only
