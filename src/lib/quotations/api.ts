@@ -339,3 +339,43 @@ export const fetchLeadQuotations = (s: Supabase, leadId: string) => call<LeadQuo
 
 export const savePriceSettings = (s: Supabase, maxDiscount: number | null, minPrice: number | null) =>
   call<PriceSettings>(() => s.rpc('quotation_price_settings_set', { p_max_discount_pct: maxDiscount, p_min_price_pct: minPrice }))
+
+// ── quotation requests inside Quotations (20270814000200) ─────────────────────────────────────────────────
+/** A quotation sent to a senior: to take the prices ('price') or to have the salesperson's prices checked ('verify'). */
+export type AskKind = 'price' | 'verify'
+export const ASK_LABEL: Record<AskKind, string> = { price: 'Needs prices', verify: 'Check my prices' }
+export type AskRequest = {
+  id: string; kind: AskKind; note: string | null; status: 'pending' | 'answered' | 'withdrawn'; created_at: string
+  answered_at: string | null; answer_note: string | null; from_id: string; from_name: string | null; to_id: string; to_name: string | null; answered_by_name: string | null
+}
+export type AskState = { open: AskRequest | null; last: AskRequest | null; may_ask: boolean; may_answer: boolean; may_withdraw: boolean }
+export type RequestRow = AskRequest & { quotation_id: string; quote_no: string; client_name: string; project_name: string | null; quotation_status: QuotationStatus; value: number; lead_no: number | null }
+export const askKeys = {
+  state: (id: string) => ['quotations', 'ask', id] as const,
+  list: ['quotations', 'requests'] as const,
+  count: ['quotations', 'requests-count'] as const,
+  desk: ['quotations', 'desk-people'] as const,
+}
+export const fetchAskState = (s: Supabase, id: string) => call<AskState>(() => s.rpc('quotation_ask_state', { p_quotation: id }))
+export const fetchDeskPeople = (s: Supabase) => call<Maker[]>(() => s.rpc('quotation_desk_people'))
+export const fetchRequests = (s: Supabase) => call<RequestRow[]>(() => s.rpc('quotation_requests_list'))
+export const fetchRequestCount = (s: Supabase) => call<number>(() => s.rpc('quotation_requests_count'))
+export const sendRequest = (s: Supabase, id: string, to: string, kind: AskKind, note: string) =>
+  call<string>(() => s.rpc('quotation_request_send', { p_quotation: id, p_to: to, p_kind: kind, p_note: note.trim() || null }))
+export const answerRequest = (s: Supabase, id: string, note: string) => call<null>(() => s.rpc('quotation_request_answer', { p_id: id, p_note: note.trim() || null }))
+export const withdrawRequest = (s: Supabase, id: string) => call<null>(() => s.rpc('quotation_request_withdraw', { p_id: id }))
+
+// ── report cards and the price brief (20270814000300) ─────────────────────────────────────────────────────────
+export type CardsMe = { person: string; name: string | null; open_count: number; open_value: number; waiting_senior: number; made: number; sent: number; confirmed: number; value_made: number; value_confirmed: number }
+export type CardsDesk = { waiting: number; oldest_at: string | null; answered: number; avg_hours: number | null }
+export type CardsPerson = { id: string; name: string | null; made: number; sent: number; confirmed: number; value_made: number; value_confirmed: number }
+export type CardsTeam = { made: number; sent: number; confirmed: number; value_made: number; value_confirmed: number; top: { id: string; name: string | null; made: number } | null; people: CardsPerson[] }
+export type Cards = { me: CardsMe; desk: CardsDesk | null; team: CardsTeam | null; from: string; to: string }
+export const cardsKey = (from: string, to: string, person: string | null) => ['quotations', 'cards', from, to, person] as const
+export const fetchCards = (s: Supabase, from: string, to: string, person: string | null) =>
+  call<Cards>(() => s.rpc('quotation_cards', { p_from: from, p_to: to, p_person: person }))
+
+export type BriefLine = { name: string; size?: string; material?: string; finish?: string; qty?: number | null; price: number; reason: string }
+export const briefKey = (id: string) => ['quotations', 'brief', id] as const
+export const fetchBriefs = (s: Supabase, id: string) => call<Record<string, string>>(() => s.rpc('quotation_price_briefs_get', { p_id: id }))
+export const saveBriefs = (s: Supabase, id: string, items: BriefLine[]) => call<number>(() => s.rpc('quotation_price_briefs_save', { p_id: id, p_items: items }))

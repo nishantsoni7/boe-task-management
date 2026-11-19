@@ -145,46 +145,21 @@ describe('creation is a NARROWING of manage and never a widening', () => {
   })
 })
 
-describe('every surface that offers creation reads the new capability', () => {
-  test('the list page header button is gated on it', () => {
-    assert.ok(LIST.includes('canCreateQuotations'))
-    assert.ok(/actions=\{canCreateQuotations \?/.test(LIST),
-      'the New Request button is the gated thing')
+describe('the old Tasks surfaces no longer offer creation', () => {
+  // Quotation requests moved into the Quotations module (20 Nov 2026), which has its own access model.
+  test('the old list and form pages only redirect into the Quotations module', () => {
+    assert.ok(LIST.includes("redirect('/quotations/requests')"))
+    assert.ok(NEW_PAGE.includes("redirect('/quotations?new=1')"))
   })
 
-  test('the empty state does not point at a button the reader lacks', () => {
-    assert.ok(/canCreateQuotations\s*\n?\s*\? 'Use the New Request button/.test(LIST))
-    assert.equal(
-      /Use the New Request button to submit a quotation request\.\s*\n\s*<\/p>/.test(LIST),
-      false, 'the sentence must never be printed unconditionally')
-  })
-
-  test('the sidebar item is gated on it', () => {
-    assert.ok(SIDEBAR.includes('quotationCaps.canCreateQuotations'))
-    assert.equal(SIDEBAR.includes('quotationCaps.canManageQuotations'), false,
-      'the sidebar had the only other use, and it moved')
-  })
-
-  test('there is no OTHER create-a-quotation entry point left ungated', () => {
-    // Every navigation to the creation route in the app, outside the route's
-    // own file, must sit behind canCreateQuotations.
-    for (const [name, source] of [['list', LIST], ['sidebar', SIDEBAR]] as const) {
-      const refs = source.match(/'\/tasks\/quotation-requests\/new'/g) ?? []
-      assert.ok(refs.length > 0, `${name} still routes to the creation page`)
-      assert.ok(source.includes('canCreateQuotations'),
-        `${name} routes there without gating on the capability`)
-    }
+  test('the Tasks sidebar offers no quotation entry and holds no quotation capability', () => {
+    assert.equal(SIDEBAR.includes('quotation-requests'), false)
+    assert.equal(SIDEBAR.includes('quotationCaps'), false)
+    assert.equal(SIDEBAR.includes('canCreateQuotations'), false)
   })
 })
 
 describe('nothing below the interface moved', () => {
-  test('the creation ROUTE keeps the gate it always had', () => {
-    // canManageQuotations, unchanged. This is a display change: an admin is not
-    // offered the action, and the route is not re-authorised around them.
-    assert.ok(NEW_PAGE.includes('canManageQuotations'))
-    assert.equal(NEW_PAGE.includes('canCreateQuotations'), false)
-  })
-
   test('the two pre-existing capabilities are unchanged for every role', () => {
     for (const role of ['admin', 'employee', 'manager', null]) {
       for (const perms of [[], [VIEW], [VIEW, VIEW_QUOTATIONS], [VIEW, MANAGE_QUOTATIONS]]) {

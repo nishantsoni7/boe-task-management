@@ -130,6 +130,7 @@ describe('a failed read is never rendered as an empty archive', () => {
  * expense.
  */
 const QUOTATION_PAGE = 'src/app/tasks/quotation-requests/page.tsx'
+const REQUESTS_SCREEN = 'src/components/quotations/RequestsScreen.tsx'
 const QUOTATION_HOOK = 'src/hooks/queries/useQuotationRequests.ts'
 
 describe('quotation requests are read in pages, once, and cached', () => {
@@ -145,55 +146,36 @@ describe('quotation requests are read in pages, once, and cached', () => {
       `${QUOTATION_HOOK}: a unique tiebreak is required for stable paging`)
   })
 
-  test('a failed or capped read is reported, not rendered as an empty list', () => {
+  test('a failed read is not turned into an empty list', () => {
     const hook = source(QUOTATION_HOOK)
-    // Both failure modes collapse into one honest flag. `rows` is unreachable
-    // until `ok` has been narrowed, so a partial read cannot be returned as the
-    // whole workload.
+    // Both failure modes collapse into one honest flag, so a partial read cannot be returned as the whole workload.
     assert.ok(hook.includes('if (!result.ok) return { rows: [], complete: false }'),
       `${QUOTATION_HOOK}: a failed read must not resolve as an empty list`)
     assert.ok(hook.includes('complete: !result.truncated'),
       `${QUOTATION_HOOK}: a capped read must be reported too`)
-
-    const code = source(QUOTATION_PAGE)
-    assert.ok(code.includes('(isError || (data && !data.complete)) ? QUOTATIONS_LOAD_ERROR : null'),
-      `${QUOTATION_PAGE}: truncation and failure must both raise the notice`)
-    assert.ok(code.includes('{loadError && ('), `${QUOTATION_PAGE}: the notice must render`)
-    assert.ok(code.includes('role="alert"'), `${QUOTATION_PAGE}: and be announced`)
   })
 
-  test('the notice sits alongside whatever loaded, not in place of it', () => {
+  test('the old page holds no read: it sends the person to the Quotations module', () => {
     const code = source(QUOTATION_PAGE)
-    const banner = code.indexOf('{loadError && (')
-    const list = code.indexOf('{visibleTasks.length === 0 ? (')
-    assert.ok(list > 0, `${QUOTATION_PAGE}: expected a visibleTasks empty-state branch`)
-    assert.ok(banner > 0 && list > banner,
-      `${QUOTATION_PAGE}: the notice must precede the list, not replace it`)
+    assert.ok(code.includes("redirect('/quotations/requests')"), `${QUOTATION_PAGE}: must redirect to the Quotations module`)
+    assert.equal(/\.from\('tasks'\)|fetchAllRows/.test(code), false, `${QUOTATION_PAGE}: the task read belongs to the hook`)
+    assert.equal(source('src/app/tasks/quotation-requests/new/page.tsx').includes("redirect('/quotations?new=1')"), true)
   })
 
-  test('the page holds no read of its own — no tasks query, no second permission resolve', () => {
-    const code = source(QUOTATION_PAGE)
-    assert.equal(/\.from\('tasks'\)/.test(code), false,
-      `${QUOTATION_PAGE}: the task read belongs to the hook`)
-    assert.equal(/fetchAllRows\s*[<(]/.test(code), false,
-      `${QUOTATION_PAGE}: the task read belongs to the hook`)
-    // The shell already resolves these. Asking again put a `users.role` read and
-    // a permission RPC on the critical path of every arrival, Back included.
-    assert.equal(code.includes('getEffectivePermissions'), false,
-      `${QUOTATION_PAGE}: permissions come from the shared cached context`)
-    assert.equal(/supabase\s*\.from\('users'\)/.test(code), false,
-      `${QUOTATION_PAGE}: the profile comes from the shared cached context`)
-    assert.ok(code.includes('usePermissionContext()'),
-      `${QUOTATION_PAGE}: the gate must read the shared cached context`)
+  test('the Requests screen reads the new list, and the old Tasks list only on its tab', () => {
+    const code = source(REQUESTS_SCREEN)
+    assert.ok(code.includes('fetchRequests(supabase)'), `${REQUESTS_SCREEN}: the list comes from the database function`)
+    assert.equal(/\.from\('tasks'\)|getEffectivePermissions/.test(code), false, `${REQUESTS_SCREEN}: no read of its own`)
+    assert.ok(code.includes('usePermissionContext()'), `${REQUESTS_SCREEN}: permissions come from the shared cached context`)
   })
 
   test('the gate still precedes the read', () => {
     // Load-bearing: a direct URL must never fetch a row it may not show. The
     // permission answer is what enables the query, so the ordering survives the
     // move off `await`.
-    const code = source(QUOTATION_PAGE)
-    assert.ok(code.includes('useQuotationRequests(userId, ready && canViewQuotations, seeAll)'),
-      `${QUOTATION_PAGE}: the list query must be gated on the resolved permission`)
+    const code = source(REQUESTS_SCREEN)
+    assert.ok(code.includes("useQuotationRequests(userId, ready && caps.canViewQuotations && tab === 'earlier', caps.canSeeAllQuotations)"),
+      `${REQUESTS_SCREEN}: the old list query must be gated on the resolved permission`)
     const hook = source(QUOTATION_HOOK)
     assert.ok(hook.includes('enabled: allowed && isValidUUID(userId)'),
       `${QUOTATION_HOOK}: the gate must hold inside the hook too`)
@@ -205,15 +187,13 @@ describe('quotation requests are read in pages, once, and cached', () => {
     assert.ok(hook.includes('gcTime: 5 * 60 * 1000'),
       `${QUOTATION_HOOK}: the cache must outlive a trip to a detail page`)
 
-    // Cached rows must never be allowed to go stale silently. Three writers can
-    // move this list, and each one marks the key:
+    // Cached rows must never be allowed to go stale silently. Two writers can
+    // still move this list, and each one marks the key:
     //
     //   · Task Detail's shared invalidateTaskCache — every status move, reopen,
     //     cancel, acknowledge, due date, priority and title edit;
     //   · Task Detail's comment save, which bumps last_update_at — the column
     //     this list ORDERS BY, so a comment moves a row's position;
-    //   · the New Quotation Request form, whose whole point is a row that must
-    //     appear in the list the person goes to next.
     const detail = source('src/app/tasks/[id]/page.tsx')
     const invalidation = 'queryClient.invalidateQueries({ queryKey: QUOTATION_REQUESTS_KEY })'
 
@@ -227,14 +207,6 @@ describe('quotation requests are read in pages, once, and cached', () => {
     const commentInvalidation = detail.indexOf(invalidation, comment)
     assert.ok(commentInvalidation > comment && commentInvalidation < detail.indexOf('const saveDueDate =', comment),
       'src/app/tasks/[id]/page.tsx: a comment bumps last_update_at, which this list orders by')
-
-    assert.ok(source('src/app/tasks/quotation-requests/new/page.tsx').includes(invalidation),
-      'src/app/tasks/quotation-requests/new/page.tsx: a new request must reach the cached list')
-  })
-
-  test('a return paints the cached rows instead of the full-screen loader', () => {
-    assert.ok(source(QUOTATION_PAGE).includes('const loading = !ready || !canViewQuotations || (isPending && !data)'),
-      `${QUOTATION_PAGE}: cached data must render on the first frame`)
   })
 })
 

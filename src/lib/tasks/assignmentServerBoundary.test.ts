@@ -239,9 +239,8 @@ describe('the split is real, and points one way only', () => {
     }
   })
 
-  test('the quotation request form asks for the notice through the browser half only (owner, 18 Nov 2026)', () => {
+  test('the old quotation request page asks for no notice and imports neither half', () => {
     const text = readFileSync(join(ROOT, 'src/app/tasks/quotation-requests/new/page.tsx'), 'utf8')
-    assert.ok(text.includes("import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'"))
-    assert.equal(/assignmentNotificationWriter/.test(text), false, 'never the writer')
+    assert.equal(/assignmentNotification/.test(text), false)
   })
 })

@@ -292,10 +292,11 @@ describe('a failed write neither navigates nor claims success', () => {
 })
 
 describe('Quotation Requests navigation is untouched', () => {
-  test('its list and its new-request page are not edited by this change', () => {
-    const qtn = read('src/app/tasks/quotation-requests/page.tsx')
+  test('the old list moved into the Quotations module: the old page redirects, the old rows still open Task Detail', () => {
+    assert.ok(read('src/app/tasks/quotation-requests/page.tsx').includes("redirect('/quotations/requests')"))
+    const qtn = read('src/components/quotations/RequestsScreen.tsx')
     assert.ok(qtn.includes('useQuotationRequests('), '#181’s cached read is still the one in use')
-    assert.ok(qtn.includes('router.push(taskDetailHref(task.id, returnTo))'))
+    assert.ok(qtn.includes('router.push(taskDetailHref(t.id, HERE))'))
   })
 
   test('a quotation still invalidates its own key on every task mutation', () => {

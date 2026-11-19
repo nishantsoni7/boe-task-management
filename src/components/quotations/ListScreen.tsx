@@ -16,6 +16,7 @@ import {
 } from '@/lib/quotations/api'
 import { formatDateIN, gstModeForState } from '@/lib/quotations/math'
 import { ImportDialog } from './ImportDialog'
+import { HomeCards } from './HomeCards'
 import { LeadStep, leadName, type StartChoice } from './LeadStep'
 import s from './quotations.module.css'
 import { Pic } from './Pic'
@@ -79,6 +80,7 @@ export default function ListScreen() {
       <div className={s.wrap}>
         {notSetUp && <div className={`${s.notice} ${s.noticeWarn}`}><b>Quotations is being set up.</b> Its database part has not been applied yet. Once it is, this page fills in by itself.</div>}
         {!notSetUp && accessError && <div className={`${s.notice} ${s.noticeBad}`}>{errorText(accessError)}</div>}
+        {!notSetUp && accessLoaded && profile && <HomeCards supabase={supabase} enabled userId={profile.id} onSeeTheirs={name => { setScope('all'); setFilter('all'); setQ(name) }} />}
         {!notSetUp && accessLoaded && (access.admin || (access.edit && access.view_all)) && <PriceQueue supabase={supabase} />}
         {!notSetUp && accessLoaded && (
           <div className={s.card}>

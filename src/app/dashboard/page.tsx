@@ -610,7 +610,7 @@ export default function DashboardPage() {
                 now={now}
                 isMobile={isMobile}
                 onOpen={task => router.push(taskDetailHref(task.id, pathname))}
-                onViewAll={() => router.push('/tasks/quotation-requests')}
+                onViewAll={() => router.push('/quotations/requests')}
               />
             ) : (
               <OverdueTasksPanel

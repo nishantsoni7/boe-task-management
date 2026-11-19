@@ -31,7 +31,7 @@ before deploy - treat as applied (commit #287 shipped on it) but verify with `su
 Pages (`src/app/tasks/**`, `src/app/dashboard`, all behind `ModuleGuard moduleKey="task_management"`):
 `/dashboard` (home: Top 3 Focus, Needs Your Attention, and the "At a glance" bar with the counters and Tasks Created), `/tasks/my` (My Tasks; tabs, drawer), `/tasks/my/completed`, `/tasks/cancelled`,
 `/tasks/assigned-by-me` (+ `/completed`, `/cancelled`), `/tasks/assigned-to-me` (redirects to assigned-by-me), `/tasks/all` (admin|manager by role),
-`/tasks/create` (delegate), `/tasks/create-self`, `/tasks/[id]` (Task Detail, has `loading.tsx`), `/tasks/quotation-requests` (+ `/new`), `/manager`
+`/tasks/create` (delegate), `/tasks/create-self`, `/tasks/[id]` (Task Detail, has `loading.tsx`), `/tasks/quotation-requests` (+ `/new`; since 20 Nov 2026 both only redirect into the Quotations module, see dossier 29 section 21), `/manager`
 (admin|manager), `/super-admin` (Task Records, admin) and `/super-admin/view-user/[userId]`.
 
 API routes: `/api/tasks/[id]/copy` (POST, admin-only Copy & Assign), `/api/tasks/[id]/notify-assignment` (POST; writes NOTHING by rule since #255),

@@ -383,3 +383,17 @@ textarea.t3 { min-height: 86px; }
 .fromLeadList dt { color: var(--boe-text-muted); }
 .fromLeadList dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Ask a senior (20 Nov 2026): one slim strip above the top row. */
+.askStrip { padding: 10px 16px; display: grid; gap: 10px; font-size: 13.5px; }
+
+/* Report cards (20 Nov 2026). */
+.cards { padding: 12px 16px; display: grid; gap: 12px; }
+.cardsTitle { margin: 0; font: 700 14px var(--boe-font-heading); color: var(--boe-text); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stat { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); background: var(--boe-surface); color: var(--boe-text); text-decoration: none; min-width: 0; }
+a.stat:hover { background: var(--boe-surface-hover); }
+.statLab { font-size: 12px; font-weight: 600; color: var(--boe-text-muted); }
+.statVal { font: 700 20px var(--boe-font-heading); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.statSub { font-size: 12px; color: var(--boe-text-muted); }
+.teamBlock { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--boe-border); }

@@ -40,6 +40,8 @@ import { StatusPill } from './ListScreen'
 import { StudioDialog } from './StudioDialog'
 import { VersionsCard } from './VersionsCard'
 import { RequestCard } from './RequestCard'
+import { AskCard } from './AskCard'
+import { PriceBrief } from './PriceBrief'
 import { LeadCard } from './LeadCard'
 import { PriceCard } from './PricingDesk'
 import { LineRow } from './ProductLine'
@@ -93,6 +95,9 @@ export default function BuilderScreen() {
   const [studioFor, setStudioFor] = useState<string | null>(null)
   const [viewing, setViewing] = useState<string | null>(null)
   const [advOpen, setAdvOpen] = useState(false)
+  // The price brief (20 Nov 2026): asked of the owner / pricing desk when they send a quotation back or share it; always optional.
+  const [briefing, setBriefing] = useState(false)
+  const isDesk = access.admin || (access.edit && access.view_all)
   // The GST rate new products start with while no product sets it (the quotation has one rate; each product still stores it).
   // Price hints for the names on screen, asked for once typing pauses.
   const [hintNames, setHintNames] = useState('')
@@ -327,6 +332,10 @@ export default function BuilderScreen() {
         </div>
       )}
 
+      {/* sent to a senior for prices, or sent back (Quotations › Requests, 20 Nov 2026) */}
+      <AskCard supabase={supabase} base={base} dirty={dirty} onChanged={() => { quoteQ.refetch() }} onSentBack={() => { if (isDesk) setBriefing(true) }} />
+      {briefing && <PriceBrief supabase={supabase} quotationId={id} lines={lines} onClose={n => { setBriefing(false); if (n > 0) setMsg({ tone: 'ok', text: `Saved the price brief for ${n} product${n === 1 ? '' : 's'}.` }) }} />}
+
       {/* the top row (owner-approved layout, 18 Nov 2026): the request, where the quotation is, and sharing, as three compact cards */}
       <div className={`${s.band} ${hasRequest ? '' : s.bandTwo}`}>
         {profile && <RequestCard id={REQUEST_CARD_ID} supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
@@ -334,7 +343,7 @@ export default function BuilderScreen() {
           lostNote={lostNote} setLostNote={setLostNote} onMove={moveTo} onConfirm={confirmToPi} />
         <ShareCard id={id} base={base} dirty={dirty} busy={busy} lineCount={lines.length} phone={h.contact_phone} link={link} waText={waText} copied={copied}
           onCopy={copy} onExcel={downloadExcel} markOn={markQ.data}
-          onMark={on => act(async () => { await setPictureMark(supabase, id, on); qc.setQueryData(pictureMarkKey(id), on) }, on ? 'The Best of Exports logo is on the pictures.' : 'The pictures are clean, without the logo.')} onShare={on => act(() => shareQuotation(supabase, id, on), on ? 'The client link is on.' : 'The client link is off.')} />
+          onMark={on => act(async () => { await setPictureMark(supabase, id, on); qc.setQueryData(pictureMarkKey(id), on) }, on ? 'The Best of Exports logo is on the pictures.' : 'The pictures are clean, without the logo.')} onShare={on => act(async () => { await shareQuotation(supabase, id, on); if (on && isDesk) setBriefing(true) }, on ? 'The client link is on.' : 'The client link is off.')} />
       </div>
 
       <LeadCard supabase={supabase} base={base} dirty={dirty} onChanged={() => { quoteQ.refetch() }} />

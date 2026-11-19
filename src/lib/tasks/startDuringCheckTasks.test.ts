@@ -76,12 +76,6 @@ describe('what waits until the page is on screen', () => {
     assert.ok(layout.includes('const shown = useModuleShown()'))
     assert.ok(layout.includes('useRecordAppOpen(!!profile && shown)'))
   })
-
-  test('the New Quotation Request form, whose first field takes focus when it appears', () => {
-    const page = codeOf(read('src/app/tasks/quotation-requests/new/page.tsx'))
-    assert.ok(page.includes('const shown = useModuleShown()'))
-    assert.ok(page.includes('if (!initDone || !shown) return <LoadingScreen />'))
-  })
 })
 
 describe('the audit: no effect in the Task Management tree writes without being accounted for', () => {
@@ -95,7 +89,6 @@ describe('the audit: no effect in the Task Management tree writes without being 
   // Each entry says HOW it is safe while the page is hidden. Add one only after reading the effect.
   const ACCOUNTED_FOR: Record<string, string> = {
     'src/hooks/useRecordAppOpen.ts': 'a POST, and DashboardLayout passes enabled = profile && shown, so it waits for the page to be on screen',
-    'src/app/tasks/quotation-requests/new/page.tsx': 'quotation_request_receivers is a READ-ONLY rpc (the list of people a request can go to)',
   }
 
   function effectsThatWrite(): string[] {
