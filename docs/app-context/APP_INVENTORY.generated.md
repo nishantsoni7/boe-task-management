@@ -5,40 +5,40 @@
 
 ## Snapshot
 
-- Commit: `6ffd1c36` — Docs: record 20270803000000 as applied (owner, 2026-11-18, verified by query)
-- Commits on this branch: 293
+- Commit: `9aa16d0c` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 323
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 487 (first `20260530_create_positions.sql`, latest `20270810000000_task_nav_counts.sql`)
 - Tables ever created: 269 (dropped at some point: 8)   SQL functions: 1075   Enums: 0
-- Test files: 913   Next.js 16.2.6, React 19.2.4
+- Test files: 915   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `6ffd1c36` 2026-11-18 Docs: record 20270803000000 as applied (owner, 2026-11-18, verified by query)
-- `c46f0ee9` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- `8da1de82` 2026-11-18 Day Close held days at payroll: Count the day or Mark absent (migration 20270803000000) (#917)
-- `c5253a43` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- `1b46ecbb` 2026-11-18 Day Close held days at payroll: Count the day or Mark absent
-- `07d292f3` 2026-11-18 Quotations: a save that would fail says which product and brings it into view (#915)
-- `be5c6acb` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
-- `96f42ae7` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- `a32a4c69` 2026-11-18 Docs: record 20270802000000 and 20270802000100 as applied (no SQL) (#916)
-- `c2ba309f` 2026-11-18 Docs: record 20270802000000 and 20270802000100 as applied (owner, 2026-11-18, verified by query)
-- `389f4eea` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
-- `ada80bbc` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- `5c7d359b` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date (no SQL) (#914)
-- `0f041ffd` 2026-11-18 Docs: regenerate the app inventory
-- `a2df0ae2` 2026-11-18 Day Close: tell the person who gave a task when it is moved to a new date
-- `4ce1b6a1` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- `5db5a11d` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch (migrations 20270802000000 + 20270802000100) (#913)
-- `b24fcb87` 2026-11-18 Docs: regenerate the app inventory
-- `588a367a` 2026-11-18 Merge remote-tracking branch 'origin/claude/boe1-employee-monitoring-t5ypei' into claude/boe1-employee-monitoring-t5ypei
-- `e9c0afd7` 2026-11-18 Day Close: the attendance hold, proof as one written line, and the Scoreboard's own switch
-- `ca56337c` 2026-11-18 Day Close simplified: one rule, no morning plan, no strikes; moving a task's date really moves it (no SQL) (#911)
-- `7a83d356` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- `1354334d` 2026-11-18 Docs: stamp #908, #909, #910 as merged (#912)
-- `5d43ab99` 2026-11-18 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- `c315ef04` 2026-11-18 Quotations: a version 2 is dated the day it was sent, so its "valid until" is not already past (#910)
+- `9aa16d0c` 2026-11-19 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `adf5ef86` 2026-11-19 Docs: stamp #946 (sidebar badge counts in one call) as merged and verified live (no SQL change) (#947)
+- `616efe75` 2026-11-19 Task Management sidebar: the three badge counts in one call (migration 20270810000000, apply before merge) (#946)
+- `5d3584b6` 2026-11-19 Docs: stamp #942 (My Tasks open-work list, Top 3 in one request) as merged and verified live (no SQL) (#944)
+- `4eac169b` 2026-11-19 Docs: stamp #943 (payment window: matched payments, different name) as merged (#945)
+- `006ad8fe` 2026-11-19 Payment window: stop offering already-matched payments as duplicates, and let a different client name through (#943)
+- `5efcad37` 2026-11-19 My Tasks opens sooner: open work only, Top 3 in one request (no SQL) (#942)
+- `68597159` 2026-11-19 Docs: stamp #940 (credits left this month) as merged (#941)
+- `83186471` 2026-11-19 Picture credits page: a "Left this month" column for each person (#940)
+- `1442bf52` 2026-11-18 Docs: stamp #938 (picture credits switches say ON or OFF) as merged (#939)
+- `3f50eadd` 2026-11-18 Picture credits page: the switches say ON or OFF, and Limits stay locked while nobody has credits (#938)
+- `85db2249` 2026-11-18 Docs: stamp #931, #933, #934 and #936 as merged and applied (#937)
+- `31e7fbdf` 2026-11-18 Quotations: client choices on the PDF, the client link and the Excel (step 2 of 3) (#936)
+- `5bd9569d` 2026-11-18 Quotations: client choices (fabric, finish, stone, rope weave) per product, step 1: builder only (#934)
+- `f1fafd84` 2026-11-18 Docs: stamp #932 (picture credits wallet) as merged and applied (#935)
+- `c7f03dcd` 2026-11-18 Picture credits: a wallet and a tracking page for every paid picture press (limits ship off; migration not applied) (#932)
+- `8a0b1f21` 2026-11-18 Quotations: nothing waits for price approval, suggestions for the pricing desk, bank account + UPI QR on the quotation (#933)
+- `ff8dedc3` 2026-11-18 Quotations: a styled, editable Excel with pictures and the standard terms; GST as one line (#931)
+- `a08a1d5f` 2026-11-18 Docs: stamp #929 (shared image model on Nano Banana 2) as merged (#930)
+- `6bca071d` 2026-11-18 Images: the shared image model moves from Nano Banana Pro to Nano Banana 2 (about US$0.08 a picture against US$0.15; no SQL) (#929)
+- `aae6360f` 2026-11-18 Docs: stamp #924 (logo marks on quotation pictures) as merged and backfilled (#928)
+- `746cf467` 2026-11-18 Quotations: the logo mark on every picture the client sees, optional per quotation; clean originals in a private bucket (migrations 20270806000000, 20270806000200) (#924)
+- `3e886ceb` 2026-11-18 Docs: stamp #926 as merged (the builder's top area redone, 1360 px cap kept) (#927)
+- `7ea6f66d` 2026-11-18 Quotations: the builder's top area redone: Request | Status | Share as three compact cards, a four-field Client grid, the page capped at 1360 px (no SQL) (#926)
+- `a7058855` 2026-11-18 Docs: stamp #923 as merged and applied; rename its migration to 20270806000100 (the number was already taken by quotation_picture_originals) (#925)
 
 ## Pages by top-level area
 
@@ -182,7 +182,7 @@
 - `src/lib/seo` — 7 source, 4 test
 - `src/lib/showroom` — 12 source, 12 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 27 source, 43 test
+- `src/lib/tasks` — 27 source, 44 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test

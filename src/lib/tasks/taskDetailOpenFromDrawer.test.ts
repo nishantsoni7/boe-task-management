@@ -103,8 +103,13 @@ describe('Task Detail starts its queries at mount', () => {
   test('identity and profile come from the shared caches', () => {
     assert.ok(DETAIL_CODE.includes('const { data: signedInUserId, isPending: idPending } = useSignedInUserId()'))
     assert.ok(DETAIL_CODE.includes('useProfile(signedInUserId)'))
-    assert.ok(read('src/app/tasks/layout.tsx').includes('<ModuleGuard moduleKey="task_management">'),
-      'the cache is only guaranteed warm because the guard resolves it first')
+    // The Tasks layout used to resolve these caches BEFORE the page mounted. It now lets the page START beside the
+    // guard (ModuleGuardStartsEarly, 2026-11-19), so the page may ask first. The row is still read ONCE, because the
+    // guard's permission context joins a profile read that is already in flight (profileReadInFlight), and the
+    // page still waits for the profile before it draws a gated action (pinned below).
+    assert.ok(read('src/app/tasks/layout.tsx').includes('<ModuleGuardStartsEarly moduleKey="task_management">'))
+    assert.ok(read('src/hooks/queries/usePermissionContext.ts').includes('profileReadInFlight(qc, userId)'),
+      'the guard joins a profile read the page already started, so the row is not read twice')
   })
 
   test('a caller with no session is still sent to /login before anything is read', () => {
