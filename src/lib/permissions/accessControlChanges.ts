@@ -162,6 +162,7 @@ export const PROTECTED_ACTION_WORDS: Record<string, string> = {
   train_customize_image: 'Train Customize image (house rules and approved examples)',
   view_quotations:       'View quotations and quoted prices',
   manage_quotations:     'Manage quotations',
+  receive_quotations:    'Receive quotation requests',
   // Assets & Access. Named in full because "manage access records" on its own
   // does not tell an administrator that they are about to hand over — or take
   // back — every employee's login records.

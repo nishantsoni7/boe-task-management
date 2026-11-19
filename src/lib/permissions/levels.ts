@@ -120,6 +120,8 @@ export const PROTECTED_ACTIONS: ReadonlySet<string> = new Set([
   'close',
   'view_quotations',
   'manage_quotations',
+  // Being sent quotation requests to make (20270804000000): customer details arrive with each one.
+  'receive_quotations',
   'view_all',
   // Reviewing and approving an imported PI submission. Protected because
   // approval is what eventually brings an Order into existence and burns an
@@ -243,6 +245,8 @@ export function isProtectedAction(actionKey: string): boolean {
  */
 export const ACTION_DEPENDENCIES: Readonly<Record<string, string>> = {
   manage_quotations: 'view_quotations',
+  // Receiving a request without being able to see it is not a coherent state.
+  receive_quotations: 'view_quotations',
   // Verifying one's own payment is still verifying: approve_finance_payment_request
   // requires finance.approve, so the grant would have nowhere to act without it.
   verify_own_payment: 'approve',

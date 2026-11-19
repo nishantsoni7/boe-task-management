@@ -68,7 +68,7 @@ describe('one dimensions unit for the whole quotation', () => {
     assert.ok(t.includes('Saksham Hospitality Pvt Ltd') && t.includes('GSTIN 36AAAAA0000A1Z5'))
     const plain = text(doc())
     assert.ok(!plain.includes('GSTIN'))
-    assert.ok(!/client_email|@/.test(renderToStaticMarkup(<QuotationDocument doc={{ ...doc(), client_email: 'x@y.example' } as DocData} pictureUrl={p => p} />)))
+    assert.ok(!/client_email|[\w.]+@[\w.]+/.test(renderToStaticMarkup(<QuotationDocument doc={{ ...doc(), client_email: 'x@y.example' } as DocData} pictureUrl={p => p} />)))
   })
   test('a "note for the client" that an older copy still holds keeps printing (nothing is lost on an old version)', () => {
     assert.ok(text(doc({ lines: [line({ client_note: 'Decor, quoted separately' })] })).includes('Note: Decor, quoted separately'))
@@ -156,10 +156,8 @@ describe('the "Needs you" strip', () => {
   const q = (over: Partial<Pick<Quotation, 'status' | 'may_edit' | 'request' | 'price'>>) => ({ status: 'draft' as const, may_edit: true, request: null, price: null, ...over })
   const request = (over = {}) => ({ id: 't', title: 'Quote', status: 'working', created_by: 'u1', assigned_to: 'u2', created_at: '', last_update_at: null, asked_by: 'Saksham', may_send: true, ...over })
   const price = (state: string, over = {}) => ({ needed: true, reasons: [], state, blocked: true, note: null, by: null, at: null, may_decide: false, ...over }) as Quotation['price']
-  test('a quotation request waits on the person it is assigned to, and leaves once it is sent', () => {
-    assert.deepEqual(needsYou(q({ request: request() })).map(n => n.key), ['request'])
-    assert.equal(needsYou(q({ request: request({ may_send: false }) })).length, 0, 'not the assignee')
-    assert.equal(needsYou(q({ request: request({ status: 'completed' }) })).length, 0, 'already sent')
+  test('a quotation request needs no strip: its card is the first thing on the page (owner, 18 Nov 2026)', () => {
+    assert.equal(needsYou(q({ request: request() })).length, 0)
   })
   test('prices: the salesperson is told to ask or that they were sent back, the desk that they are waiting; each leaves when the state changes', () => {
     assert.deepEqual(needsYou(q({ price: price('to_ask') })).map(n => n.key), ['price_ask'])
@@ -173,25 +171,25 @@ describe('the "Needs you" strip', () => {
 
 describe('the builder page', () => {
   const SCREEN = read('src/components/quotations/BuilderScreen.tsx')
-  test('the right-hand column is gone: status on top, client beside share, products, totals, terms beside history, then the cards', () => {
+  test('the right-hand column is gone: the quotation request and status on top, client beside share, products, totals, terms beside history, then the cards', () => {
     const at = (needle: string) => SCREEN.indexOf(needle)
-    const order = ['className={s.statusBar}', 'className={s.topRow}', 'Advanced client details', 'id="q-share"', 'id="q-products"', 'id="q-extra"', 'className={s.pair}', 'id="q-terms"', '<h2>History</h2>', 'className={s.bottom}'].map(at)
+    const order = ['<RequestCard', '<StatusCard', '<ShareCard', '<ClientCard', 'id="q-products"', 'id="q-extra"', 'className={s.pair}', 'id="q-terms"', '<h2>History</h2>', 'className={s.bottom}'].map(at)
     assert.ok(order.every(i => i > 0), 'every section is on the page')
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
     assert.ok(!/\bs\.split\b|\bs\.sticky\b|Valid for \(days\)/.test(SCREEN), 'no side column, no Valid for box')
   })
   test('the Advanced client details are closed until opened and hold the fields the owner named', () => {
     assert.match(SCREEN, /const \[advOpen, setAdvOpen\] = useState\(false\)/)
-    const adv = SCREEN.slice(SCREEN.indexOf('id="q-advanced"'), SCREEN.indexOf('</section>', SCREEN.indexOf('id="q-advanced"')))
-    for (const id of ['q-company', 'q-type', 'q-project', 'q-contact', 'q-role', 'q-email', 'q-gst"', 'q-gstin']) assert.ok(adv.includes(id), id)
-    const basic = SCREEN.slice(SCREEN.indexOf('className={s.clientGrid}'), SCREEN.indexOf('className={s.advBtn}'))
-    for (const id of ['q-client-name', 'q-phone', 'q-state']) assert.ok(basic.includes(id), id)
-    assert.ok(!/q-company|q-gstin|q-type|q-project|q-contact|q-role|q-email/.test(basic), 'nothing from Advanced on top: the contact person and the email moved down (13 Nov list, items 5 and 7)')
+    const CLIENT = read('src/components/quotations/ClientCard.tsx')
+    const adv = CLIENT.slice(CLIENT.indexOf('id="q-advanced"'), CLIENT.indexOf('</section>', CLIENT.indexOf('id="q-advanced"')))
+    // the project type (its box lives in LeadTime.tsx) and the delivery state moved down on 18 Nov 2026; the city took the state's place on top
+    for (const id of ['q-company', 'q-type', '<ProjectTypeField', 'q-project', 'q-contact', 'q-role', 'q-email', 'q-state', 'q-gst"', 'q-gstin']) assert.ok(adv.includes(id), id)
+    const basic = CLIENT.slice(CLIENT.indexOf('className={s.fgrid}'), CLIENT.indexOf('{advOpen && ('))
+    for (const id of ['q-client-name', 'q-phone', 'q-city', '<LeadTime']) assert.ok(basic.includes(id), id)
+    assert.ok(!/q-company|q-gstin|q-type|q-project|q-contact|q-role|q-email|q-state|ProjectTypeField/.test(basic), 'nothing from Advanced on top: the contact person and the email moved down (13 Nov list, items 5 and 7), the state and the project type on 18 Nov')
   })
-  test('one GST rate for all products, picked in the totals; a quotation with mixed rates says so', () => {
-    assert.match(SCREEN, /id="q-gst-rate"/)
-    assert.match(SCREEN, /Mixed rates/)
-    assert.match(SCREEN, /setLines\(p => p\.map\(l => \(\{ \.\.\.l, tax_rate: rate \}\)\)\)/)
+  test('everything is billed at 18%: no GST rate picker in the totals (owner, 18 Nov 2026)', () => {
+    assert.ok(!SCREEN.includes('q-gst-rate') && !SCREEN.includes('Mixed rates') && !SCREEN.includes('GST_RATES'))
   })
   test('Save stays manual: the Unsaved changes badge, the leave warning and Ctrl+S are still there', () => {
     assert.ok(SCREEN.includes('Unsaved changes') && SCREEN.includes('beforeunload') && /ctrlKey \|\| e\.metaKey/.test(SCREEN))
@@ -200,7 +198,7 @@ describe('the builder page', () => {
   test('every class the quotation screens use is in the module stylesheet (a missing one fails silently, with no styling)', () => {
     const css = read('src/components/quotations/quotations.module.css')
     const defined = new Set([...css.matchAll(/\.([A-Za-z_][\w-]*)/g)].map(m => m[1]))
-    const files = ['BuilderScreen', 'ProductLine', 'PictureViewer', 'RequestCard', 'PricingDesk', 'VersionsCard', 'ListScreen', 'ReportsScreen', 'ImportDialog', 'StudioDialog', 'QuotationLinks']
+    const files = ['BuilderScreen', 'StatusCard', 'ShareCard', 'ClientCard', 'LeadTime', 'ProductLine', 'PictureViewer', 'RequestCard', 'PricingDesk', 'VersionsCard', 'ListScreen', 'ReportsScreen', 'ImportDialog', 'StudioDialog', 'QuotationLinks', 'RequestsScreen']
     for (const f of files) {
       const used = [...new Set([...read(`src/components/quotations/${f}.tsx`).matchAll(/\bs\.([A-Za-z_]\w*)/g)].map(m => m[1]))]
       assert.deepEqual(used.filter(c => !defined.has(c)), [], `${f}.tsx uses a class that quotations.module.css does not define`)

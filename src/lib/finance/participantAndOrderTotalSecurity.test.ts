@@ -1325,6 +1325,25 @@ describe('the applied migrations are frozen', () => {
       '20270802000100_day_close_attendance_hold.sql',
       // Day Close, the owner's payroll decision on a held day: four columns on day_close_holds.
       '20270803000000_day_close_hold_decision.sql',
+      // Quotation requests go to the owner or Nitish: an action, three functions, a guard trigger, three admin read policies, Nitish's grants.
+      '20270804000000_quotation_request_receivers.sql',
+      // The request page shows its quotation: one read-only function.
+      '20270805000000_quotation_for_request.sql',
+      // Logo marks on quotation pictures: a private bucket for the clean originals and two storage policies.
+      '20270806000000_quotation_picture_originals.sql',
+      // Quotations: the delivery city, one column and quotation_save re-created with one more line; no existing row changes.
+      '20270806000100_quotation_delivery_city.sql',
+      '20270806000200_quotation_picture_mark_switch.sql',
+      // Quotations: no gate on price approval, suggestions for the pricing desk, payment details table; only function bodies and a new table.
+      '20270807000000_quotation_payment_and_desk.sql',
+      // Picture credits: three closed tables (settings, allowances, ledger) and four service-role-only functions; limits ship off; nothing existing changes.
+      '20270808000000_picture_wallet.sql',
+      // Quotations: client choices, one column with a default on the lines and quotation_save re-created with one more field; no existing row changes.
+      '20270808000100_quotation_client_choices.sql',
+      // Quotations: the client's copy carries the client choices (never the note); one function body replaced, no table or row changes.
+      '20270809000000_quotation_client_choices_output.sql',
+      // Task Management: the three sidebar badge counts in one read-only SECURITY INVOKER function; no table, row, policy or grant changes.
+      '20270810000000_task_nav_counts.sql',
     ])
   })
 
@@ -1865,6 +1884,21 @@ describe('the applied migrations are frozen', () => {
       '20270802000000_day_close_hold_notification_type.sql',
       '20270802000100_day_close_attendance_hold.sql',
       '20270803000000_day_close_hold_decision.sql',
+      '20270804000000_quotation_request_receivers.sql',
+      '20270805000000_quotation_for_request.sql',
+      // Logo marks on quotation pictures: a private bucket for the clean originals and two storage policies.
+      '20270806000000_quotation_picture_originals.sql',
+      '20270806000100_quotation_delivery_city.sql',
+      '20270806000200_quotation_picture_mark_switch.sql',
+      // Quotations: no gate on price approval, suggestions for the pricing desk, payment details table; only function bodies and a new table.
+      '20270807000000_quotation_payment_and_desk.sql',
+      '20270808000000_picture_wallet.sql',
+      // Quotations: client choices, one column with a default on the lines and quotation_save re-created with one more field; no existing row changes.
+      '20270808000100_quotation_client_choices.sql',
+      // Quotations: the client's copy carries the client choices (never the note); one function body replaced, no table or row changes.
+      '20270809000000_quotation_client_choices_output.sql',
+      // Task Management: the three sidebar badge counts in one read-only SECURITY INVOKER function; no table, row, policy or grant changes.
+      '20270810000000_task_nav_counts.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

@@ -824,9 +824,11 @@ export default function TaskDetailPage() {
     }
   }
 
-  const handleReopen = async () => {
+  // changeNote: a quotation request's salesperson asking for a change (owner, 18 Nov 2026). Their written note is the
+  // confirmation, so no second question; it lands in the Timeline as "Change asked: …".
+  const handleReopen = async (changeNote?: string) => {
     if (!task || reopening) return
-    const confirmed = window.confirm(
+    const confirmed = !!changeNote || window.confirm(
       'Reopen this task? It will be restored to its previous status and the assignee will be notified.'
     )
     if (!confirmed) return
@@ -838,7 +840,7 @@ export default function TaskDetailPage() {
         res = await fetch('/api/restore-task', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ taskId: startedOn.id, actorName: profile?.full_name }),
+          body: JSON.stringify({ taskId: startedOn.id, actorName: profile?.full_name, reason: changeNote }),
         })
       } catch (e) {
         console.error('[handleReopen] request failed:', e)
@@ -1005,9 +1007,11 @@ export default function TaskDetailPage() {
   // True once the update is recorded. The quotation's Send button needs the answer
   // (it completes the task only after its update, with the quote files, is saved).
   const sendingQuotationRef = useRef(false)
-  const saveComment = async (): Promise<boolean> => {
+  const saveComment = async (lead?: string): Promise<boolean> => {
     if (!task || commentSavingRef.current) return false   // synchronous guard blocks double-submit
-    const hasNote = !!commentNote.trim()
+    // `lead`: a first line the screen adds (the Excel reason when a quotation is sent as a file).
+    const noteText = [lead?.trim(), commentNote.trim()].filter(Boolean).join('\n')
+    const hasNote = !!noteText
 
     const preGate = submissionGate(attachmentQueue.items(), hasNote)
     if (!preGate.ok) {
@@ -1052,7 +1056,7 @@ export default function TaskDetailPage() {
           task_id:        task.id,
           actor_id:       currentUserId,
           action:         'note_added',
-          note:           commentNote.trim() || null,
+          note:           noteText || null,
           attachment_url: null, // multi-file goes into task_attachments
           new_val:        sendingQuotationRef.current ? QUOTATION_SENT_MARKER : null,
         })
@@ -1494,14 +1498,15 @@ export default function TaskDetailPage() {
   // Sending a quotation: the update that carries the quote file(s) and the note to
   // sales is recorded first, then the task is completed. Nothing completes unless
   // the update was saved, and a double click cannot send twice (both writers guard).
-  const sendQuotation = async () => {
+  const sendQuotation = async (excelReason?: string) => {
     if (!task || commentSavingRef.current || statusUpdatingRef.current) return
     if (!quotationSendGate(attachmentQueue.items()).ok) return
     if (!window.confirm(`Send this quotation to ${creatorName ?? 'sales'}? This completes the request and they will be notified.`)) return
     sendingQuotationRef.current = true
     setMarkingComplete(true)
     try {
-      if (!(await saveComment())) return
+      // Why it went as Excel leads the note, so the Timeline (and later the app-vs-Excel report) can tell (18 Nov 2026).
+      if (!(await saveComment(excelReason ? `Sent as Excel: ${excelReason}` : undefined))) return
       await applyStatusChange('completed', null)
     } finally {
       sendingQuotationRef.current = false
@@ -1965,7 +1970,8 @@ export default function TaskDetailPage() {
           task={task}
           creatorName={creatorName}
           canSend={mayMarkComplete}
-          canReopen={task.status === 'completed' && (isCreator || isAssignee)}
+          canReopen={task.status === 'completed' && isAssignee}
+          canAskChange={task.status === 'completed' && isCreator && !isAssignee}
           canMessage={mayPostUpdate}
           requestFiles={galleryEntries}
           sent={latestSentQuotation(log)}
@@ -1981,9 +1987,9 @@ export default function TaskDetailPage() {
             addFiles: addCommentFiles, removeFile: removeCommentAttachment, retryFile: retryCommentAttachment,
             error: commentUploadError, saving: commentSaving || markingComplete, waitingUploads: commentWaitingUploads,
           }}
-          onSend={sendQuotation}
+          onSend={reason => { void sendQuotation(reason) }}
           onPostMessage={() => { void saveComment() }}
-          onReopen={handleReopen}
+          onReopen={note => { void handleReopen(note) }}
           reopening={reopening}
           timeline={activityCard}
         />
@@ -2507,7 +2513,7 @@ export default function TaskDetailPage() {
               {task.status === 'completed' && (isCreator || isAssignee) && (
                 <div style={{ marginTop: '14px', paddingTop: '12px', borderTop: `1px solid ${colors.green}28` }}>
                   <button
-                    onClick={handleReopen}
+                    onClick={() => { void handleReopen() }}
                     disabled={reopening}
                     style={{
                       width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
@@ -2946,7 +2952,7 @@ export default function TaskDetailPage() {
                   <span style={{ flex: 1 }} />
                   <span style={{ fontSize: '12px', color: colors.muted, flexShrink: 0 }}>{commentNote.length}/1000</span>
                   <button
-                    onClick={saveComment}
+                    onClick={() => { void saveComment() }}
                     // Blocked only by an in-flight submit or a failed upload —
                     // an upload still running is waited on, not a barrier.
                     disabled={commentSaving || commentAttachments.some(a => a.status === 'failed')}

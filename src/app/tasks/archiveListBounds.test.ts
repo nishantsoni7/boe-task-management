@@ -192,7 +192,7 @@ describe('quotation requests are read in pages, once, and cached', () => {
     // permission answer is what enables the query, so the ordering survives the
     // move off `await`.
     const code = source(QUOTATION_PAGE)
-    assert.ok(code.includes('useQuotationRequests(userId, ready && canViewQuotations)'),
+    assert.ok(code.includes('useQuotationRequests(userId, ready && canViewQuotations, seeAll)'),
       `${QUOTATION_PAGE}: the list query must be gated on the resolved permission`)
     const hook = source(QUOTATION_HOOK)
     assert.ok(hook.includes('enabled: allowed && isValidUUID(userId)'),

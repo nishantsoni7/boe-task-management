@@ -3,7 +3,7 @@
 // Two business rules (September 2026, docs/BOE Master Context/05_Business_Rules.md
 // → NOTIFICATION RULES):
 //
-//   QUOTATION REQUESTS ARE SILENT, EXCEPT FOR HOW THEY END. A quotation request
+//   QUOTATION REQUESTS ARE SILENT, EXCEPT FOR HOW THEY START AND END. A quotation request
 //   is a task whose `task_type` is 'quotation_request' — the column, never its
 //   title. Nothing that happens to one writes a notification: not its creation,
 //   a comment, a status move or reopening. The quotation's own screens (the
@@ -13,6 +13,9 @@
 //     · somebody other than the creator (an admin) CANCELS it → the creator is told.
 //   The creator cancelling their own request tells nobody, and the assignee is
 //   never told about a cancellation.
+//   ONE START (owner, 18 Nov 2026): a NEW request tells the person it was sent to
+//   (the owner or Nitish), titled "Quotation request sent to you", written by the
+//   assignment writer when the form creates it. Nothing else about it is announced.
 //
 //   APPROVAL IS SILENT. When a creator approves submitted work the task is
 //   simply complete; nobody is notified. Submitting for approval still notifies
@@ -43,6 +46,12 @@ import { TASK_REVIEW_NOTIFICATION_SUFFIXES } from '@/lib/tasks/reviewTransitions
 import { TASK_ASSIGNMENT_NOTIFICATION_TYPE } from '@/lib/tasks/assignmentNotification'
 
 export const QUOTATION_TASK_TYPE = 'quotation_request'
+
+/**
+ * The one notice a NEW quotation request leaves, for the person it was sent to (owner, 18 Nov 2026). Deliberately NOT
+ * "New quotation request": rows written before the silent rule may carry that title, and the feed must keep them hidden.
+ */
+export const QUOTATION_REQUEST_NOTIFICATION_TITLE = 'Quotation request sent to you'
 
 type TaskFacts = {
   task_type?: string | null
@@ -127,10 +136,11 @@ export const APPROVAL_NOTIFICATION_TITLE_PATTERN = `*${TASK_REVIEW_NOTIFICATION_
 export const NEW_TASK_NOTIFICATION_TYPE = TASK_ASSIGNMENT_NOTIFICATION_TYPE
 
 /**
- * The two notices a quotation request IS allowed to leave behind, by title, as
+ * The notices a quotation request IS allowed to leave behind, by title, as
  * one PostgREST `or` value: "<name> completed task" / "Task completed"
  * (/api/notify-status-update) and "<name> cancelled a task" / "Task cancelled"
- * (/api/cancel-task). Quotation rows written before the silent rule carry other
+ * (/api/cancel-task), and "Quotation request sent to you" (the assignment
+ * writer, for a new request; 18 Nov 2026). Quotation rows written before the silent rule carry other
  * titles and stay hidden; an old completion notice may reappear, by decision.
  *
  * WHY A SECOND QUERY RATHER THAN ONE. "Hide quotation rows unless they are one of
@@ -141,7 +151,7 @@ export const NEW_TASK_NOTIFICATION_TYPE = TASK_ASSIGNMENT_NOTIFICATION_TYPE
  * merged newest-first (lists, ids). A row is in exactly one of them.
  */
 export const QUOTATION_NOTICE_TITLE_FILTER =
-  'title.like.*completed task,title.eq.Task completed,title.like.*cancelled a task,title.eq.Task cancelled'
+  'title.like.*completed task,title.eq.Task completed,title.like.*cancelled a task,title.eq.Task cancelled,title.eq.Quotation request sent to you'
 
 type FeedRow = { id: string; created_at: string }
 

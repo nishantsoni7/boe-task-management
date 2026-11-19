@@ -1,9 +1,10 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { Home, Wand2 } from 'lucide-react'
+import { usePathname, useRouter } from 'next/navigation'
+import { BarChart3, Home, Wand2 } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
+import { isAdminRole } from '@/lib/permissions/moduleVisibility'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
@@ -15,9 +16,8 @@ import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailContro
 // shared user area at the bottom. Same structure as MeetingsLayout and
 // SamplesLayout — a module has one shell, and this one does not invent a second.
 //
-// The module currently has ONE screen, so the nav section holds one entry. That
-// is the standard's Section 2 honestly filled in, not a placeholder for a menu
-// somebody plans to grow.
+// Studio Image is the one screen for everyone. Administrators also get "Picture
+// credits" (the founders' spend tracking page); nobody else is shown it.
 
 type ImageEditorLayoutProps = {
   profile: UserProfile | null
@@ -36,6 +36,7 @@ export function ImageEditorLayout({
   // the page on hover, unless pinned. Elsewhere this changes nothing.
   const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router = useRouter()
+  const onCredits = (usePathname() ?? '').startsWith('/image-editor/usage')
 
   return (
     <div className={railShellClass(railPinned)}>
@@ -79,7 +80,7 @@ export function ImageEditorLayout({
         {/* Nav */}
         <div className="boe-sidebar-section">
           <button
-            className="boe-nav-item active"
+            className={`boe-nav-item${onCredits ? '' : ' active'}`}
             onClick={() => { setSidebarOpen(false); router.push('/image-editor') }}
             title="Studio Image"
             style={{ fontWeight: 600, marginBottom: '2px' }}
@@ -89,6 +90,19 @@ export function ImageEditorLayout({
             </span>
             <span className="boe-rail-label">Studio Image</span>
           </button>
+          {isAdminRole(profile?.role) && (
+            <button
+              className={`boe-nav-item${onCredits ? ' active' : ''}`}
+              onClick={() => { setSidebarOpen(false); router.push('/image-editor/usage') }}
+              title="Picture credits"
+              style={{ fontWeight: 600, marginBottom: '2px' }}
+            >
+              <span style={{ color: '#B9472E', display: 'flex', alignItems: 'center' }}>
+                <BarChart3 size={15} strokeWidth={1.8} />
+              </span>
+              <span className="boe-rail-label">Picture credits</span>
+            </button>
+          )}
         </div>
 
         {/* Bottom: pin + profile section */}

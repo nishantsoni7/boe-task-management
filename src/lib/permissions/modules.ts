@@ -30,6 +30,9 @@ registerModule({
     // Custom-only. Registered by 20260903000000.
     { actionKey: 'view_quotations',   displayName: 'View Quotations & Prices' },
     { actionKey: 'manage_quotations', displayName: 'Submit Quotation Requests' },
+    // Who a quotation request may be sent to (besides an administrator). Protected, Custom-only. Registered by
+    // 20270804000000.
+    { actionKey: 'receive_quotations', displayName: 'Receive Quotation Requests' },
   ],
 })
 

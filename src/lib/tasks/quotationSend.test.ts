@@ -92,7 +92,8 @@ describe('Task Detail wiring', () => {
 
   test('sending saves the tagged update first, then completes — never the other way round', () => {
     const send = PAGE.slice(PAGE.indexOf('const sendQuotation = async'), PAGE.indexOf('const activityCard = ('))
-    const saved = send.indexOf('await saveComment()')
+    // The Excel reason leads the note (18 Nov 2026); the order is the same.
+    const saved = send.indexOf('await saveComment(excelReason ? ')
     const completed = send.indexOf("applyStatusChange('completed', null)")
     assert.ok(saved > 0 && completed > saved)
     assert.ok(send.includes('quotationSendGate(attachmentQueue.items())'), 'a quote file is required')

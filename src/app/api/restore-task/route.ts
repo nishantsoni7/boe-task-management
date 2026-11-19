@@ -12,7 +12,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const { taskId, actorName } = await req.json()
+  const { taskId, actorName, reason } = await req.json()
+  // A quotation request's salesperson asking for a change (18 Nov 2026): what to change, kept in the Timeline.
+  const changeNote = typeof reason === 'string' && reason.trim() ? reason.trim().slice(0, 1000) : null
   if (!taskId) {
     return NextResponse.json({ error: 'taskId is required' }, { status: 400 })
   }
@@ -98,7 +100,7 @@ export async function POST(req: NextRequest) {
       action:      'status_changed',
       from_status: terminalStatus,
       to_status:   restoreStatus,
-      note:        terminalStatus === 'cancelled' ? 'Cancellation reversed' : 'Reopened task',
+      note:        terminalStatus === 'cancelled' ? 'Cancellation reversed' : changeNote ? `Change asked: ${changeNote}` : 'Reopened task',
     })
     .select('id')
     .single()

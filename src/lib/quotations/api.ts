@@ -1,6 +1,7 @@
 import type { createClient } from '@/lib/supabase/client'
 import { toJpeg } from '@/lib/inventory/images'
-import { toDimensionUnit, type DimensionUnit, type GstMode, type LineRef, type QtyMode, type QuoteArea, type QuoteLine } from './math'
+import { ORIGINALS_BUCKET } from './pictureStore'
+import { cleanChoices, toDimensionUnit, type DimensionUnit, type GstMode, type LineChoices, type LineRef, type QtyMode, type QuoteArea, type QuoteLine } from './math'
 
 // Thin typed wrappers over the database functions of 20270614000000. No API route in between: every function
 // reads auth.uid() itself, so the browser's own session is the identity. The client link uses the same client
@@ -39,6 +40,8 @@ export type Header = {
   /** 20270717000000. The kind of venue ('' = not set; see documentPlan.PROJECT_TYPES), its seats (restaurant, cafe, brewery) and the lead time in
    *  weeks. The weeks are worked out from the owner's rules and stored; a reason present means a person changed them (the reason stays internal). */
   project_type: string; seats: number | null; lead_time_weeks: number | null; lead_time_reason: string
+  /** 20270806000100. The city it is delivered to, asked on the Client card in place of the state; the state (it decides CGST + SGST or IGST) sits under Advanced client details. */
+  delivery_city: string
 }
 
 export type QuotationEvent = { kind: string; detail: Record<string, unknown>; at: string; actor_name: string | null }
@@ -80,7 +83,7 @@ export type QueueRow = {
 /** Who sees the suggested prices (20270731000000): everyone, or only the people listed. */
 /** The salesperson's details printed on their quotations, filled in once and editable (20270801000000). */
 export type MyCard = { saved: boolean; name: string; title: string; phone: string; email: string; updated_at?: string }
-export type SuggestionSettings = { everyone: boolean; for_me: boolean; shown_to: string[]; may_change: boolean; updated_at: string }
+export type SuggestionSettings = { everyone: boolean; desk: boolean; for_me: boolean; shown_to: string[]; may_change: boolean; updated_at: string }
 export type PriceSettings = { max_discount_pct: number | null; min_price_pct: number | null; updated_at: string; may_change: boolean }
 
 export type PublicQuotation = {
@@ -150,6 +153,7 @@ type DbLine = {
   finish: string | null; category?: string | null; qty_per_unit: number | string | null; qty_fixed: number | string | null
   unit_price: number | string | null; tax_rate: number | string; image_path: string | null; is_optional: boolean
   client_note: string | null; internal_note?: string | null; reference_images?: LineRef[] | null
+  client_choices?: LineChoices | null
 }
 
 export function toAreas(rows: DbArea[]): QuoteArea[] {
@@ -164,9 +168,11 @@ export function toLines(rows: DbLine[]): QuoteLine[] {
       material: l.material ?? '', finish: l.finish ?? '', category: l.category ?? '',
       qty_mode: (fixed ? 'fixed' : 'per_unit') as QtyMode, qty: Number(fixed ? l.qty_fixed : l.qty_per_unit) || null,
       unit_price: l.unit_price === null || l.unit_price === undefined ? null : Number(l.unit_price),
-      tax_rate: Number.isFinite(Number(l.tax_rate)) ? Number(l.tax_rate) : 18, image_path: l.image_path, is_optional: !!l.is_optional,
+      tax_rate: 18, // everything is billed at 18% (owner, 18 Nov 2026); an older line stored at 12% is read as 18% and saved so
+      image_path: l.image_path, is_optional: !!l.is_optional,
       client_note: l.client_note ?? '', internal_note: l.internal_note ?? '',
       ...(Array.isArray(l.reference_images) && l.reference_images.length ? { references: l.reference_images } : {}),
+      ...(l.client_choices && Object.keys(l.client_choices).length ? { choices: l.client_choices } : {}),
     }
   })
 }
@@ -190,6 +196,7 @@ export async function fetchQuotation(s: Supabase, id: string): Promise<Quotation
       client_email: str('client_email'), company_name: str('company_name'), client_gstin: str('client_gstin'), dimension_unit: toDimensionUnit(q.dimension_unit),
       project_type: str('project_type'), seats: q.seats === null || q.seats === undefined ? null : Number(q.seats) || null,
       lead_time_weeks: q.lead_time_weeks === null || q.lead_time_weeks === undefined ? null : Number(q.lead_time_weeks) || null, lead_time_reason: str('lead_time_reason'),
+      delivery_city: str('delivery_city'),
     },
     areas: toAreas(r.areas), lines: toLines(r.lines), events: r.events, pi: r.pi ?? null, price: r.price ?? null, request: r.request ?? null,
   }
@@ -218,6 +225,7 @@ export function saveDoc(header: Header, areas: QuoteArea[], lines: QuoteLine[], 
       category: l.category, qty_per_unit: l.qty_mode === 'per_unit' ? l.qty : null, qty_fixed: l.qty_mode === 'fixed' ? l.qty : null,
       unit_price: l.unit_price, tax_rate: l.tax_rate, image_path: l.image_path, is_optional: l.is_optional,
       client_note: l.client_note, internal_note: l.internal_note, reference_images: l.references ?? [],
+      client_choices: cleanChoices(l.choices),
     })),
   }
 }
@@ -233,12 +241,36 @@ export const shareQuotation = (s: Supabase, id: string, on: boolean) =>
 
 // ── pictures ──────────────────────────────────────────────────────────────
 
+// The clean picture goes to the PRIVATE originals bucket; the server then writes the logo-marked copy to the public
+// bucket at the same path (owner, 18 Nov 2026: pictures the client sees carry the Best of Exports mark).
 export async function uploadPicture(s: Supabase, userId: string, file: Blob): Promise<string> {
   const jpeg = await toJpeg(file)
   const path = `${userId}/${crypto.randomUUID()}.jpg`
-  const { error } = await s.storage.from(QUOTATION_BUCKET).upload(path, jpeg, { contentType: 'image/jpeg', upsert: false, cacheControl: '31536000' })
+  const { error } = await s.storage.from(ORIGINALS_BUCKET).upload(path, jpeg, { contentType: 'image/jpeg', upsert: false, cacheControl: '31536000' })
   if (error) throw new QuotationError('unknown', error.message || 'The picture could not be uploaded')
+  const res = await fetch('/api/quotations/picture-mark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) }).catch(() => null)
+  if (!res || !res.ok) {
+    const why = res ? ((await res.json().catch(() => null)) as { error?: string } | null)?.error : null
+    throw new QuotationError('unknown', why || 'The picture could not be prepared. Check your connection and try again.')
+  }
   return path
+}
+
+// ── the logo mark switch (20270806000200): on unless somebody who may edit the quotation turned it off ──────────────
+export const pictureMarkKey = (id: string) => ['quotations', 'pictureMark', id] as const
+export const fetchPictureMark = (s: Supabase, id: string) => call<boolean | null>(() => s.rpc('quotation_picture_mark_get', { p_id: id }))
+export const setPictureMark = (s: Supabase, id: string, on: boolean) => call<boolean>(() => s.rpc('quotation_picture_mark_set', { p_id: id, p_on: on }))
+
+/**
+ * Where a picture is shown from. On the client link (a token) every picture goes through the server, which redirects to
+ * the marked copy or, with the mark OFF, returns the clean one. For staff: the marked public copy, or with the mark OFF
+ * the same server route (signed in). markOn is undefined until the switch has loaded, which counts as on.
+ */
+export function pictureSrc(s: Supabase, path: string, o: { token?: string; quotationId?: string; markOn?: boolean } = {}): string {
+  const q = `path=${encodeURIComponent(path)}`
+  if (o.token) return `/api/quotations/picture-file?${q}&t=${encodeURIComponent(o.token)}`
+  if (o.markOn === false && o.quotationId) return `/api/quotations/picture-file?${q}&q=${encodeURIComponent(o.quotationId)}`
+  return pictureUrl(s, path)
 }
 
 /** An absolute, public address: the client link shows pictures without a session. */
@@ -256,5 +288,12 @@ export const fetchMyCard = (s: Supabase) => call<MyCard>(() => s.rpc('quotation_
 export const saveMyCard = (s: Supabase, card: Pick<MyCard, 'name' | 'title' | 'phone' | 'email'>) => call<MyCard>(() => s.rpc('quotation_my_card_save', { p: card }))
 export const fetchSuggestionSettings = (s: Supabase) => call<SuggestionSettings>(() => s.rpc('quotation_suggestions_get'))
 export const saveSuggestionSettings = (s: Supabase, everyone: boolean) => call<SuggestionSettings>(() => s.rpc('quotation_suggestions_set', { p_everyone: everyone }))
+/** The bank account and UPI QR printed on a quotation (20270807000000). The Customer ID is only in the administrator's own read. */
+export type PaymentDetails = { account_holder: string; bank: string; account_no: string; ifsc: string; branch: string; upi_id: string; qr_image: string | null }
+export type PaymentSettings = PaymentDetails & { customer_id: string; updated_at: string }
+/** For the printed quotation: pass the client link's token on the public page, nothing on the signed-in one. Null when not allowed. */
+export const fetchPaymentDetails = (s: Supabase, token?: string) => call<PaymentDetails | null>(() => s.rpc('quotation_payment_details', { p_token: token ?? null }))
+export const fetchPaymentSettings = (s: Supabase) => call<PaymentSettings>(() => s.rpc('quotation_payment_get'))
+export const savePaymentSettings = (s: Supabase, data: Partial<Omit<PaymentSettings, 'updated_at'>>) => call<PaymentSettings>(() => s.rpc('quotation_payment_set', { p_data: data }))
 export const savePriceSettings = (s: Supabase, maxDiscount: number | null, minPrice: number | null) =>
   call<PriceSettings>(() => s.rpc('quotation_price_settings_set', { p_max_discount_pct: maxDiscount, p_min_price_pct: minPrice }))

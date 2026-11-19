@@ -662,7 +662,9 @@ describe('one rule, one place', () => {
       'src/components/meetings/MeetingTaskModal.tsx',
     ]) {
       const src = read(path)
-      assert.equal(src.includes('requestAssignmentNotification'), false, `${path} requests no assignment notification`)
+      // The quotation request form alone asks the trusted route for a notice (owner, 18 Nov 2026).
+      assert.equal(src.includes('requestAssignmentNotification'), path === 'src/app/tasks/quotation-requests/new/page.tsx',
+        `${path}: assignment notice requested only by the quotation request form`)
       assert.equal(/\.from\(['"]notifications['"]\)/.test(src), false,
         `${path} must not touch the notifications table at all`)
     }

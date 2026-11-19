@@ -777,4 +777,186 @@ await db.exec(mig('20270801000000_quotation_salesperson_card.sql'))
   ok('the table is closed to direct reads, and the details functions to anyone signed out')
 }
 
+// ── 20270806000100: the delivery city (takes the Delivery state box's place on the Client card; the state stays under Advanced) ──
+await db.exec(mig('20270806000100_quotation_delivery_city.sql'))
+{
+  const id = await rpc(U.sales, 'quotation_create', { client_name: 'City Hotel' })
+  const g0 = await rpc(U.sales, 'quotation_get', id)
+  assert.equal(g0.quotation.delivery_city, null, 'an existing quotation starts with no city')
+  const header = { client_name: 'City Hotel', valid_days: 7, gst_mode: 'igst', supply_state: 'Telangana' }
+  const line = { name: 'C1 Chair', qty_fixed: 2, tax_rate: 18, unit_price: 1000 }
+  const city = async () => (await rpc(U.sales, 'quotation_get', id)).quotation.delivery_city
+  await rpc(U.sales, 'quotation_save', id, { expected_updated_at: g0.quotation.updated_at, header: { ...header, delivery_city: '  Hyderabad ' }, areas: [], lines: [line] })
+  assert.equal(await city(), 'Hyderabad')
+  assert.equal((await rpc(U.sales, 'quotation_get', id)).quotation.supply_state, 'Telangana', 'the state is saved beside it')
+  ok('save stores the city (trimmed) next to the state, and quotation_get returns it')
+
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [line] })
+  assert.equal(await city(), 'Hyderabad')
+  ok('a save from a tab opened before the change (no delivery_city key) keeps the city')
+
+  await rpc(U.sales, 'quotation_save', id, { header: { ...header, delivery_city: '   ' }, areas: [], lines: [line] })
+  assert.equal(await city(), null)
+  ok('a blank city clears it')
+
+  await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [id, { header: { ...header, delivery_city: 'x'.repeat(81) }, areas: [], lines: [line] }], /QUOTATION_INVALID/)
+  ok('a city longer than 80 characters is refused')
+
+  await rpc(U.sales, 'quotation_save', id, { header: { ...header, delivery_city: 'Jaipur' }, areas: [], lines: [line] })
+  const tok = await rpc(U.sales, 'quotation_share', id, true)
+  const pub = (await as(null, `select public.quotation_public($1) as r`, [tok], 'anon')).rows[0].r
+  assert.ok(!('delivery_city' in pub), 'the client copy does not carry the city')
+  ok('the client link and the frozen version do not carry the city')
+}
+
+// ── 20270731 + 20270807: price suggestions for the pricing desk, no gate on price approval, payment details ──
+await db.exec(mig('20270731000000_quotation_suggestions_switch.sql'))
+await db.exec(mig('20270807000000_quotation_payment_and_desk.sql'))
+{
+  // qp is the "Pricing Hotel" quotation priced under 90% of the last order: it needed approval above and the link was refused
+  let g2 = await rpc(U.sales, 'quotation_get', qp)
+  assert.equal(g2.price.state, 'to_ask'); assert.equal(g2.price.blocked, false)
+  const tok = await rpc(U.sales, 'quotation_share', qp, true)
+  assert.match(tok, /^[0-9a-f]{32}$/)
+  ok('a price outside the limits still shows the optional ask, but the client link is no longer held back')
+
+  const sg = async uid => await rpc(uid, 'quotation_suggestions_get')
+  const s0 = await sg(U.admin)
+  assert.deepEqual([s0.everyone, s0.desk], [false, true])
+  assert.equal((await sg(U.admin)).for_me, true); assert.equal((await sg(U.editor)).for_me, true)
+  assert.equal((await sg(U.sales)).for_me, false); assert.equal((await sg(U.manager)).for_me, false)
+  ok('suggestions start as the pricing desk: the administrator and an editor with view all see them, a salesperson and a viewer do not')
+  assert.equal((await rpc(U.admin, 'quotation_suggestions_set', true)).everyone, true)
+  assert.equal((await sg(U.sales)).for_me, true)
+  assert.equal((await rpc(U.admin, 'quotation_suggestions_set', false)).desk, true)
+  await fails(U.editor, `select public.quotation_suggestions_set(true)`, [], /only an administrator/)
+  ok('only an administrator widens or narrows who sees suggestions')
+
+  const det = async (uid, token, role) => (await as(uid, `select public.quotation_payment_details($1) as r`, [token], role)).rows[0].r
+  const d1 = await det(U.sales, null)
+  assert.equal(d1.account_no, '99982000009999'); assert.equal(d1.upi_id, '9829383706@hdfc'); assert.ok(!('customer_id' in d1))
+  assert.equal(await det(null, null, 'anon'), null)
+  assert.equal((await det(null, tok, 'anon')).ifsc, 'HDFC0004204')
+  assert.equal(await det(null, 'f'.repeat(32), 'anon'), null)
+  assert.equal(await det(U.nobody, null), null)
+  ok('payment details: staff with Quotations access or a valid client link read them (no Customer ID); anyone else gets nothing')
+
+  assert.equal((await rpc(U.admin, 'quotation_payment_get')).customer_id, '271662686')
+  await fails(U.editor, `select public.quotation_payment_get()`, [], /only an administrator/)
+  await fails(U.sales, `select public.quotation_payment_set($1::jsonb)`, [{ bank: 'x' }], /only an administrator/)
+  await assert.rejects(() => as(null, `select public.quotation_payment_get()`, [], 'anon'), /permission denied/)
+  await assert.rejects(() => as(U.sales, 'select * from public.quotation_payment_details'), /permission denied/)
+  await fails(U.admin, `select public.quotation_payment_set($1::jsonb)`, [{ nonsense: 1 }], /unknown field/)
+  const upd = await rpc(U.admin, 'quotation_payment_set', { ifsc: ' hdfc0004204 ', qr_image: 'data:image/png;base64,AAAA' })
+  assert.deepEqual([upd.ifsc, upd.bank, upd.qr_image], ['HDFC0004204', 'HDFC Bank', 'data:image/png;base64,AAAA'])
+  assert.equal((await rpc(U.admin, 'quotation_payment_set', { qr_image: '' })).qr_image, null)
+  await fails(U.admin, `select public.quotation_payment_set($1::jsonb)`, [{ qr_image: 'javascript:alert(1)' }], /check constraint/)
+  ok('only an administrator changes the payment settings; a key left out keeps its value; the QR must be a PNG or JPG data URL')
+}
+
+// ── 20270808: client choices on a line (fabric, finish, stone, rope weave) ──
+await db.exec(mig('20270808000100_quotation_client_choices.sql'))
+{
+  const P = n => `00000000-0000-0000-0000-0000000000b2/${String(n).repeat(8)}-1111-1111-1111-111111111111.jpg`
+  const choices = {
+    fabric: { source: 'catalog', name: 'Berlin velvet', code: 'F18', supplier: 'V2 Homes', used_for: 'seat', photo: P(3), status: 'confirmed', confirmed_on: '2026-11-18' },
+    stone: { source: 'client', name: 'Their own slate', status: 'to_confirm' },
+  }
+  const id = await rpc(U.sales, 'quotation_create', { client_name: 'Choices Hotel' })
+  const header = { client_name: 'Choices Hotel', valid_days: 7, gst_mode: 'igst' }
+  const chair = { name: 'C1 Arm chair', qty_fixed: 6, unit_price: 20000, tax_rate: 18, client_choices: choices }
+  const table = { name: 'T1 Table', qty_fixed: 2, unit_price: 9000, tax_rate: 18 }
+  const lines = async () => (await rpc(U.sales, 'quotation_get', id)).lines.map(l => l.client_choices)
+  const price = async () => (await rpc(U.sales, 'quotation_get', id)).quotation.value_before_gst ?? null
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, { ...table, client_choices: {} }] })
+  assert.deepEqual(await lines(), [choices, {}])
+  ok('save stores the choices of each line and quotation_get returns them')
+
+  const { client_choices: _drop, ...oldChair } = chair
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [oldChair, table] })
+  assert.deepEqual(await lines(), [choices, {}])
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [table, oldChair] })
+  assert.deepEqual(await lines(), [{}, {}])
+  ok('a save without the key (an old tab) keeps a line\'s choices only when the same line sits in the same place, never another line\'s')
+
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [{ ...chair, client_choices: {} }, table] })
+  assert.deepEqual(await lines(), [{}, {}])
+  ok('an empty object clears the choices')
+
+  const bad = [
+    { leather: { source: 'catalog', status: 'to_confirm' } },
+    { fabric: { source: 'shop', status: 'to_confirm' } },
+    { fabric: { source: 'catalog', status: 'locked' } },
+    { fabric: { source: 'catalog', status: 'to_confirm', price: '5' } },
+    { fabric: { source: 'catalog', status: 'to_confirm', name: 'x'.repeat(201) } },
+    { fabric: { source: 'catalog', status: 'to_confirm', photo: '../../etc.jpg' } },
+    { fabric: { source: 'catalog', status: 'to_confirm', confirmed_on: '2026-11-18' } },
+    { fabric: { source: 'catalog', status: 'confirmed', confirmed_on: '18 Nov' } },
+    { fabric: { source: 'catalog', status: 'to_confirm', name: 5 } },
+    [{ source: 'catalog', status: 'to_confirm' }],
+  ]
+  for (const b of bad) await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [id, { header, areas: [], lines: [{ ...table, client_choices: b }] }], /QUOTATION_INVALID/)
+  ok('unknown kinds, sources or statuses, extra fields (a price), over-long text, a bad photo path or date, and a date on an unconfirmed choice are refused')
+
+  // never a price: the same lines with and without choices give the same value before GST, and the client copy has no choices
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, table] })
+  const withC = (await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, table] })).value_before_gst
+  const without = (await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [{ ...chair, client_choices: {} }, table] })).value_before_gst
+  assert.equal(String(withC), String(without))
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, table] })
+  const tok = await rpc(U.sales, 'quotation_share', id, true)
+  const pub = (await as(null, `select public.quotation_public($1) as r`, [tok], 'anon')).rows[0].r
+  assert.ok(!JSON.stringify(pub).includes('Berlin velvet') && !JSON.stringify(pub).includes('client_choices'), 'the client link does not carry the choices')
+  const ver = (await db.query(`select doc from public.quotation_versions where quotation_id = $1`, [id])).rows
+  assert.ok(ver.every(r => !JSON.stringify(r.doc).includes('client_choices')), 'a frozen version does not carry the choices')
+  ok('choices never change the value, and neither the client link nor a frozen version carries them')
+
+  await assert.rejects(() => as(null, `select public.quotation_line_choices_ok('{}'::jsonb)`, [], 'anon'), /permission denied/)
+  ok('the checker function is closed to anyone signed out')
+}
+
+// ── 20270809: the client's copy carries the choices (never the note); sent versions stay as they were ──
+{
+  const P = n => `00000000-0000-0000-0000-0000000000b2/${String(n).repeat(8)}-1111-1111-1111-111111111111.jpg`
+  const choices = {
+    fabric: { source: 'catalog', name: 'Berlin velvet', code: 'F18', supplier: 'V2 Homes', used_for: 'seat', note: 'FACTORY-ONLY-NOTE', photo: P(4), status: 'confirmed', confirmed_on: '2026-11-18' },
+    stone: { source: 'client', name: 'Their own slate', status: 'to_confirm' },
+  }
+  const id = await rpc(U.sales, 'quotation_create', { client_name: 'Output Hotel' })
+  const header = { client_name: 'Output Hotel', valid_days: 7, gst_mode: 'igst' }
+  const chair = { name: 'O1 Arm chair', qty_fixed: 6, unit_price: 20000, tax_rate: 18, client_choices: choices, internal_note: 'INTERNAL-NOTE-NEVER' }
+  const table = { name: 'O2 Table', qty_fixed: 2, unit_price: 9000, tax_rate: 18 }
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, table] })
+  const tok = await rpc(U.sales, 'quotation_share', id, true) // v1 is frozen BEFORE the new migration
+  await db.exec(mig('20270809000000_quotation_client_choices_output.sql'))
+  const pub = async () => (await as(null, `select public.quotation_public($1) as r`, [tok], 'anon')).rows[0].r
+  assert.ok(!JSON.stringify(await pub()).includes('client_choices'), 'a version sent before the migration is untouched')
+  ok('a version sent before the change still shows no choices to the client')
+
+  assert.equal(await rpc(U.sales, 'quotation_version_create', id, 'choices added'), 2)
+  const p2 = await pub()
+  const c = p2.lines[0].client_choices
+  assert.deepEqual(c.fabric, { source: 'catalog', name: 'Berlin velvet', code: 'F18', supplier: 'V2 Homes', used_for: 'seat', photo: P(4), status: 'confirmed', confirmed_on: '2026-11-18' })
+  assert.deepEqual(c.stone, { source: 'client', name: 'Their own slate', status: 'to_confirm' })
+  assert.ok(!('client_choices' in p2.lines[1]), 'a line without choices carries no key')
+  ok('the next version carries each line\'s choices (both confirmed and to-confirm), and no key on a line without any')
+
+  const text = JSON.stringify(p2)
+  for (const secret of ['FACTORY-ONLY-NOTE', 'INTERNAL-NOTE-NEVER']) assert.ok(!text.includes(secret), secret)
+  assert.ok(!/"note"/.test(JSON.stringify(p2.lines.map(l => l.client_choices ?? {}))), 'the choice note is not in the client copy')
+  ok('the client copy never carries the choice note or the internal note')
+
+  // a quotation with no choices produces the very same client document as before
+  const plain = await rpc(U.sales, 'quotation_create', { client_name: 'Plain Hotel' })
+  await rpc(U.sales, 'quotation_save', plain, { header: { ...header, client_name: 'Plain Hotel' }, areas: [], lines: [table] })
+  const ptok = await rpc(U.sales, 'quotation_share', plain, true)
+  const pp = (await as(null, `select public.quotation_public($1) as r`, [ptok], 'anon')).rows[0].r
+  assert.ok(!JSON.stringify(pp).includes('client_choices'))
+  ok('a quotation without choices gets exactly the document it got before')
+
+  await assert.rejects(() => as(U.sales, `select public.quotation_client_doc($1::uuid)`, [id]), /permission denied/)
+  await assert.rejects(() => as(null, `select public.quotation_client_doc($1::uuid)`, [id], 'anon'), /permission denied/)
+  ok('quotation_client_doc stays closed to signed-in and signed-out callers')
+}
+
 console.log(`all ${checks} checks passed`)

@@ -113,7 +113,7 @@ describe('the salesperson', () => {
   })
   test('without a mobile or e-mail nothing is made up: no number, no "on WhatsApp"', () => {
     const t = plain(html(doc()))
-    assert.ok(!/\+91|@/.test(t)); assert.ok(!t.includes('on WhatsApp')); assert.ok(t.includes('Reply to Nishant'))
+    assert.ok(!/\+91|[\w.]+@[\w.]+/.test(t)); assert.ok(!t.includes('on WhatsApp')); assert.ok(t.includes('Reply to Nishant'))
   })
 })
 
@@ -149,10 +149,12 @@ describe('the figures', () => {
     assert.ok(t.includes('₹66.1 Lakh, including GST') || t.includes('₹66.1 Lakh , including GST') || /₹66\.1 Lakh, including GST/.test(t))
     assert.ok(t.includes('70% Advance, on confirmation of the order') && t.includes('30% Before dispatch'))
   })
-  test('IGST or CGST + SGST, line by line, exactly as before', () => {
-    assert.ok(plain(html(doc())).includes('IGST (18%)'))
-    const c = plain(html(doc({ gst_mode: 'cgst_sgst' })))
-    assert.ok(c.includes('CGST (9%)') && c.includes('SGST (9%)') && !c.includes('IGST'))
+  test('GST is one line per rate, "GST @18%", whatever the delivery state (owner, 18 Nov 2026: a PI cannot know the state yet)', () => {
+    for (const mode of ['igst', 'cgst_sgst'] as const) {
+      const text = plain(html(doc({ gst_mode: mode })))
+      assert.ok(text.includes('GST @18%'), mode)
+      assert.ok(!/CGST|SGST|IGST/.test(text), `${mode}: no split into CGST, SGST or IGST`)
+    }
   })
   test('an optional product is a row of the table, marked, with its amount in brackets (out of the total)', () => {
     const t = plain(html(doc()))

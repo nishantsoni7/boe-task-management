@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
-import { BarChart3, FileText, Home, Plus, Sparkles } from 'lucide-react'
+import { BarChart3, FileText, Home, Inbox, Plus, Sparkles } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
 import type { QuotationAccess } from '@/lib/quotations/api'
 import { BoeBrandIcon } from './BoeBrandIcon'
@@ -20,11 +20,13 @@ type Props = {
   title: string
   subtitle?: string
   actions?: React.ReactNode
+  /** A centred column no wider than this many px (the header's title and actions line up with it), as BoeOsLayout's contentMaxWidth. The builder uses 1360. */
+  contentMaxWidth?: number
   onSignOut: () => void
   children: React.ReactNode
 }
 
-export function QuotationsLayout({ profile, access, title, subtitle, actions, onSignOut, children }: Props) {
+export function QuotationsLayout({ profile, access, title, subtitle, actions, contentMaxWidth, onSignOut, children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router = useRouter()
@@ -32,7 +34,9 @@ export function QuotationsLayout({ profile, access, title, subtitle, actions, on
 
   const items = [
     ...(access.create ? [{ href: `${BASE}?new=1`, label: 'New quotation', icon: Plus, active: false, primary: true }] : []),
-    { href: BASE, label: 'Quotations', icon: FileText, active: pathname === BASE || (pathname.startsWith(`${BASE}/`) && !pathname.startsWith(`${BASE}/reports`) && !pathname.startsWith(`${BASE}/learning`)), primary: false },
+    { href: BASE, label: 'Quotations', icon: FileText, active: pathname === BASE || (pathname.startsWith(`${BASE}/`) && !pathname.startsWith(`${BASE}/reports`) && !pathname.startsWith(`${BASE}/learning`) && !pathname.startsWith(`${BASE}/requests`)), primary: false },
+    // The quotation requests, Pending and Completed (18 Nov 2026); the page says so when somebody has none.
+    { href: `${BASE}/requests`, label: 'Requests', icon: Inbox, active: pathname.startsWith(`${BASE}/requests`), primary: false },
     { href: `${BASE}/reports`, label: 'Reports', icon: BarChart3, active: pathname.startsWith(`${BASE}/reports`), primary: false },
     // Price learning is the pricing desk's (Admin, or edit + see-all), the same rule as price approval; the database decides.
     ...(access.admin || (access.edit && access.view_all) ? [{ href: `${BASE}/learning`, label: 'Price learning', icon: Sparkles, active: pathname.startsWith(`${BASE}/learning`), primary: false }] : []),
@@ -94,7 +98,10 @@ export function QuotationsLayout({ profile, access, title, subtitle, actions, on
         </div>
       </aside>
 
-      <div className="boe-main-content">
+      <div
+        className={`boe-main-content${contentMaxWidth ? ' boe-main-content-capped' : ''}`}
+        style={contentMaxWidth ? { '--boe-content-max': `${contentMaxWidth}px` } as React.CSSProperties : undefined}
+      >
         <div className="boe-page-header">
           <button className="boe-menu-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open menu">☰</button>
           <div className="boe-page-title-group">

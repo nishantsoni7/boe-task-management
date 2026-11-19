@@ -35,6 +35,7 @@ import {
   SOURCE_MESSAGES, loadSourcePicture, makeRateLimiter, mayChangePiPhotos,
 } from '@/lib/orders/customizationImageServer'
 import { ATTEMPTS, updateOwnAttempt } from '@/lib/orders/customizationLearningServer'
+import { spendCredits } from '@/lib/imageCredits/spend'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
@@ -119,6 +120,10 @@ export async function POST(req: NextRequest) {
   const source = await loadSourcePicture(admin.client, sourcePath)
   if (!source.ok) return fail(source.code === 'SOURCE_MISSING' ? 404 : 422, source.code, SOURCE_MESSAGES[source.code])
 
+  // Picture credits, taken just before the paying call (see src/lib/imageCredits/spend.ts).
+  const spend = await spendCredits(user.id, 'pi_customize', admin.client)
+  if (!spend.ok) return fail(spend.status, spend.code, spend.message, { noRetry: true })
+
   const result = await callFal({
     modelId: PI_IMAGE_EDIT_MODEL,
     apiKey,
@@ -139,6 +144,7 @@ export async function POST(req: NextRequest) {
     },
   })
   if (!result.ok) {
+    await spend.refundIfNotBilled(result.reason)
     console.error('[pi-regenerate-image] failed', { reason: result.reason, status: result.status, requestId: result.requestId, phase: result.phase })
     await noteOnAttempt(admin.client, attemptId, { userId: user.id, submissionId }, instruction, 'failed', null)
     return fail(statusFor(result.reason), result.reason, result.message, { noRetry: NO_RETRY_FAILURES.has(result.reason) })

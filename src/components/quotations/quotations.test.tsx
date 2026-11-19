@@ -56,13 +56,13 @@ describe('the printed quotation (real Resort Shamshabad quote)', () => {
   const html = renderToStaticMarkup(<QuotationDocument doc={REAL} pictureUrl={p => `https://img.example/${p}`} />)
   const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
 
-  test('totals: room types, subtotal, IGST and grand total, to the rupee', () => {
+  test('totals: room types, subtotal, GST @18% and grand total, to the rupee', () => {
     assert.ok(text.includes('₹47,43,000'), 'Corporate room total')
     assert.ok(text.includes('₹1,54,36,800'), 'Boho room total')
     assert.ok(text.includes('Subtotal ₹2,01,79,800'))
-    assert.ok(text.includes('IGST (18%) ₹36,32,364'))
+    assert.ok(text.includes('GST @18% ₹36,32,364'))
     assert.ok(text.includes('Grand total ₹2,38,12,164'))
-    assert.ok(!text.includes('CGST'))
+    assert.ok(!/CGST|SGST|IGST/.test(text))
   })
 
   test('room types with their multipliers, per-room quantities and sizes in inches', () => {
@@ -108,10 +108,10 @@ describe('the save document and errors', () => {
       { id: 'y', area_id: null, name: 'Rack', size_text: null, material: null, finish: null, qty_per_unit: null, qty_fixed: '39.00', unit_price: null, tax_rate: '12.00', image_path: null, is_optional: true, client_note: null },
     ])
     assert.deepEqual([a.qty_mode, a.qty, a.unit_price, a.tax_rate], ['per_unit', 1, 56000, 18])
-    assert.deepEqual([b.qty_mode, b.qty, b.unit_price, b.tax_rate, b.is_optional], ['fixed', 39, null, 12, true])
-    // A 0% line stays 0% (it used to read back as 18%).
+    assert.deepEqual([b.qty_mode, b.qty, b.unit_price, b.tax_rate, b.is_optional], ['fixed', 39, null, 18, true], 'a line stored at 12% reads as 18%')
+    // Everything is billed at 18% (owner, 18 Nov 2026): even a line stored at 0% reads back as 18%.
     const [c] = toLines([{ id: 'z', area_id: null, name: 'Book', size_text: null, material: null, finish: null, qty_per_unit: null, qty_fixed: '1', unit_price: '100', tax_rate: '0.00', image_path: null, is_optional: false, client_note: null }])
-    assert.equal(c.tax_rate, 0)
+    assert.equal(c.tax_rate, 18)
   })
   test('before the migration is applied, the screens say "being set up", not a raw error', () => {
     assert.equal(classifyError({ code: 'PGRST202', message: 'Could not find the function public.quotation_my_access' }).kind, 'not_set_up')

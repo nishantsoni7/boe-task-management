@@ -30,6 +30,7 @@ import { RETENTION_DAYS } from '@/lib/imageEditor/retention'
 import { QueueList } from './QueueList'
 import { ResultCard } from './ResultCard'
 import { HistoryPanel } from './HistoryPanel'
+import { CreditNote } from '@/components/imageCredits/CreditNote'
 
 // Up to five photographs in, up to five catalogue images out.
 //
@@ -611,12 +612,15 @@ export default function ImageEditorPage() {
         )}
 
         {pending > 0 && !running && canGenerate && (
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
-            <button className="boe-btn boe-btn-primary" onClick={() => { void run() }} disabled={running}>
-              <Wand2 size={13} strokeWidth={2} />
-              {pending === 1 ? 'Generate Studio Image' : `Generate ${pending} Studio Images`}
-            </button>
-          </div>
+          <>
+            <CreditNote cost={pending} refreshKey={phase} />
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+              <button className="boe-btn boe-btn-primary" onClick={() => { void run() }} disabled={running}>
+                <Wand2 size={13} strokeWidth={2} />
+                {pending === 1 ? 'Generate Studio Image' : `Generate ${pending} Studio Images`}
+              </button>
+            </div>
+          </>
         )}
 
         {/* ── Progress ────────────────────────────────────────────────────── */}

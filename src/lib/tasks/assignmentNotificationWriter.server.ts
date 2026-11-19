@@ -24,7 +24,7 @@
 import { insertUserNotifications } from '@/lib/notificationWrites'
 import type { NotificationInsert } from '@/lib/notificationWrites'
 import { findTaskCreationActivityId } from '@/lib/notifications/activityLink'
-import { isQuotationTask, shouldNotifyTaskAssignment } from '@/lib/notifications/taskNotificationPolicy'
+import { QUOTATION_REQUEST_NOTIFICATION_TITLE, isQuotationTask, shouldNotifyTaskAssignment } from '@/lib/notifications/taskNotificationPolicy'
 import {
   buildTaskAssignmentNotification,
   TASK_ASSIGNMENT_NOTIFICATION_TYPE,
@@ -147,10 +147,9 @@ export async function createAssignmentNotification(
   const isCreator = task.created_by != null && task.created_by === callerId
   if (!isCreator && !(await store.isAdmin(callerId))) return { status: 'forbidden' }
 
-  // A quotation request writes no notification — including this one, at
-  // creation. Decided by `task_type`, after authorization so a stranger still
-  // gets `forbidden`. See src/lib/notifications/taskNotificationPolicy.ts.
-  if (isQuotationTask(task)) return { status: 'skipped_quotation' }
+  // A NEW quotation request tells the person it was sent to (owner, 18 Nov 2026): the one quotation event that is
+  // announced to the maker. Nothing else about a quotation is. See src/lib/notifications/taskNotificationPolicy.ts.
+  const quotation = isQuotationTask(task)
 
   if (!task.assigned_to) return { status: 'skipped_self' }
   if (task.assigned_to === task.created_by) return { status: 'skipped_self' }
@@ -158,7 +157,7 @@ export async function createAssignmentNotification(
   // A new task is announced by the assignee's acknowledgment section, not by a
   // notification. Nothing is read or written past this point while the rule
   // holds. See src/lib/notifications/taskNotificationPolicy.ts.
-  if (!notifyAssignee(task)) return { status: 'skipped_acknowledgment' }
+  if (!quotation && !notifyAssignee(task)) return { status: 'skipped_acknowledgment' }
 
   // Independent reads, run together: the duplicate check and the activity-log
   // lookup each need only `task` (already in hand) and neither's answer
@@ -186,6 +185,7 @@ export async function createAssignmentNotification(
     actorId:    task.created_by,
     taskId:     task.id,
     taskTitle:  task.title ?? '',
+    title:      quotation ? QUOTATION_REQUEST_NOTIFICATION_TITLE : undefined,
     activityLogId,
   })
   if (!row) return { status: 'skipped_self' }

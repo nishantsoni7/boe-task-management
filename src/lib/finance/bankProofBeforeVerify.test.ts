@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   BANK_CHECK_LATE_DAYS, bankCheckState, bankMarkSummary, bankVerifyRefusal, candidateDoubts, compareCandidate,
-  deriveBankMarks, isBankAccountMode, isExactCandidate, markCandidates, pendingBankView, statementsRunTo,
+  deriveBankMarks, isBankAccountMode, isExactCandidate, markCandidates, nameDiffers, pendingBankView, statementsRunTo,
   type BankCandidate, type BankMark, type MarkLine, type MarkPayment,
 } from './bankMarks'
 import { describePaymentDecisionError } from './paymentDecision'
@@ -114,19 +114,31 @@ describe('part payments', () => {
 
 describe('what should stop a person', () => {
   test('nothing, when it all fits', () => {
-    assert.deepEqual(candidateDoubts(best(pay(), [credit()]), 'Sample Hotels LLP'), [])
+    assert.deepEqual(candidateDoubts(best(pay(), [credit()])), [])
   })
 
-  test('the bank reference outweighs a name and a date, but never the account', () => {
+  test('the bank reference outweighs a date, but never the account', () => {
     const c = best(pay({ client_name: 'Another Client', payment_date: '2026-09-20' }), [credit()])
-    assert.deepEqual(candidateDoubts(c, 'Another Client'), [])
+    assert.deepEqual(candidateDoubts(c), [])
     const elsewhere = best(pay({ payment_mode: 'hdfc_sec' }), [credit()])
-    assert.deepEqual(candidateDoubts(elsewhere, 'Sample Hotels LLP'), ['this credit is in the other HDFC account'])
+    assert.deepEqual(candidateDoubts(elsewhere), ['this credit is in the other HDFC account'])
   })
 
-  test('no reference: a name that does not fit and a far date are said', () => {
-    const c = best(pay({ client_name: 'Another Client', proof_note: null, payment_date: '2026-10-01' }), [credit()])
-    assert.deepEqual(candidateDoubts(c, 'Another Client'), ['the name does not match', 'the dates are 5 days apart'])
+  test('no reference: a far date is said', () => {
+    const c = best(pay({ proof_note: null, payment_date: '2026-10-01' }), [credit()])
+    assert.deepEqual(candidateDoubts(c), ['the dates are 5 days apart'])
+  })
+
+  test('a different name is never a doubt: the client usually pays through a company (owner 2026-11-19)', () => {
+    const p = pay({ client_name: 'Aryan Ji', proof_note: null })
+    const c = best(p, [credit()])
+    assert.ok(c.nameFit < 0.5, 'the bank names another payer')
+    assert.deepEqual(candidateDoubts(c), [])
+    assert.equal(nameDiffers(c, 'Aryan Ji'), true, 'it is still said, as information')
+    assert.equal(compareCandidate(p, c, 375000).find(r => r.label === 'Name')?.verdict, 'Different name')
+    assert.equal(nameDiffers(best(pay(), [credit()]), 'Sample Hotels LLP'), false, 'the same name says nothing')
+    assert.equal(nameDiffers(c, null), false, 'no client named, nothing to compare')
+    assert.equal(nameDiffers(c, '  '), false)
   })
 
   test('the comparison shows both sides of every fact', () => {

@@ -16,12 +16,11 @@ import { deriveQuotationCapabilities } from '@/lib/permissions/quotations'
 import { canonicalAttachmentRef } from '@/lib/tasks/attachmentStorage'
 import { useQueryClient } from '@tanstack/react-query'
 import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
+import { requestAssignmentNotification } from '@/lib/tasks/assignmentNotification'
+import { initialReceiver, receiverRefusal, rememberReceiver, rememberedReceiver, type Receiver } from '@/lib/tasks/quotationReceivers'
 
-// Every quotation request is assigned to this user (resolved by email at init).
-// It must match the owner's CURRENT sign-in email: when Nishant's admin account
-// moved from admin@bestofexports.com to his personal address, an unchanged
-// value here would have found nobody and left new requests without an owner.
-const DEFAULT_QUOTATION_OWNER = 'soni.nishant7@gmail.com'
+// Who makes the quotation is picked on the form (owner, 18 Nov 2026), from quotation_request_receivers()
+// (20270804000000). It replaced one owner found by a hard-coded email, which found nobody when the email changed.
 
 const PRIORITY_CFG = {
   low:    { active: '#686D6C', activeBg: '#FBFAF8', border: 'rgba(104,109,108,0.30)' },
@@ -31,7 +30,9 @@ const PRIORITY_CFG = {
 
 export default function NewQuotationRequestPage() {
   const [profile,          setProfile]          = useState<UserProfile | null>(null)
-  const [quotationOwnerId, setQuotationOwnerId] = useState<string>('')
+  const [receivers,        setReceivers]        = useState<Receiver[]>([])
+  const [sendTo,           setSendTo]           = useState<string>('')
+  const [sendToDirty,      setSendToDirty]      = useState(false)
   const [initDone,         setInitDone]         = useState(false)
 
   // Form fields
@@ -62,10 +63,10 @@ export default function NewQuotationRequestPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session) { router.push('/login'); return }
 
-        const [profileData, { data: ownerData }] = await Promise.all([
+        const [profileData, { data: receiverRows }] = await Promise.all([
           // The shell has usually read this row already; this reuses it instead of asking again.
           queryClient.ensureQueryData(profileQueryOptions(queryClient, session.user.id)),
-          supabase.from('users').select('id').eq('email', DEFAULT_QUOTATION_OWNER).single(),
+          supabase.rpc('quotation_request_receivers'),
         ])
 
         // Raising a quotation request is a quotation OPERATION, so it needs
@@ -79,7 +80,9 @@ export default function NewQuotationRequestPage() {
         }
 
         if (profileData) setProfile(profileData as UserProfile)
-        if (ownerData)   setQuotationOwnerId(ownerData.id)
+        const list = (receiverRows ?? []) as Receiver[]
+        setReceivers(list)
+        setSendTo(initialReceiver(list, rememberedReceiver()))
       } finally {
         setInitDone(true)
       }
@@ -117,6 +120,8 @@ export default function NewQuotationRequestPage() {
   const handleSubmit = async () => {
     setNameDirty(true)
     setAttachDirty(true)
+    setSendToDirty(true)
+    if (!sendTo) return
     if (!customerName.trim()) return
     if (!attachFiles.length) return
 
@@ -126,11 +131,6 @@ export default function NewQuotationRequestPage() {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) { setLoading(false); return }
 
-    if (!quotationOwnerId) {
-      setSubmitError('Quotation owner not configured. Please contact your administrator.')
-      setLoading(false)
-      return
-    }
 
     // Validate/compress once and reuse the result for the upload below —
     // running prepareFiles twice would canvas-compress every image a second
@@ -152,7 +152,7 @@ export default function NewQuotationRequestPage() {
         task_type:       'quotation_request',
         is_urgent:       false,
         due_date:        null,
-        assigned_to:     quotationOwnerId,
+        assigned_to:     sendTo,
         created_by:      session.user.id,
         team:            profile?.team ?? 'sales',
         status:          'working',
@@ -164,14 +164,11 @@ export default function NewQuotationRequestPage() {
       .single()
 
     if (error || !task) {
-      setSubmitError(error?.message ?? 'Failed to submit request. Please try again.')
+      setSubmitError(receiverRefusal(error?.message) ?? error?.message ?? 'Failed to submit request. Please try again.')
       setLoading(false)
       return
     }
 
-    // No notification: a quotation request is silent, and a new task is
-    // announced by the acknowledgment section. See
-    // src/lib/notifications/taskNotificationPolicy.ts.
     const { error: logErr } = await supabase.from('task_activity_log').insert({
       task_id: task.id, actor_id: session.user.id,
       action: 'created', note: 'Quotation request submitted',
@@ -197,6 +194,11 @@ export default function NewQuotationRequestPage() {
       })
     }
 
+    // The person it was sent to is told (owner, 18 Nov 2026): "Quotation request sent to you". After the files, so
+    // the request they open is complete. A failure here never undoes the request; it is only logged.
+    const told = await requestAssignmentNotification(task.id)
+    if (!told.ok) console.error('[quotation request] notification not sent:', told.reason)
+
     // The list caches its rows, so the request just raised would not be in the
     // cached copy the user lands on next. Marking it stale is what puts the new
     // row there — without it, a brand new quotation request could be missing from
@@ -204,7 +206,9 @@ export default function NewQuotationRequestPage() {
     // person is certain to go looking for it.
     queryClient.invalidateQueries({ queryKey: QUOTATION_REQUESTS_KEY })
 
-    // Reset
+    rememberReceiver(sendTo)
+
+    // Reset (the Send to pick stays: the next request usually goes to the same person)
     setCustomerName('');  setContactNumber(''); setPriority('medium')
     setRequirement('');   setAttachFiles([]);   setAttachError(null)
     setNameDirty(false);  setAttachDirty(false)
@@ -214,7 +218,7 @@ export default function NewQuotationRequestPage() {
     setLoading(false)
   }
 
-  const canSubmit = !loading && customerName.trim().length > 0 && attachFiles.length > 0
+  const canSubmit = !loading && !!sendTo && customerName.trim().length > 0 && attachFiles.length > 0
 
   if (!initDone) return <LoadingScreen />
 
@@ -282,8 +286,48 @@ export default function NewQuotationRequestPage() {
           }}>
             <Info size={13} color="#335A86" style={{ flexShrink: 0, marginTop: '1px' }} />
             <p style={{ fontSize: '12px', color: '#335A86', lineHeight: 1.5 }}>
-              Fill in the lead details and attach relevant files. The request will be sent for quotation preparation.
+              Pick who makes the quotation, fill in the lead details and attach the client’s files.
             </p>
+          </div>
+
+          {/* 0. Send to */}
+          <div style={{ marginBottom: '16px' }}>
+            <span className="boe-form-section-label" id="qr-send-to">
+              Send to <span style={{ color: colors.red }}>*</span>
+            </span>
+            {receivers.length === 0 ? (
+              <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>
+                Nobody is set up to receive quotation requests yet. Ask your administrator.
+              </p>
+            ) : (
+              <div role="radiogroup" aria-labelledby="qr-send-to" style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.min(receivers.length, 3)}, 1fr)`, gap: '8px', marginTop: '2px' }}>
+                {receivers.map(r => {
+                  const selected = sendTo === r.id
+                  return (
+                    <button
+                      key={r.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => { setSendTo(r.id); setSendToDirty(true) }}
+                      style={{
+                        minHeight: '44px', padding: '8px 12px', borderRadius: '8px', cursor: 'pointer',
+                        fontSize: '14px', fontWeight: selected ? 700 : 500, textAlign: 'center',
+                        border: `1.5px solid ${selected ? colors.brand : colors.borderInput}`,
+                        background: selected ? colors.brandTint : colors.base,
+                        color: selected ? colors.brandInk : colors.primary,
+                        transition: 'all 0.12s',
+                      }}
+                    >
+                      {r.full_name}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            {sendToDirty && !sendTo && receivers.length > 0 && (
+              <p style={{ fontSize: '12px', color: colors.red, marginTop: '4px' }}>Pick who makes the quotation</p>
+            )}
           </div>
 
           {/* 1. Lead Name */}

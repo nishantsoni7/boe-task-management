@@ -12,6 +12,8 @@ import {
   type TableRow,
 } from '@/lib/quotations/documentPlan'
 import { WORK_PULL, workSetFor } from '@/lib/quotations/documentWork'
+import { CHOICE_KINDS, CHOICE_LABEL, choiceRowsOf, choiceWords, planChoicePages, sourceText, statusText } from '@/lib/quotations/choicesDoc'
+import type { PaymentDetails } from '@/lib/quotations/api'
 import d from './document.module.css'
 import { Pic } from './Pic'
 
@@ -96,7 +98,28 @@ function Page({ n, section, kicker, title, children, cls }: { n: number; section
   )
 }
 
-export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUrl: (path: string) => string }) {
+/** The bank account and the UPI QR, in a compact block on the terms page. Nothing prints until an administrator has filled in an account number or a UPI id. */
+export const hasPayment = (p: PaymentDetails | null | undefined): p is PaymentDetails => !!p && !!(p.account_no || p.upi_id)
+function PayBlock({ p }: { p: PaymentDetails }) {
+  const rows: [string, string][] = ([['Account name', p.account_holder], ['Bank', p.bank], ['Account no.', p.account_no], ['IFSC', p.ifsc], ['Branch', p.branch], ['UPI ID', p.upi_id]] as [string, string][]).filter(([, v]) => v)
+  return (
+    <div className={d.pay}>
+      <div className={d.payMain}>
+        <h3>Pay by bank transfer or UPI</h3>
+        <dl>{rows.map(([k, v]) => <div key={k}><dt>{k}</dt><dd>{v}</dd></div>)}</dl>
+      </div>
+      {p.qr_image ? (
+        <div className={d.payQr}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={p.qr_image} alt="UPI QR code" />
+          <span>Scan to pay</span>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; pictureUrl: (path: string) => string; payment?: PaymentDetails | null }) {
   // Pictures below the first screen load as the reader scrolls to them (a quotation can hold 60 pictures of a few hundred KB each).
   // Printing needs every one of them, so the moment a print starts they all load.
   useEffect(() => {
@@ -116,6 +139,9 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
   const hasNotes = !!(doc.notes || doc.transport_note)
   const notesPage = noteLinesOf(doc.notes, doc.transport_note) > NOTES_ON_TERMS_LINES
   const tablePages = planTablePages(groups, summaryUnits(sumRows))
+  // the client's choices (fabric, finish, stone, rope weave): one table, a row per product that has any; none, no page (20270809000000)
+  const choiceRows = choiceRowsOf(doc.areas, doc.lines)
+  const choicePages = choiceRows.length ? planChoicePages(choiceRows) : []
   const termPages = planTermsPages([{ heading: EXPECTATIONS_TITLE, items: EXPECTATIONS }, { heading: 'Terms and Conditions', items: TERMS }])
   const work = workSetFor(type)
   const title = doc.project_name || doc.client_name
@@ -129,6 +155,8 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
   const firstTable = n + 1
   n += tablePages.length
   const nNotes = notesPage ? ++n : 0
+  const firstChoice = n + 1
+  n += choicePages.length
   const nTerms = ++n
   const firstAnnex = n + 1
 
@@ -151,7 +179,7 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
   if (doc.packing_amount > 0) included.push('Packing, in the total')
   if (doc.fabric_amount > 0) included.push('Fabric, in the total')
   if (doc.transport_note) included.push(`Transport: ${doc.transport_note}`)
-  included.push(doc.gst_mode === 'cgst_sgst' ? 'GST shown separately as CGST and SGST' : 'GST shown separately as IGST')
+  included.push('GST shown separately')
   const weeks = doc.lead_time_weeks && doc.lead_time_weeks > 0 ? doc.lead_time_weeks : null
 
   const tableRow = (r: TableRow) => {
@@ -278,9 +306,7 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
                 {doc.fabric_amount > 0 && <tr className={d.subr}><td colSpan={3}>Fabric</td><td className={d.r}>{formatINR(doc.fabric_amount)}</td></tr>}
                 {doc.packing_amount > 0 && <tr className={d.subr}><td colSpan={3}>Packing</td><td className={d.r}>{formatINR(doc.packing_amount)}</td></tr>}
                 {(t.discount > 0 || doc.fabric_amount > 0 || doc.packing_amount > 0) && <tr className={d.subr}><td colSpan={3}>Taxable value</td><td className={d.r}>{formatINR(t.taxable)}</td></tr>}
-                {t.gst.flatMap(r => doc.gst_mode === 'cgst_sgst'
-                  ? [<tr key={`c${r.rate}`} className={d.subr}><td colSpan={3}>CGST ({r.rate / 2}%)</td><td className={d.r}>{formatINR(r.cgst)}</td></tr>, <tr key={`s${r.rate}`} className={d.subr}><td colSpan={3}>SGST ({r.rate / 2}%)</td><td className={d.r}>{formatINR(r.sgst)}</td></tr>]
-                  : [<tr key={`i${r.rate}`} className={d.subr}><td colSpan={3}>IGST ({r.rate}%)</td><td className={d.r}>{formatINR(r.igst)}</td></tr>])}
+                {t.gst.map(r => <tr key={r.rate} className={d.subr}><td colSpan={3}>GST @{r.rate}%</td><td className={d.r}>{formatINR(r.gst)}</td></tr>)}
                 <tr className={d.tot}><td colSpan={3}>Grand total</td><td className={d.r}>{formatINR(t.grand)}</td></tr>
               </tbody></table>
               <p className={d.words}>{rupeesInWords(t.grand)}</p>
@@ -298,6 +324,39 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
 
       {notesPage ? <Page n={nNotes} section="Notes" kicker="Notes">{notesBox}</Page> : null}
 
+      {/* ── the client's choices, one table (only when a product has any) ── */}
+      {choicePages.map((rows, ci) => (
+        <Page key={`c${ci}`} n={firstChoice + ci} section="Client choices" kicker="Client choices" title={ci === 0 ? 'What you chose, and what is still open.' : undefined}>
+          {ci === 0 ? <p className={d.chIntro}>Fabrics, finishes, stone and rope weaves for your products. Rows marked To confirm still wait for your decision. None of this changes the price.</p> : null}
+          <table className={`${d.tbl} ${d.chtbl}`}>
+            <thead><tr><th>Product</th>{CHOICE_KINDS.map(k => <th key={k}>{CHOICE_LABEL[k]}</th>)}</tr></thead>
+            <tbody>{rows.map(r => (
+              <tr key={r.line.key}>
+                <td className={d.chProd} data-label="Product"><b className={d.pname}>{r.line.name}</b><small>{[r.area?.name, r.line.is_optional ? 'Optional' : ''].filter(Boolean).join(' · ')}</small></td>
+                {CHOICE_KINDS.map(k => {
+                  const c = r.line.choices?.[k]
+                  if (!c) return <td key={k} data-label={CHOICE_LABEL[k]} className={d.chNone}><span>Not used</span></td>
+                  return (
+                    <td key={k} data-label={CHOICE_LABEL[k]}>
+                      {c.photo ? <div className={d.chSw}><Pic src={pictureUrl(c.photo)} alt={`${CHOICE_LABEL[k]} swatch for ${r.line.name}`} lazy /></div> : null}
+                      {choiceWords(c).map((w, i) => i === 0 ? <b key={i} className={d.chName}>{w}</b> : <span key={i} className={d.chWord}>{w}</span>)}
+                      <span className={d.chSrc}>{sourceText(c)}</span>
+                      <span className={`${d.chChip} ${c.status === 'confirmed' ? d.chOk : d.chWait}`}>{statusText(c)}</span>
+                    </td>
+                  )
+                })}
+              </tr>
+            ))}</tbody>
+          </table>
+          {ci === choicePages.length - 1 ? (
+            <div className={d.chSign}>
+              <div><span>For the client: name, date and signature</span></div>
+              <div><span>For Best of Exports: name and date</span></div>
+            </div>
+          ) : null}
+        </Page>
+      ))}
+
       {/* ── 6 · terms in plain words, and the acceptance ── */}
       <Page n={nTerms} section="Terms and acceptance" kicker="Terms and acceptance" title="What we ask, and how we start.">
         <div className={d.two}>
@@ -310,6 +369,7 @@ export function QuotationDocument({ doc, pictureUrl }: { doc: DocData; pictureUr
             <li>Design, size and finish unchanged once finalised</li>
             <li>One single point of contact for the project</li></ul></div>
         </div>
+        {hasPayment(payment) ? <PayBlock p={payment} /> : null}
         {hasNotes && !notesPage ? notesBox : null}
         <p className={d.fine}>The full terms and conditions (7 expectations, 23 terms) follow on the next {termPages.length === 1 ? 'page' : 'pages'} and are part of this quotation.</p>
         <div className={d.accept}>

@@ -140,8 +140,8 @@ describe('QUOTATION_NOTICE_TITLE_FILTER', () => {
     return op === 'like' ? like(value, title) : title === value
   })
 
-  test('admits exactly the titles the two writers compose for a completion and a cancellation', () => {
-    for (const title of ['Priya completed task', 'Task completed', 'Ada Admin cancelled a task', 'Task cancelled']) {
+  test('admits exactly the titles the writers compose for a completion, a cancellation and a new request (18 Nov 2026)', () => {
+    for (const title of ['Priya completed task', 'Task completed', 'Ada Admin cancelled a task', 'Task cancelled', 'Quotation request sent to you']) {
       assert.equal(matches(title), true, title)
     }
   })
@@ -196,9 +196,18 @@ function fakeStore(task: AssignmentTaskRow, { admin = false } = {}) {
 describe('createAssignmentNotification and quotation requests', () => {
   const base = { id: 'task-q', title: 'Quotation - Acme', created_by: CREATOR, assigned_to: ASSIGNEE }
 
-  test('a quotation request writes no notification', async () => {
+  test('a NEW quotation request tells the person it was sent to (owner, 18 Nov 2026)', async () => {
     const { store, inserted } = fakeStore({ ...base, task_type: 'quotation_request' })
-    assert.deepEqual(await createAssignmentNotification(store, { taskId: 'task-q', callerId: CREATOR }), { status: 'skipped_quotation' })
+    assert.deepEqual(await createAssignmentNotification(store, { taskId: 'task-q', callerId: CREATOR }), { status: 'created' })
+    assert.equal(inserted.length, 1)
+    assert.equal(inserted[0].user_id, ASSIGNEE)
+    assert.equal(inserted[0].title, 'Quotation request sent to you')
+    assert.equal(inserted[0].body, 'Quotation - Acme')
+  })
+
+  test('a request raised to oneself tells nobody', async () => {
+    const { store, inserted } = fakeStore({ ...base, assigned_to: CREATOR, task_type: 'quotation_request' })
+    assert.deepEqual(await createAssignmentNotification(store, { taskId: 'task-q', callerId: CREATOR }), { status: 'skipped_self' })
     assert.equal(inserted.length, 0)
   })
 
@@ -213,9 +222,9 @@ describe('createAssignmentNotification and quotation requests', () => {
     assert.equal(inserted.length, 0)
   })
 
-  test('a quotation keeps its own reason, whatever the new-task rule says', async () => {
+  test('a new quotation request is announced whatever the new-task rule says', async () => {
     const { store } = fakeStore({ ...base, task_type: 'quotation_request' })
-    assert.deepEqual(await createAssignmentNotification(store, { taskId: 'task-q', callerId: CREATOR }, () => true), { status: 'skipped_quotation' })
+    assert.deepEqual(await createAssignmentNotification(store, { taskId: 'task-q', callerId: CREATOR }, () => false), { status: 'created' })
   })
 })
 
@@ -241,7 +250,8 @@ describe('shouldNotifyTaskAssignment', () => {
     const fn = src.slice(src.indexOf('export async function createAssignmentNotification('))
     const forbidden = fn.indexOf("return { status: 'forbidden' }")
     const self = fn.lastIndexOf("return { status: 'skipped_self' }", fn.indexOf('notifyAssignee(task)'))
-    const rule = fn.indexOf("if (!notifyAssignee(task)) return { status: 'skipped_acknowledgment' }")
+    // A new quotation request is the one exception (owner, 18 Nov 2026): it skips the rule, not the checks.
+    const rule = fn.indexOf("if (!quotation && !notifyAssignee(task)) return { status: 'skipped_acknowledgment' }")
     const reads = fn.indexOf('store.hasAssignmentNotification(')
     const insert = fn.indexOf('insertUserNotifications(')
     assert.ok(forbidden > 0 && self > forbidden && rule > self && reads > rule && insert > rule)
@@ -277,12 +287,13 @@ describe('every Task Management writer consults the rule', () => {
     assert.equal(src.includes('user_id:      task.assigned_to'), false, 'the assignee is no longer written to directly')
   })
 
-  test('the assignment writer reads task_type and skips after authorization', () => {
+  test('the assignment writer reads task_type and decides the quotation title after authorization', () => {
     const src = read('src/lib/tasks/assignmentNotificationWriter.server.ts')
     assert.match(src, /select\('id, title, assigned_to, created_by, task_type'\)/)
     const forbidden = src.indexOf("return { status: 'forbidden' }")
-    const skip = src.indexOf("return { status: 'skipped_quotation' }")
-    assert.ok(forbidden > 0 && skip > forbidden)
+    const quotation = src.indexOf('const quotation = isQuotationTask(task)')
+    assert.ok(forbidden > 0 && quotation > forbidden)
+    assert.ok(src.includes('title:      quotation ? QUOTATION_REQUEST_NOTIFICATION_TITLE : undefined,'))
     // The browser treats the skip as success, so no "notification failed" warning.
     assert.match(read('src/lib/tasks/assignmentNotification.ts'), /status === 'skipped_quotation' \|\| status === 'skipped_acknowledgment'\) \{/)
   })

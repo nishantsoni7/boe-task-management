@@ -14,11 +14,19 @@ const TASK_COLUMNS = [
 ].join(', ')
 
 /**
- * Tasks assigned to a given user, excluding cancelled. Ordered by due date.
+ * Tasks assigned to a given user that are still open, ordered by due date.
+ * Neither cancelled nor completed ones are read.
  *
  * ONE request serves every My Tasks tab: the page splits this collection with
  * buildMyTaskBuckets (src/lib/tasks/myTaskTabs.ts) rather than querying per
  * tab, which is why switching between already-loaded tabs issues nothing.
+ *
+ * WHY COMPLETED TASKS ARE NOT READ. Every tab and every count on the page is
+ * built from open work (`buckets.completed` is never drawn: the sidebar's
+ * "Completed" entry opens /tasks/my/completed, which pages its own history from
+ * the database). Reading every task a person ever finished made this the
+ * heaviest request on the page (78.8 kB on the wire in a 19 Nov 2026 capture,
+ * 1.3 s), and it is the one the first paint waits for.
  *
  * Timed under `task.list.load`. Inert unless NEXT_PUBLIC_BOE_PERF_DEBUG=true —
  * see src/lib/perf.ts — and it records only the action name and a duration,
@@ -47,6 +55,7 @@ export function myTasksQueryOptions(userId: string | null | undefined) {
           .select(TASK_COLUMNS)
           .eq('assigned_to', userId)
           .neq('status', 'cancelled')
+          .neq('status', 'completed')
           .neq('task_type', 'quotation_request')
           .order('due_date', { ascending: true, nullsFirst: false })
         return ((data ?? []) as unknown as Task[])
