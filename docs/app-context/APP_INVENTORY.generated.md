@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `9aa16d0c` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
-- Commits on this branch: 323
+- Commit: `c2c31d0a` — Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- Commits on this branch: 325
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 487 (first `20260530_create_positions.sql`, latest `20270810000000_task_nav_counts.sql`)
 - Tables ever created: 269 (dropped at some point: 8)   SQL functions: 1075   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `c2c31d0a` 2026-11-19 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
+- `3bf9a015` 2026-11-19 Task Management pages start while the access check runs (no SQL) (#948)
 - `9aa16d0c` 2026-11-19 Merge remote-tracking branch 'origin/main' into claude/boe1-employee-monitoring-t5ypei
 - `adf5ef86` 2026-11-19 Docs: stamp #946 (sidebar badge counts in one call) as merged and verified live (no SQL change) (#947)
 - `616efe75` 2026-11-19 Task Management sidebar: the three badge counts in one call (migration 20270810000000, apply before merge) (#946)
@@ -37,8 +39,6 @@
 - `aae6360f` 2026-11-18 Docs: stamp #924 (logo marks on quotation pictures) as merged and backfilled (#928)
 - `746cf467` 2026-11-18 Quotations: the logo mark on every picture the client sees, optional per quotation; clean originals in a private bucket (migrations 20270806000000, 20270806000200) (#924)
 - `3e886ceb` 2026-11-18 Docs: stamp #926 as merged (the builder's top area redone, 1360 px cap kept) (#927)
-- `7ea6f66d` 2026-11-18 Quotations: the builder's top area redone: Request | Status | Share as three compact cards, a four-field Client grid, the page capped at 1360 px (no SQL) (#926)
-- `a7058855` 2026-11-18 Docs: stamp #923 as merged and applied; rename its migration to 20270806000100 (the number was already taken by quotation_picture_originals) (#925)
 
 ## Pages by top-level area
 
