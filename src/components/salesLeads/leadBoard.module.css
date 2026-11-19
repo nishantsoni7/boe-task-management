@@ -350,6 +350,28 @@
 .mSys small { color: #686D6C; font-size: 12px; }
 .mFeed > .mNone, .mFeed > .linkBtn, .mFeed > .clickup { margin: 12px 18px; }
 
+/* The lead's quotations (2026-11-19): ONE slim line between the update box and the feed (the newest quotation, +N more, Make quotation).
+   The first build listed rows and left the activity 29 px on a laptop; the line costs about 46 px and wraps when the card is narrow. */
+.qBand { flex: 0 0 auto; margin: 0 18px 12px; padding: 3px 12px; background: #FBFAF8; border: 1px solid #E4DED7; border-radius: 10px; }
+.qHead { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 10px; min-height: 34px; min-width: 0; font-size: 13px; line-height: 1.35; }
+.qHead svg { width: 15px; height: 15px; color: #686D6C; flex: 0 0 auto; }
+.qMake { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; height: 28px; padding: 0 10px; border: 1px solid #CFC8BF; border-radius: 8px; background: #fff; font: 600 12.5px var(--boe-font-body); color: #303536; cursor: pointer; white-space: nowrap; }
+.qMake svg { width: 14px; height: 14px; color: inherit; }
+.qMake:hover:not(:disabled) { border-color: #303536; }
+.qMake:disabled { opacity: .6; cursor: wait; }
+.qNo { font-weight: 700; color: #303536; text-decoration: none; white-space: nowrap; }
+.qNo:hover { text-decoration: underline; }
+.qMeta { color: #4C5352; white-space: nowrap; }
+.qVal { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.qNone { font-size: 12.5px; color: #686D6C; }
+.qMore { border: 0; background: none; padding: 0 2px; height: 28px; font: 500 12.5px var(--boe-font-body); color: #963B27; cursor: pointer; white-space: nowrap; }
+.qMore:hover { text-decoration: underline; }
+.qList { list-style: none; margin: 0; padding: 0; max-height: 132px; overflow-y: auto; border-top: 1px solid #ECE7E0; }
+.qRow { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; padding: 6px 0 6px 25px; border-top: 1px solid #F1EEE9; font-size: 13px; line-height: 1.35; }
+.qRow:first-child { border-top: 0; }
+.qBy { margin-left: auto; font-size: 12px; color: #686D6C; }
+.qErr { margin: 0 0 6px; font-size: 12.5px; color: #8E2B22; }
+
 /* Files on an update (owner, 2026-11-15). In the update box: a chip for each file being attached, with its state; a dashed veil
    while files are dragged over the box. In the feed: pictures as small squares and other files as chips, under the words. */
 .mFootL, .mFootR { display: flex; align-items: center; gap: 10px; min-width: 0; }

@@ -1110,4 +1110,64 @@ await db.exec(mig('20270808000100_quotation_client_choices.sql'))
   ok('both functions are closed to signed-out callers and the table itself stays closed to the browser')
 }
 
+// ── 20270812000000: the quotations of a lead, for the lead popup ──
+{
+  const L1 = '00000000-0000-0000-0000-0000000001a1' // Hotel Aravali, held by Mohit (sales)
+  const L2 = '00000000-0000-0000-0000-0000000001a2' // Cafe Lake, held by Prerna (sales2)
+  await db.exec(mig('20270812000000_quotation_for_lead.sql'))
+  const forLead = async (uid, lead) => (await as(uid, 'select public.quotation_for_lead($1::uuid) as r', [lead])).rows[0].r
+  const link = (uid, q, l) => as(uid, 'select public.quotation_link_lead($1::uuid, $2::uuid)', [q, l])
+  const ids = r => r.quotations.map(x => x.id)
+
+  assert.deepEqual(await forLead(U.sales, L1), { open: true, may_create: true, quotations: [] })
+  ok('a lead with no quotation answers an empty list and says the caller may make one')
+
+  const qa = await rpc(U.sales, 'quotation_create', { client_name: 'Aravali A' })
+  const qb = await rpc(U.sales, 'quotation_create', { client_name: 'Aravali B' })
+  const qadmin = await rpc(U.admin, 'quotation_create', { client_name: 'Aravali by Admin' })
+  const qother = await rpc(U.sales, 'quotation_create', { client_name: 'Not linked' })
+  await rpc(U.sales, 'quotation_save', qa, { header: { client_name: 'Aravali A', valid_days: 7, gst_mode: 'igst' }, areas: [], lines: [{ name: 'Table', qty_fixed: 5, unit_price: 10000, tax_rate: 18 }] })
+  await rpc(U.sales, 'quotation_share', qa, true)
+  for (const q of [qa, qb]) await link(U.sales, q, L1)
+  await link(U.admin, qadmin, L1)
+
+  let r = await forLead(U.sales, L1)
+  assert.deepEqual(ids(r).sort(), [qa, qb].sort())
+  const a = r.quotations.find(x => x.id === qa), b = r.quotations.find(x => x.id === qb)
+  assert.deepEqual([a.quote_no.startsWith('QT-'), a.status, a.version_no, Number(a.value), a.owner_name], [true, 'sent', 1, 50000, 'Mohit Sharma'])
+  assert.deepEqual([b.status, b.version_no, Number(b.value)], ['draft', null, 0])
+  ok('the owner sees their linked quotations only (not an Admin\'s, not an unlinked one), with the sent version\'s number and value')
+
+  await db.query('update public.quotations set updated_at = now() + interval \'1 minute\' where id = $1', [qb])
+  assert.equal((await forLead(U.sales, L1)).quotations[0].id, qb)
+  ok('the most recently changed quotation comes first')
+
+  r = await forLead(U.editor, L1)
+  assert.deepEqual(ids(r).sort(), [qa, qb, qadmin].sort()); assert.equal(r.may_create, false)
+  r = await forLead(U.admin, L1)
+  assert.equal(r.quotations.length, 3); assert.equal(r.may_create, true)
+  ok('the pricing desk and Admin see every quotation of the lead; the desk (no create right) is not offered "make one"')
+
+  r = await forLead(U.sales2, L1)
+  assert.deepEqual(r, { open: true, may_create: false, quotations: [] })
+  r = await forLead(U.manager, L1)
+  assert.deepEqual(r, { open: true, may_create: false, quotations: [] })
+  r = await forLead(U.sales, '00000000-0000-0000-0000-00000000dead')
+  assert.deepEqual(r, { open: true, may_create: false, quotations: [] })
+  ok('a lead the caller cannot see (or that does not exist) answers nothing and offers nothing, however many quotations it has')
+
+  assert.deepEqual(await forLead(U.nobody, L1), { open: false, may_create: false, quotations: [] })
+  ok('somebody with no Quotations access gets open: false (the popup shows no section)')
+
+  await link(U.sales, qa, null)
+  assert.deepEqual(ids(await forLead(U.sales, L1)), [qb])
+  await link(U.sales2, qother, L2).catch(() => null)
+  ok('an unlinked quotation drops off the lead\'s list')
+
+  const g = (await db.query(`select has_function_privilege('anon', 'public.quotation_for_lead(uuid)', 'EXECUTE') as a, has_function_privilege('authenticated', 'public.quotation_for_lead(uuid)', 'EXECUTE') as b`)).rows[0]
+  assert.deepEqual([g.a, g.b], [false, true])
+  await assert.rejects(() => as(null, 'select public.quotation_for_lead($1::uuid)', [L1], 'anon'), /permission denied/)
+  ok('quotation_for_lead is closed to signed-out callers')
+}
+
 console.log(`all ${checks} checks passed`)

@@ -316,5 +316,14 @@ export const fetchLeadInfo = (s: Supabase, id: string) => call<LeadInfo>(() => s
 /** Link a quotation to a lead the caller can see, or pass null to unlink. */
 export const linkLead = (s: Supabase, id: string, leadId: string | null) => call<null>(() => s.rpc('quotation_link_lead', { p_id: id, p_lead: leadId }))
 
+/**
+ * The quotations linked to a lead, for the lead popup (20270812000000). `open` is false for somebody with no Quotations access (the popup
+ * shows no section), `may_create` offers "Make quotation". `version_no` and `value` are the latest sent version's.
+ */
+export type LeadQuotation = { id: string; quote_no: string; status: QuotationStatus; updated_at: string; owner_name: string | null; version_no: number | null; value: number }
+export type LeadQuotations = { open: boolean; may_create: boolean; quotations: LeadQuotation[] }
+export const leadQuotationsKey = (leadId: string) => ['quotations', 'for-lead', leadId] as const
+export const fetchLeadQuotations = (s: Supabase, leadId: string) => call<LeadQuotations>(() => s.rpc('quotation_for_lead', { p_lead: leadId }))
+
 export const savePriceSettings = (s: Supabase, maxDiscount: number | null, minPrice: number | null) =>
   call<PriceSettings>(() => s.rpc('quotation_price_settings_set', { p_max_discount_pct: maxDiscount, p_min_price_pct: minPrice }))
