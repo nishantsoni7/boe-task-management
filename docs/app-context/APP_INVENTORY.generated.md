@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `006ad8fe` — Payment window: stop offering already-matched payments as duplicates, and let a different client name through (#943)
+- Commit: `6f3d1526` — Docs: stamp #942 (My Tasks open-work list, Top 3 in one request) as merged and verified live (no SQL)
 - Commits on this branch: 1501
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 486 (first `20260530_create_positions.sql`, latest `20270809000000_quotation_client_choices_output.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `006ad8fe` 2026-11-19 Payment window: stop offering already-matched payments as duplicates, and let a different client name through (#943)
+- `6f3d1526` 2026-11-19 Docs: stamp #942 (My Tasks open-work list, Top 3 in one request) as merged and verified live (no SQL)
 - `5efcad37` 2026-11-19 My Tasks opens sooner: open work only, Top 3 in one request (no SQL) (#942)
 - `68597159` 2026-11-19 Docs: stamp #940 (credits left this month) as merged (#941)
 - `83186471` 2026-11-19 Picture credits page: a "Left this month" column for each person (#940)
