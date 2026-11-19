@@ -114,7 +114,7 @@ Tables touched by the platform: `users` (never created by a migration - see belo
 - `ModuleGuard` (`src/components/layout/ModuleGuard.tsx`): renders `children` ONLY in the `allowed` state (loading screen
   for checking and denied, so protected screens never mount). No session -> `/login`; denied -> `/coming-soon`. It reads
   the **display subject** (View As target), not the actor. UI half only: RLS and route checks refuse the data.
-- `ModuleGuardStartsEarly` (`src/components/layout/ModuleGuardStartsEarly.tsx`, 19 Nov 2026, PR #TBD): ModuleGuard's sibling for a module whose page may START while the permission
+- `ModuleGuardStartsEarly` (`src/components/layout/ModuleGuardStartsEarly.tsx`, 19 Nov 2026, PR #948): ModuleGuard's sibling for a module whose page may START while the permission
   answer is on its way. Used by Task Management only (`src/app/tasks/layout.tsx`, `src/app/dashboard/layout.tsx`); every other module keeps ModuleGuard (pinned by
   `startDuringCheckTasks.test.ts`). Until the context has answered for the FIRST time the page is built HIDDEN and INERT (display none) next to the spinner, only in the
   browser after hydration (the server HTML is the spinner, as before). Yes -> the same page is shown (wrapper kept, not rebuilt); no or no session -> the page is removed,
