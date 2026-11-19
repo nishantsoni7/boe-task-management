@@ -13,7 +13,7 @@ import { afterEach, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { BankMatchPanel } from './bankMarkUi'
-import type { BankMark } from '@/lib/finance/bankMarks'
+import { deriveBankMarks, type BankMark } from '@/lib/finance/bankMarks'
 import type { MergeResult } from '@/lib/finance/paymentDuplicates'
 
 // next/link reads `self`, which the DOM harness does not define.
@@ -34,7 +34,7 @@ const suspense = (id: string) => ({
   destination_submission_count: 0, destination_customer_count: 0, destination_order_id: null, destination_order_number: null,
   destination_submission_id: null, destination_reference: null,
 })
-const linkRow = { payment_id: 'E1', line_id: 'L1', bank_statement_lines: { line_date: '2026-11-05', statement_no: 143 } }
+const linkRow = { payment_id: 'E1', line_id: 'L1', amount: 1338565, bank_statement_lines: { line_date: '2026-11-05', statement_no: 143 } }
 
 const request = {
   id: 'R1', human_payment_id: 'P-AA-0093', status: 'pending_approval', amount: 1338565, client_name: 'Northbliss', payment_date: '2026-11-05',
@@ -54,6 +54,7 @@ function open(opts: {
   mark?: BankMark
   details?: unknown[]          // payments found by their details
   holders?: unknown[]          // payments holding the credit
+  links?: unknown[]            // the bank links of every payment read (default: E1 holds a credit that covers it)
   readFails?: boolean
   canVerify?: boolean
   urgent?: boolean
@@ -64,7 +65,7 @@ function open(opts: {
   const merged: MergeResult[] = []
   const tables: Record<string, Answer | ((calls: Calls) => Answer)> = {
     finance_payment_requests: calls => (calls.some(([n, a]) => n === 'in' && a[0] === 'id') ? { data: opts.holders ?? [] } : { data: opts.details ?? [] }),
-    bank_line_payment_links: { data: [linkRow] },
+    bank_line_payment_links: { data: opts.links ?? [linkRow] },
     payment_proof_attachments: { data: [{ payment_request_id: 'R1' }] },
     finance_payment_destinations: { data: [suspense('R1'), suspense('E1')] },
     finance_payment_allocations: { data: [] },
@@ -212,16 +213,17 @@ describe('when Merge is not offered', () => {
 })
 
 describe('found by its details, before any statement is uploaded', () => {
+  // A payment verified before its credit was uploaded holds no credit yet: that is the one the bank has not accounted for.
   test('a request with no credit yet still meets the payment already recorded', async () => {
-    const { ui } = open({ mark: { kind: 'uncovered' }, details: [payRow()], urgent: true })
+    const { ui } = open({ mark: { kind: 'uncovered' }, details: [payRow()], links: [], urgent: true })
     await ui.settle()
     assert.ok(ui.text().includes('This may already be in Confirmed Payments.'))
     assert.ok(ui.button('Merge into P-AA-0089'))
-    assert.ok(ui.text().includes('Request not linked'))
+    assert.ok(ui.text().includes('Neither is linked'))
   })
 
   test('the search waits behind a link while a duplicate is on screen, and the urgent form stays closed', async () => {
-    const { ui } = open({ mark: { kind: 'uncovered' }, details: [payRow()], urgent: true })
+    const { ui } = open({ mark: { kind: 'uncovered' }, details: [payRow()], links: [], urgent: true })
     await ui.settle()
     assert.equal(ui.all('.bank-search').length, 0)
     assert.equal(ui.all('.bank-form').length, 0)
@@ -232,7 +234,7 @@ describe('found by its details, before any statement is uploaded', () => {
 
   test('with two look-alikes the person picks which to compare', async () => {
     const { ui } = open({
-      mark: { kind: 'uncovered' },
+      mark: { kind: 'uncovered' }, links: [],
       details: [payRow(), payRow({ id: 'E2', human_payment_id: 'P-AA-0090', payment_date: '2026-11-01', client_name: 'Other Hotels' })],
     })
     await ui.settle()
@@ -240,6 +242,49 @@ describe('found by its details, before any statement is uploaded', () => {
     assert.equal(ui.all('.bank-dup-head b').map(b => b.textContent).join(' | '), 'P-AA-0093 | P-AA-0089')
     ui.click(ui.button('Compare'))
     assert.equal(ui.all('.bank-dup-head b').map(b => b.textContent).join(' | '), 'P-AA-0093 | P-AA-0090')
+  })
+})
+
+// The owner's screenshot (19 Nov 2026): a ₹2,00,000 request from "Aryan Ji", an unmapped credit of the same
+// money from another name on the same day, and an older ₹2,00,000 payment of someone else already matched to
+// its own credit. Only the unmapped credit is the decision; the older payment is not a duplicate.
+describe('a request with its own unmapped credit', () => {
+  const ARYAN = { id: 'R1', human_payment_id: 'P-AA-0105', amount: 200000, client_name: 'Aryan Ji', payment_date: '2026-11-19', proof_note: null as string | null, submitted_by_name: 'Prerna' }
+  const suggested = (): BankMark => deriveBankMarks(
+    [{ id: 'R1', human_payment_id: 'P-AA-0105', client_name: 'Aryan Ji', amount: 200000, remaining: 200000, payment_date: '2026-11-19', payment_mode: 'hdfc', proof_note: null, status: 'pending_approval' }],
+    [],
+    [{ statementNo: 1564, id: 'L9', account: 'hdfc', line_date: '2026-11-19', narration: 'RTGS CR-KKBK0000958-GREEN SKY HOSPITALITY LLP-BEST OF EXPORTS-KKBKR52026111900856793', bank_ref: 'KKBKR52026111900856793', deposit: 200000, linkedAmount: 0 }],
+    { hdfc: { first: '2026-11-01', last: '2026-11-19' } },
+  ).get('R1')!
+  const suresh = (over: Record<string, unknown> = {}) => payRow({ id: 'E7', human_payment_id: 'P-AA-0098', client_name: 'Suresh Ji', amount: 200000, payment_date: '2026-11-13', ...over })
+  const sureshLink = (amount: number) => ({ payment_id: 'E7', line_id: 'L7', amount, bank_statement_lines: { line_date: '2026-11-13', statement_no: 1326 } })
+
+  test('an older payment already matched to its own credit is not offered, and the unmapped credit is the decision', async () => {
+    const { ui, sent } = open({ payment: ARYAN, mark: suggested(), details: [suresh()], links: [sureshLink(200000)] })
+    await ui.settle()
+    assert.equal(ui.all('.bank-dup').length, 0, 'no duplicate section')
+    assert.ok(!ui.text().includes('This may already be in Confirmed Payments.'))
+    assert.ok(!ui.text().includes('P-AA-0098'))
+    assert.ok(ui.text().includes('Bank statement · BS-01564'))
+    assert.ok(ui.text().includes('The name is different.'))
+    assert.deepEqual(ui.all('.boe-btn-primary').map(b => (b.textContent ?? '').trim()), ['Verify and link'])
+    ui.click(ui.button('Verify and link'))
+    await ui.settle()
+    assert.deepEqual(sent, [{ fn: 'verify_payment_with_bank', args: { p_payment_id: 'R1', p_line_ids: ['L9'] } }])
+  })
+
+  test('an older payment with no credit of its own is still shown beside the credit', async () => {
+    const { ui } = open({ payment: ARYAN, mark: suggested(), details: [suresh()], links: [] })
+    await ui.settle()
+    assert.ok(ui.text().includes('This may already be in Confirmed Payments.'))
+    assert.ok(ui.text().includes('P-AA-0098'))
+    assert.ok(ui.text().includes('Bank statement · BS-01564'))
+  })
+
+  test('an older payment only partly covered by its credit is still shown', async () => {
+    const { ui } = open({ payment: ARYAN, mark: suggested(), details: [suresh()], links: [sureshLink(120000)] })
+    await ui.settle()
+    assert.ok(ui.text().includes('P-AA-0098'))
   })
 })
 

@@ -12,7 +12,7 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import {
-  compareSides, destinationText, loadDuplicates, mergeBlocker, mergeEffects, mergeRefusal, rankCandidates, readMergeResult,
+  bankHasAccountedFor, compareSides, destinationText, loadDuplicates, mergeBlocker, mergeEffects, mergeRefusal, rankCandidates, readMergeResult,
   sameDestination, type DuplicateRequestInput, type DuplicateSide,
 } from './paymentDuplicates'
 import type { PaymentDestination } from './paymentDestination'
@@ -222,17 +222,90 @@ const suspense = (id: string) => ({
   destination_submission_id: null, destination_reference: null,
 })
 
+describe('a payment the bank has already accounted for', () => {
+  test('is accounted for only when its linked credits cover every rupee', () => {
+    assert.equal(bankHasAccountedFor(200000, [200000]), true)
+    assert.equal(bankHasAccountedFor(200000, [150000, 50000]), true, 'two credits that add up')
+    assert.equal(bankHasAccountedFor(200000, [150000]), false, 'only part of it')
+    assert.equal(bankHasAccountedFor(200000, []), false, 'no credit at all')
+    assert.equal(bankHasAccountedFor(200000, [300000]), true, 'a bigger credit covers it')
+    assert.equal(bankHasAccountedFor(300.3, [100.1, 200.2]), true, 'paise, not floating point')
+  })
+
+  test('an unreadable amount never hides a payment', () => {
+    assert.equal(bankHasAccountedFor(200000, [Number.NaN]), false)
+    assert.equal(bankHasAccountedFor(Number.NaN, [200000]), false)
+    assert.equal(bankHasAccountedFor(0, [0]), false)
+  })
+})
+
 describe('finding the earlier payment', () => {
+  const linkOf = (paymentId: string, lineId: string, statementNo: number, amount: number | null) =>
+    ({ payment_id: paymentId, line_id: lineId, amount, bank_statement_lines: { line_date: '2026-11-13', statement_no: statementNo } })
+
+  test('a payment already matched to a different credit is not a look-alike (the P-AA-0098 case)', async () => {
+    const db = fakeDb({
+      finance_payment_requests: { data: [payRow({ id: 'E7', human_payment_id: 'P-AA-0098', client_name: 'Suresh Ji', amount: 200000 })] },
+      bank_line_payment_links: { data: [linkOf('E7', 'L7', 1326, 200000)] },
+      finance_payment_destinations: { data: [suspense('R1')] },
+    })
+    const found = await loadDuplicates(db.client, { ...input, amount: 200000 }, [])
+    assert.deepEqual(found.candidates, [], 'its own credit covers it, so this request is other money')
+  })
+
+  test('the same payment IS listed when it holds the very credit this request looks like', async () => {
+    const db = fakeDb({
+      finance_payment_requests: { data: [payRow({ id: 'E7', human_payment_id: 'P-AA-0098', amount: 200000 })] },
+      bank_line_payment_links: { data: [linkOf('E7', 'L7', 1326, 200000)] },
+      finance_payment_destinations: { data: [suspense('R1'), suspense('E7')] },
+    })
+    const found = await loadDuplicates(db.client, { ...input, amount: 200000 }, ['E7'])
+    assert.deepEqual(found.candidates.map(c => c.humanId), ['P-AA-0098'])
+  })
+
+  test('a payment with no credit, or only part of one, is still listed', async () => {
+    const db = fakeDb({
+      finance_payment_requests: {
+        data: [
+          payRow({ id: 'A', human_payment_id: 'P-AA-0001', amount: 200000 }),
+          payRow({ id: 'B', human_payment_id: 'P-AA-0002', amount: 200000 }),
+          payRow({ id: 'C', human_payment_id: 'P-AA-0003', amount: 200000 }),
+        ],
+      },
+      bank_line_payment_links: { data: [linkOf('B', 'LB', 50, 120000), linkOf('C', 'LC', 51, 200000)] },
+      finance_payment_destinations: { data: [suspense('R1')] },
+    })
+    const found = await loadDuplicates(db.client, { ...input, amount: 200000 }, [])
+    assert.deepEqual(found.candidates.map(c => c.humanId).sort(), ['P-AA-0001', 'P-AA-0002'], 'only the covered one (C) is left out')
+  })
+
+  test('a link with no readable amount never hides a payment', async () => {
+    const db = fakeDb({
+      finance_payment_requests: { data: [payRow({ amount: 200000 })] },
+      bank_line_payment_links: { data: [linkOf('E1', 'L1', 143, null)] },
+    })
+    const found = await loadDuplicates(db.client, { ...input, amount: 200000 }, [])
+    assert.equal(found.candidates.length, 1)
+  })
+
+  test('the payments are read generously, so covered ones cannot crowd out a real look-alike', async () => {
+    const db = fakeDb({ finance_payment_requests: { data: [] } })
+    await loadDuplicates(db.client, input, [])
+    const calls = db.log.find(l => l.table === 'finance_payment_requests')!.calls
+    assert.ok(calls.some(([n, a]) => n === 'limit' && Number(a[0]) >= 25), 'more than the five that are listed')
+  })
+
   test('by its details, with its credit, files and destination read alongside', async () => {
     const db = fakeDb({
       finance_payment_requests: { data: [payRow()] },
-      bank_line_payment_links: { data: [{ payment_id: 'E1', line_id: 'L1', bank_statement_lines: { line_date: '2026-11-05', statement_no: 143 } }] },
+      bank_line_payment_links: { data: [{ payment_id: 'E1', line_id: 'L1', amount: 1338565, bank_statement_lines: { line_date: '2026-11-05', statement_no: 143 } }] },
       payment_proof_attachments: { data: [{ payment_request_id: 'R1' }] },
       finance_payment_destinations: { data: [suspense('R1'), suspense('E1')] },
       finance_payment_allocations: { data: [] },
       finance_payment_allocation_intents: { data: [{ payment_request_id: 'R1', legacy_order_no: 'OLD-478' }] },
     })
-    const found = await loadDuplicates(db.client, input, [])
+    // The request looks like credit L1, which E1 holds: E1 is a holder, so it is always listed.
+    const found = await loadDuplicates(db.client, input, ['E1'])
     assert.equal(found.candidates.length, 1)
     const c = found.candidates[0]
     assert.equal(c.humanId, 'P-AA-0089'); assert.equal(c.addedByName, 'Nishant Soni'); assert.equal(c.reference, 'SBIN226309390349')
