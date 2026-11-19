@@ -101,6 +101,15 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .btnQuiet { border-color: transparent; background: transparent; color: var(--boe-text-strong); }
 .btnQuiet:hover { background: var(--boe-surface-sunken); }
 .btnQuietDanger:hover { color: var(--boe-error); }
+/* the Lead card (20270811000000): one slim strip under the top row, so the owner-approved three-card row is untouched */
+.leadStrip { display: grid; gap: 10px; padding: 12px 18px; }
+.leadHead { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; min-width: 0; }
+.leadHead .tileTitle { overflow-wrap: anywhere; }
+.leadMeta { font-size: 13px; color: var(--boe-text-muted); }
+.leadAct { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.leadForm { display: grid; gap: 8px; max-width: 520px; }
+.leadList { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-width: 520px; }
+.leadList button { width: 100%; justify-content: flex-start; text-align: left; height: auto; padding: 8px 10px; }
 
 /* where the quotation is in its life: done steps are ticked, the current one wears its status colour */
 .steps { list-style: none; margin: 2px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 520px; }

@@ -1344,6 +1344,8 @@ describe('the applied migrations are frozen', () => {
       '20270809000000_quotation_client_choices_output.sql',
       // Task Management: the three sidebar badge counts in one read-only SECURITY INVOKER function; no table, row, policy or grant changes.
       '20270810000000_task_nav_counts.sql',
+      // Quotations: an optional link to the Sales lead (one nullable column, two functions); existing rows keep no lead, no policy or grant opens.
+      '20270811000000_quotation_lead_link.sql',
     ])
   })
 
@@ -1899,6 +1901,8 @@ describe('the applied migrations are frozen', () => {
       '20270809000000_quotation_client_choices_output.sql',
       // Task Management: the three sidebar badge counts in one read-only SECURITY INVOKER function; no table, row, policy or grant changes.
       '20270810000000_task_nav_counts.sql',
+      // Quotations: an optional link to the Sales lead (one nullable column, two functions); existing rows keep no lead, no policy or grant opens.
+      '20270811000000_quotation_lead_link.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
