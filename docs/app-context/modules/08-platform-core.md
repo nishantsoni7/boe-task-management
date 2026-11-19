@@ -114,6 +114,14 @@ Tables touched by the platform: `users` (never created by a migration - see belo
 - `ModuleGuard` (`src/components/layout/ModuleGuard.tsx`): renders `children` ONLY in the `allowed` state (loading screen
   for checking and denied, so protected screens never mount). No session -> `/login`; denied -> `/coming-soon`. It reads
   the **display subject** (View As target), not the actor. UI half only: RLS and route checks refuse the data.
+- `ModuleGuardStartsEarly` (`src/components/layout/ModuleGuardStartsEarly.tsx`, 19 Nov 2026, PR #948): ModuleGuard's sibling for a module whose page may START while the permission
+  answer is on its way. Used by Task Management only (`src/app/tasks/layout.tsx`, `src/app/dashboard/layout.tsx`); every other module keeps ModuleGuard (pinned by
+  `startDuringCheckTasks.test.ts`). Until the context has answered for the FIRST time the page is built HIDDEN and INERT (display none) next to the spinner, only in the
+  browser after hydration (the server HTML is the spinner, as before). Yes -> the same page is shown (wrapper kept, not rebuilt); no or no session -> the page is removed,
+  the spinner stays and the redirects are ModuleGuard's. After the first answer, a return to "checking" (View As switching person) unmounts the page like ModuleGuard.
+  `useModuleShown()` (`src/lib/moduleShown.ts`) is false until shown: anything a page does on opening beyond READING must wait for it. The same decision function
+  (`canAccessManagementModule` over the display subject). Orders has its own version (`OrdersShownContext`, #897/#898). `startDuringCheckTasks.test.ts` fails when a new
+  effect in the Task Management tree writes on mount without being listed there with the reason it is safe.
 - Admin gate for Control Center (`src/app/admin/control-center/layout.tsx`): no session -> `/login`; not admin ->
   `/dashboard`; admin with View As active -> View As is exited then `/dashboard` (Control Center has no meaning as someone
   else).

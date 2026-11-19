@@ -21,14 +21,17 @@ const info = (o: Partial<LeadInfo> = {}): LeadInfo => ({ sales_open: true, linke
 const quote = (status: QuotationStatus, o: Partial<Quotation> = {}) => ({
   id: 'q1', quote_no: 'QT-MS-01001', status, may_edit: true, events: [], ...o }) as unknown as Quotation
 
-function fake(i: LeadInfo, answers: Record<string, unknown> = {}) {
+type Reply = { data: unknown; error: { message: string } | null }
+/** `answers`: what a function returns; `refuse`: a function the database refuses, with its message. */
+function fake(i: LeadInfo, answers: Record<string, unknown> = {}, refuse: Record<string, string> = {}) {
   const calls: Array<{ fn: string; args: Record<string, unknown> }> = []
   return {
     calls,
     writes: () => calls.filter(c => c.fn !== 'quotation_lead_info' && c.fn !== 'sales_leads_page').map(c => c.fn),
     client: {
-      rpc: async (fn: string, args: Record<string, unknown> = {}) => {
+      rpc: async (fn: string, args: Record<string, unknown> = {}): Promise<Reply> => {
         calls.push({ fn, args })
+        if (fn in refuse) return { data: null, error: { message: refuse[fn] } }
         if (fn === 'quotation_lead_info') return { data: i, error: null }
         if (fn in answers) return { data: answers[fn], error: null }
         return { data: null, error: null }
@@ -162,9 +165,7 @@ describe('the Lead card: nothing happens until a button is pressed, then the lea
     u.unmount()
   })
   test('a refusal from the lead is shown as it is and nothing else happens', async () => {
-    const sb = fake(info()); const real = sb.client.rpc
-    sb.client.rpc = async (fn: string, args: Record<string, unknown> = {}) => fn === 'move_sales_lead'
-      ? (sb.calls.push({ fn, args }), { data: null, error: { message: 'SALES_CHANGED: This lead has moved since you opened it.' } }) : real(fn, args)
+    const sb = fake(info(), {}, { move_sales_lead: 'SALES_CHANGED: This lead has moved since you opened it.' })
     const u = ui(sb, quote('confirmed')); await u.settle(); await u.settle()
     u.click(u.button('Mark lead Converted')); await u.settle(); u.click(u.button('Yes, mark Converted')); await u.settle(); await u.settle()
     assert.match(u.text(), /This lead has moved since you opened it/)

@@ -7,6 +7,7 @@ import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { DashboardLayout } from '@/components/layout/DashboardLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
+import { useModuleShown } from '@/lib/moduleShown'
 import { prepareFiles, getExt, getFileTypeLabel, filterAcceptedFiles, ACCEPTED_ATTACHMENT_TYPES } from '@/lib/attachment-utils'
 import { Paperclip, X, Info } from 'lucide-react'
 import { useDragAndPaste } from '@/hooks/useDragAndPaste'
@@ -220,7 +221,11 @@ export default function NewQuotationRequestPage() {
 
   const canSubmit = !loading && !!sendTo && customerName.trim().length > 0 && attachFiles.length > 0
 
-  if (!initDone) return <LoadingScreen />
+  // The form's first field takes focus the moment it appears (autoFocus). It must appear when the page is ON
+  // SCREEN, not while the guard still has the page built hidden: a field "focused" out of sight stays unfocused
+  // once it is shown. The reads above start at once either way.
+  const shown = useModuleShown()
+  if (!initDone || !shown) return <LoadingScreen />
 
   return (
     <DashboardLayout

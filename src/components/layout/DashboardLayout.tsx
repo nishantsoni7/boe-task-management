@@ -20,6 +20,7 @@ import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailContro
 import { NotificationsNavItem } from './NotificationsNavItem'
 import { useUnreadNotifications } from '@/hooks/queries/useUnreadNotifications'
 import { useRecordAppOpen } from '@/hooks/useRecordAppOpen'
+import { useModuleShown } from '@/lib/moduleShown'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { deriveQuotationCapabilities, NO_QUOTATION_CAPABILITIES } from '@/lib/permissions/quotations'
@@ -109,7 +110,10 @@ export function DashboardLayout({
   // per browser session, ignores non-Task-Management routes, and cannot delay or
   // fail this render. The server attributes it to the real signed-in user, so this
   // is safe to run while View As is active — the admin is the one browsing.
-  useRecordAppOpen(!!profile)
+  // It waits until the page is ON SCREEN: the guard may build the page hidden while the permission
+  // answer is on its way, and a person it turns away must not be recorded as having opened anything.
+  const shown = useModuleShown()
+  useRecordAppOpen(!!profile && shown)
 
   // NO ROLE-DERIVED SIDEBAR ENTRIES REMAIN. The admin-only Settings group and
   // the role-derived Team Performance entry both left this sidebar — the first
