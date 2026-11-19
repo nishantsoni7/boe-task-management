@@ -8,7 +8,10 @@
 //
 // WHERE AN EARLIER PAYMENT IS FOUND
 //   1. By its details: a verified payment in the same account, the exact same amount, a
-//      date within 21 days. This works before any statement is uploaded.
+//      date within 21 days. This works before any statement is uploaded. A payment whose
+//      bank credits ALREADY cover every rupee is left out (see bankHasAccountedFor): the
+//      bank has matched it to a different transfer, so it cannot be this request's money.
+//      Without that, a round amount such as 2,00,000 lists every client who ever paid it.
 //   2. By the bank credit: a payment that already holds the credit this request looks like.
 //      It may be in another name or amount, so it is shown, and a merge is offered only if
 //      it also passes the rules below.
@@ -30,6 +33,8 @@ import { isConfirmedPaymentStatus } from './paymentSurfaces'
 export const DUPLICATE_WINDOW_DAYS = 21
 /** How many look-alikes one window will list. */
 const MAX_CANDIDATES = 5
+/** How many payments are read before the ones the bank has accounted for are dropped. */
+const READ_LIMIT = 30
 
 export type DuplicateCredit = { lineId: string; statementNo: number | null; lineDate: string }
 
@@ -201,6 +206,18 @@ export function mergeBlocker(request: DuplicateSide, existing: DuplicateSide): M
   return null
 }
 
+/**
+ * True when the credits linked to a payment cover all of it. The bank has then matched that payment
+ * to a transfer of its own, so a new request for the same amount needs a different credit and is not
+ * a second record of this payment. A missing or unreadable amount never counts: it keeps the payment listed.
+ */
+export function bankHasAccountedFor(paymentAmount: number, linkedAmounts: number[]): boolean {
+  const need = Math.round(paymentAmount * 100)
+  if (!Number.isFinite(need) || need <= 0) return false
+  const have = linkedAmounts.reduce((sum, n) => sum + Math.round(n * 100), 0)
+  return Number.isFinite(have) && have >= need
+}
+
 /** The look-alikes, the likeliest first: a payment a merge could use, then the nearest date. */
 export function rankCandidates(request: DuplicateSide, list: DuplicateSide[]): DuplicateSide[] {
   const rank = (c: DuplicateSide) =>
@@ -277,7 +294,7 @@ type PayRow = {
   submitted_by_user: { full_name: string | null } | { full_name: string | null }[] | null
 }
 type LinkRow = {
-  payment_id: string; line_id: string
+  payment_id: string; line_id: string; amount: number | string | null
   bank_statement_lines: { line_date: string; statement_no: number | string | null } | { line_date: string; statement_no: number | string | null }[] | null
 }
 
@@ -286,8 +303,9 @@ const first = <T,>(v: T | T[] | null | undefined): T | null => (Array.isArray(v)
 
 /**
  * The request and its look-alikes, ready to compare. `holderIds` are the payments that already
- * hold the credit the request looks like. Throws when the payments cannot be read: the caller
- * then shows nothing extra rather than a half-comparison.
+ * hold the credit the request looks like: they are always listed. A payment found only by its
+ * details is dropped when the bank has already accounted for it. Throws when the payments cannot
+ * be read: the caller then shows nothing extra rather than a half-comparison.
  */
 export async function loadDuplicates(
   supabase: SupabaseClient, request: DuplicateRequestInput, holderIds: string[],
@@ -298,7 +316,7 @@ export async function loadDuplicates(
     .gte('payment_date', addDays(request.paymentDate, -DUPLICATE_WINDOW_DAYS))
     .lte('payment_date', addDays(request.paymentDate, DUPLICATE_WINDOW_DAYS))
     .neq('id', request.id).is('deleted_at', null)
-    .order('payment_date', { ascending: false }).limit(MAX_CANDIDATES)
+    .order('payment_date', { ascending: false }).limit(READ_LIMIT)
   if (byDetails.error) throw new Error('Possible duplicates could not be read.')
   const rows = new Map(((byDetails.data ?? []) as unknown as PayRow[]).map(r => [r.id, r]))
 
@@ -311,25 +329,28 @@ export async function loadDuplicates(
 
   const ids = [request.id, ...rows.keys()]
   const [links, proofs, destinations] = await Promise.all([
-    supabase.from('bank_line_payment_links').select('payment_id, line_id, bank_statement_lines(line_date, statement_no)')
+    supabase.from('bank_line_payment_links').select('payment_id, line_id, amount, bank_statement_lines(line_date, statement_no)')
       .in('payment_id', ids).is('unlinked_at', null),
     supabase.from('payment_proof_attachments').select('payment_request_id').in('payment_request_id', ids),
     loadPaymentDestinations(supabase, ids),
   ])
   const creditsOf = new Map<string, DuplicateCredit[]>()
+  const linkedOf = new Map<string, number[]>()
   for (const l of (links.error ? [] : (links.data ?? [])) as unknown as LinkRow[]) {
     const line = first(l.bank_statement_lines)
     const list = creditsOf.get(l.payment_id) ?? []
     list.push({ lineId: l.line_id, lineDate: line?.line_date ?? '', statementNo: line?.statement_no == null ? null : Number(line.statement_no) })
     creditsOf.set(l.payment_id, list)
+    linkedOf.set(l.payment_id, [...(linkedOf.get(l.payment_id) ?? []), Number(l.amount)])
   }
+  const holders = new Set(holderIds)
   const filesOf = new Map<string, number>()
   for (const p of (proofs.error ? [] : (proofs.data ?? [])) as { payment_request_id: string }[]) {
     filesOf.set(p.payment_request_id, (filesOf.get(p.payment_request_id) ?? 0) + 1)
   }
 
   const mine = toSide(request, creditsOf.get(request.id) ?? [], destinations.get(request.id) ?? null, filesOf.get(request.id) ?? 0)
-  const candidates = [...rows.values()].map(r => ({
+  const candidates = [...rows.values()].filter(r => holders.has(r.id) || !bankHasAccountedFor(Number(r.amount), linkedOf.get(r.id) ?? [])).map(r => ({
     id: r.id, humanId: r.human_payment_id, status: r.status, amount: Number(r.amount), paymentDate: r.payment_date,
     paymentMode: r.payment_mode, clientName: r.client_name, reference: r.proof_note,
     addedByName: first(r.submitted_by_user)?.full_name ?? null, addedAt: r.created_at,

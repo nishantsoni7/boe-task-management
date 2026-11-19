@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `5efcad37` — My Tasks opens sooner: open work only, Top 3 in one request (no SQL) (#942)
-- Commits on this branch: 1500
+- Commit: `6f3d1526` — Docs: stamp #942 (My Tasks open-work list, Top 3 in one request) as merged and verified live (no SQL)
+- Commits on this branch: 1501
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 486 (first `20260530_create_positions.sql`, latest `20270809000000_quotation_client_choices_output.sql`)
 - Tables ever created: 269 (dropped at some point: 8)   SQL functions: 1074   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `6f3d1526` 2026-11-19 Docs: stamp #942 (My Tasks open-work list, Top 3 in one request) as merged and verified live (no SQL)
 - `5efcad37` 2026-11-19 My Tasks opens sooner: open work only, Top 3 in one request (no SQL) (#942)
 - `68597159` 2026-11-19 Docs: stamp #940 (credits left this month) as merged (#941)
 - `83186471` 2026-11-19 Picture credits page: a "Left this month" column for each person (#940)
@@ -38,7 +39,6 @@
 - `a5ef42ef` 2026-11-18 Docs: stamp #919 and #920 as merged; migration 20270804000000 applied (#921)
 - `829b7893` 2026-11-18 Quotation requests: Requests page in Quotations, dashboard card for every receiver, a notice for each new request (#920)
 - `6513640e` 2026-11-18 Quotation requests go to the owner or Nitish: a required Send to, the owner sees every request (migration 20270804000000, apply before merge) (#919)
-- `8da1de82` 2026-11-18 Day Close held days at payroll: Count the day or Mark absent (migration 20270803000000) (#917)
 
 ## Pages by top-level area
 
