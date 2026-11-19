@@ -124,7 +124,7 @@ Statuses and transitions:
   between 00:00 and 05:30 IST it lags a day (the performance code uses IST via `istDate.ts`).
 - Top 3 Focus: max 3 enforced in the BROWSER (`top3Data.length >= 3` in `/tasks/my`), not by a database constraint; pinned tasks are excluded from the strip once
   completed/cancelled/pending_approval (query filter + trigger). Reorder = DELETE + INSERT renumbering 1..N (no UPDATE policy; `display_order` can contain duplicates).
-- Task Management pages start while the access check runs (19 Nov 2026, PR #948, no SQL): `src/app/tasks/layout.tsx` and `src/app/dashboard/layout.tsx` use `ModuleGuardStartsEarly`
+- Task Management pages start while the access check runs (19 Nov 2026, PR #948 merged as `3bf9a015`, verified live on all 15 pages, no SQL): `src/app/tasks/layout.tsx` and `src/app/dashboard/layout.tsx` use `ModuleGuardStartsEarly`
   (module 08), so on a hard load (new tab, bookmark, first open of the day) the page's reads start with the guard's own two reads instead of after them. Why: measured 19 Nov on a warm
   hard load of `/tasks/my`, the guard wave took 1.16 s and the page wave 0.6 s after it (rows at about 3.0 s); a warm click from the launcher never waited on the guard. HELD until
   shown (`useModuleShown`): `useRecordAppOpen(!!profile && shown)` in DashboardLayout (the one write on mount) and the New Quotation Request form (`/tasks/quotation-requests/new`,
