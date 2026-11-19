@@ -2,6 +2,8 @@
 
 Written 2026-11-03 from the build, merged as PR #594 (05e299ed) and deployed. Migration `20270525000000_sales_lead_board.sql` is applied. It sits on the Lead Master (module 27): the same lead record, worked after it has been allotted.
 
+**Update 2026-11-19 (PR #949 merged as `1bf5169d`, live 22:47 IST; migration `20270811000000` APPLIED 19 Nov 2026):** a quotation can be linked to its lead (`quotations.lead_id`; dossier 29 section 20). The Lead card on the quotation calls THIS module's own functions, on a person's tap and never by itself: `add_sales_lead_comment` with tag `quotation` (a Sent or Negotiating quotation logs `QT-… vN sent…` and sets the follow-up), `move_sales_lead` to Converted (still asks for what Converted needs) or to Dead (with one of the eleven reasons). No function of this module changed. Rule 8 stands (Converted is a record only, no link to Orders).
+
 ## 1. Purpose & users
 
 - The owner asked on 2026-11-03 for a lead management system to replace the ClickUp boards ("Best of Exports", one folder per salesperson), on the level of Salesforce, Zoho CRM and LeadSquared, but only the proven, practical features, and easy enough to need no training. BOE sells furniture wholesale to hospitality clients in India and abroad.

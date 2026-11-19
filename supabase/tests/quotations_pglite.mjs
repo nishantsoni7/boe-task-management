@@ -959,4 +959,155 @@ await db.exec(mig('20270808000100_quotation_client_choices.sql'))
   ok('quotation_client_doc stays closed to signed-in and signed-out callers')
 }
 
+// ── 20270811000000: a quotation can point at the Sales lead it came from ──
+// The lead side is a small stand-in (tables) with the REAL visibility functions and phone rule taken from their migrations,
+// so "who sees a lead" and "the same phone" are the production rules, not a copy.
+{
+  const grab = (text, name) => {
+    const lines = text.split('\n')
+    const i = lines.findIndex(l => new RegExp(`^create (or replace )?function public\\.${name}\\(`).test(l))
+    assert.ok(i >= 0, `cannot find ${name}`)
+    let j = i
+    while (!/^\$\$;/.test(lines[j])) j++
+    return lines.slice(i, j + 1).join('\n')
+  }
+  const QONLY = '00000000-0000-0000-0000-0000000000e5' // quotations view + create, no Sales at all
+  const L1 = '00000000-0000-0000-0000-0000000001a1', L2 = '00000000-0000-0000-0000-0000000001a2', L3 = '00000000-0000-0000-0000-0000000001a3'
+  await db.exec(`
+    create table public.sales_leads (id uuid primary key default gen_random_uuid(), lead_no bigint generated always as identity, name text,
+      phone_e164 text unique, stage text not null default 'new', assigned_to uuid, created_by uuid, next_step text, next_due_on date, dead_reason text);
+    create table public.sales_lead_access (viewer_id uuid, subject_id uuid);
+    create table public.sales_lead_activities (id uuid primary key default gen_random_uuid(), lead_id uuid references public.sales_leads (id),
+      kind text, note text, at timestamptz not null default now(), undone_at timestamptz);
+    insert into public.users (id, full_name, role) values ('${QONLY}', 'Quotes Only', 'employee');
+    insert into public.grants values
+      ('${QONLY}', 'quotations', 'view'), ('${QONLY}', 'quotations', 'create'),
+      ('${U.sales}', 'sales', 'view'), ('${U.sales2}', 'sales', 'view'),
+      ('${U.editor}', 'sales', 'view'), ('${U.editor}', 'sales', 'assign');
+    insert into public.sales_leads (id, name, phone_e164, stage, assigned_to, created_by, dead_reason) values
+      ('${L1}', 'Hotel Aravali', '+919876543210', 'potential', '${U.sales}', '${U.sales}', null),
+      ('${L2}', 'Cafe Lake', '+919812345678', 'new', '${U.sales2}', '${U.sales2}', null),
+      ('${L3}', 'Closed Resort', '+919700000001', 'dead', '${U.sales}', '${U.sales}', 'price_too_high');`)
+  await db.exec(grab(mig('20270305000000_exhibition_leads.sql'), 'normalize_lead_phone'))
+  await db.exec(grab(mig('20270525000000_sales_lead_board.sql'), 'sales_lead_sees_all'))
+  await db.exec(grab(mig('20270525000000_sales_lead_board.sql'), 'sales_lead_visible'))
+  await db.exec(mig('20270811000000_quotation_lead_link.sql'))
+
+  const link = (uid, q, l) => as(uid, 'select public.quotation_link_lead($1::uuid, $2::uuid)', [q, l])
+  const info = async (uid, q) => (await as(uid, 'select public.quotation_lead_info($1::uuid) as r', [q])).rows[0].r
+  const leadOf = async q => (await db.query('select lead_id from public.quotations where id = $1', [q])).rows[0].lead_id
+
+  const old = await db.query('select count(*)::int as n from public.quotations where lead_id is not null')
+  assert.equal(old.rows[0].n, 0)
+  ok('every quotation that existed before the link starts with no lead')
+
+  const q1 = await rpc(U.sales, 'quotation_create', { client_name: 'Aravali Hotel', contact_phone: '98765 43210' })
+
+  let r = await info(U.sales, q1)
+  assert.equal(r.linked, false); assert.equal(r.lead, null)
+  assert.equal(r.suggest.id, L1); assert.equal(r.suggest.name, 'Hotel Aravali'); assert.equal(r.suggest.holder_name, 'Mohit Sharma')
+  ok('an unlinked quotation suggests the lead whose phone is its contact phone (written any way the shared phone rule accepts)')
+
+  const q2 = await rpc(U.sales2, 'quotation_create', { client_name: 'Lake Cafe', contact_phone: '98123 45678' })
+  assert.equal((await info(U.sales2, q2)).suggest.id, L2)
+  const q3 = await rpc(U.sales, 'quotation_create', { client_name: 'Mohit sees no Prerna lead', contact_phone: '98123 45678' })
+  assert.equal((await info(U.sales, q3)).suggest, null)
+  const q4 = await rpc(U.sales, 'quotation_create', { client_name: 'No phone at all' })
+  assert.equal((await info(U.sales, q4)).suggest, null)
+  ok('no suggestion for a lead the caller cannot see, nor for a quotation with no usable phone')
+
+  await link(U.sales, q1, L1)
+  assert.equal(await leadOf(q1), L1)
+  r = await info(U.sales, q1)
+  assert.equal(r.linked, true); assert.equal(r.suggest, null); assert.equal(r.sales_open, true)
+  assert.deepEqual([r.lead.id, r.lead.lead_no > 0, r.lead.name, r.lead.stage, r.lead.holder_name, r.lead.may_work, r.lead.last_logged_at],
+                   [L1, true, 'Hotel Aravali', 'potential', 'Mohit Sharma', true, null])
+  await link(U.sales, q1, L1) // the same lead again is a no-op
+  ok('linking shows the lead (number, name, stage, holder, may work it) and stops suggesting')
+
+  await fails(U.sales, 'select public.quotation_link_lead($1::uuid, $2::uuid)', [q1, L2], /SALES_NOT_FOUND/)
+  await fails(U.sales, 'select public.quotation_link_lead($1::uuid, $2::uuid)', [q1, '00000000-0000-0000-0000-00000000dead'], /SALES_NOT_FOUND/)
+  assert.equal(await leadOf(q1), L1)
+  ok('a lead the caller cannot see, and a lead that does not exist, cannot be linked (same answer for both)')
+
+  await fails(U.sales2, 'select public.quotation_link_lead($1::uuid, $2::uuid)', [q1, L2], /QUOTATION_NOT_FOUND/)
+  await fails(U.manager, 'select public.quotation_link_lead($1::uuid, $2::uuid)', [q1, null], /QUOTATIONS_FORBIDDEN/)
+  await fails(U.nobody, 'select public.quotation_lead_info($1::uuid)', [q1], /QUOTATIONS_FORBIDDEN/)
+  await fails(U.sales2, 'select public.quotation_lead_info($1::uuid)', [q1], /QUOTATION_NOT_FOUND/)
+  assert.equal(await leadOf(q1), L1)
+  ok('somebody who cannot see the quotation, or can only read it, can neither link nor read its lead')
+
+  const qq = await rpc(QONLY, 'quotation_create', { client_name: 'No Sales Access' })
+  await fails(QONLY, 'select public.quotation_link_lead($1::uuid, $2::uuid)', [qq, L1], /SALES_FORBIDDEN/)
+  ok('a person with no Sales access cannot link a quotation to a lead')
+
+  r = await info(U.manager, q1)
+  assert.equal(r.linked, true); assert.equal(r.sales_open, false); assert.equal(r.lead, null)
+  assert.ok(!JSON.stringify(r).includes('Hotel Aravali'))
+  ok('somebody who sees the quotation but not Sales learns only that it is linked, never the lead\'s name')
+
+  r = await info(U.editor, q1)
+  assert.equal(r.lead.name, 'Hotel Aravali'); assert.equal(r.lead.may_work, true)
+  await link(U.editor, q1, L2)
+  assert.equal(await leadOf(q1), L2)
+  await link(U.editor, q1, L1)
+  ok('the pricing desk with Sales `assign` sees every lead, may work it, and may link any quotation it can edit')
+
+  await db.query(`update public.sales_leads set assigned_to = $1 where id = $2`, [U.sales2, L1])
+  r = await info(U.sales, q1)
+  assert.equal(r.linked, true); assert.equal(r.lead, null)
+  r = await info(U.admin, q1)
+  assert.equal(r.lead.holder_name, 'Prerna Purohit'); assert.equal(r.lead.may_work, true)
+  await db.query(`update public.sales_leads set assigned_to = $1 where id = $2`, [U.sales, L1])
+  ok('when the lead moves to somebody else the owner stops seeing it, Admin still does and may work it')
+
+  await db.query(`update public.sales_leads set assigned_to = null where id = $1`, [L1])
+  r = await info(U.editor, q1)
+  assert.equal(r.lead.may_work, false)
+  await db.query(`update public.sales_leads set assigned_to = $1 where id = $2`, [U.sales, L1])
+  ok('a lead nobody holds cannot be worked, even by someone with `assign` (the lead\'s own rule)')
+
+  const log = (note, undone) => db.query(
+    `insert into public.sales_lead_activities (lead_id, kind, note, undone_at) values ($1, 'quotation', $2, ${undone ? 'now()' : 'null'})`, [L1, note])
+  const no = (await db.query('select quote_no from public.quotations where id = $1', [q1])).rows[0].quote_no
+  await log('QT-ZZ-00001 v1 sent')
+  await db.query(`insert into public.sales_lead_activities (lead_id, kind, note) values ($1, 'call', $2)`, [L1, `${no} was mentioned on a call`])
+  await log(`${no} v1 sent`, true)
+  assert.equal((await info(U.sales, q1)).lead.last_logged_at, null)
+  await log(`${no} v2 sent, Rs 1,000 before GST`)
+  assert.notEqual((await info(U.sales, q1)).lead.last_logged_at, null)
+  ok('"last logged" counts only a live quotation update that names THIS quotation (not another number, a call, or an undone one)')
+
+  assert.equal((await info(U.sales, q1)).version_no, null)
+  await rpc(U.sales, 'quotation_save', q1, { header: { client_name: 'Aravali Hotel', contact_phone: '98765 43210', valid_days: 7, gst_mode: 'igst' }, areas: [], lines: [{ name: 'Table', qty_fixed: 5, unit_price: 10000, tax_rate: 18 }] })
+  const token = await rpc(U.sales, 'quotation_share', q1, true)
+  r = await info(U.sales, q1)
+  assert.equal(r.version_no, 1); assert.equal(Number(r.value), 50000)
+  const pub = (await as(null, `select public.quotation_public($1) as r`, [token], 'anon')).rows[0].r
+  assert.ok(!JSON.stringify(pub).includes('lead_id') && !JSON.stringify(pub).includes(L1) && !JSON.stringify(pub).includes('Hotel Aravali'))
+  ok('the card gets the latest sent version and its value; the client link never carries the lead')
+
+  await link(U.sales, q1, null)
+  assert.equal(await leadOf(q1), null)
+  await link(U.sales, q1, null)
+  r = await info(U.sales, q1)
+  assert.equal(r.linked, false); assert.equal(r.suggest.id, L1)
+  ok('unlinking (twice is fine) needs the quotation right only, and the suggestion comes back')
+
+  await link(U.sales, q1, L3)
+  assert.equal((await info(U.sales, q1)).lead.stage, 'dead')
+  assert.equal((await info(U.sales, q1)).lead.dead_reason, 'price_too_high')
+  await db.query('delete from public.sales_leads where id = $1', [L3])
+  assert.equal(await leadOf(q1), null)
+  ok('a closed lead can still be linked, and if a lead is ever deleted the quotation is simply left unlinked')
+
+  for (const fn of ['quotation_link_lead(uuid, uuid)', 'quotation_lead_info(uuid)']) {
+    const g = (await db.query(`select has_function_privilege('anon', 'public.${fn}', 'EXECUTE') as a, has_function_privilege('authenticated', 'public.${fn}', 'EXECUTE') as b`)).rows[0]
+    assert.deepEqual([g.a, g.b], [false, true])
+  }
+  await assert.rejects(() => as(null, 'select public.quotation_lead_info($1::uuid)', [q1], 'anon'), /permission denied/)
+  await assert.rejects(() => as(U.sales, 'select lead_id from public.quotations'), /permission denied/)
+  ok('both functions are closed to signed-out callers and the table itself stays closed to the browser')
+}
+
 console.log(`all ${checks} checks passed`)

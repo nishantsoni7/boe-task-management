@@ -40,6 +40,7 @@ import { StatusPill } from './ListScreen'
 import { StudioDialog } from './StudioDialog'
 import { VersionsCard } from './VersionsCard'
 import { RequestCard } from './RequestCard'
+import { LeadCard } from './LeadCard'
 import { PriceCard } from './PricingDesk'
 import { LineRow } from './ProductLine'
 import { effectiveLeadTime } from './LeadTime'
@@ -335,6 +336,8 @@ export default function BuilderScreen() {
           onCopy={copy} onExcel={downloadExcel} markOn={markQ.data}
           onMark={on => act(async () => { await setPictureMark(supabase, id, on); qc.setQueryData(pictureMarkKey(id), on) }, on ? 'The Best of Exports logo is on the pictures.' : 'The pictures are clean, without the logo.')} onShare={on => act(() => shareQuotation(supabase, id, on), on ? 'The client link is on.' : 'The client link is off.')} />
       </div>
+
+      <LeadCard supabase={supabase} base={base} dirty={dirty} onChanged={() => { quoteQ.refetch() }} />
 
       <ClientCard h={h} areas={areas} editable={editable} advOpen={advOpen} onAdv={() => setAdvOpen(o => !o)} onField={updH}
         onPatch={patch => { setH(p => (p ? { ...p, ...patch } : p)); touch() }} onCity={setCity} onState={setState} />
