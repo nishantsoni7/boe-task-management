@@ -67,7 +67,7 @@ API routes: `/api/tasks/[id]/copy` (POST, admin-only Copy & Assign), `/api/tasks
   - `acknowledge_task(task)` (`20270303000000`): assignee only, not creator, not quotation, not already acknowledged (55000), status in pending/started/working/
     waiting/blocked; writes `acknowledged` + `status_changed -> working` history rows atomically; no notification.
   - `cleanup_top_tasks_on_completion()` (AFTER UPDATE OF status): deletes the pin when status in (`pending_approval`, `completed`, `cancelled`) (`20261018000000`).
-  - `task_nav_counts(p_user uuid)` (`20270810000000`, 19 Nov 2026, PR #946, NOT APPLIED until the owner applies it): the three sidebar badge counts (`my_active`, `assigned_by_me_active`, `quotation_active`) in one read-only SECURITY INVOKER call, the same rules as the three reads it replaces; `fetchNavCounts` (`src/lib/tasks/navCounts.ts`) falls back to those three reads on any failure.
+  - `task_nav_counts(p_user uuid)` (`20270810000000`, 19 Nov 2026, PR #946, APPLIED to production 19 Nov 2026 at 20:00 IST): the three sidebar badge counts (`my_active`, `assigned_by_me_active`, `quotation_active`) in one read-only SECURITY INVOKER call, the same rules as the three reads it replaces; `fetchNavCounts` (`src/lib/tasks/navCounts.ts`) falls back to those three reads on any failure.
   - `run_task_health_check()` hourly pg_cron job (DB-side, not in `vercel.json`; the cron entry itself is NOT in any migration): since `20270610000000` it writes ONLY the stale flag
     (`tasks.is_stale`/`stale_day_count` and one `stale_flagged` activity line per task). No notification rows since `20261015000000` (about 16k `overdue`/`escalation` rows had accumulated,
     never shown); no "Auto-escalated" activity lines since `20270610000000` (see section 6, "Auto-escalation removed"). Rollback text = the `CREATE OR REPLACE` in `20261015000000`
@@ -124,7 +124,7 @@ Statuses and transitions:
   between 00:00 and 05:30 IST it lags a day (the performance code uses IST via `istDate.ts`).
 - Top 3 Focus: max 3 enforced in the BROWSER (`top3Data.length >= 3` in `/tasks/my`), not by a database constraint; pinned tasks are excluded from the strip once
   completed/cancelled/pending_approval (query filter + trigger). Reorder = DELETE + INSERT renumbering 1..N (no UPDATE policy; `display_order` can contain duplicates).
-- My Tasks first-open reads (19 Nov 2026, PR #942, no SQL): `useMyTasks` reads OPEN work only (`status` not `cancelled` and not `completed`, not quotation requests); finished work is `/tasks/my/completed`
+- My Tasks first-open reads (19 Nov 2026, PR #942 merged as `5efcad37`, verified live; the owner has 636 completed tasks that the list used to carry beside 13 open ones; no SQL): `useMyTasks` reads OPEN work only (`status` not `cancelled` and not `completed`, not quotation requests); finished work is `/tasks/my/completed`
   (DB-paged). Nothing on My Tasks draws `buckets.completed` (no tab for it; `myTasksOpenWorkOnly.test.ts` proves every tab, badge and Task Type count is identical with or without completed rows),
   so a stale `?tab=completed` bookmark is sent to `/tasks/my/completed` (skeleton meanwhile). VISIBLE SIDE EFFECT: the "Assigned by" filter is built from the loaded list, so a person whose only
   tasks for you are finished no longer appears in it. `useTopTasks` is ONE request: `user_top_tasks` with the task embedded (`tasks!task_id(...)`, filters on `tasks.status`, no `!inner`, so `pinnedIds`
