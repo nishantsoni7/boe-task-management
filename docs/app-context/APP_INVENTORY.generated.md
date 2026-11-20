@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `0e692800` — Merge main
+- Commit: `6e2ad26b` — Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied)
 - Commits on this branch: 1517
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 495 (first `20260530_create_positions.sql`, latest `20270815000000_lead_contact_role_and_boq.sql`)
@@ -14,9 +14,9 @@
 
 ## Latest 25 commits
 
-- `0e692800` 2026-11-20 Merge main
+- `6e2ad26b` 2026-11-20 Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied)
+- `ae0b9a67` 2026-11-20 Sales leads: a contact role, and the quick note Waiting for BOQ (#957)
 - `7aaa6aaf` 2026-11-20 Docs: stamp #952 (lead popup quotations line, Make quotation) as merged and verified live (migration applied) (#953)
-- `758e3870` 2026-11-20 Quotations: an old Task request no longer makes a quotation without a lead; docs say 20270814000100 is applied
 - `570f4635` 2026-11-20 Docs: stamp #954 (Lost carries the lead's eleven reasons) as merged and verified live (migration applied) (#956)
 - `2c57b210` 2026-11-20 Quotations: requests move into the module, lead-first creation, report cards, price brief (#955)
 - `2014e0a2` 2026-11-20 Quotations: Lost carries one of the lead's eleven reasons; the report counts reasons (#954)
