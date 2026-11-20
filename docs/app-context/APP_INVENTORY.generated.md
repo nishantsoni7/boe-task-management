@@ -5,16 +5,18 @@
 
 ## Snapshot
 
-- Commit: `cf922759` — Quotations: typing in Material and Remarks no longer refits the price model for every product
-- Commits on this branch: 1520
+- Commit: `6c082fea` — Merge origin/main into fix/quotation-typing-lag
+- Commits on this branch: 1522
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 497 (first `20260530_create_positions.sql`, latest `20270817000000_quotation_delete.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1096   Enums: 0
-- Test files: 922   Next.js 16.2.6, React 19.2.4
+- Test files: 923   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `6c082fea` 2026-11-20 Merge origin/main into fix/quotation-typing-lag
 - `cf922759` 2026-11-20 Quotations: typing in Material and Remarks no longer refits the price model for every product
+- `b5f21118` 2026-11-20 Quotations: delete an unsent draft (its maker) or any quotation but a PI-linked one (administrator) (#961)
 - `a97765c4` 2026-11-20 Quotations: a quotation started from a lead copies its contact role into the client type (#960)
 - `e31bbde9` 2026-11-20 Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied) (#959)
 - `f928263f` 2026-11-20 Quotations: an old Task request no longer makes a quotation without a lead; docs say 20270814000100 is applied (#958)
@@ -37,8 +39,6 @@
 - `5efcad37` 2026-11-19 My Tasks opens sooner: open work only, Top 3 in one request (no SQL) (#942)
 - `68597159` 2026-11-19 Docs: stamp #940 (credits left this month) as merged (#941)
 - `83186471` 2026-11-19 Picture credits page: a "Left this month" column for each person (#940)
-- `1442bf52` 2026-11-18 Docs: stamp #938 (picture credits switches say ON or OFF) as merged (#939)
-- `3f50eadd` 2026-11-18 Picture credits page: the switches say ON or OFF, and Limits stay locked while nobody has credits (#938)
 
 ## Pages by top-level area
 
