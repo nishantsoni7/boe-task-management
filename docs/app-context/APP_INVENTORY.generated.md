@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `39806d88` — Merge main into feat/lead-role-boq; update two pinned lines in boardSpeed.test.ts
+- Commit: `ae0b9a67` — Sales leads: a contact role, and the quick note Waiting for BOQ (#957)
 - Commits on this branch: 1516
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 495 (first `20260530_create_positions.sql`, latest `20270815000000_lead_contact_role_and_boq.sql`)
@@ -14,9 +14,9 @@
 
 ## Latest 25 commits
 
-- `39806d88` 2026-11-20 Merge main into feat/lead-role-boq; update two pinned lines in boardSpeed.test.ts
+- `ae0b9a67` 2026-11-20 Sales leads: a contact role, and the quick note Waiting for BOQ (#957)
+- `7aaa6aaf` 2026-11-20 Docs: stamp #952 (lead popup quotations line, Make quotation) as merged and verified live (migration applied) (#953)
 - `570f4635` 2026-11-20 Docs: stamp #954 (Lost carries the lead's eleven reasons) as merged and verified live (migration applied) (#956)
-- `859790f2` 2026-11-20 Sales leads: a contact role, and the quick note Waiting for BOQ
 - `2c57b210` 2026-11-20 Quotations: requests move into the module, lead-first creation, report cards, price brief (#955)
 - `2014e0a2` 2026-11-20 Quotations: Lost carries one of the lead's eleven reasons; the report counts reasons (#954)
 - `d0fe51aa` 2026-11-19 Lead popup: the lead's quotations in one line, and Make quotation from the lead (#952)
