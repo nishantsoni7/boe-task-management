@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `570f4635` — Docs: stamp #954 (Lost carries the lead's eleven reasons) as merged and verified live (migration applied) (#956)
-- Commits on this branch: 1514
+- Commit: `758e3870` — Quotations: an old Task request no longer makes a quotation without a lead; docs say 20270814000100 is applied
+- Commits on this branch: 1515
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 494 (first `20260530_create_positions.sql`, latest `20270814000300_quotation_cards_and_briefs.sql`)
 - Tables ever created: 270 (dropped at some point: 8)   SQL functions: 1093   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `758e3870` 2026-11-20 Quotations: an old Task request no longer makes a quotation without a lead; docs say 20270814000100 is applied
 - `570f4635` 2026-11-20 Docs: stamp #954 (Lost carries the lead's eleven reasons) as merged and verified live (migration applied) (#956)
 - `2c57b210` 2026-11-20 Quotations: requests move into the module, lead-first creation, report cards, price brief (#955)
 - `2014e0a2` 2026-11-20 Quotations: Lost carries one of the lead's eleven reasons; the report counts reasons (#954)
@@ -38,7 +39,6 @@
 - `5bd9569d` 2026-11-18 Quotations: client choices (fabric, finish, stone, rope weave) per product, step 1: builder only (#934)
 - `f1fafd84` 2026-11-18 Docs: stamp #932 (picture credits wallet) as merged and applied (#935)
 - `c7f03dcd` 2026-11-18 Picture credits: a wallet and a tracking page for every paid picture press (limits ship off; migration not applied) (#932)
-- `8a0b1f21` 2026-11-18 Quotations: nothing waits for price approval, suggestions for the pricing desk, bank account + UPI QR on the quotation (#933)
 
 ## Pages by top-level area
 
