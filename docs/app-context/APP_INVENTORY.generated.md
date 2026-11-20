@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `90e2dc4c` — Docs: stamp #954 (Lost carries the lead's eleven reasons) as merged and verified live (migration applied)
-- Commits on this branch: 1513
+- Commit: `12c442f3` — Docs: stamp #952 (lead popup quotations line, Make quotation) as merged and verified live (migration applied)
+- Commits on this branch: 1512
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 494 (first `20260530_create_positions.sql`, latest `20270814000300_quotation_cards_and_briefs.sql`)
 - Tables ever created: 270 (dropped at some point: 8)   SQL functions: 1093   Enums: 0
@@ -14,8 +14,7 @@
 
 ## Latest 25 commits
 
-- `90e2dc4c` 2026-11-20 Docs: stamp #954 (Lost carries the lead's eleven reasons) as merged and verified live (migration applied)
-- `2014e0a2` 2026-11-20 Quotations: Lost carries one of the lead's eleven reasons; the report counts reasons (#954)
+- `12c442f3` 2026-11-19 Docs: stamp #952 (lead popup quotations line, Make quotation) as merged and verified live (migration applied)
 - `d0fe51aa` 2026-11-19 Lead popup: the lead's quotations in one line, and Make quotation from the lead (#952)
 - `c000801a` 2026-11-19 Docs: record 20270803000000 (held-day decision) as applied (no SQL) (#918)
 - `60432cb7` 2026-11-19 Docs: stamp #949 (quotation linked to its Sales lead) as merged and verified live (migration already applied) (#951)
@@ -39,6 +38,7 @@
 - `c7f03dcd` 2026-11-18 Picture credits: a wallet and a tracking page for every paid picture press (limits ship off; migration not applied) (#932)
 - `8a0b1f21` 2026-11-18 Quotations: nothing waits for price approval, suggestions for the pricing desk, bank account + UPI QR on the quotation (#933)
 - `ff8dedc3` 2026-11-18 Quotations: a styled, editable Excel with pictures and the standard terms; GST as one line (#931)
+- `a08a1d5f` 2026-11-18 Docs: stamp #929 (shared image model on Nano Banana 2) as merged (#930)
 
 ## Pages by top-level area
 
