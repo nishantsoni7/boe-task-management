@@ -1360,6 +1360,8 @@ describe('the applied migrations are frozen', () => {
       '20270814000300_quotation_cards_and_briefs.sql',
       // Sales leads: an optional contact role (one nullable column, existing leads keep none) and the quick note "Waiting for BOQ" (three functions replaced).
       '20270815000000_lead_contact_role_and_boq.sql',
+      // Quotations: quotation_start also copies the lead's contact role into the client type (one function re-created; no table or data changes).
+      '20270816000000_quotation_start_contact_role.sql',
     ])
   })
 
@@ -1931,6 +1933,8 @@ describe('the applied migrations are frozen', () => {
       '20270814000300_quotation_cards_and_briefs.sql',
       // Sales leads: an optional contact role (one nullable column, existing leads keep none) and the quick note "Waiting for BOQ" (three functions replaced).
       '20270815000000_lead_contact_role_and_boq.sql',
+      // Quotations: quotation_start also copies the lead's contact role into the client type (one function re-created; no table or data changes).
+      '20270816000000_quotation_start_contact_role.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
