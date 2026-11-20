@@ -1358,6 +1358,8 @@ describe('the applied migrations are frozen', () => {
       '20270814000200_quotation_requests.sql',
       // Quotations: report cards and the price brief (three functions; one CHECK gains a value; no rows change).
       '20270814000300_quotation_cards_and_briefs.sql',
+      // Sales leads: an optional contact role (one nullable column, existing leads keep none) and the quick note "Waiting for BOQ" (three functions replaced).
+      '20270815000000_lead_contact_role_and_boq.sql',
     ])
   })
 
@@ -1927,6 +1929,8 @@ describe('the applied migrations are frozen', () => {
       '20270814000200_quotation_requests.sql',
       // Quotations: report cards and the price brief (three functions; one CHECK gains a value; no rows change).
       '20270814000300_quotation_cards_and_briefs.sql',
+      // Sales leads: an optional contact role (one nullable column, existing leads keep none) and the quick note "Waiting for BOQ" (three functions replaced).
+      '20270815000000_lead_contact_role_and_boq.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

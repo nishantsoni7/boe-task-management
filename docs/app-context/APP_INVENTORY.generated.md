@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `76f82454` — Quotations: requests move into the module (Tasks no longer has them), report cards, price brief
+- Commit: `2c57b210` — Quotations: requests move into the module, lead-first creation, report cards, price brief (#955)
 - Commits on this branch: 1513
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
-- Migrations: 494 (first `20260530_create_positions.sql`, latest `20270814000300_quotation_cards_and_briefs.sql`)
+- Migrations: 495 (first `20260530_create_positions.sql`, latest `20270815000000_lead_contact_role_and_boq.sql`)
 - Tables ever created: 270 (dropped at some point: 8)   SQL functions: 1093   Enums: 0
 - Test files: 920   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `76f82454` 2026-11-20 Quotations: requests move into the module (Tasks no longer has them), report cards, price brief
-- `3d29925e` 2026-11-20 Quotations: every quotation starts from a Sales lead; the desk can put one on a salesperson's page
+- `2c57b210` 2026-11-20 Quotations: requests move into the module, lead-first creation, report cards, price brief (#955)
+- `2014e0a2` 2026-11-20 Quotations: Lost carries one of the lead's eleven reasons; the report counts reasons (#954)
 - `d0fe51aa` 2026-11-19 Lead popup: the lead's quotations in one line, and Make quotation from the lead (#952)
 - `c000801a` 2026-11-19 Docs: record 20270803000000 (held-day decision) as applied (no SQL) (#918)
 - `60432cb7` 2026-11-19 Docs: stamp #949 (quotation linked to its Sales lead) as merged and verified live (migration already applied) (#951)
@@ -521,7 +521,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270724000000_pricing_training_submit_counts.sql`
 - `20270725000000_pricing_woods.sql`
 - `20270726000000_pricing_training_library.sql`
 - `20270727000000_pricing_training_library_parts.sql`
@@ -551,6 +550,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270814000100_quotation_lead_required.sql`
 - `20270814000200_quotation_requests.sql`
 - `20270814000300_quotation_cards_and_briefs.sql`
+- `20270815000000_lead_contact_role_and_boq.sql`
 
 ## All SQL function names
 

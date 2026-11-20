@@ -1680,6 +1680,59 @@ await step('Browser users cannot fire the alert job', () =>
   })
 }
 
+// 20270815000000: who the contact is, and the quick note "Waiting for BOQ".
+{
+  await step('The migration applies over the live register (role and BOQ), its self-checks included', async () => {
+    await db.exec(mig('20270815000000_lead_contact_role_and_boq.sql'))
+    must(Number(await scalar(`select count(*) from information_schema.columns where table_schema = 'public' and table_name = 'sales_leads' and column_name = 'contact_role'`)) === 1, 'the column exists')
+    must(Number(await scalar(`select count(*) from public.sales_leads where contact_role is not null`)) === 0, 'every existing lead keeps no role')
+  })
+  const fresh = async phone => {
+    const L = await one(U.leadmgr, `select public.create_sales_lead($1, 'website')`, [phone])
+    await one(U.leadmgr, `select public.allot_sales_lead($1, $2, null)`, [L.lead.id, U.ashok])
+    return L.lead.id
+  }
+  await step('A role is saved from Edit details, comes back on the lead, can be cleared, and an unknown one is refused', async () => {
+    const A = await fresh('+91 97222 01001')
+    const r = await facts(U.ashok, A, { contact_role: 'architect' })
+    must(r.lead.contact_role === 'architect', 'comes back from the save: ' + r.lead.contact_role)
+    must((await leadRow(A)).contact_role === 'architect', 'stored')
+    must((await one(U.ashok, `select public.get_sales_lead($1)`, [A])).lead.contact_role === 'architect', 'get_sales_lead returns it')
+    await expectErr(U.ashok, `select public.update_sales_lead_facts($1, $2::jsonb)`, /Check the details/, [A, JSON.stringify({ contact_role: 'plumber' })])
+    must((await leadRow(A)).contact_role === 'architect', 'a refused role changes nothing')
+    must((await facts(U.ashok, A, { contact_role: '' })).lead.contact_role === null, 'an empty choice clears it')
+  })
+  await step('Only the holder (or a manager with assign) may set it, as for every other detail', async () => {
+    const A = await fresh('+91 97222 01003')
+    await expectErr(U.mohit, `select public.update_sales_lead_facts($1, $2::jsonb)`, /SALES_/, [A, JSON.stringify({ contact_role: 'other' })])
+    must((await facts(U.leadmgr, A, { contact_role: 'other' })).lead.contact_role === 'other', 'the lead manager may')
+  })
+  await step('Waiting for BOQ: a note, the next step set, the follow-up 3 days on (Sunday becomes Monday), a New lead moves to Under Process', async () => {
+    const B = await fresh('+91 97222 01002')
+    must((await leadRow(B)).stage === 'new', 'starts New')
+    const r = await one(U.ashok, `select public.add_sales_lead_comment($1, 'Waiting for the BOQ.', 'boq')`, [B])
+    must(r.status === 'saved', JSON.stringify(r))
+    const row = await leadRow(B)
+    must(row.next_step === 'Waiting for BOQ / drawings', 'next step: ' + row.next_step)
+    must(row.stage === 'under_process', 'a note is contact: ' + row.stage)
+    const t = new Date(Date.parse(`${today}T00:00:00Z`) + 3 * 864e5); if (t.getUTCDay() === 0) t.setUTCDate(t.getUTCDate() + 1)
+    must(await scalar(`select next_due_on::text from public.sales_leads where id = $1`, [B]) === t.toISOString().slice(0, 10), 'follow-up 3 days on')
+    const a = (await db.query(`select kind, outcome, next_step from public.sales_lead_activities where lead_id = $1 order by at desc limit 1`, [B])).rows[0]
+    must(a.kind === 'note' && a.outcome === 'note' && a.next_step === 'Waiting for BOQ / drawings', JSON.stringify(a))
+  })
+  await step('A date given with the note wins; the next plain update replaces the step; an unknown quick note is still refused', async () => {
+    const B = await fresh('+91 97222 01004')
+    await one(U.ashok, `select public.add_sales_lead_comment($1, 'Waiting for the drawings.', 'boq', $2::date)`, [B, day(6)])
+    must(await scalar(`select next_due_on::text from public.sales_leads where id = $1`, [B]) === day(6), 'the given date')
+    await one(U.ashok, `select public.add_sales_lead_comment($1, 'Got them, pricing now.')`, [B])
+    must((await leadRow(B)).next_step === 'Follow up', 'a plain update is a plain follow-up again')
+    await expectErr(U.ashok, `select public.add_sales_lead_comment($1, 'x', 'bogus')`, /Unknown quick note/, [B])
+  })
+  await step('The three functions kept their grants: open to signed-in people, closed to anon', async () => {
+    must(await scalar(`select not has_function_privilege('anon', 'public.add_sales_lead_comment(uuid, text, text, date, jsonb)', 'EXECUTE') and has_function_privilege('authenticated', 'public.add_sales_lead_comment(uuid, text, text, date, jsonb)', 'EXECUTE') and not has_function_privilege('anon', 'public.update_sales_lead_facts(uuid, jsonb, timestamp with time zone)', 'EXECUTE')`), 'grants')
+  })
+}
+
 console.log(results.join('\n'))
 if (fail) { console.log(`\n${fail} of ${pass + fail} checks FAILED`); process.exit(1) }
 console.log(`\nall ${pass} checks passed`)

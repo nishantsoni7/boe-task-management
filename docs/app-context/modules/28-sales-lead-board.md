@@ -6,6 +6,8 @@ Written 2026-11-03 from the build, merged as PR #594 (05e299ed) and deployed. Mi
 
 **Update 2026-11-19 (evening, branch `feat/lead-popup-quotations`, migration `20270812000000` NOT applied yet):** the lead popup shows the lead's quotations in ONE line under the update box (`LeadQuotes.tsx`, read from `quotation_for_lead`) with "Make quotation", which creates a quotation from the lead, links it and opens it. It sits in the RIGHT card because the left column is measured to fit without scrolling: measured with the real popup, the first build (three rows) left the activity 29 px on a laptop; the one-line version costs 42 px and the left column still scrolls 0 px. Nothing in this module's functions changed.
 
+**Update 2026-11-20 (branch `feat/lead-role-boq`, migration `20270815000000` NOT applied yet):** a lead can carry a contact role (`sales_leads.contact_role`: property owner, architect, interior designer, F&B consultant, other; set in Edit details, shown in the client card's tag), and the update box has a fifth quick note, **Waiting for BOQ** (tag `boq`: next step "Waiting for BOQ / drawings", follow-up 3 days on, counts as contact; not a stage). Functions replaced: `sales_lead_row`, `update_sales_lead_facts`, `add_sales_lead_comment`. Measured: the left column still scrolls 0 px; the update box is 34 px taller because the chips wrap.
+
 ## 1. Purpose & users
 
 - The owner asked on 2026-11-03 for a lead management system to replace the ClickUp boards ("Best of Exports", one folder per salesperson), on the level of Salesforce, Zoho CRM and LeadSquared, but only the proven, practical features, and easy enough to need no training. BOE sells furniture wholesale to hospitality clients in India and abroad.
