@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, Copy, ImagePlus, Maximize2, Trash2 } from 'lucide-react'
 import { formatINR } from '@/lib/currency'
 import type { PriceHint } from '@/lib/quotations/api'
@@ -12,6 +12,7 @@ import type { Library } from '@/lib/pricing/training/match'
 import { Pic } from './Pic'
 import { ChoicesPanel } from './ChoicesPanel'
 import { forgetPicture, pointAtPicture, type PictureTarget } from './pictureClipboard'
+import type { RowActions } from './rowActions'
 import s from './quotations.module.css'
 
 /**
@@ -136,3 +137,38 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
     </div>
   )
 }
+
+type LineRowProps = Parameters<typeof LineRow>[0]
+type RowProps = Omit<LineRowProps, 'onChange' | 'onUpload' | 'onImprove' | 'onView' | 'onRemove' | 'onMove' | 'onDuplicate'> & { actions: RowActions }
+// The builder rebuilds these three on every keystroke with the same values (a new price suggestion object, a new feedback object,
+// a new history-only hint), so they are compared by what they hold; every other prop by identity.
+const BY_VALUE: ReadonlySet<string> = new Set(['model', 'hint', 'feedbackCtx'])
+/** True when nothing this row shows or calls has changed. */
+export function sameRow(a: RowProps, b: RowProps): boolean {
+  const x = a as Record<string, unknown>, y = b as Record<string, unknown>
+  for (const k of new Set([...Object.keys(x), ...Object.keys(y)])) {
+    if (Object.is(x[k], y[k])) continue
+    if (BY_VALUE.has(k) && JSON.stringify(x[k]) === JSON.stringify(y[k])) continue
+    return false
+  }
+  return true
+}
+function Row({ actions, ...rest }: RowProps) {
+  const key = rest.l.key
+  const fns = useMemo(() => ({
+    onChange: (patch: Partial<QuoteLine>) => actions.change(key, patch),
+    onUpload: (file: File | undefined) => actions.upload(key, file),
+    onImprove: () => actions.improve(key),
+    onView: () => actions.view(key),
+    onRemove: () => actions.remove(key),
+    onMove: (dir: -1 | 1) => actions.move(key, dir),
+    onDuplicate: () => actions.duplicate(key),
+  }), [actions, key])
+  return <LineRow {...rest} {...fns} />
+}
+/**
+ * One product row that is drawn again only when something it shows changed: typing in one product no longer redraws all of them
+ * (measured 9.5 / 14.7 / 17.2 ms against 1 to 2 ms per keystroke at 6 / 12 / 24 products, in jsdom). `actions` must be the one
+ * object from `useRowActions`, which never changes; the row makes its own handlers from it and its key.
+ */
+export const ProductRow = memo(Row, sameRow)

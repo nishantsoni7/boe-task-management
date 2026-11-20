@@ -45,7 +45,8 @@ import { PriceBrief } from './PriceBrief'
 import { DeleteQuotationDialog } from './DeleteQuotationDialog'
 import { LeadCard } from './LeadCard'
 import { PriceCard } from './PricingDesk'
-import { LineRow } from './ProductLine'
+import { ProductRow } from './ProductLine'
+import { useRowActions } from './rowActions'
 import { effectiveLeadTime } from './LeadTime'
 import { StatusCard, LOCKED } from './StatusCard'
 import { ShareCard } from './ShareCard'
@@ -78,7 +79,8 @@ export default function BuilderScreen() {
   // The logo mark on pictures (owner, 18 Nov 2026): on unless somebody who may edit this quotation turned it off.
   const markQ = useQuery({ queryKey: pictureMarkKey(id), queryFn: () => fetchPictureMark(supabase, id), enabled: accessLoaded, retry: false })
   const markOn = markQ.data !== false
-  const picSrc = (p: string) => pictureSrc(supabase, p, { markOn, quotationId: id })
+  // The same function until the mark or the quotation changes: the product rows are memoized and take it as a prop.
+  const picSrc = useCallback((p: string) => pictureSrc(supabase, p, { markOn, quotationId: id }), [supabase, markOn, id])
   // The same read (and key) as the Versions card, so it costs no extra call: the newest sent version dates the quotation.
   const versionsQ = useQuery({ queryKey: ['quotations', 'versions', id, quoteQ.data?.updated_at], queryFn: () => fetchVersions(supabase, id), enabled: accessLoaded && !!quoteQ.data, retry: false })
 
@@ -226,8 +228,39 @@ export default function BuilderScreen() {
     } finally { setBusy(false); setPiStage(null) }
   }
 
+  // What the product rows ask of the builder. They are above the early returns because the hook below must be, and the rows are memoized
+  // (typing in one product used to redraw them all): `rowActions` is one object that never changes, and each call goes to the
+  // newest of these, so `removeLine` still keeps the lines of the render it was called in, for its Undo.
+  const upload = async (key: string, file: File | undefined) => {
+    if (!file || !profile) return
+    setMsg({ tone: 'warn', text: 'Uploading the picture…' })
+    try { const path = await uploadPicture(supabase, profile.id, file); updLine(key, { image_path: path }); setMsg({ tone: 'warn', text: 'Picture added. Save to keep it.' }) }
+    catch (e) { setMsg({ tone: 'bad', text: errorText(e) }) }
+  }
+  const removeLine = (key: string) => {
+    const before = lines
+    setLines(p => p.filter(l => l.key !== key)); touch()
+    setMsg({ tone: 'warn', text: 'Product removed.', undo: () => { setLines(before); setMsg(null) } })
+  }
+  const moveLine = (key: string, dir: -1 | 1) => {
+    setLines(p => {
+      const i = p.findIndex(l => l.key === key)
+      let j = i + dir
+      while (j >= 0 && j < p.length && p[j].area_key !== p[i].area_key) j += dir
+      if (j < 0 || j >= p.length) return p
+      const next = [...p]; [next[i], next[j]] = [next[j], next[i]]; return next
+    })
+    touch()
+  }
+  const duplicateLine = (key: string) => {
+    setLines(p => { const i = p.findIndex(x => x.key === key); if (i < 0) return p; const n = [...p]; n.splice(i + 1, 0, { ...p[i], key: newKey() }); return n })
+    touch()
+  }
+  const rowActions = useRowActions({ change: updLine, upload, improve: setStudioFor, view: setViewing, remove: removeLine, move: moveLine, duplicate: duplicateLine })
+  const uploadSwatch = useCallback((f: File) => (profile ? uploadPicture(supabase, profile.id, f) : Promise.reject(new Error('Sign in again to add a picture'))), [supabase, profile])
+
   if (loading) return <LoadingScreen />
-  const layout = (title: string, body: React.ReactNode, subtitle?: string, actions?: React.ReactNode) => (
+  const layout =(title: string, body: React.ReactNode, subtitle?: string, actions?: React.ReactNode) => (
     <QuotationsLayout profile={profile} access={access} onSignOut={signOut} title={title} subtitle={subtitle} actions={actions} contentMaxWidth={1360}>{body}</QuotationsLayout>
   )
   if (notSetUp) return layout('Quotation', <div className={`${s.notice} ${s.noticeWarn}`}><b>Quotations is being set up.</b> Its database part has not been applied yet.</div>)
@@ -259,27 +292,6 @@ export default function BuilderScreen() {
       if (missing > 0) setMsg({ tone: 'warn', text: `The Excel was downloaded, but ${missing} picture${missing === 1 ? '' : 's'} could not be loaded and ${missing === 1 ? 'is' : 'are'} left out.` })
     } catch (e) { setMsg({ tone: 'bad', text: errorText(e) }) }
     finally { setBusy(false) }
-  }
-  const upload = async (key: string, file: File | undefined) => {
-    if (!file || !profile) return
-    setMsg({ tone: 'warn', text: 'Uploading the picture…' })
-    try { const path = await uploadPicture(supabase, profile.id, file); updLine(key, { image_path: path }); setMsg({ tone: 'warn', text: 'Picture added. Save to keep it.' }) }
-    catch (e) { setMsg({ tone: 'bad', text: errorText(e) }) }
-  }
-  const removeLine = (key: string) => {
-    const before = lines
-    setLines(p => p.filter(l => l.key !== key)); touch()
-    setMsg({ tone: 'warn', text: 'Product removed.', undo: () => { setLines(before); setMsg(null) } })
-  }
-  const moveLine = (key: string, dir: -1 | 1) => {
-    setLines(p => {
-      const i = p.findIndex(l => l.key === key)
-      let j = i + dir
-      while (j >= 0 && j < p.length && p[j].area_key !== p[i].area_key) j += dir
-      if (j < 0 || j >= p.length) return p
-      const next = [...p]; [next[i], next[j]] = [next[j], next[i]]; return next
-    })
-    touch()
   }
   const removeArea = (key: string) => {
     setAreas(p => p.filter(a => a.key !== key))
@@ -396,12 +408,11 @@ export default function BuilderScreen() {
               {editable && g.area && <button className={s.iconBtn} onClick={() => removeArea(g.area!.key)} aria-label={`Remove room type ${g.area.name}`} title="Remove the room type (its products stay, outside any room type)"><Trash2 size={15} /></button>}
             </div>
             {g.lines.map((l, li) => (
-              <LineRow key={l.key} l={l} area={g.area} unit={unit} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
+              <ProductRow key={l.key} l={l} area={g.area} unit={unit} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
                 first={li === 0} last={li === g.lines.length - 1} url={picSrc}
-                onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onUploadSwatch={f => (profile ? uploadPicture(supabase, profile.id, f) : Promise.reject(new Error("Sign in again to add a picture")))} onImprove={() => setStudioFor(l.key)} onView={() => setViewing(l.key)}
-                hint={suggestOn ? hintFor.get(l.name.trim()) : historyOnly(hintFor.get(l.name.trim()))} model={suggestOn ? modelFor.get(l.key) : null} taught={suggestOn ? taught : undefined} onRemove={() => removeLine(l.key)}
-                feedbackCtx={seesWhy ? { clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) } : undefined}
-                onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
+                actions={rowActions} onUploadSwatch={uploadSwatch}
+                hint={suggestOn ? hintFor.get(l.name.trim()) : historyOnly(hintFor.get(l.name.trim()))} model={suggestOn ? modelFor.get(l.key) : null} taught={suggestOn ? taught : undefined}
+                feedbackCtx={seesWhy ? { clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) } : undefined} />
             ))}
           </div>
         ))}
