@@ -180,6 +180,110 @@
   opacity: 0.4;
 }
 
+/* ── Administrator: a bin in place of the chevron (owner, 20 Nov 2026) ── */
+.withDelete .cols,
+.withDelete .row {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) 84px 100px 28px;
+}
+
+.del {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #686D6C;
+  cursor: pointer;
+}
+
+.del:hover,
+.del:focus-visible {
+  background: #FBE9EC;
+  color: #A12438;
+}
+
+.del:focus-visible {
+  outline: 2px solid #303536;
+  outline-offset: -2px;
+}
+
+/* The confirm (a layer over the page, like the other dashboard pop-ups). */
+.scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  overflow: auto;
+  background: rgba(48, 53, 54, 0.42);
+}
+
+.dialog {
+  width: 100%;
+  max-width: 440px;
+  padding: 20px;
+  border-radius: 12px;
+  background: #FFFFFF;
+  box-shadow: 0 12px 40px rgba(48, 53, 54, 0.22);
+  font-family: var(--font-inter), 'Inter', system-ui, sans-serif;
+  color: #303536;
+}
+
+.dialog h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.dialog p {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.dialogNote { color: #686D6C; }
+
+.dialogError {
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid #E8B7BF;
+  border-radius: 8px;
+  background: #FBE9EC;
+  font-size: 13px;
+  color: #7E1B2B;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.dialogBtn {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid #E4DED7;
+  border-radius: 8px;
+  background: #FFFFFF;
+  font: 600 13px var(--font-inter), 'Inter', system-ui, sans-serif;
+  color: #303536;
+  cursor: pointer;
+}
+
+.dialogBtn:disabled { opacity: 0.55; cursor: default; }
+
+.dialogDanger {
+  border-color: #A12438;
+  background: #A12438;
+  color: #FFFFFF;
+}
+
 /* ── Phone width: two lines per row, no header ── */
 @container (max-width: 519px) {
   .cols {
@@ -206,4 +310,8 @@
   .pendingWord { display: inline; }
   .meter,
   .chev { display: none; }
+
+  /* The bin sits at the end of both lines. */
+  .withDelete .row { grid-template-columns: minmax(0, 1fr) auto 28px; }
+  .withDelete .del { grid-column: 3; grid-row: 1 / span 2; }
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import type { KeyboardEvent } from 'react'
-import { ArrowDown, ChevronRight } from 'lucide-react'
+import { ArrowDown, ChevronRight, Trash2 } from 'lucide-react'
 import type { Task } from '@/lib/types'
 import { quotationWait, type WaitBand } from '@/lib/tasks/quotationWait'
 import styles from './quotationRequests.module.css'
@@ -58,16 +58,19 @@ export function QuotationRequestsList({
   tasks,
   userMap,
   onOpen,
+  onDelete,
   now,
 }: {
   tasks: Task[]
   userMap: Record<string, string>
   onOpen: (task: Task) => void
+  /** Administrator only (owner, 20 Nov 2026): a bin on each row, in place of the chevron, that asks to delete the request. */
+  onDelete?: (task: Task) => void
   /** Epoch ms. The page owns the clock, so a render never reads one itself. */
   now: number
 }) {
   return (
-    <div className={styles.list}>
+    <div className={onDelete ? `${styles.list} ${styles.withDelete}` : styles.list}>
       <div className={styles.cols} aria-hidden="true">
         <span>Lead</span>
         <span>Sales person</span>
@@ -145,7 +148,20 @@ export function QuotationRequestsList({
               )}
             </div>
 
-            <span className={styles.chev} aria-hidden="true"><ChevronRight size={14} /></span>
+            {onDelete ? (
+              <button
+                type="button"
+                className={styles.del}
+                aria-label={`Delete the request for ${lead}`}
+                title="Delete this request"
+                onClick={e => { e.stopPropagation(); onDelete(task) }}
+                onKeyDown={e => e.stopPropagation()}
+              >
+                <Trash2 size={15} aria-hidden="true" />
+              </button>
+            ) : (
+              <span className={styles.chev} aria-hidden="true"><ChevronRight size={14} /></span>
+            )}
           </div>
         )
       })}

@@ -1363,7 +1363,7 @@ await db.exec(mig('20270808000100_quotation_client_choices.sql'))
   await db.exec(`
     create table public.pricing_feedback (id uuid primary key default gen_random_uuid(), created_at timestamptz not null default now(), created_by uuid,
       source text not null, kind text not null, comment text check (char_length(comment) <= 1000), expected_price numeric(12,2) check (expected_price is null or expected_price > 0),
-      line_name text, line_size text, line_material text, line_finish text, line_qty numeric(12,2), client_type text, suggestion jsonb, quotation_id uuid,
+      line_name text, line_size text, line_material text, line_finish text, line_qty numeric(12,2), client_type text, suggestion jsonb, quotation_id uuid references public.quotations(id) on delete set null,
       status text not null default 'new', handled_by uuid, handled_at timestamptz, handled_note text,
       constraint pricing_feedback_kind_check check (kind in ('too_high', 'too_low', 'wrong_type', 'misread', 'other', 'correction', 'differs_taught')));`)
   await db.exec(mig('20270814000300_quotation_cards_and_briefs.sql'))
@@ -1422,6 +1422,111 @@ await db.exec(mig('20270808000100_quotation_client_choices.sql'))
   const viaCreate = await rpc(U.sales, 'quotation_create', { lead_id: L1 })
   assert.equal((await db.query('select client_type, client_name from public.quotations where id = $1', [viaCreate])).rows[0].client_type, 'architect')
   ok('a quotation started from a lead takes its contact role as the client type (none stays none), also through quotation_create')
+}
+
+// ── 20270817000000: deleting a quotation (an unsent draft by its maker, or anything by an administrator) ──
+{
+  const L1 = '00000000-0000-0000-0000-0000000001a1'
+  const DESK = '00000000-0000-0000-0000-0000000000f6'
+  const FP = '0123456789abcdef0123456789abcdef'
+  // Before the migration: the price history refuses even the cascade from deleting its quotation (why the migration changes the trigger).
+  const before = await rpc(U.sales, 'quotation_start', L1, {})
+  await db.query(`insert into public.quotation_price_reviews (quotation_id, decision, fingerprint, actor_id) values ($1, 'requested', $2, $3)`, [before, FP, U.sales])
+  await assert.rejects(() => db.query('delete from public.quotations where id = $1', [before]), /QUOTATION_PRICE_REVIEWS_APPEND_ONLY/)
+  await db.exec(mig('20270817000000_quotation_delete.sql'))
+  await db.query('delete from public.quotations where id = $1', [before])
+  assert.equal((await db.query('select 1 from public.quotation_price_reviews where quotation_id = $1', [before])).rows.length, 0)
+  const start = (uid, owner) => rpc(uid, 'quotation_start', L1, owner ? { owner_id: owner } : {})
+  const del = (uid, id) => as(uid, 'select public.quotation_delete($1::uuid)', [id])
+  const check = (uid, id) => rpc(uid, 'quotation_delete_check', id)
+  const gone = async id => (await db.query('select 1 from public.quotations where id = $1', [id])).rows.length === 0
+  const rows = async (t, id) => (await db.query(`select count(*)::int as n from public.${t} where quotation_id = $1`, [id])).rows[0].n
+  const addLine = id => db.query(`insert into public.quotation_lines (quotation_id, position, name, qty_fixed, unit_price) values ($1, 0, 'Chair', 4, 5000)`, [id])
+
+  // The maker deletes their own draft: it, its lines and its history go, one record stays, the lead stays.
+  const mine = await start(U.sales)
+  await addLine(mine)
+  assert.deepEqual(await check(U.sales, mine), { may: true, reason: null })
+  assert.equal(await rows('quotation_events', mine) > 0, true)
+  await del(U.sales, mine)
+  assert.equal(await gone(mine), true)
+  assert.deepEqual([await rows('quotation_lines', mine), await rows('quotation_events', mine)], [0, 0])
+  const log = (await db.query('select * from public.quotation_deletions where quotation_id = $1', [mine])).rows
+  assert.equal(log.length, 1)
+  assert.deepEqual([log[0].deleted_by, log[0].owner_id, log[0].lead_id, log[0].status, Number(log[0].value_before_gst)], [U.sales, U.sales, L1, 'draft', 20000])
+  assert.match(log[0].quote_no, /^QT-MS-\d{5}$/)
+  assert.equal((await db.query('select 1 from public.sales_leads where id = $1', [L1])).rows.length, 1)
+  ok('the maker deletes their own draft: its lines and history go, one record of who and when stays, the Sales lead is untouched')
+
+  // Somebody else's draft: a plain salesperson cannot see it; a reader and the pricing desk see it and are told no.
+  const other = await start(U.sales)
+  await fails(U.sales2, 'select public.quotation_delete($1::uuid)', [other], /QUOTATION_NOT_FOUND/)
+  await fails(U.manager, 'select public.quotation_delete($1::uuid)', [other], /Only the person who made this quotation/)
+  await fails(DESK, 'select public.quotation_delete($1::uuid)', [other], /Only the person who made this quotation/)
+  await fails(U.nobody, 'select public.quotation_delete($1::uuid)', [other], /QUOTATIONS_FORBIDDEN/)
+  await fails(null, 'select public.quotation_delete($1::uuid)', [other], /permission denied/, 'anon')
+  assert.deepEqual(await check(DESK, other), { may: false, reason: 'Only the person who made this quotation, or an administrator, can delete it.' })
+  assert.equal(await gone(other), false)
+  ok('only the maker (or an administrator) deletes: another salesperson, a reader, the pricing desk, a person with no access and a signed-out caller cannot')
+
+  // Once submitted or shared, the maker can change it but not delete it; the administrator still can.
+  const sent = await start(U.sales)
+  await rpc(U.sales, 'quotation_set_status', sent, 'sent')
+  await fails(U.sales, 'select public.quotation_delete($1::uuid)', [sent], /no longer a draft/)
+  const shared = await start(U.sales)
+  await db.query(`update public.quotations set share_token = $2, shared_at = now() where id = $1`, [shared, FP])
+  await fails(U.sales, 'select public.quotation_delete($1::uuid)', [shared], /shared with the client/)
+  await db.query(`update public.quotations set share_token = null where id = $1`, [shared])
+  await fails(U.sales, 'select public.quotation_delete($1::uuid)', [shared], /shared with the client/)
+  const asked = await start(U.sales)
+  const reqId = (await as(U.sales, 'select public.quotation_request_send($1::uuid, $2::uuid, $3, null) as r', [asked, DESK, 'price'])).rows[0].r
+  await fails(U.sales, 'select public.quotation_delete($1::uuid)', [asked], /sent to a senior/)
+  await as(U.sales, 'select public.quotation_request_withdraw($1::uuid)', [reqId])
+  await fails(U.sales, 'select public.quotation_delete($1::uuid)', [asked], /sent to a senior/)
+  const priced = await start(U.sales)
+  await db.query(`insert into public.quotation_price_reviews (quotation_id, decision, fingerprint, actor_id) values ($1, 'requested', $2, $3)`, [priced, FP, U.sales])
+  await fails(U.sales, 'select public.quotation_delete($1::uuid)', [priced], /Price approval was asked/)
+  for (const id of [sent, shared, asked, priced]) assert.equal((await check(U.sales, id)).may, false)
+  ok('a quotation that was marked sent, shared (even if the link was turned off), sent to a senior (even if taken back) or put to price approval can be changed but not deleted by its maker')
+
+  // The administrator deletes any of them, including one that went through price approval (its history cascades through the append-only trigger).
+  await db.query(`insert into public.quotation_price_reviews (quotation_id, decision, fingerprint, actor_id) values ($1, 'approved', $2, $3)`, [priced, FP, U.admin])
+  await as(DESK, 'select public.quotation_price_briefs_save($1::uuid, $2::jsonb)', [priced, JSON.stringify([{ name: 'Chair', price: 5000, reason: 'Test reason for the delete check' }])])
+  assert.equal((await db.query('select count(*)::int as n from public.pricing_feedback where quotation_id = $1', [priced])).rows[0].n, 1)
+  assert.deepEqual(await check(U.admin, priced), { may: true, reason: null })
+  for (const id of [sent, shared, asked, priced, other]) { await del(U.admin, id); assert.equal(await gone(id), true) }
+  assert.deepEqual([await rows('quotation_price_reviews', priced), await rows('quotation_requests', asked), await rows('quotation_events', sent)], [0, 0, 0])
+  assert.equal((await db.query('select count(*)::int as n from public.pricing_feedback where quotation_id = $1', [priced])).rows[0].n, 0)
+  assert.equal((await db.query('select count(*)::int as n from public.quotation_deletions')).rows[0].n, 6)
+  ok('an administrator deletes a sent, shared, asked, price-approved and someone else\'s quotation too; its requests and price history go; the log holds all six')
+
+  // Still refused: a quotation that became a PI draft, by anybody; a direct change to the price history; anything from a client role.
+  const pi = await start(U.sales)
+  const sub = (await db.query(`insert into public.order_submissions (created_by) values ($1) returning id`, [U.sales])).rows[0].id
+  await db.query(`update public.quotations set pi_submission_id = $2 where id = $1`, [pi, sub])
+  await fails(U.admin, 'select public.quotation_delete($1::uuid)', [pi], /confirmed into a PI draft/)
+  await fails(U.sales, 'select public.quotation_delete($1::uuid)', [pi], /confirmed into a PI draft/)
+  assert.equal((await check(U.admin, pi)).may, false)
+  const keep = await start(U.sales)
+  await db.query(`insert into public.quotation_price_reviews (quotation_id, decision, fingerprint, actor_id) values ($1, 'requested', $2, $3)`, [keep, FP, U.sales])
+  await assert.rejects(() => db.query(`delete from public.quotation_price_reviews where quotation_id = $1`, [keep]), /QUOTATION_PRICE_REVIEWS_APPEND_ONLY/)
+  await assert.rejects(() => db.query(`update public.quotation_price_reviews set note = 'x' where quotation_id = $1`, [keep]), /QUOTATION_PRICE_REVIEWS_APPEND_ONLY/)
+  await fails(U.sales, 'select * from public.quotation_deletions', [], /permission denied/)
+  await fails(U.admin, 'select * from public.quotation_deletions', [], /permission denied/)
+  await fails(null, 'select public.quotation_delete_check($1::uuid)', [keep], /permission denied/, 'anon')
+  await fails(U.sales2, 'select public.quotation_delete_check($1::uuid)', [keep], /QUOTATION_NOT_FOUND/)
+  ok('a PI-linked quotation is never deleted, the price history still refuses a direct change, the deletion record is closed to every client role, and the check hides other people\'s quotations')
+
+  // The list says which rows may be deleted, with the same rule.
+  const listFor = async uid => Object.fromEntries((await rpc(uid, 'quotation_list', 'all')).map(r => [r.id, r.may_delete]))
+  await rpc(U.sales, 'quotation_set_status', keep, 'sent')
+  const draft2 = await start(U.sales)
+  const mineList = await listFor(U.sales)
+  assert.deepEqual([mineList[pi], mineList[keep], mineList[draft2]], [false, false, true])
+  const adminList = await listFor(U.admin)
+  assert.deepEqual([adminList[pi], adminList[keep], adminList[draft2]], [false, true, true])
+  assert.equal((await listFor(DESK))[draft2], false)
+  ok('the list marks may_delete the same way: the maker only for an unsent draft, the administrator for all but a PI-linked one, the pricing desk for none of other people\'s')
 }
 
 console.log(`all ${checks} checks passed`)
