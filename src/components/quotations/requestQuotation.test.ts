@@ -52,3 +52,9 @@ describe('the request page', () => {
     assert.ok(!/\b(insert|update|delete)\b\s+(into\s+)?public\./i.test(sql), 'reads only')
   })
 })
+
+test('"Make it in Quotations" no longer creates a quotation: it points to New quotation, which starts from a lead', () => {
+  const links = readFileSync('src/components/quotations/QuotationLinks.tsx', 'utf8')
+  assert.ok(!links.includes('quotation_create_from_request'))
+  assert.match(links, /href="\/quotations\?new=1"/)
+})

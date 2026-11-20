@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `ae0b9a67` — Sales leads: a contact role, and the quick note Waiting for BOQ (#957)
-- Commits on this branch: 1516
+- Commit: `6e2ad26b` — Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied)
+- Commits on this branch: 1517
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 495 (first `20260530_create_positions.sql`, latest `20270815000000_lead_contact_role_and_boq.sql`)
 - Tables ever created: 270 (dropped at some point: 8)   SQL functions: 1093   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `6e2ad26b` 2026-11-20 Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied)
 - `ae0b9a67` 2026-11-20 Sales leads: a contact role, and the quick note Waiting for BOQ (#957)
 - `7aaa6aaf` 2026-11-20 Docs: stamp #952 (lead popup quotations line, Make quotation) as merged and verified live (migration applied) (#953)
 - `570f4635` 2026-11-20 Docs: stamp #954 (Lost carries the lead's eleven reasons) as merged and verified live (migration applied) (#956)
@@ -38,7 +39,6 @@
 - `85db2249` 2026-11-18 Docs: stamp #931, #933, #934 and #936 as merged and applied (#937)
 - `31e7fbdf` 2026-11-18 Quotations: client choices on the PDF, the client link and the Excel (step 2 of 3) (#936)
 - `5bd9569d` 2026-11-18 Quotations: client choices (fabric, finish, stone, rope weave) per product, step 1: builder only (#934)
-- `f1fafd84` 2026-11-18 Docs: stamp #932 (picture credits wallet) as merged and applied (#935)
 
 ## Pages by top-level area
 

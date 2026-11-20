@@ -85,26 +85,17 @@ export function RequestQuotation({ supabase, taskId, canMake }: { supabase: Supa
   )
 }
 
-/** On a quotation request, for the person it is assigned to: start (or reopen) its quotation in Quotations. */
-export function MakeInQuotations({ supabase, taskId }: { supabase: SupabaseClient; taskId: string }) {
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const go = async () => {
-    setBusy(true); setErr('')
-    const { data, error } = await supabase.rpc('quotation_create_from_request', { p_task_id: taskId })
-    if (error || typeof data !== 'string') {
-      setBusy(false)
-      setErr(/Could not find the function|does not exist/i.test(error?.message ?? '') ? 'Quotations is being set up for requests. Try again later.'
-        : (error?.message ?? 'Could not open the quotation.').replace(/^.*(QUOTATIONS_FORBIDDEN|QUOTATION_LOCKED|QUOTATION_NOT_FOUND):\s*/, ''))
-      return
-    }
-    window.location.assign(`/quotations/${data}`)
-  }
+/**
+ * On an old quotation request (made in Task Management before 20 Nov 2026): no quotation can be made from the request any more,
+ * because every quotation starts from a Sales lead (owner, 20 Nov 2026). This points to New quotation, where the lead is chosen.
+ * The old create-from-request database function is no longer called from the app.
+ */
+export function MakeInQuotations({ supabase }: { supabase: SupabaseClient; taskId: string }) {
+  void supabase
   return (
     <div className="boe-card" style={{ padding: '14px 22px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-      <span style={{ fontSize: 13, flex: '1 1 260px' }}><b>Build in BOE One</b> (the default): the client and requirement are filled in, the salesperson gets it in their quotations, and <b>Send to sales</b> there completes this request.</span>
-      <button type="button" className="boe-btn boe-btn-primary" onClick={go} disabled={busy}><FileText size={15} aria-hidden /> {busy ? 'Opening…' : 'Make it in Quotations'}</button>
-      {err && <span role="alert" style={{ color: '#7E1B2B', fontSize: 13, flexBasis: '100%' }}>{err}</span>}
+      <span style={{ fontSize: 13, flex: '1 1 260px' }}><b>Make it in Quotations:</b> every quotation now starts from the client&apos;s Sales lead, and the details come from it. Choose the lead there; the quotation goes to the salesperson&apos;s own list.</span>
+      <Link href="/quotations?new=1" className="boe-btn boe-btn-primary"><FileText size={15} aria-hidden /> Start from the lead</Link>
     </div>
   )
 }
