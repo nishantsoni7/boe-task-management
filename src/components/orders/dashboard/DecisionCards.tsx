@@ -16,7 +16,7 @@
 // Which group a row sits in is lib/orders/adminDashboard.ts (splitCards): who holds the next move right now. This file only draws it.
 // The row that has waited longest on the sheet is the "Start with" row: its button is the only solid one, and it is the only row tinted.
 
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { ChevronRight, CircleCheck, Clock, FileText, TriangleAlert } from 'lucide-react'
 import { formatWaiting } from '@/lib/orders/orderDashboardSummary'
@@ -62,7 +62,7 @@ function AgeCell({ r }: { r: DecisionRow }) {
   )
 }
 
-/** What was asked: a status (icon and words, never colour alone), the round when it has looped, and one line of detail. */
+/** What was asked: a status (icon and words, never colour alone, with the round when it has looped), and the detail on its own line under it. */
 function AskCell({ r, plain }: { r: DecisionRow; plain: boolean }) {
   const chip = r.chip
   if (!chip) return <span className={styles.cAsk} />
@@ -72,24 +72,25 @@ function AskCell({ r, plain }: { r: DecisionRow; plain: boolean }) {
     <span className={styles.cAsk}>
       <span className={`${styles.st} ${STATUS_CLASS[chip.tone]}`}>
         <Icon size={16} strokeWidth={2} aria-hidden="true" />{chip.label}
+        {r.round ? <span className={styles.round}>{r.round}</span> : null}
       </span>
-      {r.round ? <span className={styles.round}>{r.round}</span> : null}
       {chip.sub ? <span className={styles.q}>{chip.sub}</span> : null}
     </span>
   )
 }
 
-function DecisionRowLink({ r, watching, solid }: { r: DecisionRow; watching?: boolean; solid?: boolean }) {
+/** One row. A link to where the decision is made, or, with `onToggle`, a button that opens the form under it (the Operations team's line-by-line answers). */
+export function DecisionRowLink({ r, watching, solid, onToggle, expanded }: {
+  r: DecisionRow; watching?: boolean; solid?: boolean; onToggle?: () => void; expanded?: boolean
+}) {
   const ask = r.chip ? `${r.chip.label}${r.chip.sub ? `: ${r.chip.sub}` : ''}` : ''
   const label = `${r.client}, ${r.order}: ${ask}. ${watching ? 'With' : 'From'} ${firstName(r.who.name) || 'nobody'}, waiting ${formatWaiting(r.waitSeconds)}.${watching ? '' : ` ${r.next}`}`
-  return (
-    <Link href={r.href} className={`${styles.row} ${solid ? styles.rowHot : ''}`} aria-label={label} prefetch={false}>
+  const cells = (
+    <>
       <span className={styles.cOrd}>{r.order}</span>
       <span className={styles.cCli}><span className={styles.oi}>{r.order}</span>{r.client}</span>
       <AskCell r={r} plain={!!watching} />
-      <span className={styles.cWho} title={r.who.caption}>
-        <span className={styles.pre}>{watching ? 'with' : 'from'}</span><b className={styles.nm}>{firstName(r.who.name) || 'nobody'}</b>
-      </span>
+      <span className={styles.cWho} title={r.who.caption}>{firstName(r.who.name) || 'nobody'}</span>
       <AgeCell r={r} />
       <span className={styles.cAct}>
         {watching ? (
@@ -98,11 +99,19 @@ function DecisionRowLink({ r, watching, solid }: { r: DecisionRow; watching?: bo
           <span className={`${styles.do} ${solid ? styles.doSolid : ''}`}>{r.next}</span>
         )}
       </span>
-    </Link>
+    </>
+  )
+  const cls = `${styles.row} ${solid ? styles.rowHot : ''}`
+  return onToggle ? (
+    <button type="button" className={cls} aria-label={label} aria-expanded={!!expanded} onClick={onToggle}>{cells}</button>
+  ) : (
+    <Link href={r.href} className={cls} aria-label={label} prefetch={false}>{cells}</Link>
   )
 }
 
-function ActionSheet({ groups }: { groups: { key: CardKey; rows: DecisionRow[] }[] }) {
+export type ActionGroup = { key: string; title: string; note: string; rows: DecisionRow[] }
+
+export function ActionSheet({ groups, renderRow }: { groups: ActionGroup[]; renderRow?: (r: DecisionRow, solid: boolean) => ReactNode }) {
   const all = groups.flatMap(g => g.rows)
   // Rows arrive longest-waiting first, so the first row of the group that holds the longest wait is the one to start with.
   const start = all.reduce<DecisionRow | null>((best, r) => (best === null || r.waitSeconds > best.waitSeconds ? r : best), null)
@@ -120,26 +129,25 @@ function ActionSheet({ groups }: { groups: { key: CardKey; rows: DecisionRow[] }
           </Link>
         ) : null}
       </header>
-      {groups.map(g => {
-        const def = CARD_DEFS.find(d => d.key === g.key)
-        return (
-          <div key={g.key}>
-            {groups.length > 1 ? (
-              <div className={styles.band}>
-                <span>{def?.title}</span><b>{g.rows.length}</b><span className={styles.bandR}>{def?.bandNote}</span>
-              </div>
-            ) : null}
-            <ul className={styles.clist}>
-              {g.rows.map(r => <li key={r.key}><DecisionRowLink r={r} solid={r === start} /></li>)}
-            </ul>
-          </div>
-        )
-      })}
+      {groups.map(g => (
+        <div key={g.key}>
+          {groups.length > 1 ? (
+            <div className={styles.band}>
+              <span>{g.title}</span><b>{g.rows.length}</b><span className={styles.bandR}>{g.note}</span>
+            </div>
+          ) : null}
+          <ul className={styles.clist}>
+            {g.rows.map(r => <li key={r.key}>{renderRow ? renderRow(r, r === start) : <DecisionRowLink r={r} solid={r === start} />}</li>)}
+          </ul>
+        </div>
+      ))}
     </section>
   )
 }
 
-function WatchingSection({ rows }: { rows: DecisionRow[] }) {
+export const WATCHING_HINT = 'Held by Sales or Operations. Nothing for you to do; chase if it runs long.'
+
+export function WatchingSection({ rows, hint = WATCHING_HINT }: { rows: DecisionRow[]; hint?: string }) {
   const [who, setWho] = useState('all')
   const [open, setOpen] = useState(false)
   const people = peopleOf(rows)
@@ -151,7 +159,7 @@ function WatchingSection({ rows }: { rows: DecisionRow[] }) {
       <header className={styles.hd}>
         <h2 id="adm-watch-h" className={styles.hdTitleFlat}>Watching</h2>
         <span className={`${styles.badge} ${styles.badgeNeutral}`}>{rows.length}</span>
-        <span className={styles.hint}>Held by Sales or Operations. Nothing for you to do; chase if it runs long.</span>
+        <span className={styles.hint}>{hint}</span>
       </header>
       {people.length > 1 ? (
         <div className={styles.people} role="group" aria-label="Filter by person">
@@ -187,7 +195,10 @@ export function DecisionCards({ state }: { state: DecisionState }) {
     return <section className={styles.card}><p className={styles.note}>This list is not shown while you view as someone else.</p></section>
   }
   const cards = splitCards(state.rows)
-  const groups = ACTION_GROUPS.map(key => ({ key, rows: cards[key] })).filter(g => g.rows.length > 0)
+  const groups = ACTION_GROUPS.map(key => {
+    const def = CARD_DEFS.find(d => d.key === key)
+    return { key, title: def?.title ?? '', note: def?.bandNote ?? '', rows: cards[key] }
+  }).filter(g => g.rows.length > 0)
   const unreadable = !!state.flaggedFailed || !!state.changesFailed
   const nothing = groups.length === 0 && cards.waiting.length === 0
   return (

@@ -40,7 +40,7 @@ const NO_RULE_NEEDED: Record<string, readonly string[]> = {
     'pi-pay-details-activity',
   ],
   'a table cell or wrapper that takes the default look': [
-    'od-strip-label', 'ops-na-due', 'ops-na-sp', 'ops-na-wait', 'pv-editor',
+    'od-strip-label', 'pv-editor',
   ],
   '.pi-form-grid > * already spans all twelve columns': ['pi-span-12'],
   'a Tailwind utility, written by Tailwind and so in no stylesheet here': ['sr-only'],
