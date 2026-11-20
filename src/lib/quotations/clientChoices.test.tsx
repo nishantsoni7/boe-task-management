@@ -92,7 +92,10 @@ describe('the builder wiring', () => {
   test('each product row shows the panel and uploads swatch photos through the quotation picture path', () => {
     const row = read('src/components/quotations/ProductLine.tsx')
     assert.match(row, /<ChoicesPanel choices=\{l\.choices\}/)
-    assert.match(read('src/components/quotations/BuilderScreen.tsx'), /onUploadSwatch=\{f => \(profile \? uploadPicture\(supabase, profile\.id, f\)/)
+    // The upload function is made once (the product rows are memoized and take it as a prop), then handed to every row.
+    const screen = read('src/components/quotations/BuilderScreen.tsx')
+    assert.match(screen, /const uploadSwatch = useCallback\(\(f: File\) => \(profile \? uploadPicture\(supabase, profile\.id, f\)/)
+    assert.match(screen, /onUploadSwatch=\{uploadSwatch\}/)
   })
   test('the client views draw the choices from step 2 on (migration 20270809000000): the document, the Excel sheet and the shared helpers, never the note', () => {
     assert.ok(read('src/components/quotations/QuotationDocument.tsx').includes('choiceRowsOf(doc.areas, doc.lines)'))
