@@ -47,6 +47,7 @@ import {
   OPS_ERROR_BODY,
   OPS_ERROR_HEADING,
   parseOperationsRead,
+  type ChangeResponse,
   type OperationsRead,
 } from '@/lib/orders/operationsDashboard'
 import {
@@ -57,6 +58,8 @@ import {
   resolvePersonalRead,
   type SalespersonDashboard,
 } from '@/lib/orders/salespersonDashboard'
+
+const NO_ANSWERS: readonly ChangeResponse[] = []
 
 // ── What the summary read is in ───────────────────────────────────────────────
 
@@ -251,8 +254,8 @@ export default function OrdersDashboardPage() {
   // reader is offered it. One decision, made in one place
   // (src/lib/orders/orderDashboard.ts).
   const ready = summary.kind === 'ready' ? summary.summary : null
-  // THE APPROVER'S DASHBOARD: the PIs waiting for their decision lead, then revenue, then three cards.
-  // The PI Drafts link is dropped for them: the list above it is the same queue, in full.
+  // THE APPROVER'S DASHBOARD (2026-11-20): four cards by who holds the next move, then one revenue strip.
+  // The PI Drafts link is dropped for them: "New PIs to approve" is the same queue, in full.
   const approverView = ordersCaps.canApproveOrderSubmission && !!ready?.overview
   const queues = orderDashboardCards({ counts, orders: ordersCaps }).filter(q => !(approverView && q.key === 'pi_drafts'))
   const personalView = personal.kind === 'ready' || personal.kind === 'error'
@@ -347,9 +350,10 @@ export default function OrdersDashboardPage() {
         {summary.kind === 'ready' && !approverView ? (
           <FlaggedPiStrip supabase={supabase} viewingAs={!!viewAsUserId} reloadKey={reloadTick} />
         ) : null}
-        {/* ── WHAT OPERATIONS ANSWERED ── on the approver's dashboard, advice on changes to orders in
-            production. Draws nothing when there are none or the read is not available. */}
-        {operations.kind === 'ready' && operations.read.viewer.isApprover ? (
+        {/* ── WHAT OPERATIONS ANSWERED ── advice on changes to orders in production, for a reader who is not on the
+            approver's cards (there the answers that still ask something are rows of "Clarifications from
+            Operations"). Draws nothing when there are none or the read is not available. */}
+        {operations.kind === 'ready' && operations.read.viewer.isApprover && !approverView ? (
           <OperationsResponses responses={operations.read.responses} />
         ) : null}
         {/* ── REVENUE, THEN THE STATUS STRIP ── the headline first, then one glance at what needs
@@ -401,10 +405,13 @@ export default function OrdersDashboardPage() {
           </div>
         ) : (
           approverView ? (
-            // ── THE APPROVER'S DASHBOARD ── what needs their decision | revenue, then the orders to watch.
-            // The decision list reads its own rows (PIs for review, revised PIs, documents) under the reader's RLS.
+            // ── THE APPROVER'S DASHBOARD ── four cards (new PIs, changes on running orders, clarifications from
+            // Operations, waiting on others), then revenue. "Orders to watch" is no longer drawn.
+            // The cards read their own rows (PIs, revised PIs, flagged PIs, documents) under the reader's RLS.
             <AdminDashboardView
               summary={summary.summary}
+              // Operations' answers are rows of the approver's cards; a stable empty list keeps the cards' read from re-running.
+              answers={operations.kind === 'ready' ? operations.read.responses : NO_ANSWERS}
               supabase={supabase}
               viewerId={profile?.id ?? null}
               isAdmin={ordersCaps.canApproveOrderSubmission}

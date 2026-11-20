@@ -11,7 +11,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { DecisionCard } from '@/components/orders/dashboard/DecisionQueue'
+import { DecisionCards } from '@/components/orders/dashboard/DecisionCards'
 import { FlaggedPiStrip, FlaggedPiStripView } from '@/components/orders/dashboard/FlaggedPiStrip'
 import { flaggedRow, reviewRow, sortDecisionRows } from './adminDashboard'
 import { readFlaggedPis } from './flaggedPis'
@@ -30,39 +30,42 @@ const flaggedApi = (over: Record<string, unknown> = {}) => ({
 })
 const flagged = (over: Record<string, unknown> = {}) => readFlaggedPis([flaggedApi(over)])[0]
 
-describe('the approver\'s "Needs your decision"', () => {
+describe('the approver\'s dashboard', () => {
   const ready = (rows: ReturnType<typeof flaggedRow>[], extra: { flaggedFailed?: boolean } = {}) =>
-    html(createElement(DecisionCard, { state: { kind: 'ready', rows: sortDecisionRows(rows, NOW), ...extra } }))
+    html(createElement(DecisionCards, { state: { kind: 'ready', rows: sortDecisionRows(rows, NOW), ...extra } }))
 
-  test('a flagged PI is a row: client, Order and version, who flagged it, how long, what Operations said, a link to the Order', () => {
+  test('a flagged PI is a row on the sheet: number, client, who flagged it, how long, what Operations said, a link to the Order', () => {
     const out = ready([flaggedRow(flagged())])
+    assert.match(out, /Needs your action/)
+    assert.match(out, />#546</)
     assert.match(out, /Qavaali/)
-    assert.match(out, /Order 546 · PI V1 · from Nitish Bansal/)
+    assert.match(out, />Nitish</)
     assert.match(out, /3 d 0 h/)
     assert.match(out, /Since 8 Nov/)
     assert.match(out, /Operations cannot accept PI V1/)
     assert.match(out, /client wanted a visit from our side/)
     assert.match(out, /href="\/orders\/o-546\?returnTo=%2Forders"/)
     assert.match(out, /ageDanger/, 'three days is red, with an icon')
-    assert.match(out, />—<\/span>/, 'no value is shown')
+    assert.match(out, />Respond</)
+    assert.equal(/₹/.test(out), false, 'no value is shown')
   })
 
-  test('beside other decisions it is tagged, and the longest wait leads', () => {
+  test('beside a new PI it is its own group, and the longest wait is the one to start with', () => {
     const review = { id: 's1', client_name: 'Client 1', bill_to_name: null, draft_reference: 'PID-00001', subtotal_after_discount: '1000', submitted_by: null, submitted_at: '2026-11-11T06:00:00Z' }
     const out = ready([reviewRow(review, null, null), flaggedRow(flagged())])
-    assert.match(out, /Flagged by Operations<\/span>/)
-    assert.match(out, /PI review<\/span>/)
-    assert.ok(out.indexOf('Qavaali') < out.indexOf('Client 1'), 'the PI flagged three days ago is above the one submitted two hours ago')
+    assert.ok(out.indexOf('New PIs to approve') < out.indexOf('Clarifications from Operations'))
+    assert.ok(out.lastIndexOf('Qavaali') > out.indexOf('Clarifications from Operations'), 'the row is under its group')
+    assert.match(out, /Start with Qavaali/)
   })
 
-  test('a flagged-PI read that failed is said, and an empty list is then NOT "nothing is waiting"', () => {
+  test('a flagged-PI read that failed is said, and the page then NEVER says "nothing is waiting"', () => {
     const empty = ready([], { flaggedFailed: true })
     assert.match(empty, /role="alert"[^>]*>PIs flagged by Operations could not be loaded/)
     assert.equal(/Nothing is waiting/.test(empty), false)
     const withRows = ready([flaggedRow(flagged())], { flaggedFailed: true })
     assert.match(withRows, /could not be loaded/)
     assert.match(withRows, /Qavaali/, 'the rows that were read are still drawn')
-    assert.match(ready([]), /Nothing is waiting for your decision/)
+    assert.match(ready([]), /Nothing is waiting on you/)
   })
 })
 

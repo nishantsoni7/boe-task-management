@@ -1,22 +1,25 @@
 'use client'
 
-// THE APPROVER'S ORDERS DASHBOARD (owner-approved layout, 2026-11-02):
+// THE APPROVER'S ORDERS DASHBOARD (owner-approved preview, 2026-11-20; the 2026-11-02 layout it replaces
+// had "Needs your decision | Revenue" over "Orders to watch"):
 //
-//   Needs your decision | Revenue          what is waiting on me, and how are we doing
-//   Orders to watch                        which running orders need chasing
+//   New PIs to approve · Changes on running orders        on the reader
+//   Clarifications from Operations · Waiting on others    on the reader · with Sales or Operations
 //
 // Drawn for a reader who can approve PIs once the overview has arrived; everybody else keeps the
-// dashboards they had. Factory Focus and "Operations responses" keep their own sections above it.
+// dashboards they had. "Orders to watch" (AdminOrdersBoard) is no longer drawn here. Factory Focus keeps its
+// own section above. Operations' answers are cards rows now, so the page does not draw them separately here.
 
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { DashboardSummary } from '@/lib/orders/orderDashboardSummary'
-import { AdminOrdersBoard } from './AdminOrdersBoard'
-import { AdminRevenueCard } from './AdminRevenueCard'
+import type { ChangeResponse } from '@/lib/orders/operationsDashboard'
 import { DecisionQueue } from './DecisionQueue'
 import styles from './adminDashboard.module.css'
 
-export function AdminDashboardView({ summary, supabase, viewerId, isAdmin, canReviewChanges, viewingAs }: {
+export function AdminDashboardView({ summary, answers, supabase, viewerId, isAdmin, canReviewChanges, viewingAs }: {
   summary: DashboardSummary
+  /** Operations' answers on revised PIs, from the page's own Operations read; empty when it is not available. */
+  answers: readonly ChangeResponse[]
   supabase: SupabaseClient
   viewerId: string | null
   isAdmin: boolean
@@ -26,11 +29,10 @@ export function AdminDashboardView({ summary, supabase, viewerId, isAdmin, canRe
 }) {
   return (
     <div className={styles.root}>
-      <div className={summary.revenue ? styles.top : styles.topSolo}>
-        <DecisionQueue supabase={supabase} viewerId={viewerId} isAdmin={isAdmin} canReviewChanges={canReviewChanges} viewingAs={viewingAs} reloadKey={summary.now} />
-        {summary.revenue ? <AdminRevenueCard revenue={summary.revenue} /> : null}
-      </div>
-      <AdminOrdersBoard summary={summary} />
+      <DecisionQueue
+        supabase={supabase} viewerId={viewerId} isAdmin={isAdmin} canReviewChanges={canReviewChanges} viewingAs={viewingAs}
+        reloadKey={summary.now} alignment={summary.notAligned} reviewerName={summary.reviewer?.name ?? null} answers={answers}
+      />
     </div>
   )
 }
