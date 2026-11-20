@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `a97765c4` — Quotations: a quotation started from a lead copies its contact role into the client type (#960)
-- Commits on this branch: 1519
+- Commit: `cf922759` — Quotations: typing in Material and Remarks no longer refits the price model for every product
+- Commits on this branch: 1520
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 497 (first `20260530_create_positions.sql`, latest `20270817000000_quotation_delete.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1096   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `cf922759` 2026-11-20 Quotations: typing in Material and Remarks no longer refits the price model for every product
 - `a97765c4` 2026-11-20 Quotations: a quotation started from a lead copies its contact role into the client type (#960)
 - `e31bbde9` 2026-11-20 Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied) (#959)
 - `f928263f` 2026-11-20 Quotations: an old Task request no longer makes a quotation without a lead; docs say 20270814000100 is applied (#958)
@@ -38,7 +39,6 @@
 - `83186471` 2026-11-19 Picture credits page: a "Left this month" column for each person (#940)
 - `1442bf52` 2026-11-18 Docs: stamp #938 (picture credits switches say ON or OFF) as merged (#939)
 - `3f50eadd` 2026-11-18 Picture credits page: the switches say ON or OFF, and Limits stay locked while nobody has credits (#938)
-- `85db2249` 2026-11-18 Docs: stamp #931, #933, #934 and #936 as merged and applied (#937)
 
 ## Pages by top-level area
 

@@ -185,10 +185,15 @@ export function predict(fit: Fit, f: LineFeatures, yearsAgo = 0): ModelSuggestio
   }
 }
 
-/** A line priced by the model; null when its type is unknown or has too few prices (the caller falls back to v1). */
-export function priceLine(points: readonly ModelPoint[], line: Parameters<typeof lineFeatures>[0], now = Date.now()): ModelSuggestion | null {
+/**
+ * A line priced by the model; null when its type is unknown or has too few prices (the caller falls back to v1).
+ * `fits` keeps one fit per product type between calls: the fit depends on the points and the type, never on the line,
+ * so a caller that prices again on every keystroke passes one Map per pool and the pool is read once, not once per line.
+ */
+export function priceLine(points: readonly ModelPoint[], line: Parameters<typeof lineFeatures>[0], now = Date.now(), fits?: Map<string, Fit | null>): ModelSuggestion | null {
   const f = lineFeatures(line)
   if (!f.type) return null
-  const fit = fitType(points, f.type, now)
+  let fit = fits?.get(f.type)
+  if (fit === undefined) { fit = fitType(points, f.type, now); fits?.set(f.type, fit) }
   return fit ? predict(fit, f) : null
 }
