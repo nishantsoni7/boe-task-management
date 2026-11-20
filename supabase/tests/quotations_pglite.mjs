@@ -1411,4 +1411,17 @@ await db.exec(mig('20270808000100_quotation_client_choices.sql'))
   ok('only the desk can brief a price; a bad price is refused; signed-out callers cannot call any of it')
 }
 
+// ── 20270816000000: starting from a lead also copies its contact role into the client type ──
+{
+  const L1 = '00000000-0000-0000-0000-0000000001a1', L4 = '00000000-0000-0000-0000-0000000001a4'
+  await db.exec(`alter table public.sales_leads add column contact_role text; update public.sales_leads set contact_role = 'architect' where id = '${L1}';`)
+  await db.exec(mig('20270816000000_quotation_start_contact_role.sql'))
+  const type = async lead => (await db.query('select client_type from public.quotations where id = $1', [await rpc(U.sales, 'quotation_start', lead, {})])).rows[0].client_type
+  assert.equal(await type(L1), 'architect')
+  assert.equal(await type(L4), null)
+  const viaCreate = await rpc(U.sales, 'quotation_create', { lead_id: L1 })
+  assert.equal((await db.query('select client_type, client_name from public.quotations where id = $1', [viaCreate])).rows[0].client_type, 'architect')
+  ok('a quotation started from a lead takes its contact role as the client type (none stays none), also through quotation_create')
+}
+
 console.log(`all ${checks} checks passed`)
