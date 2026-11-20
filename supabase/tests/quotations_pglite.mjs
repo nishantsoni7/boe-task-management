@@ -1170,4 +1170,245 @@ await db.exec(mig('20270808000100_quotation_client_choices.sql'))
   ok('quotation_for_lead is closed to signed-out callers')
 }
 
+// ── 20270813000000: a lost quotation carries one of the lead's eleven reasons; the report counts reasons ──
+{
+  await db.exec(mig('20270813000000_quotation_lost_reasons.sql'))
+  const mk = name => rpc(U.sales, 'quotation_create', { client_name: name })
+  const lastStatus = async q => (await db.query(`select detail from public.quotation_events where quotation_id = $1 and kind = 'status' order by at desc limit 1`, [q])).rows[0].detail
+  const setLost = (q, note, reason) => as(U.sales, `select public.quotation_set_status($1::uuid, 'lost', $2, $3)`, [q, note, reason])
+
+  const l1 = await mk('Lost one'), l2 = await mk('Lost two'), l3 = await mk('Lost three'), l4 = await mk('Lost four'), l5 = await mk('Lost old style')
+  await setLost(l1, '12% above the other quote', 'price_too_high')
+  assert.deepEqual(await lastStatus(l1), { from: 'draft', to: 'lost', note: '12% above the other quote', reason: 'price_too_high' })
+  await setLost(l2, null, 'price_too_high')
+  assert.deepEqual(await lastStatus(l2), { from: 'draft', to: 'lost', note: null, reason: 'price_too_high' })
+  ok('a reason of the lead\'s eleven is kept in the history entry beside the note, and needs no note')
+
+  await fails(U.sales, `select public.quotation_set_status($1::uuid, 'lost', $2, $3)`, [l3, 'x', 'too_expensive'], /QUOTATION_INVALID: reason/)
+  await fails(U.sales, `select public.quotation_set_status($1::uuid, 'lost', $2, $3)`, [l3, '', 'other'], /say why it was lost/)
+  await setLost(l3, 'Client sold the hotel', 'other')
+  assert.equal((await lastStatus(l3)).reason, 'other')
+  ok('an unknown reason is refused, and "other" needs words')
+
+  await fails(U.sales, `select public.quotation_set_status($1::uuid, 'lost', $2)`, [l4, ''], /say why it was lost/)
+  await as(U.sales, `select public.quotation_set_status($1::uuid, 'lost', $2)`, [l5, 'Went with a cheaper vendor'])
+  assert.deepEqual(await lastStatus(l5), { from: 'draft', to: 'lost', note: 'Went with a cheaper vendor' })
+  ok('a call with no reason works as before: the note is the reason, and three characters are needed')
+
+  const l6 = await mk('Not lost')
+  await as(U.sales, `select public.quotation_set_status($1::uuid, 'sent', null, $2)`, [l6, 'price_too_high'])
+  assert.ok(!('reason' in await lastStatus(l6)))
+  ok('a reason sent with any other status is not kept')
+
+  const rep = (await as(U.admin, `select public.quotation_report(current_date - 30, current_date + 1, 'all') as r`)).rows[0].r
+  const by = Object.fromEntries(rep.lost_reasons.map(x => [x.reason, x]))
+  assert.deepEqual([by.price_too_high.keyed, by.price_too_high.n], [true, 2])
+  assert.deepEqual([by.other.keyed, by.other.n], [true, 1])
+  assert.deepEqual([by['Went with a cheaper vendor'].keyed, by['Went with a cheaper vendor'].n], [false, 1])
+  ok('the report counts reasons by key (two price_too_high), and still counts an older free-text reason as its own line')
+
+  await assert.rejects(() => as(null, `select public.quotation_set_status($1::uuid, 'lost', 'abc', null)`, [l6], 'anon'), /permission denied/)
+  assert.equal((await db.query(`select count(*)::int as n from pg_proc where proname = 'quotation_set_status'`)).rows[0].n, 1)
+  ok('quotation_set_status stays closed to signed-out callers, and only the four-argument function exists')
+}
+
+// ── 20270814000000 + 20270814000100: a quotation STARTS FROM a Sales lead (details copied from it) ──
+{
+  const L1 = '00000000-0000-0000-0000-0000000001a1' // Hotel Aravali, held by Mohit (sales)
+  const L2 = '00000000-0000-0000-0000-0000000001a2' // Cafe Lake, held by Prerna (sales2)
+  const L3 = '00000000-0000-0000-0000-0000000001a3' // Closed Resort, Dead
+  const L4 = '00000000-0000-0000-0000-0000000001a4' // a lead with no name
+  const DESK = '00000000-0000-0000-0000-0000000000f6' // like Nitish: quotations view + create + edit + view_all, Sales view + assign
+  await db.exec(`
+    alter table public.sales_leads add column email text, add column location text, add column requirement text, add column client_type text;
+    update public.sales_leads set email = 'aravali@example.invalid', location = 'Udaipur', requirement = '80 rooms, teak, ready in 12 weeks', client_type = 'hotel' where id = '${L1}';
+    insert into public.sales_leads (id, name, phone_e164, stage, assigned_to, created_by, dead_reason) values ('${L4}', null, '+919700000004', 'new', '${U.sales}', '${U.sales}', null), ('${L3}', 'Closed Resort', '+919700000003', 'dead', '${U.sales}', '${U.sales}', 'price_too_high');
+    insert into public.users (id, full_name, role) values ('${DESK}', 'Desk Person', 'employee');
+    insert into public.grants values ('${DESK}', 'quotations', 'view'), ('${DESK}', 'quotations', 'create'), ('${DESK}', 'quotations', 'edit'), ('${DESK}', 'quotations', 'view_all'),
+      ('${DESK}', 'sales', 'view'), ('${DESK}', 'sales', 'assign');`)
+  await db.exec(mig('20270814000000_quotation_start_from_lead.sql'))
+  const start = (uid, lead, data = {}) => rpc(uid, 'quotation_start', lead, data)
+  const row = async id => (await db.query('select * from public.quotations where id = $1', [id])).rows[0]
+
+  const q = await start(U.sales, L1)
+  let r = await row(q)
+  assert.deepEqual([r.client_name, r.contact_name, r.contact_phone, r.client_email, r.delivery_city, r.project_type, r.lead_id, r.owner_id, r.created_by, r.source],
+    ['Hotel Aravali', 'Hotel Aravali', '+919876543210', 'aravali@example.invalid', 'Udaipur', 'hotel', L1, U.sales, U.sales, 'Sales lead'])
+  assert.match(r.quote_no, /^QT-MS-\d{5}$/); assert.match(r.internal_notes, /^From lead \d+ · 80 rooms, teak, ready in 12 weeks$/); assert.equal(r.status, 'draft')
+  const ev = (await db.query(`select detail from public.quotation_events where quotation_id = $1 and kind = 'created'`, [q])).rows[0].detail
+  assert.equal(ev.lead_id, L1); assert.ok(ev.lead_no > 0)
+  ok('starting from a lead writes a linked draft with the lead\'s name, phone, e-mail, city, venue and requirement copied in, and the lead on its history')
+
+  r = await row(await start(U.sales, L4))
+  assert.match(r.client_name, /^Lead \d+$/); assert.equal(r.contact_name, null); assert.equal(r.lead_id, L4)
+  ok('a lead with no name still starts a quotation (named "Lead N"; the Client card stays editable)')
+
+  await fails(U.sales, 'select public.quotation_start($1::uuid)', [L3], /QUOTATION_LEAD_CLOSED/)
+  await fails(U.sales, 'select public.quotation_start($1::uuid)', [L2], /SALES_NOT_FOUND/)
+  await fails(U.sales, 'select public.quotation_start($1::uuid)', ['00000000-0000-0000-0000-00000000dead'], /SALES_NOT_FOUND/)
+  ok('a Dead lead, another person\'s lead and a lead that does not exist are refused (the last two give the same answer)')
+
+  await fails(U.nobody, 'select public.quotation_start($1::uuid)', [L1], /QUOTATIONS_FORBIDDEN/)
+  await fails(U.manager, 'select public.quotation_start($1::uuid)', [L1], /QUOTATIONS_FORBIDDEN/)
+  await fails('00000000-0000-0000-0000-0000000000e5', 'select public.quotation_start($1::uuid)', [L1], /SALES_FORBIDDEN/)
+  await fails(null, 'select public.quotation_start($1::uuid)', [L1], /permission denied/, 'anon')
+  ok('no Quotations access, no create right, or no Sales access is refused; a signed-out caller cannot call it at all')
+
+  await fails(U.sales, 'select public.quotation_start($1::uuid, $2::jsonb)', [L1, { owner_id: U.sales2 }], /only an administrator or the pricing desk/)
+  const forSales = await start(DESK, L1, { owner_id: U.sales, source: 'Excel from the client' })
+  r = await row(forSales)
+  assert.deepEqual([r.owner_id, r.created_by, r.source], [U.sales, DESK, 'Excel from the client']); assert.match(r.quote_no, /^QT-MS-/)
+  const forSales2 = await start(U.admin, L1, { owner_id: U.sales })
+  assert.equal((await row(forSales2)).owner_id, U.sales)
+  const mine = await rpc(U.sales, 'quotation_list', 'mine')
+  assert.ok(mine.some(x => x.id === forSales) && mine.some(x => x.id === forSales2))
+  ok('the pricing desk or an administrator can put a quotation on a salesperson\'s page (their initials in the number, their "My quotations"); a salesperson cannot')
+
+  await fails(U.admin, 'select public.quotation_start($1::uuid, $2::jsonb)', [L1, { owner_id: U.nobody }], /cannot own quotations/)
+  await fails(U.admin, 'select public.quotation_start($1::uuid, $2::jsonb)', [L1, { owner_id: U.manager }], /cannot own quotations/)
+  ok('a quotation cannot be put on somebody who cannot make quotations (no grant, or view-only)')
+
+  const names = async uid => (await as(uid, 'select full_name from public.quotation_makers()')).rows.map(x => x.full_name)
+  const list = await names(U.admin)
+  for (const n of ['Mohit Sharma', 'Prerna Purohit', 'Desk Person', 'Quotes Only']) assert.ok(list.includes(n), n)
+  assert.ok(!list.includes('Quotes Only X') && !list.includes('No Grant'))
+  assert.equal((await names(DESK)).includes('Mohit Sharma'), true)
+  await fails(U.sales, 'select * from public.quotation_makers()', [], /only an administrator or the pricing desk/)
+  await fails(U.nobody, 'select * from public.quotation_makers()', [], /QUOTATIONS_FORBIDDEN/)
+  assert.equal((await db.query(`select public.quotation_can_own('${U.manager}') as a, public.quotation_can_own('${U.nobody}') as b`)).rows[0].a, false)
+  ok('quotation_makers lists the people who can make quotations, for the desk and Admin only')
+
+  // quotation_create now needs a lead and is the same code path
+  await db.exec(mig('20270814000100_quotation_lead_required.sql'))
+  await fails(U.sales, 'select public.quotation_create($1::jsonb)', [{ client_name: 'Typed by hand' }], /QUOTATION_LEAD_REQUIRED/)
+  await fails(U.sales, 'select public.quotation_create($1::jsonb)', [{ lead_id: 'not-a-uuid' }], /QUOTATION_INVALID/)
+  await fails(U.nobody, 'select public.quotation_create($1::jsonb)', [{ client_name: 'X' }], /QUOTATIONS_FORBIDDEN/)
+  const viaCreate = await rpc(U.sales, 'quotation_create', { lead_id: L1, client_name: 'IGNORED typed name' })
+  r = await row(viaCreate)
+  assert.deepEqual([r.client_name, r.lead_id], ['Hotel Aravali', L1])
+  ok('quotation_create without a lead is refused; with one it is quotation_start (typed details are ignored, the lead\'s are used)')
+
+  const g = (await db.query(`select has_function_privilege('anon', 'public.quotation_create(jsonb)', 'EXECUTE') as a, has_function_privilege('authenticated', 'public.quotation_create(jsonb)', 'EXECUTE') as b`)).rows[0]
+  assert.deepEqual([g.a, g.b], [false, true])
+  ok('quotation_create is still closed to signed-out callers')
+}
+
+// ── 20270814000200: quotation requests inside Quotations (sent to a senior, answered, withdrawn) ──
+{
+  const DESK = '00000000-0000-0000-0000-0000000000f6'
+  const L1 = '00000000-0000-0000-0000-0000000001a1'
+  await db.exec(mig('20270814000200_quotation_requests.sql'))
+  const q = await rpc(U.sales, 'quotation_start', L1, {})
+  const state = async (uid, id) => (await as(uid, 'select public.quotation_ask_state($1::uuid) as r', [id])).rows[0].r
+  const send = (uid, id, to, kind, note) => as(uid, 'select public.quotation_request_send($1::uuid, $2::uuid, $3, $4) as r', [id, to, kind, note ?? null])
+
+  const people = (await as(U.sales, 'select full_name from public.quotation_desk_people()')).rows.map(x => x.full_name)
+  assert.ok(people.includes('Desk Person') && people.includes('Admin Person') && !people.includes('Mohit Sharma') && !people.includes('Prerna Purohit'))
+  ok('the people who can be asked are the administrator and the pricing desk, never a plain salesperson')
+
+  let s = await state(U.sales, q)
+  assert.deepEqual([s.open, s.may_ask, s.may_answer], [null, true, false])
+  await fails(U.sales, 'select public.quotation_request_send($1::uuid, $2::uuid, $3, null)', [q, U.sales2, 'price'], /choose a senior/)
+  await fails(U.sales, 'select public.quotation_request_send($1::uuid, $2::uuid, $3, null)', [q, U.sales, 'price'], /choose a senior/)
+  await fails(U.sales, 'select public.quotation_request_send($1::uuid, $2::uuid, $3, null)', [q, DESK, 'cheap'], /what you need/)
+  await fails(U.sales2, 'select public.quotation_request_send($1::uuid, $2::uuid, $3, null)', [q, DESK, 'price'], /QUOTATION_NOT_FOUND/)
+  ok('only a senior can be asked, for price or verify, and only by someone who may edit that quotation')
+
+  const rid = (await send(U.sales, q, DESK, 'price', 'Teak, 56 rooms')).rows[0].r
+  s = await state(U.sales, q)
+  assert.equal(s.open.to_name, 'Desk Person'); assert.equal(s.open.kind, 'price'); assert.equal(s.open.note, 'Teak, 56 rooms')
+  assert.deepEqual([s.may_ask, s.may_answer, s.may_withdraw], [false, false, true])
+  await fails(U.sales, 'select public.quotation_request_send($1::uuid, $2::uuid, $3, null)', [q, U.admin, 'verify'], /already with a senior/)
+  s = await state(DESK, q)
+  assert.deepEqual([s.may_answer, s.may_withdraw], [true, false])
+  ok('one open request per quotation; the person asked can answer it, the asker can withdraw it')
+
+  assert.equal((await as(DESK, 'select public.quotation_requests_count() as n')).rows[0].n, 1)
+  assert.equal((await as(U.sales, 'select public.quotation_requests_count() as n')).rows[0].n, 0)
+  const mine = (await as(U.sales, 'select public.quotation_requests_list() as r')).rows[0].r
+  assert.equal(mine.length, 1); assert.equal(mine[0].quote_no.startsWith('QT-MS-'), true); assert.equal(mine[0].client_name, 'Hotel Aravali'); assert.ok(mine[0].lead_no > 0)
+  assert.equal((await as(U.sales2, 'select public.quotation_requests_list() as r')).rows[0].r.length, 0)
+  assert.equal((await as(U.admin, 'select public.quotation_requests_list() as r')).rows[0].r.length, 1)
+  ok('the senior\'s pending count, the asker\'s and the senior\'s lists show it; another salesperson sees nothing; the administrator sees all')
+
+  await fails(U.sales, 'select public.quotation_request_answer($1::uuid, null)', [rid], /QUOTATION_NOT_FOUND/)
+  await as(DESK, 'select public.quotation_request_answer($1::uuid, $2)', [rid, 'Priced at the usual teak rate'])
+  s = await state(U.sales, q)
+  assert.equal(s.open, null); assert.equal(s.last.answer_note, 'Priced at the usual teak rate'); assert.equal(s.last.answered_by_name, 'Desk Person'); assert.equal(s.may_ask, true)
+  await fails(DESK, 'select public.quotation_request_answer($1::uuid, null)', [rid], /already closed/)
+  const kinds = (await db.query(`select kind from public.quotation_events where quotation_id = $1 and kind in ('asked','answered') order by at`, [q])).rows.map(x => x.kind)
+  assert.deepEqual(kinds, ['asked', 'answered'])
+  ok('answering closes it, the note comes back to the asker, who may ask again; both steps are on the quotation\'s history')
+
+  const rid2 = (await send(U.sales, q, U.admin, 'verify')).rows[0].r
+  await fails(U.sales2, 'select public.quotation_request_withdraw($1::uuid)', [rid2], /QUOTATION_NOT_FOUND/)
+  await as(U.sales, 'select public.quotation_request_withdraw($1::uuid)', [rid2])
+  assert.equal((await state(U.sales, q)).open, null)
+  assert.equal((await as(U.admin, 'select public.quotation_requests_count() as n')).rows[0].n, 0)
+  ok('the asker can withdraw; a withdrawn request no longer counts for the senior')
+
+  await rpc(U.sales, 'quotation_set_status', q, 'archived')
+  await fails(U.sales, 'select public.quotation_request_send($1::uuid, $2::uuid, $3, null)', [q, DESK, 'price'], /cannot be sent to a senior/)
+  await fails(U.nobody, 'select public.quotation_requests_list()', [], /QUOTATIONS_FORBIDDEN/)
+  await fails(null, 'select public.quotation_requests_count()', [], /permission denied/, 'anon')
+  const direct = await db.query(`select has_table_privilege('authenticated', 'public.quotation_requests', 'SELECT') as t`)
+  assert.equal(direct.rows[0].t, false)
+  ok('a closed quotation cannot be sent; no access, no answer; signed-out callers and the table itself are closed')
+}
+
+// ── 20270814000300: report cards and the price brief ──
+{
+  const DESK = '00000000-0000-0000-0000-0000000000f6'
+  const L1 = '00000000-0000-0000-0000-0000000001a1'
+  await db.exec(`
+    create table public.pricing_feedback (id uuid primary key default gen_random_uuid(), created_at timestamptz not null default now(), created_by uuid,
+      source text not null, kind text not null, comment text check (char_length(comment) <= 1000), expected_price numeric(12,2) check (expected_price is null or expected_price > 0),
+      line_name text, line_size text, line_material text, line_finish text, line_qty numeric(12,2), client_type text, suggestion jsonb, quotation_id uuid,
+      status text not null default 'new', handled_by uuid, handled_at timestamptz, handled_note text,
+      constraint pricing_feedback_kind_check check (kind in ('too_high', 'too_low', 'wrong_type', 'misread', 'other', 'correction', 'differs_taught')));`)
+  await db.exec(mig('20270814000300_quotation_cards_and_briefs.sql'))
+  const cards = (uid, person) => as(uid, 'select public.quotation_cards($1::date, $2::date, $3::uuid) as r', ['2020-01-01', '2099-12-31', person ?? null]).then(r => r.rows[0].r)
+
+  const q1 = await rpc(U.sales, 'quotation_start', L1, {})
+  await rpc(U.sales, 'quotation_save', q1, { header: { client_name: 'Hotel Aravali', valid_days: 7, gst_mode: 'igst' }, areas: [], lines: [{ name: 'Table', qty_fixed: 5, unit_price: 10000, tax_rate: 18 }] })
+  await rpc(U.sales, 'quotation_share', q1, true)
+  await as(U.sales, 'select public.quotation_request_send($1::uuid, $2::uuid, $3, $4)', [(await rpc(U.sales, 'quotation_start', L1, {})), DESK, 'price', null])
+
+  let c = await cards(U.sales)
+  assert.equal(c.me.person, U.sales); assert.ok(c.me.open_count >= 2); assert.equal(c.me.waiting_senior, 1); assert.ok(c.me.sent >= 1); assert.ok(Number(c.me.value_made) >= 50000)
+  assert.equal(c.desk, null); assert.equal(c.team, null)
+  ok('a salesperson\'s cards: open, waiting on a senior, made / sent / value for the period; no desk or team block')
+
+  c = await cards(DESK)
+  assert.equal(c.desk.waiting, 1); assert.ok(c.desk.oldest_at); assert.ok(c.team.people.length >= 1)
+  assert.equal(c.team.top.name, c.team.people[0].name)
+  ok('the desk sees its waiting requests and the team block; the top maker is the first of the people')
+
+  c = await cards(U.admin)
+  assert.ok(c.team.made >= 2 && Number(c.team.value_made) >= 50000)
+  const one = await cards(U.admin, U.sales)
+  assert.equal(one.me.person, U.sales); assert.equal(one.me.waiting_senior, 1)
+  await fails(U.sales, 'select public.quotation_cards($1::date, $2::date, $3::uuid)', ['2020-01-01', '2099-12-31', U.sales2], /only see your own/)
+  await fails(U.nobody, 'select public.quotation_cards($1::date, $2::date, null)', ['2020-01-01', '2099-12-31'], /QUOTATIONS_FORBIDDEN/)
+  const none = await as(U.admin, 'select public.quotation_cards($1::date, $2::date, null) as r', ['1999-01-01', '1999-01-02'])
+  assert.equal(none.rows[0].r.team.made, 0); assert.equal(none.rows[0].r.team.top, null)
+  ok('Admin sees any candidate\'s cards; a salesperson only their own; an empty period gives zeros and no top maker')
+
+  const brief = (uid, id, items) => as(uid, 'select public.quotation_price_briefs_save($1::uuid, $2::jsonb) as r', [id, JSON.stringify(items)]).then(r => r.rows[0].r)
+  assert.equal(await brief(DESK, q1, [{ name: 'Table', price: 10000, size: '72x36', material: 'Teak', qty: 5, reason: 'Teak rate 4,200 per cft plus labour' }, { name: 'Chair', price: 5000, reason: '  ' }]), 1)
+  const got = (await as(DESK, 'select public.quotation_price_briefs_get($1::uuid) as r', [q1])).rows[0].r
+  assert.deepEqual(got, { Table: 'Teak rate 4,200 per cft plus labour' })
+  const fb = (await db.query(`select kind, status, source, expected_price::int as p, quotation_id from public.pricing_feedback`)).rows
+  assert.deepEqual(fb.map(x => [x.kind, x.status, x.source, x.p, x.quotation_id]), [['price_reason', 'done', 'quotation', 10000, q1]])
+  await brief(DESK, q1, [{ name: 'Table', price: 10000, reason: 'Revised: teak at 4,400' }])
+  assert.equal((await as(DESK, 'select public.quotation_price_briefs_get($1::uuid) as r', [q1])).rows[0].r.Table, 'Revised: teak at 4,400')
+  ok('a brief stores only the products that were explained (as done feedback) and the latest one is read back to pre-fill')
+
+  await fails(U.sales, 'select public.quotation_price_briefs_save($1::uuid, $2::jsonb)', [q1, '[]'], /only the pricing desk/)
+  await fails(U.sales, 'select public.quotation_price_briefs_get($1::uuid)', [q1], /only the pricing desk/)
+  await fails(DESK, 'select public.quotation_price_briefs_save($1::uuid, $2::jsonb)', [q1, JSON.stringify([{ name: 'Table', price: -5, reason: 'x' }])], /check the brief/)
+  await fails(null, 'select public.quotation_cards($1::date, $2::date, null)', ['2020-01-01', '2020-01-02'], /permission denied/, 'anon')
+  ok('only the desk can brief a price; a bad price is refused; signed-out callers cannot call any of it')
+}
+
 console.log(`all ${checks} checks passed`)

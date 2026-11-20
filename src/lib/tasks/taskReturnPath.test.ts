@@ -283,9 +283,9 @@ describe('every entry point passes its own view (8–12)', () => {
   })
 
   test('Quotation requests rows', () => {
-    const code = codeOf(read('src/app/tasks/quotation-requests/page.tsx'))
-    assert.ok(code.includes('onClick={() => router.push(taskDetailHref(task.id, returnTo))}'))
-    assert.ok(code.includes('onView={() => router.push(taskDetailHref(task.id, returnTo))}'))
+    // The old list moved into the Quotations module (20 Nov 2026); its Earlier requests tab passes its own page.
+    const code = codeOf(read('src/components/quotations/RequestsScreen.tsx'))
+    assert.ok(code.includes('router.push(taskDetailHref(t.id, HERE))'))
   })
 
   test('/tasks/all rows (both layouts)', () => {

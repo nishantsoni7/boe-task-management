@@ -62,7 +62,6 @@ const TASK = '99999999-9999-4999-8999-999999999999' // a shape, never a real id
 const SCREENS = [
   { name: 'New Task',        path: 'src/app/tasks/create/page.tsx' },
   { name: 'Assigned By Me',  path: 'src/app/tasks/assigned-by-me/page.tsx' },
-  { name: 'Quotation',       path: 'src/app/tasks/quotation-requests/new/page.tsx' },
   { name: 'Meeting Task',    path: 'src/components/meetings/MeetingTaskModal.tsx' },
 ]
 
@@ -185,8 +184,8 @@ describe('every creation screen distinguishes A and C, and has no outcome B', ()
 
     test(`${name}: no "not notified" notice exists`, () => {
       assert.equal(outcomeBBranches(src).length, 0)
-      // Only the quotation request form asks for a notice (owner, 18 Nov 2026), and a failure is only logged.
-      assert.equal(src.includes('requestAssignmentNotification'), name === 'Quotation')
+      // No creation screen asks for a notice any more (the quotation request form left Tasks, 20 Nov 2026).
+      assert.equal(src.includes('requestAssignmentNotification'), false)
       assert.equal(src.includes('AssignmentNotificationNotice'), false)
       assert.equal(src.includes(ASSIGNMENT_NOTIFICATION_FAILED_MESSAGE), false)
     })

@@ -118,6 +118,9 @@ export function classifyError(err: Raw): QuotationError {
   // The lead link (20270811000000) also answers with the Sales module's own errors.
   if (/SALES_FORBIDDEN/.test(m)) return new QuotationError('forbidden', 'Your account has no access to Sales, so it cannot link a lead.')
   if (/SALES_NOT_FOUND/.test(m)) return new QuotationError('not_found', 'This lead does not exist or is not yours to see.')
+  // A quotation starts from a Sales lead (20270814000000 / 20270814000100).
+  if (/QUOTATION_LEAD_REQUIRED/.test(m)) return new QuotationError('invalid', 'Choose the Sales lead this quotation is for.')
+  if (/QUOTATION_LEAD_CLOSED/.test(m)) return new QuotationError('invalid', m.replace(/^.*QUOTATION_LEAD_CLOSED:\s*/, ''))
   if (/QUOTATIONS_FORBIDDEN/.test(m) || err.code === '42501') return new QuotationError('forbidden', m.replace(/^.*QUOTATIONS_FORBIDDEN:\s*/, '') || 'You do not have access to this.')
   if (/QUOTATION_NOT_FOUND/.test(m)) return new QuotationError('not_found', 'This quotation does not exist or is not yours to see.')
   if (/QUOTATION_STALE/.test(m)) return new QuotationError('stale', 'Somebody saved this quotation after you opened it. Reload to see their changes; your edits are still on screen.')
@@ -214,8 +217,17 @@ export async function fetchPublic(s: Supabase, token: string): Promise<PublicQuo
 
 // ── writes ────────────────────────────────────────────────────────────────
 
-export const createQuotation = (s: Supabase, data: Partial<Header> & { client_name: string; source?: string }) =>
-  call<string>(() => s.rpc('quotation_create', { p_data: data }))
+/**
+ * Start a quotation FROM a Sales lead (20270814000000): the client's name, phone, e-mail, city, venue and requirement are copied from the lead by
+ * the database, nothing is typed. `ownerId` puts it on somebody else's page (an administrator or the pricing desk only).
+ */
+export const startQuotation = (s: Supabase, leadId: string, o: { ownerId?: string | null; source?: string } = {}) =>
+  call<string>(() => s.rpc('quotation_start', { p_lead: leadId, p_data: { ...(o.ownerId ? { owner_id: o.ownerId } : {}), ...(o.source ? { source: o.source } : {}) } }))
+
+/** The people a quotation may be put on (administrator or pricing desk only), the caller first. */
+export type Maker = { id: string; full_name: string | null }
+export const makersKey = ['quotations', 'makers'] as const
+export const fetchMakers = (s: Supabase) => call<Maker[]>(() => s.rpc('quotation_makers'))
 
 /** The whole quotation in one go; the database refuses it if somebody saved after `expectedUpdatedAt`. */
 export function saveDoc(header: Header, areas: QuoteArea[], lines: QuoteLine[], expectedUpdatedAt: string) {
@@ -236,8 +248,9 @@ export function saveDoc(header: Header, areas: QuoteArea[], lines: QuoteLine[], 
 export const saveQuotation = (s: Supabase, id: string, doc: ReturnType<typeof saveDoc>) =>
   call<{ updated_at: string; value_before_gst: number }>(() => s.rpc('quotation_save', { p_id: id, p_doc: doc }))
 
-export const setStatus = (s: Supabase, id: string, status: QuotationStatus, note?: string) =>
-  call<string>(() => s.rpc('quotation_set_status', { p_id: id, p_status: status, p_note: note ?? null }))
+/** `reason`: one of the lead's eleven Dead reasons (20270813000000), sent only when given; the database part must be applied before the code that sends it. */
+export const setStatus = (s: Supabase, id: string, status: QuotationStatus, note?: string, reason?: string) =>
+  call<string>(() => s.rpc('quotation_set_status', { p_id: id, p_status: status, p_note: note ?? null, ...(reason ? { p_reason: reason } : {}) }))
 
 export const shareQuotation = (s: Supabase, id: string, on: boolean) =>
   call<string | null>(() => s.rpc('quotation_share', { p_id: id, p_on: on }))
@@ -327,3 +340,43 @@ export const fetchLeadQuotations = (s: Supabase, leadId: string) => call<LeadQuo
 
 export const savePriceSettings = (s: Supabase, maxDiscount: number | null, minPrice: number | null) =>
   call<PriceSettings>(() => s.rpc('quotation_price_settings_set', { p_max_discount_pct: maxDiscount, p_min_price_pct: minPrice }))
+
+// ── quotation requests inside Quotations (20270814000200) ─────────────────────────────────────────────────
+/** A quotation sent to a senior: to take the prices ('price') or to have the salesperson's prices checked ('verify'). */
+export type AskKind = 'price' | 'verify'
+export const ASK_LABEL: Record<AskKind, string> = { price: 'Needs prices', verify: 'Check my prices' }
+export type AskRequest = {
+  id: string; kind: AskKind; note: string | null; status: 'pending' | 'answered' | 'withdrawn'; created_at: string
+  answered_at: string | null; answer_note: string | null; from_id: string; from_name: string | null; to_id: string; to_name: string | null; answered_by_name: string | null
+}
+export type AskState = { open: AskRequest | null; last: AskRequest | null; may_ask: boolean; may_answer: boolean; may_withdraw: boolean }
+export type RequestRow = AskRequest & { quotation_id: string; quote_no: string; client_name: string; project_name: string | null; quotation_status: QuotationStatus; value: number; lead_no: number | null }
+export const askKeys = {
+  state: (id: string) => ['quotations', 'ask', id] as const,
+  list: ['quotations', 'requests'] as const,
+  count: ['quotations', 'requests-count'] as const,
+  desk: ['quotations', 'desk-people'] as const,
+}
+export const fetchAskState = (s: Supabase, id: string) => call<AskState>(() => s.rpc('quotation_ask_state', { p_quotation: id }))
+export const fetchDeskPeople = (s: Supabase) => call<Maker[]>(() => s.rpc('quotation_desk_people'))
+export const fetchRequests = (s: Supabase) => call<RequestRow[]>(() => s.rpc('quotation_requests_list'))
+export const fetchRequestCount = (s: Supabase) => call<number>(() => s.rpc('quotation_requests_count'))
+export const sendRequest = (s: Supabase, id: string, to: string, kind: AskKind, note: string) =>
+  call<string>(() => s.rpc('quotation_request_send', { p_quotation: id, p_to: to, p_kind: kind, p_note: note.trim() || null }))
+export const answerRequest = (s: Supabase, id: string, note: string) => call<null>(() => s.rpc('quotation_request_answer', { p_id: id, p_note: note.trim() || null }))
+export const withdrawRequest = (s: Supabase, id: string) => call<null>(() => s.rpc('quotation_request_withdraw', { p_id: id }))
+
+// ── report cards and the price brief (20270814000300) ─────────────────────────────────────────────────────────
+export type CardsMe = { person: string; name: string | null; open_count: number; open_value: number; waiting_senior: number; made: number; sent: number; confirmed: number; value_made: number; value_confirmed: number }
+export type CardsDesk = { waiting: number; oldest_at: string | null; answered: number; avg_hours: number | null }
+export type CardsPerson = { id: string; name: string | null; made: number; sent: number; confirmed: number; value_made: number; value_confirmed: number }
+export type CardsTeam = { made: number; sent: number; confirmed: number; value_made: number; value_confirmed: number; top: { id: string; name: string | null; made: number } | null; people: CardsPerson[] }
+export type Cards = { me: CardsMe; desk: CardsDesk | null; team: CardsTeam | null; from: string; to: string }
+export const cardsKey = (from: string, to: string, person: string | null) => ['quotations', 'cards', from, to, person] as const
+export const fetchCards = (s: Supabase, from: string, to: string, person: string | null) =>
+  call<Cards>(() => s.rpc('quotation_cards', { p_from: from, p_to: to, p_person: person }))
+
+export type BriefLine = { name: string; size?: string; material?: string; finish?: string; qty?: number | null; price: number; reason: string }
+export const briefKey = (id: string) => ['quotations', 'brief', id] as const
+export const fetchBriefs = (s: Supabase, id: string) => call<Record<string, string>>(() => s.rpc('quotation_price_briefs_get', { p_id: id }))
+export const saveBriefs = (s: Supabase, id: string, items: BriefLine[]) => call<number>(() => s.rpc('quotation_price_briefs_save', { p_id: id, p_items: items }))

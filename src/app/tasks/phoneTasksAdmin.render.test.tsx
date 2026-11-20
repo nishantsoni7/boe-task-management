@@ -187,11 +187,12 @@ describe('phone phase 4', () => {
     has('src/app/quick-start-guide/page.tsx', 'boe-p4-qsg-bar', 'boe-p4-qsg-badge', 'boe-p4-qsg-back', 'boe-p4-qsg-card', 'boe-p4-qsg-h1')
     has('src/components/notifications/NotificationRow.tsx', 'boe-p4-nrow-check', 'boe-p4-nrow-right', 'boe-p4-nrow-open', 'boe-p4-nrow-trash')
     has('src/components/notifications/NotificationsView.tsx', 'boe-p4-load-older')
-    for (const f of ['src/app/tasks/create/page.tsx', 'src/app/tasks/create-self/page.tsx', 'src/app/tasks/quotation-requests/new/page.tsx']) {
+    for (const f of ['src/app/tasks/create/page.tsx', 'src/app/tasks/create-self/page.tsx']) {
       has(f, 'boe-p4-formcard', 'boe-p4-stack2', 'boe-p4-prio', 'boe-p4-addfiles', 'boe-p4-submit', 'aria-label="Remove file"', 'aria-label="Dismiss"')
     }
-    has('src/app/tasks/quotation-requests/new/page.tsx', 'type="tel"', 'inputMode="tel"', 'boe-p4-hint')
-    has('src/app/tasks/quotation-requests/page.tsx', '<PhoneSearchFilter', 'boe-qtn-toolbar-controls boe-p3-desk', 'boe-p4-qtn-tab')
+    // Quotation requests moved into the Quotations module (20 Nov 2026): the old pages only redirect.
+    has('src/app/tasks/quotation-requests/page.tsx', "redirect('/quotations/requests')")
+    has('src/app/tasks/quotation-requests/new/page.tsx', "redirect('/quotations?new=1')")
     has('src/app/account/page.tsx', 'boe-p4-acct-card', 'boe-p4-acct-pw', 'boe-p4-acct-eye', 'boe-p4-acct-submit')
     has('src/app/meetings/guide/page.tsx', 'boe-btn boe-btn-ghost boe-desktop-only')
     has('src/app/meetings/guide/MeetingGuide.tsx', 'boe-p4-mg-jumps', 'boe-p4-mg-aside')

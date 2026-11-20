@@ -125,11 +125,8 @@ describe('Phase 2: the pages that were broken on a phone', () => {
     assert.ok(css.includes('.sra-inq-grid { grid-template-columns: minmax(0, 1fr) !important;'))
   })
 
-  test('Quotation Requests: a three-line card, nothing cut off', () => {
-    const p = read('src/app/tasks/quotation-requests/page.tsx')
-    assert.ok(p.includes('className="qtn-row"'))
-    assert.ok(p.includes('className="qtn-head"'))
-    assert.ok(css.includes('.qtn-row > :nth-child(6) { display: none !important; }'))
+  test('Quotation Requests: the old Tasks page sends people to the Quotations module', () => {
+    assert.ok(read('src/app/tasks/quotation-requests/page.tsx').includes("redirect('/quotations/requests')"))
   })
 
   test('Sales Notifications shows Mark all read and Delete all', () => {

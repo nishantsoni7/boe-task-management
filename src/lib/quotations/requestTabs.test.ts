@@ -30,17 +30,17 @@ describe('requestTabs', () => {
 
 describe('the screens', () => {
   const read = (p: string) => readFileSync(p, 'utf8')
-  test('the Requests page reads the same list as Tasks, the owner every request, and opens a request in Tasks', () => {
+  test('the Requests page reads quotation_requests_list, keeps the old Tasks list on its own tab, and opens an old request in Tasks', () => {
     const screen = read('src/components/quotations/RequestsScreen.tsx')
-    assert.ok(screen.includes('useQuotationRequests(userId, ready && caps.canViewQuotations, caps.canSeeAllQuotations)'))
+    assert.ok(screen.includes('fetchRequests(supabase)'))
+    assert.ok(screen.includes("useQuotationRequests(userId, ready && caps.canViewQuotations && tab === 'earlier', caps.canSeeAllQuotations)"))
+    assert.ok(read('src/lib/quotations/api.ts').includes("s.rpc('quotation_requests_list')"))
     assert.ok(screen.includes('router.push(taskDetailHref(t.id, HERE))'))
     assert.ok(read('src/components/layout/QuotationsLayout.tsx').includes("label: 'Requests'"))
     assert.ok(read('src/app/quotations/requests/page.tsx').includes('<RequestsScreen />'))
   })
-  test('the request form tells the person it was sent to, after the files', () => {
-    const form = read('src/app/tasks/quotation-requests/new/page.tsx')
-    const files = form.indexOf("from('task_attachments').insert(")
-    const tell = form.indexOf('await requestAssignmentNotification(task.id)')
-    assert.ok(files > 0 && tell > files)
+  test('the old Tasks pages redirect into the Quotations module', () => {
+    assert.ok(read('src/app/tasks/quotation-requests/page.tsx').includes("redirect('/quotations/requests')"))
+    assert.ok(read('src/app/tasks/quotation-requests/new/page.tsx').includes("redirect('/quotations?new=1')"))
   })
 })

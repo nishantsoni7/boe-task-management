@@ -43,20 +43,16 @@ describe('the owner filters by who a request was sent to', () => {
 
 describe('the screens and the database agree', () => {
   const read = (p: string) => readFileSync(p, 'utf8')
-  test('the form lists the receivers, requires a pick, sends to it and remembers it; no email is hard-coded', () => {
-    const form = read('src/app/tasks/quotation-requests/new/page.tsx')
-    assert.ok(form.includes("supabase.rpc('quotation_request_receivers')"))
-    assert.ok(form.includes('assigned_to:     sendTo,'))
-    assert.ok(form.includes('if (!sendTo) return'))
-    assert.ok(form.includes('rememberReceiver(sendTo)'))
-    assert.ok(form.includes('role="radiogroup"'))
-    assert.ok(!/@[a-z0-9.-]+\.(com|in)'/i.test(form), 'no email address in the form')
+  test('the old form is gone: it redirects, and the receiver helpers remain', () => {
+    assert.ok(read('src/app/tasks/quotation-requests/new/page.tsx').includes("redirect('/quotations?new=1')"))
+    const helpers = read('src/lib/tasks/quotationReceivers.ts')
+    assert.ok(helpers.includes('export function rememberReceiver('))
+    assert.ok(!/@[a-z0-9.-]+\.(com|in)'/i.test(helpers), 'no email address in the helpers')
   })
   test('the owner reads every request; everybody else their own', () => {
-    const page = read('src/app/tasks/quotation-requests/page.tsx')
+    const page = read('src/components/quotations/RequestsScreen.tsx')
     const hook = read('src/hooks/queries/useQuotationRequests.ts')
-    assert.ok(page.includes('const seeAll = quotationCaps.canSeeAllQuotations'))
-    assert.ok(page.includes('useQuotationRequests(userId, ready && canViewQuotations, seeAll)'))
+    assert.ok(page.includes("useQuotationRequests(userId, ready && caps.canViewQuotations && tab === 'earlier', caps.canSeeAllQuotations)"))
     assert.ok(hook.includes('(seeAll ? base : base.or(`assigned_to.eq.${userId},created_by.eq.${userId}`))'))
   })
   test('the migration: protected action, receivers, guard, admin read on the three tables, Nitish\'s six grants, self-checks', () => {

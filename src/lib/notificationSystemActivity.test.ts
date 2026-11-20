@@ -658,13 +658,11 @@ describe('one rule, one place', () => {
     for (const path of [
       'src/app/tasks/create/page.tsx',
       'src/app/tasks/assigned-by-me/page.tsx',
-      'src/app/tasks/quotation-requests/new/page.tsx',
       'src/components/meetings/MeetingTaskModal.tsx',
     ]) {
       const src = read(path)
-      // The quotation request form alone asks the trusted route for a notice (owner, 18 Nov 2026).
-      assert.equal(src.includes('requestAssignmentNotification'), path === 'src/app/tasks/quotation-requests/new/page.tsx',
-        `${path}: assignment notice requested only by the quotation request form`)
+      assert.equal(src.includes('requestAssignmentNotification'), false,
+        `${path}: a new task asks for no assignment notice`)
       assert.equal(/\.from\(['"]notifications['"]\)/.test(src), false,
         `${path} must not touch the notifications table at all`)
     }

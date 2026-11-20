@@ -38,3 +38,9 @@ export function lostNote(events: readonly QuotationEvent[]): string {
   const n = e?.detail.note
   return typeof n === 'string' ? n : ''
 }
+
+/** The reason chosen when it was marked Lost (one of the lead's Dead reasons, 20270813000000), or '' for one lost before that. */
+export function lostReason(events: readonly QuotationEvent[]): string {
+  const r = events.find(x => x.kind === 'status' && x.detail.to === 'lost')?.detail.reason
+  return typeof r === 'string' ? r : ''
+}
