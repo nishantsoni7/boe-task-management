@@ -62,6 +62,17 @@ export const CLIENT_TYPES = [
 ] as const
 export type ClientType = typeof CLIENT_TYPES[number]['value']
 
+/** Who the contact is (20270815000000): the same five keys as a quotation's client type, so one list serves both. */
+export const CONTACT_ROLES = [
+  { value: 'property_owner', label: 'Property owner' },
+  { value: 'architect', label: 'Architect' },
+  { value: 'interior_designer', label: 'Interior designer' },
+  { value: 'fnb_consultant', label: 'F&B consultant' },
+  { value: 'other', label: 'Other' },
+] as const
+export type ContactRole = typeof CONTACT_ROLES[number]['value']
+export const roleLabel = (role: string | null | undefined) => CONTACT_ROLES.find(r => r.value === role)?.label ?? null
+
 export const MARKETS = [
   { value: 'domestic', label: 'Domestic' },
   { value: 'export', label: 'Export' },
@@ -92,10 +103,11 @@ export const outcomeLabel = (outcome: string) => OUTCOME_WORDS[outcome] ?? outco
  * fills the text; the person can add to it. Two carry a meaning the database keeps: a try nobody answered, and a quotation
  * that was shared (which satisfies the Negotiation checklist). The others are only words.
  */
-export type CommentTag = 'not_responding' | 'quotation'
+export type CommentTag = 'not_responding' | 'quotation' | 'boq'
 export const QUICK_NOTES: readonly { key: string; label: string; text: string; tag: CommentTag | null }[] = [
   { key: 'not_responding', label: 'Not responding', text: 'Client not responding.', tag: 'not_responding' },
   { key: 'quotation', label: 'Shared quotation', text: 'Shared the quotation.', tag: 'quotation' },
+  { key: 'boq', label: 'Waiting for BOQ', text: 'Waiting for the BOQ / drawings from the client.', tag: 'boq' },
   { key: 'catalogue', label: 'Shared catalogue', text: 'Shared the catalogue.', tag: null },
   { key: 'will_get_back', label: 'Client will get back', text: 'Client will get back to us.', tag: null },
 ]
@@ -137,10 +149,11 @@ export function followUpChoices(today: string): { date: string; why: string }[] 
 }
 
 /** What an entry of the activity feed is tagged with, or null when its words say it all. */
-export function activityTag(a: { kind: string; outcome: string }): { label: string; tone: 'no' | 'quote' | 'plain' } | null {
+export function activityTag(a: { kind: string; outcome: string; next_step?: string | null }): { label: string; tone: 'no' | 'quote' | 'plain' } | null {
   if (a.kind === 'imported') return { label: 'ClickUp', tone: 'plain' }
   if (a.outcome === 'no_answer') return { label: 'Not responding', tone: 'no' }
   if (a.kind === 'quotation') return { label: 'Shared quotation', tone: 'quote' }
+  if (a.next_step === BOQ_STEP) return { label: 'Waiting for BOQ', tone: 'plain' }
   if (a.kind === 'note') return null
   // Entries logged before the comment box: "Meeting · Interested".
   return { label: `${kindLabel(a.kind)} · ${outcomeLabel(a.outcome)}`, tone: 'plain' }
@@ -379,6 +392,13 @@ export function dueAfterUpdate(lead: { next_due_on: string | null }, today: stri
 }
 
 export const whenFrom = (today: string, days: number) => istAddDays(today, days)
+
+/** The next step the "Waiting for BOQ" quick note sets (20270815000000), and the follow-up it proposes: 3 days on, a Sunday moved to Monday. */
+export const BOQ_STEP = 'Waiting for BOQ / drawings'
+export function boqFollowUp(today: string): string {
+  const d = istAddDays(today, 3)
+  return isSunday(d) ? istAddDays(d, 1) : d
+}
 
 export function quickMessages(sender: string): { label: string; text: string }[] {
   const me = sender.trim().split(/\s+/)[0] || 'the sales team'

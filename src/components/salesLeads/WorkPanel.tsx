@@ -13,8 +13,8 @@ import {
 } from '@/lib/salesLeads/api'
 import { canPreview, fileKind, formatBytes, LEAD_FILE_ACCEPT, LEAD_FILES_BUCKET, noteForFiles, type FileKind } from '@/lib/salesLeads/files'
 import {
-  activityTag, CLIENT_TYPES, dueAfterUpdate, dueOf, followUpChoices, isSunday, lastOf, marketLabel, nextStepOf, parseValue,
-  QUICK_NOTES, SEGMENTS, stageLabel, STAGE_GUIDE, TEMPERATURES, valueLabel,
+  activityTag, boqFollowUp, CLIENT_TYPES, CONTACT_ROLES, dueAfterUpdate, dueOf, followUpChoices, isSunday, lastOf, marketLabel, nextStepOf, parseValue,
+  QUICK_NOTES, roleLabel, SEGMENTS, stageLabel, STAGE_GUIDE, TEMPERATURES, valueLabel,
   type CommentTag, type Stage, type Temperature,
 } from '@/lib/salesLeads/board'
 import { sourceLabel } from '@/lib/salesLeads/constants'
@@ -398,7 +398,7 @@ function ClientCard({ lead, work, canWork, closed }: { lead: WorkLead; work: Lea
   const [editing, setEditing] = useState(false)
   const start = useMemo(() => ({
     name: lead.name ?? '', email: lead.email ?? '', location: lead.location ?? '', requirement: lead.requirement ?? '',
-    quantity: lead.quantity ?? '', timeline: lead.timeline ?? '', segment: lead.segment ?? '', client_type: lead.client_type ?? '',
+    quantity: lead.quantity ?? '', timeline: lead.timeline ?? '', segment: lead.segment ?? '', client_type: lead.client_type ?? '', contact_role: lead.contact_role ?? '',
     value: lead.expected_value_paise === null ? '' : String(lead.expected_value_paise / 100),
   }), [lead])
   const [form, setForm] = useState(start)
@@ -422,7 +422,7 @@ function ClientCard({ lead, work, canWork, closed }: { lead: WorkLead; work: Lea
 
   function save() {
     const facts: LeadFacts = {}
-    for (const key of ['name', 'email', 'location', 'requirement', 'quantity', 'timeline', 'segment', 'client_type'] as const) {
+    for (const key of ['name', 'email', 'location', 'requirement', 'quantity', 'timeline', 'segment', 'client_type', 'contact_role'] as const) {
       if (form[key] !== start[key]) facts[key] = form[key]
     }
     if (form.value !== start.value) {
@@ -457,7 +457,7 @@ function ClientCard({ lead, work, canWork, closed }: { lead: WorkLead; work: Lea
             ? <><i className={s.mAvSm} aria-hidden="true">{initialsOf(lead.holder_name)}</i>Held by <b>{lead.holder_name}</b></>
             : <span className={s.mNobody}>Held by nobody yet</span>}
         </span>
-        <span className={s.cTag}>{marketLabel(lead)}</span>
+        <span className={s.cTag}>{marketLabel(lead)}{roleLabel(lead.contact_role) ? ` · ${roleLabel(lead.contact_role)}` : ''}</span>
       </div>
       <div className={s.cReach}>
         {named && <span className={s.mPhone}><Phone aria-hidden="true" />{formatPhone(lead.phone)}</span>}
@@ -479,6 +479,7 @@ function ClientCard({ lead, work, canWork, closed }: { lead: WorkLead; work: Lea
             {text('email', 'Email')}
             {text('location', 'Location')}
             <div className={s.field}><label className={s.eyebrow} htmlFor="fact-type">Type of client</label><select id="fact-type" className={s.input} value={form.client_type} onChange={e => set({ client_type: e.target.value })}><option value="">Not set</option>{CLIENT_TYPES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+            <div className={s.field}><label className={s.eyebrow} htmlFor="fact-role">Who is this</label><select id="fact-role" className={s.input} value={form.contact_role} onChange={e => set({ contact_role: e.target.value })}><option value="">Not set</option>{CONTACT_ROLES.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
             <div className={s.field}><label className={s.eyebrow} htmlFor="fact-seg">Segment</label><select id="fact-seg" className={s.input} value={form.segment} onChange={e => set({ segment: e.target.value })}><option value="">Not set</option>{SEGMENTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
             {text('quantity', 'Quantity')}
             <div className={s.field}><label className={s.eyebrow} htmlFor="fact-value">Project value, approx. (₹)</label><input id="fact-value" className={s.input} inputMode="decimal" placeholder="e.g. 8 L" value={form.value} onChange={e => set({ value: e.target.value })} /></div>
@@ -687,11 +688,15 @@ function Composer({ lead, work, focus, onPosted }: {
   const ready = (text.trim() !== '' || withFiles) && !files.uploading && !files.failed && !saving
   // The follow-up is changed at the top of the popup (owner, 2026-11-15), so posting keeps a date still ahead and moves a late,
   // due-today or missing one to the next working day.
-  const due = dueAfterUpdate(lead, work.today)
+  // Waiting for BOQ is the exception: it sets the follow-up 3 days on (the date can be changed at the top afterwards).
+  const waitingBoq = tag === 'boq'
+  const due = waitingBoq ? boqFollowUp(work.today) : dueAfterUpdate(lead, work.today)
   const notResponding = tag === 'not_responding'
   // What posting does besides saving the words, when it is not obvious.
   const hint = notResponding
     ? `Counts as a try, not a contact.${lead.stage === 'new' ? ' The lead moves from New to Under Process.' : ''}`
+    : waitingBoq
+    ? `Sets the next step to "Waiting for BOQ / drawings" and the follow-up to ${dayShort(due)}.${lead.stage === 'new' ? ' The lead moves from New to Under Process.' : ''}`
     : lead.stage === 'new' && (text.trim() !== '' || withFiles) ? 'Posting this moves the lead from New to Under Process.' : null
 
   function type(next: string) {

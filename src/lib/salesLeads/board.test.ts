@@ -10,7 +10,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  activityTag, bigQuantity, checklistFor, nameWithoutPhone, countryOf, DEAD_REASONS, dueAfterUpdate, dueOf, flagOf, followUpChoices, isSunday, lastLabel, lastOf, marketLabel, nextStepOf, nextWorkingDay, parseValue,
+  activityTag, bigQuantity, BOQ_STEP, boqFollowUp, CONTACT_ROLES, roleLabel, checklistFor, nameWithoutPhone, countryOf, DEAD_REASONS, dueAfterUpdate, dueOf, flagOf, followUpChoices, isSunday, lastLabel, lastOf, marketLabel, nextStepOf, nextWorkingDay, parseValue,
   PATH_STAGES, QUICK_NOTES, quickMessages, rankMyDay, stageLabel, STAGES, valueLabel, whatsAppLink, whyFirst,
 } from './board'
 import { dayHeading, dayShort, istDayOf, timeLabel } from './format'
@@ -47,11 +47,30 @@ describe('a name with the number typed into it', () => {
 })
 
 describe('the quick notes', () => {
-  test('at most four, and only the two the database knows carry a tag', () => {
-    assert.ok(QUICK_NOTES.length <= 4)
-    assert.deepEqual(QUICK_NOTES.filter(n => n.tag).map(n => n.tag), ['not_responding', 'quotation'])
-    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20270703000100_sales_comments_and_due_dates.sql'), 'utf8')
-    assert.ok(sql.includes("p_tag not in ('not_responding', 'quotation')"))
+  test('at most five, and only the three the database knows carry a tag', () => {
+    assert.ok(QUICK_NOTES.length <= 5)
+    assert.deepEqual(QUICK_NOTES.filter(n => n.tag).map(n => n.tag), ['not_responding', 'quotation', 'boq'])
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20270815000000_lead_contact_role_and_boq.sql'), 'utf8')
+    assert.ok(sql.includes("p_tag not in ('not_responding', 'quotation', 'boq')"))
+    assert.ok(sql.includes("when 'boq' then 'Waiting for BOQ / drawings'") && sql.includes(`'${BOQ_STEP}'`))
+  })
+  test('Waiting for BOQ: the follow-up is 3 days on and a Sunday becomes Monday (the database does the same); its entries carry a tag', () => {
+    assert.equal(boqFollowUp('2026-11-19'), '2026-11-23', 'Thursday + 3 is a Sunday')
+    assert.equal(boqFollowUp('2026-11-20'), '2026-11-23', 'Friday + 3 is Monday')
+    assert.equal(boqFollowUp('2026-11-21'), '2026-11-24')
+    assert.equal(boqFollowUp('2026-12-30'), '2027-01-02', 'across a year')
+    assert.deepEqual(activityTag({ kind: 'note', outcome: 'note', next_step: BOQ_STEP }), { label: 'Waiting for BOQ', tone: 'plain' })
+    assert.equal(activityTag({ kind: 'note', outcome: 'note', next_step: 'Follow up' }), null)
+    assert.equal(activityTag({ kind: 'note', outcome: 'note' }), null)
+  })
+  test('the contact roles are the five a quotation\'s client type uses, with plain labels', () => {
+    const quotes = readFileSync(join(process.cwd(), 'src/lib/quotations/api.ts'), 'utf8')
+    for (const r of CONTACT_ROLES) assert.ok(quotes.includes(`['${r.value}', `), r.value)
+    assert.equal(CONTACT_ROLES.length, 5)
+    assert.equal(roleLabel('architect'), 'Architect'); assert.equal(roleLabel('fnb_consultant'), 'F&B consultant')
+    assert.equal(roleLabel(null), null); assert.equal(roleLabel('plumber'), null)
+    const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20270815000000_lead_contact_role_and_boq.sql'), 'utf8')
+    for (const r of CONTACT_ROLES) assert.ok(sql.includes(`'${r.value}'`), 'the database check names ' + r.value)
   })
   test('a comment with no quick note is a contact: an unknown tag never reads as "not responding"', () => {
     const sql = readFileSync(join(process.cwd(), 'supabase/migrations/20270703000100_sales_comments_and_due_dates.sql'), 'utf8')
