@@ -211,3 +211,40 @@ describe('what the Dashboard around it keeps', () => {
     }
   })
 })
+
+// The administrator's bin (owner, 20 Nov 2026): present only when the page hands the list a delete handler.
+describe('the administrator\'s bin on each row', () => {
+  const CSS = read('src/app/dashboard/quotationRequests.module.css')
+  const rows = [task('a', { customer_name: 'Studio XO' }), task('b', { customer_name: 'Vittazio' })]
+  const withBin = (onDelete?: (t: Task) => void) =>
+    renderToStaticMarkup(<QuotationRequestsList tasks={rows} userMap={NAMES} onOpen={noop} onDelete={onDelete} now={NOW} />)
+
+  test('without a handler there is no bin and the chevron stays (everyone but the administrator)', () => {
+    const html = withBin()
+    assert.equal((html.match(/<button/g) ?? []).length, 0)
+    assert.equal((html.match(/class="chev"/g) ?? []).length, 2)
+    assert.ok(!html.includes('withDelete'))
+  })
+
+  test('with a handler each row has a bin named for its lead, in place of the chevron', () => {
+    const html = withBin(noop)
+    assert.equal((html.match(/<button/g) ?? []).length, 2)
+    assert.match(html, /aria-label="Delete the request for Studio XO"/)
+    assert.match(html, /aria-label="Delete the request for Vittazio"/)
+    assert.equal((html.match(/class="chev"/g) ?? []).length, 0)
+    assert.match(html, /class="list withDelete"/)
+  })
+
+  test('the bin\'s click and key presses stay on the bin, so the row does not also open', () => {
+    const SRC = read('src/app/dashboard/QuotationRequestsList.tsx')
+    assert.match(SRC, /onClick=\{e => \{ e\.stopPropagation\(\); onDelete\(task\) \}\}/)
+    assert.match(SRC, /onKeyDown=\{e => e\.stopPropagation\(\)\}/)
+  })
+
+  test('the extra column is 28px, and on a phone the bin sits at the end of both lines', () => {
+    assert.match(CSS, /\.withDelete \.cols,\s*\.withDelete \.row\s*\{\s*grid-template-columns:[^;]*28px;/)
+    const phone = CSS.slice(CSS.indexOf('@container (max-width: 519px)'))
+    assert.match(phone, /\.withDelete \.row \{ grid-template-columns: minmax\(0, 1fr\) auto 28px; \}/)
+    assert.match(phone, /\.withDelete \.del \{ grid-column: 3; grid-row: 1 \/ span 2; \}/)
+  })
+})

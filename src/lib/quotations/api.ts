@@ -29,6 +29,8 @@ export type ListRow = {
   owner_id: string; owner_name: string | null; created_at: string; updated_at: string; sent_at: string | null
   valid_days: number; shared: boolean; line_count: number; first_image: string | null; value_before_gst: number
   last_opened_at: string | null
+  /** 20270817000000: the caller may delete this row (an unsent draft they made, or anything for an administrator). Absent before that migration = no. */
+  may_delete?: boolean
 }
 
 export type Header = {
@@ -254,6 +256,12 @@ export const setStatus = (s: Supabase, id: string, status: QuotationStatus, note
 
 export const shareQuotation = (s: Supabase, id: string, on: boolean) =>
   call<string | null>(() => s.rpc('quotation_share', { p_id: id, p_on: on }))
+
+/** 20270817000000. The database decides who may delete what (see quotation_delete_blocker); the screens only ask and show its sentence. */
+export type DeleteCheck = { may: boolean; reason: string | null }
+export const deleteCheckKey = (id: string) => ['quotations', 'delete-check', id] as const
+export const fetchDeleteCheck = (s: Supabase, id: string) => call<DeleteCheck>(() => s.rpc('quotation_delete_check', { p_id: id }))
+export const deleteQuotation = (s: Supabase, id: string) => call<null>(() => s.rpc('quotation_delete', { p_id: id }))
 
 // ── pictures ──────────────────────────────────────────────────────────────
 

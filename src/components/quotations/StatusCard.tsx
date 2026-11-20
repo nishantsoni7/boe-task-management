@@ -37,9 +37,11 @@ type Props = {
   /** The Lost box is open while `lostNote` is not null; the reason is one of the lead's eleven (20270813000000). */
   lostNote: string | null; setLostNote: (v: string | null) => void; lostReason: string; setLostReason: (v: string) => void
   onMove: (status: QuotationStatus, note?: string, reason?: string) => void; onConfirm: () => void
+  /** 20270817000000: the database says this person may delete this quotation now (an unsent draft they made, or anything for an administrator); the button opens the confirm. */
+  canDelete?: boolean; onDelete?: () => void
 }
 
-export function StatusCard({ base, dirty, busy, isAdmin, canConfirm, piProblems, priceBlocked, piStage, lostNote, setLostNote, lostReason, setLostReason, onMove, onConfirm }: Props) {
+export function StatusCard({ base, dirty, busy, isAdmin, canConfirm, piProblems, priceBlocked, piStage, lostNote, setLostNote, lostReason, setLostReason, onMove, onConfirm, canDelete, onDelete }: Props) {
   const status = base.status
   const locked = LOCKED.includes(status)
   const step = STEPS.indexOf(status)
@@ -110,13 +112,14 @@ export function StatusCard({ base, dirty, busy, isAdmin, canConfirm, piProblems,
       {canConfirm && piProblems.length === 0 && !dirty && <p className={s.tileText}>Confirm makes a PI draft in Orders from the saved quotation and opens it. Nothing is sent to anyone: the PI stays a Draft until you submit it there. The quotation then becomes Confirmed.</p>}
       {canConfirm && priceBlocked && <p className={s.tileText}>Waiting for price approval (see Price approval).</p>}
 
-      {(noPi || lost || archive) && (
+      {(noPi || lost || archive || canDelete) && (
         <div className={s.outcomes}>
           <span className={s.outcomesLab}>Other outcome</span>
           <div className={s.quietRow}>
             {noPi && <button type="button" className={`${s.btn} ${s.btnSm} ${s.btnQuiet}`} disabled={off} onClick={() => onMove('confirmed')} title="Confirmed without making a PI from it">Confirmed, no PI</button>}
             {lost && <button type="button" className={`${s.btn} ${s.btnSm} ${s.btnQuiet} ${s.btnQuietDanger}`} disabled={off} title={saveFirst} onClick={() => setLostNote('')}>Lost…</button>}
             {archive && <button type="button" className={`${s.btn} ${s.btnSm} ${s.btnQuiet}`} disabled={off} title={saveFirst} onClick={() => onMove('archived')}>Archive</button>}
+            {canDelete && onDelete && <button type="button" className={`${s.btn} ${s.btnSm} ${s.btnQuiet} ${s.btnQuietDanger}`} disabled={busy} onClick={onDelete}>Delete…</button>}
           </div>
         </div>
       )}

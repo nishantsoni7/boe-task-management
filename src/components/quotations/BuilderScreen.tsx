@@ -25,7 +25,7 @@ import { istDateOf } from '@/lib/istDate'
 import {
   STATUS_LABEL, errorKind, errorText, fetchQuotation, fetchPictureMark, pictureMarkKey, pictureSrc, quotationKeys, setPictureMark, saveDoc, saveQuotation,
   setStatus as setStatusRpc, shareQuotation, fetchHints, requestPriceApproval, decidePrice, type PriceHint, uploadPicture, type Header, type Quotation, type QuotationStatus,
-  fetchSuggestionSettings, fetchPaymentDetails,
+  fetchSuggestionSettings, fetchPaymentDetails, deleteCheckKey, fetchDeleteCheck,
 } from '@/lib/quotations/api'
 import { historyOnly } from '@/lib/quotations/suggestions'
 import {
@@ -42,6 +42,7 @@ import { VersionsCard } from './VersionsCard'
 import { RequestCard } from './RequestCard'
 import { AskCard } from './AskCard'
 import { PriceBrief } from './PriceBrief'
+import { DeleteQuotationDialog } from './DeleteQuotationDialog'
 import { LeadCard } from './LeadCard'
 import { PriceCard } from './PricingDesk'
 import { LineRow } from './ProductLine'
@@ -98,7 +99,12 @@ export default function BuilderScreen() {
   const [advOpen, setAdvOpen] = useState(false)
   // The price brief (20 Nov 2026): asked of the owner / pricing desk when they send a quotation back or share it; always optional.
   const [briefing, setBriefing] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const isDesk = access.admin || (access.edit && access.view_all)
+  // Delete (20270817000000): whether this person may now delete it is the database's answer (an unsent draft they made, or anything for an
+  // administrator), asked again whenever the quotation is read again (a request to a senior, a share or a price request changes it).
+  // Until 20270817000000 is applied the read fails and the button stays away.
+  const delQ = useQuery({ queryKey: [...deleteCheckKey(id), quoteQ.dataUpdatedAt], queryFn: () => fetchDeleteCheck(supabase, id), enabled: accessLoaded && !notSetUp && !!quoteQ.data, retry: false })
   // The GST rate new products start with while no product sets it (the quotation has one rate; each product still stores it).
   // Price hints for the names on screen, asked for once typing pauses.
   const [hintNames, setHintNames] = useState('')
@@ -336,12 +342,16 @@ export default function BuilderScreen() {
       {/* sent to a senior for prices, or sent back (Quotations › Requests, 20 Nov 2026) */}
       <AskCard supabase={supabase} base={base} dirty={dirty} onChanged={() => { quoteQ.refetch() }} onSentBack={() => { if (isDesk) setBriefing(true) }} />
       {briefing && <PriceBrief supabase={supabase} quotationId={id} lines={lines} onClose={n => { setBriefing(false); if (n > 0) setMsg({ tone: 'ok', text: `Saved the price brief for ${n} product${n === 1 ? '' : 's'}.` }) }} />}
+      {deleting && <DeleteQuotationDialog supabase={supabase} onClose={() => setDeleting(false)}
+        target={{ id, quote_no: base.quote_no, client_name: h.client_name, project_name: h.project_name || null, status: base.status }}
+        onDeleted={() => { dirtyRef.current = false; router.push('/quotations') }} />}
 
       {/* the top row (owner-approved layout, 18 Nov 2026): the request, where the quotation is, and sharing, as three compact cards */}
       <div className={`${s.band} ${hasRequest ? '' : s.bandTwo}`}>
         {profile && <RequestCard id={REQUEST_CARD_ID} supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
         <StatusCard base={base} dirty={dirty} busy={busy} isAdmin={access.admin} canConfirm={canConfirm} piProblems={piProblems} priceBlocked={priceBlocked} piStage={piStage}
-          lostNote={lostNote} setLostNote={setLostNote} lostReason={lostReason} setLostReason={setLostReason} onMove={moveTo} onConfirm={confirmToPi} />
+          lostNote={lostNote} setLostNote={setLostNote} lostReason={lostReason} setLostReason={setLostReason} onMove={moveTo} onConfirm={confirmToPi}
+          canDelete={delQ.data?.may === true} onDelete={() => setDeleting(true)} />
         <ShareCard id={id} base={base} dirty={dirty} busy={busy} lineCount={lines.length} phone={h.contact_phone} link={link} waText={waText} copied={copied}
           onCopy={copy} onExcel={downloadExcel} markOn={markQ.data}
           onMark={on => act(async () => { await setPictureMark(supabase, id, on); qc.setQueryData(pictureMarkKey(id), on) }, on ? 'The Best of Exports logo is on the pictures.' : 'The pictures are clean, without the logo.')} onShare={on => act(async () => { await shareQuotation(supabase, id, on); if (on && isDesk) setBriefing(true) }, on ? 'The client link is on.' : 'The client link is off.')} />

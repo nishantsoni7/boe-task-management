@@ -28,6 +28,8 @@ import { useTaskCreationReport } from '@/hooks/queries/useTaskReports'
 import { useRefresh } from '@/contexts/RefreshContext'
 import { GlanceBar } from './GlanceBar'
 import { QuotationRequestsList } from './QuotationRequestsList'
+import { DeleteRequestDialog } from './DeleteRequestDialog'
+import { deleteRequestTask } from './deleteRequest'
 
 const TASK_COLUMNS = [
   'id', 'title', 'note', 'status', 'priority', 'type',
@@ -102,6 +104,8 @@ export default function DashboardPage() {
   const [escalationPreview,  setEscalationPreview]  = useState(false)
   const [acknowledgingIds,   setAcknowledgingIds]   = useState<Set<string>>(new Set())
   const [isMobile,           setIsMobile]           = useState(false)
+  // The Quotation Requests row an administrator pressed the bin on (owner, 20 Nov 2026).
+  const [requestToDelete,    setRequestToDelete]    = useState<Task | null>(null)
 
   const router      = useRouter()
   // Handed to Task Detail as `returnTo`, so Submit for Approval comes back here.
@@ -440,6 +444,21 @@ export default function DashboardPage() {
     router.push('/login')
   }
 
+  // Delete a quotation request from the card: the real signed-in administrator only (not under View As, which is read-only). The route checks
+  // the administrator role again on the server; the dialog shows any sentence it answers with.
+  const canDeleteRequests = profile?.role === 'admin' && !viewAsUserId
+  const confirmDeleteRequest = async (): Promise<string | null> => {
+    if (!requestToDelete) return null
+    const { data: { session } } = await supabase.auth.getSession()
+    const problem = await deleteRequestTask(requestToDelete.id, session?.access_token)
+    if (problem) return problem
+    setRequestToDelete(null)
+    queryClient.invalidateQueries({ queryKey: ['tasks'] })
+    queryClient.invalidateQueries({ queryKey: ['top-tasks', loggedInId] })
+    showToast('Request deleted.')
+    return null
+  }
+
   const handleAcknowledge = async (task: Task) => {
     // View As is read-only. currentUserId is the VIEWED user here, so without
     // this the write would run under the administrator's session and be
@@ -610,6 +629,7 @@ export default function DashboardPage() {
                 now={now}
                 isMobile={isMobile}
                 onOpen={task => router.push(taskDetailHref(task.id, pathname))}
+                onDelete={canDeleteRequests ? setRequestToDelete : undefined}
                 onViewAll={() => router.push('/quotations/requests')}
               />
             ) : (
@@ -659,6 +679,10 @@ export default function DashboardPage() {
       )}
 
       <Toast toast={toast} onDismiss={dismissToast} />
+
+      {requestToDelete && (
+        <DeleteRequestDialog task={requestToDelete} person={mergedUserMap[requestToDelete.created_by]} onClose={() => setRequestToDelete(null)} onConfirm={confirmDeleteRequest} />
+      )}
 
       {selectedTask && (
         <TaskDetailPanel
@@ -1251,6 +1275,7 @@ function QuotationPanel({
   now,
   isMobile,
   onOpen,
+  onDelete,
   onViewAll,
 }: {
   tasks: Task[]
@@ -1258,6 +1283,7 @@ function QuotationPanel({
   now: Date
   isMobile: boolean
   onOpen: (task: Task) => void
+  onDelete?: (task: Task) => void
   onViewAll: () => void
 }) {
   return (
@@ -1270,7 +1296,7 @@ function QuotationPanel({
       {tasks.length === 0 ? (
         <PanelEmptyState headline="No active requests" detail="Quotation requests will appear here" />
       ) : (
-        <QuotationRequestsList tasks={tasks} userMap={userMap} onOpen={onOpen} now={now.getTime()} />
+        <QuotationRequestsList tasks={tasks} userMap={userMap} onOpen={onOpen} onDelete={onDelete} now={now.getTime()} />
       )}
     </AttentionPanel>
   )
