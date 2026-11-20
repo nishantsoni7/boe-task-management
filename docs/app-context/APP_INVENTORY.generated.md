@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `859790f2` — Sales leads: a contact role, and the quick note Waiting for BOQ
-- Commits on this branch: 1514
+- Commit: `39806d88` — Merge main into feat/lead-role-boq; update two pinned lines in boardSpeed.test.ts
+- Commits on this branch: 1516
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 495 (first `20260530_create_positions.sql`, latest `20270815000000_lead_contact_role_and_boq.sql`)
 - Tables ever created: 270 (dropped at some point: 8)   SQL functions: 1093   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `39806d88` 2026-11-20 Merge main into feat/lead-role-boq; update two pinned lines in boardSpeed.test.ts
+- `570f4635` 2026-11-20 Docs: stamp #954 (Lost carries the lead's eleven reasons) as merged and verified live (migration applied) (#956)
 - `859790f2` 2026-11-20 Sales leads: a contact role, and the quick note Waiting for BOQ
 - `2c57b210` 2026-11-20 Quotations: requests move into the module, lead-first creation, report cards, price brief (#955)
 - `2014e0a2` 2026-11-20 Quotations: Lost carries one of the lead's eleven reasons; the report counts reasons (#954)
@@ -37,8 +39,6 @@
 - `31e7fbdf` 2026-11-18 Quotations: client choices on the PDF, the client link and the Excel (step 2 of 3) (#936)
 - `5bd9569d` 2026-11-18 Quotations: client choices (fabric, finish, stone, rope weave) per product, step 1: builder only (#934)
 - `f1fafd84` 2026-11-18 Docs: stamp #932 (picture credits wallet) as merged and applied (#935)
-- `c7f03dcd` 2026-11-18 Picture credits: a wallet and a tracking page for every paid picture press (limits ship off; migration not applied) (#932)
-- `8a0b1f21` 2026-11-18 Quotations: nothing waits for price approval, suggestions for the pricing desk, bank account + UPI QR on the quotation (#933)
 
 ## Pages by top-level area
 
