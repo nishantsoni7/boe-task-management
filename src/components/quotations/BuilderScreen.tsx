@@ -87,6 +87,7 @@ export default function BuilderScreen() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<Msg>(null)
   const [lostNote, setLostNote] = useState<string | null>(null)
+  const [lostReason, setLostReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
   const [piStage, setPiStage] = useState<PiStage | null>(null)
@@ -192,7 +193,7 @@ export default function BuilderScreen() {
     catch (e) { setMsg({ tone: 'bad', text: errorText(e) }) }
     finally { setBusy(false) }
   }
-  const moveTo = (status: QuotationStatus, note?: string) => act(() => setStatusRpc(supabase, id, status, note), `Marked ${STATUS_LABEL[status]}.`)
+  const moveTo = (status: QuotationStatus, note?: string, reason?: string) => act(() => setStatusRpc(supabase, id, status, note, reason), `Marked ${STATUS_LABEL[status]}.`)
 
   // Confirm → PI draft, from the SAVED quotation (the button waits for Save).
   const confirmToPi = async () => {
@@ -331,7 +332,7 @@ export default function BuilderScreen() {
       <div className={`${s.band} ${hasRequest ? '' : s.bandTwo}`}>
         {profile && <RequestCard id={REQUEST_CARD_ID} supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
         <StatusCard base={base} dirty={dirty} busy={busy} isAdmin={access.admin} canConfirm={canConfirm} piProblems={piProblems} priceBlocked={priceBlocked} piStage={piStage}
-          lostNote={lostNote} setLostNote={setLostNote} onMove={moveTo} onConfirm={confirmToPi} />
+          lostNote={lostNote} setLostNote={setLostNote} lostReason={lostReason} setLostReason={setLostReason} onMove={moveTo} onConfirm={confirmToPi} />
         <ShareCard id={id} base={base} dirty={dirty} busy={busy} lineCount={lines.length} phone={h.contact_phone} link={link} waText={waText} copied={copied}
           onCopy={copy} onExcel={downloadExcel} markOn={markQ.data}
           onMark={on => act(async () => { await setPictureMark(supabase, id, on); qc.setQueryData(pictureMarkKey(id), on) }, on ? 'The Best of Exports logo is on the pictures.' : 'The pictures are clean, without the logo.')} onShare={on => act(() => shareQuotation(supabase, id, on), on ? 'The client link is on.' : 'The client link is off.')} />

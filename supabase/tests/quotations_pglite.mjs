@@ -1170,4 +1170,46 @@ await db.exec(mig('20270808000100_quotation_client_choices.sql'))
   ok('quotation_for_lead is closed to signed-out callers')
 }
 
+// ── 20270813000000: a lost quotation carries one of the lead's eleven reasons; the report counts reasons ──
+{
+  await db.exec(mig('20270813000000_quotation_lost_reasons.sql'))
+  const mk = name => rpc(U.sales, 'quotation_create', { client_name: name })
+  const lastStatus = async q => (await db.query(`select detail from public.quotation_events where quotation_id = $1 and kind = 'status' order by at desc limit 1`, [q])).rows[0].detail
+  const setLost = (q, note, reason) => as(U.sales, `select public.quotation_set_status($1::uuid, 'lost', $2, $3)`, [q, note, reason])
+
+  const l1 = await mk('Lost one'), l2 = await mk('Lost two'), l3 = await mk('Lost three'), l4 = await mk('Lost four'), l5 = await mk('Lost old style')
+  await setLost(l1, '12% above the other quote', 'price_too_high')
+  assert.deepEqual(await lastStatus(l1), { from: 'draft', to: 'lost', note: '12% above the other quote', reason: 'price_too_high' })
+  await setLost(l2, null, 'price_too_high')
+  assert.deepEqual(await lastStatus(l2), { from: 'draft', to: 'lost', note: null, reason: 'price_too_high' })
+  ok('a reason of the lead\'s eleven is kept in the history entry beside the note, and needs no note')
+
+  await fails(U.sales, `select public.quotation_set_status($1::uuid, 'lost', $2, $3)`, [l3, 'x', 'too_expensive'], /QUOTATION_INVALID: reason/)
+  await fails(U.sales, `select public.quotation_set_status($1::uuid, 'lost', $2, $3)`, [l3, '', 'other'], /say why it was lost/)
+  await setLost(l3, 'Client sold the hotel', 'other')
+  assert.equal((await lastStatus(l3)).reason, 'other')
+  ok('an unknown reason is refused, and "other" needs words')
+
+  await fails(U.sales, `select public.quotation_set_status($1::uuid, 'lost', $2)`, [l4, ''], /say why it was lost/)
+  await as(U.sales, `select public.quotation_set_status($1::uuid, 'lost', $2)`, [l5, 'Went with a cheaper vendor'])
+  assert.deepEqual(await lastStatus(l5), { from: 'draft', to: 'lost', note: 'Went with a cheaper vendor' })
+  ok('a call with no reason works as before: the note is the reason, and three characters are needed')
+
+  const l6 = await mk('Not lost')
+  await as(U.sales, `select public.quotation_set_status($1::uuid, 'sent', null, $2)`, [l6, 'price_too_high'])
+  assert.ok(!('reason' in await lastStatus(l6)))
+  ok('a reason sent with any other status is not kept')
+
+  const rep = (await as(U.admin, `select public.quotation_report(current_date - 30, current_date + 1, 'all') as r`)).rows[0].r
+  const by = Object.fromEntries(rep.lost_reasons.map(x => [x.reason, x]))
+  assert.deepEqual([by.price_too_high.keyed, by.price_too_high.n], [true, 2])
+  assert.deepEqual([by.other.keyed, by.other.n], [true, 1])
+  assert.deepEqual([by['Went with a cheaper vendor'].keyed, by['Went with a cheaper vendor'].n], [false, 1])
+  ok('the report counts reasons by key (two price_too_high), and still counts an older free-text reason as its own line')
+
+  await assert.rejects(() => as(null, `select public.quotation_set_status($1::uuid, 'lost', 'abc', null)`, [l6], 'anon'), /permission denied/)
+  assert.equal((await db.query(`select count(*)::int as n from pg_proc where proname = 'quotation_set_status'`)).rows[0].n, 1)
+  ok('quotation_set_status stays closed to signed-out callers, and only the four-argument function exists')
+}
+
 console.log(`all ${checks} checks passed`)

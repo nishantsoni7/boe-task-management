@@ -3,6 +3,7 @@
 import type { createClient } from '@/lib/supabase/client'
 import { csvCell } from '@/lib/minop/incomingCsv'
 import { classifyError } from './api'
+import { deadReasonLabel } from '@/lib/salesLeads/board'
 
 type Supabase = ReturnType<typeof createClient>
 
@@ -16,10 +17,14 @@ export type Report = {
   speed: { days_to_send: number | null; sent_count: number; days_to_confirm: number | null; confirmed_count: number }
   ageing: { bucket: string; n: number; value: number }[]
   opened_no_followup: { id: string; quote_no: string; client_name: string; owner_name: string | null; opened_at: string; value: number }[]
-  lost_reasons: { reason: string; n: number }[]
+  /** `keyed`: `reason` is one of the lead's Dead reason keys (20270813000000); otherwise it is the text typed before that. */
+  lost_reasons: { reason: string; keyed?: boolean; n: number }[]
   discount: { bucket: string; decided: number; confirmed: number; win_rate: number | null }[]
   price_waiting: number
 }
+
+/** The words for a lost-reason line: the lead's label for a key, the typed text for a quotation lost before 20270813000000. */
+export const lostReasonLabel = (x: { reason: string; keyed?: boolean }) => (x.keyed ? deadReasonLabel(x.reason) : x.reason)
 
 export type PeriodKey = 'week' | 'month' | 'quarter' | 'year' | 'custom'
 

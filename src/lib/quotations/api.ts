@@ -236,8 +236,9 @@ export function saveDoc(header: Header, areas: QuoteArea[], lines: QuoteLine[], 
 export const saveQuotation = (s: Supabase, id: string, doc: ReturnType<typeof saveDoc>) =>
   call<{ updated_at: string; value_before_gst: number }>(() => s.rpc('quotation_save', { p_id: id, p_doc: doc }))
 
-export const setStatus = (s: Supabase, id: string, status: QuotationStatus, note?: string) =>
-  call<string>(() => s.rpc('quotation_set_status', { p_id: id, p_status: status, p_note: note ?? null }))
+/** `reason`: one of the lead's eleven Dead reasons (20270813000000), sent only when given; the database part must be applied before the code that sends it. */
+export const setStatus = (s: Supabase, id: string, status: QuotationStatus, note?: string, reason?: string) =>
+  call<string>(() => s.rpc('quotation_set_status', { p_id: id, p_status: status, p_note: note ?? null, ...(reason ? { p_reason: reason } : {}) }))
 
 export const shareQuotation = (s: Supabase, id: string, on: boolean) =>
   call<string | null>(() => s.rpc('quotation_share', { p_id: id, p_on: on }))

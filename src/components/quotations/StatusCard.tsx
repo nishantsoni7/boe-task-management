@@ -8,6 +8,7 @@
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { Check, FileCheck2, TriangleAlert } from 'lucide-react'
 import { draftDetailHref } from '@/lib/orders/draftsView'
+import { DEAD_REASONS } from '@/lib/salesLeads/board'
 import { STATUS_LABEL, type Quotation, type QuotationStatus } from '@/lib/quotations/api'
 import type { ConversionProblem } from '@/lib/quotations/piWorkbook'
 import { PI_STAGE_LABEL, type PiStage } from '@/lib/quotations/toPiDraft'
@@ -33,11 +34,12 @@ export function waitsFor(problems: readonly ConversionProblem[]): string {
 type Props = {
   base: Quotation; dirty: boolean; busy: boolean; isAdmin: boolean
   canConfirm: boolean; piProblems: readonly ConversionProblem[]; priceBlocked: boolean; piStage: PiStage | null
-  lostNote: string | null; setLostNote: (v: string | null) => void
-  onMove: (status: QuotationStatus, note?: string) => void; onConfirm: () => void
+  /** The Lost box is open while `lostNote` is not null; the reason is one of the lead's eleven (20270813000000). */
+  lostNote: string | null; setLostNote: (v: string | null) => void; lostReason: string; setLostReason: (v: string) => void
+  onMove: (status: QuotationStatus, note?: string, reason?: string) => void; onConfirm: () => void
 }
 
-export function StatusCard({ base, dirty, busy, isAdmin, canConfirm, piProblems, priceBlocked, piStage, lostNote, setLostNote, onMove, onConfirm }: Props) {
+export function StatusCard({ base, dirty, busy, isAdmin, canConfirm, piProblems, priceBlocked, piStage, lostNote, setLostNote, lostReason, setLostReason, onMove, onConfirm }: Props) {
   const status = base.status
   const locked = LOCKED.includes(status)
   const step = STEPS.indexOf(status)
@@ -80,8 +82,13 @@ export function StatusCard({ base, dirty, busy, isAdmin, canConfirm, piProblems,
 
       {lostNote !== null && (
         <div className={s.tileNote}>
-          <label className={s.field}><span>Why was it lost?</span><input id="q-lost" className={s.input} value={lostNote} onChange={e => setLostNote(e.target.value)} placeholder="Price, went elsewhere, project paused…" autoFocus /></label>
-          <div className={s.row}><button type="button" className={`${s.btn} ${s.btnSm} ${s.btnDanger}`} disabled={busy || lostNote.trim().length < 3} onClick={() => { onMove('lost', lostNote); setLostNote(null) }}>Mark lost</button><button type="button" className={`${s.btn} ${s.btnSm}`} onClick={() => setLostNote(null)}>Cancel</button></div>
+          <label className={s.field}><span>Why was it lost?</span>
+            <select id="q-lost-reason" className={s.input} value={lostReason} onChange={e => setLostReason(e.target.value)} autoFocus>
+              <option value="">Choose a reason…</option>
+              {DEAD_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select></label>
+          <label className={s.field}><span>Note{lostReason === 'other' ? ' (required)' : ' (optional)'}</span><input id="q-lost" className={s.input} value={lostNote} maxLength={300} onChange={e => setLostNote(e.target.value)} placeholder="Anything worth remembering" /></label>
+          <div className={s.row}><button type="button" className={`${s.btn} ${s.btnSm} ${s.btnDanger}`} disabled={busy || !lostReason || (lostReason === 'other' && lostNote.trim().length < 3)} onClick={() => { onMove('lost', lostNote.trim() || undefined, lostReason); setLostNote(null); setLostReason('') }}>Mark lost</button><button type="button" className={`${s.btn} ${s.btnSm}`} onClick={() => { setLostNote(null); setLostReason('') }}>Cancel</button></div>
         </div>
       )}
 

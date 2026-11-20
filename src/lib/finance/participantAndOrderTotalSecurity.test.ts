@@ -1348,6 +1348,8 @@ describe('the applied migrations are frozen', () => {
       '20270811000000_quotation_lead_link.sql',
       // Quotations: the quotations linked to a lead, for the lead popup (one read-only SECURITY DEFINER function); no table, row, policy or table grant changes.
       '20270812000000_quotation_for_lead.sql',
+      // Quotations: a lost quotation carries one of the lead's eleven reasons (quotation_set_status gains an optional argument, quotation_report groups by it); two functions replaced, no table or data changes.
+      '20270813000000_quotation_lost_reasons.sql',
     ])
   })
 
@@ -1907,6 +1909,8 @@ describe('the applied migrations are frozen', () => {
       '20270811000000_quotation_lead_link.sql',
       // Quotations: the quotations linked to a lead, for the lead popup (one read-only SECURITY DEFINER function); no table, row, policy or table grant changes.
       '20270812000000_quotation_for_lead.sql',
+      // Quotations: a lost quotation carries one of the lead's eleven reasons (quotation_set_status gains an optional argument, quotation_report groups by it); two functions replaced, no table or data changes.
+      '20270813000000_quotation_lost_reasons.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
