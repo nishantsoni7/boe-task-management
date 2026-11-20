@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `2c57b210` — Quotations: requests move into the module, lead-first creation, report cards, price brief (#955)
-- Commits on this branch: 1513
+- Commit: `859790f2` — Sales leads: a contact role, and the quick note Waiting for BOQ
+- Commits on this branch: 1514
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 495 (first `20260530_create_positions.sql`, latest `20270815000000_lead_contact_role_and_boq.sql`)
 - Tables ever created: 270 (dropped at some point: 8)   SQL functions: 1093   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `859790f2` 2026-11-20 Sales leads: a contact role, and the quick note Waiting for BOQ
 - `2c57b210` 2026-11-20 Quotations: requests move into the module, lead-first creation, report cards, price brief (#955)
 - `2014e0a2` 2026-11-20 Quotations: Lost carries one of the lead's eleven reasons; the report counts reasons (#954)
 - `d0fe51aa` 2026-11-19 Lead popup: the lead's quotations in one line, and Make quotation from the lead (#952)
@@ -38,7 +39,6 @@
 - `f1fafd84` 2026-11-18 Docs: stamp #932 (picture credits wallet) as merged and applied (#935)
 - `c7f03dcd` 2026-11-18 Picture credits: a wallet and a tracking page for every paid picture press (limits ship off; migration not applied) (#932)
 - `8a0b1f21` 2026-11-18 Quotations: nothing waits for price approval, suggestions for the pricing desk, bank account + UPI QR on the quotation (#933)
-- `ff8dedc3` 2026-11-18 Quotations: a styled, editable Excel with pictures and the standard terms; GST as one line (#931)
 
 ## Pages by top-level area
 

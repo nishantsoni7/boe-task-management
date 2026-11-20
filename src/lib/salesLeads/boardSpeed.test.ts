@@ -220,7 +220,7 @@ describe('the popup, as approved on the clickable previews (owner, 2026-11-14 an
     const at = (x: string) => card.indexOf(x)
     assert.ok(at('<h2 className={s.mName}>') < at('Held by') && at('Held by') < at('className={s.cReach}') && at('className={s.cReach}') < at('<div className={s.eyebrow}>Requirement</div>'))
     for (const [a, b] of [['Project value', 'Needed by'], ['Needed by', 'Location'], ['Location', 'Source'], ['Source', 'Email']]) assert.ok(at(`<dt className={s.eyebrow}>${a}</dt>`) < at(`<dt className={s.eyebrow}>${b}</dt>`), `${a} before ${b}`)
-    assert.ok(card.includes('aria-label="Copy number"') && card.includes('<span className={s.cTag}>{marketLabel(lead)}</span>'))
+    assert.ok(card.includes('aria-label="Copy number"') && card.includes('<span className={s.cTag}>{marketLabel(lead)}{roleLabel(lead.contact_role)'))
     assert.ok(!card.includes('<dt>Phone') && !card.includes('Type of client</dt>') && !card.includes('Quantity</dt>'), 'no Phone, Type of client or Quantity row')
   })
 
@@ -265,7 +265,7 @@ describe('the popup, as approved on the clickable previews (owner, 2026-11-14 an
   test('the update box has no date of its own: the follow-up is changed at the top, and posting keeps a date still ahead', () => {
     const composer = panel.slice(panel.indexOf('function Composer('))
     assert.ok(!composer.includes('FollowUpMenu') && !composer.includes('Follow up <b>') && !composer.includes('setDue') && !composer.includes('s.mNext'))
-    assert.ok(composer.includes('const due = dueAfterUpdate(lead, work.today)') && composer.includes('nextDue: due'))
+    assert.ok(composer.includes('const due = waitingBoq ? boqFollowUp(work.today) : dueAfterUpdate(lead, work.today)') && composer.includes('nextDue: due'))
     assert.ok(panel.includes("type Menu = 'status' | 'due' | null"), 'one menu less')
     assert.ok(composer.includes('<span className={s.mKbd}>Ctrl + Enter</span>'))
     assert.ok(!css.includes('.mNext'))
