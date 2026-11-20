@@ -52,7 +52,7 @@ import { ClientCard } from './ClientCard'
 import { PictureViewer, viewerItemsOf } from './PictureViewer'
 import { MyDetailsReminder } from './MyDetails'
 import { productType } from '@/lib/pricing/features'
-import { priceLine, type ModelSuggestion } from '@/lib/pricing/model'
+import { priceLine, type Fit, type ModelSuggestion } from '@/lib/pricing/model'
 import { fetchPool, poolWords } from '@/lib/pricing/pool'
 import s from './quotations.module.css'
 
@@ -141,12 +141,15 @@ export default function BuilderScreen() {
 
   const editable = !!base?.may_edit && !!base && !LOCKED.includes(base.status)
   const totals = useMemo(() => (h ? computeTotals(h, areas, lines) : null), [h, areas, lines])
+  // One fit per product type for as long as the pool is the same: typing in a line re-prices every line, and refitting the
+  // model for each of them on every keystroke made typing in Material and Remarks take ~140 ms (20 Nov 2026).
+  const fits = useMemo(() => (poolQ.data ? new Map<string, Fit | null>() : null), [poolQ.data])
   const modelFor = useMemo(() => {
     const m = new Map<string, ModelSuggestion | null>()
-    if (!poolQ.data || !totals) return m
-    for (const l of lines) m.set(l.key, priceLine(poolQ.data, { name: l.name, size: l.size_text, material: l.material, finish: l.finish, spec: l.spec, qty: totals.lineQty[l.key], clientType: h?.client_type }))
+    if (!poolQ.data || !fits || !totals) return m
+    for (const l of lines) m.set(l.key, priceLine(poolQ.data, { name: l.name, size: l.size_text, material: l.material, finish: l.finish, spec: l.spec, qty: totals.lineQty[l.key], clientType: h?.client_type }, undefined, fits))
     return m
-  }, [poolQ.data, lines, totals, h?.client_type])
+  }, [poolQ.data, fits, lines, totals, h?.client_type])
   const touch = () => { setDirty(true); setMsg(m => (m?.tone === 'ok' ? null : m)) }
   const updH = <K extends keyof Header>(k: K, v: Header[K]) => { setH(p => (p ? { ...p, [k]: v } : p)); touch() }
   const updArea = (key: string, patch: Partial<QuoteArea>) => { setAreas(p => p.map(a => (a.key === key ? { ...a, ...patch } : a))); touch() }

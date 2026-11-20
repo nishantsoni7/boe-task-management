@@ -77,6 +77,22 @@ describe('the model learns how prices are made', () => {
     assert.equal(priceLine(points.map(p => ({ ...p, k: 'lost' as const })), { name: 'King bed' }, NOW), null)
   })
 
+  test('a kept fit gives the same price and the pool is read once per type, not once per line (typing lag, 20 Nov 2026)', () => {
+    const fits = new Map<string, ReturnType<typeof fitType>>()
+    const a = { name: 'Queen bed', size: `5'6" x 6'6"`, material: 'Teak', finish: 'PU', qty: 2 }
+    const b = { name: 'King bed', size: '72 x 78', material: 'Mango', finish: 'PU', qty: 60 }
+    const first = priceLine(points, a, NOW, fits)
+    assert.deepEqual(first, priceLine(points, a, NOW))
+    assert.equal(fits.size, 1)
+    // The pool is gone: only a kept fit can still answer, so nothing re-read the points.
+    assert.deepEqual(priceLine([], b, NOW, fits), priceLine(points, b, NOW))
+    // "Too few prices" is kept too, so a type without a model is not refitted on every keystroke either.
+    const few = new Map<string, ReturnType<typeof fitType>>()
+    assert.equal(priceLine(bedPoints(5), a, NOW, few), null)
+    assert.equal(few.get('bed'), null)
+    assert.equal(priceLine(points, a, NOW, few), null)
+  })
+
   test('other product types are not mixed in', () => {
     const mixed = [...points, ...points.map(p => ({ ...p, name: 'Bedside table', p: p.p / 5 }))]
     assert.equal(fitType(mixed, 'bed', NOW)!.n, 40)

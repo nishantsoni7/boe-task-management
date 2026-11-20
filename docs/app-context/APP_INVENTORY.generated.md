@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `e31bbde9` — Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied) (#959)
-- Commits on this branch: 1518
+- Commit: `a97765c4` — Quotations: a quotation started from a lead copies its contact role into the client type (#960)
+- Commits on this branch: 1519
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 496 (first `20260530_create_positions.sql`, latest `20270816000000_quotation_start_contact_role.sql`)
 - Tables ever created: 270 (dropped at some point: 8)   SQL functions: 1093   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `a97765c4` 2026-11-20 Quotations: a quotation started from a lead copies its contact role into the client type (#960)
 - `e31bbde9` 2026-11-20 Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied) (#959)
 - `f928263f` 2026-11-20 Quotations: an old Task request no longer makes a quotation without a lead; docs say 20270814000100 is applied (#958)
 - `ae0b9a67` 2026-11-20 Sales leads: a contact role, and the quick note Waiting for BOQ (#957)
@@ -38,7 +39,6 @@
 - `1442bf52` 2026-11-18 Docs: stamp #938 (picture credits switches say ON or OFF) as merged (#939)
 - `3f50eadd` 2026-11-18 Picture credits page: the switches say ON or OFF, and Limits stay locked while nobody has credits (#938)
 - `85db2249` 2026-11-18 Docs: stamp #931, #933, #934 and #936 as merged and applied (#937)
-- `31e7fbdf` 2026-11-18 Quotations: client choices on the PDF, the client link and the Excel (step 2 of 3) (#936)
 
 ## Pages by top-level area
 
