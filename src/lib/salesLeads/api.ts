@@ -1,5 +1,5 @@
 import type { createClient } from '@/lib/supabase/client'
-import type { ClientType, CommentTag, NeededFact, Segment, Stage, Temperature } from './board'
+import type { ClientType, CommentTag, ContactRole, NeededFact, Segment, Stage, Temperature } from './board'
 import type { HistoryRow, ImportRow } from './clickup'
 import type { SheetRow } from './sheets'
 import type { LeadSource, Period, WaTag } from './constants'
@@ -223,6 +223,8 @@ export type WorkLead = SalesLead & {
   temperature: Temperature
   segment: Segment | null
   client_type: ClientType | null
+  /** Who the contact is (20270815000000); absent before that migration. */
+  contact_role?: ContactRole | null
   market: 'domestic' | 'export'
   quantity: string | null
   timeline: string | null
@@ -288,7 +290,7 @@ export type MoveResult =
 
 export type LeadFacts = Partial<{
   name: string; email: string; location: string; requirement: string; quantity: string; timeline: string
-  segment: string; client_type: string; temperature: string; expected_value_paise: number | string
+  segment: string; client_type: string; contact_role: string; temperature: string; expected_value_paise: number | string
 }>
 
 export const fetchMyDay = (s: Supabase) => call<MyDay>(() => s.rpc('sales_my_day'))
