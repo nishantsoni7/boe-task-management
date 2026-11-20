@@ -4,7 +4,7 @@ import { PriceQueue } from './PricingDesk'
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, FileUp, ImageIcon, Plus, Search } from 'lucide-react'
+import { FileText, FileUp, ImageIcon, Plus, Search, Trash2 } from 'lucide-react'
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
@@ -16,6 +16,7 @@ import {
 } from '@/lib/quotations/api'
 import { formatDateIN, gstModeForState } from '@/lib/quotations/math'
 import { ImportDialog } from './ImportDialog'
+import { DeleteQuotationDialog } from './DeleteQuotationDialog'
 import { HomeCards } from './HomeCards'
 import { LeadStep, leadName, type StartChoice } from './LeadStep'
 import s from './quotations.module.css'
@@ -37,6 +38,8 @@ export default function ListScreen() {
   // Every quotation starts from a Sales lead (20 Nov 2026): "file" = choose the lead, then read the client's file (Excel, PDF, photo).
   const [flow, setFlow] = useState<'file' | null>(null)
   const [picked, setPicked] = useState<StartChoice | null>(null)
+  // The row whose bin was pressed (only rows the database marked may_delete have one).
+  const [toDelete, setToDelete] = useState<ListRow | null>(null)
   const qc = useQueryClient()
 
   const listQ = useQuery({ queryKey: quotationKeys.list(scope), queryFn: () => fetchList(supabase, scope), enabled: accessLoaded, staleTime: 20_000 })
@@ -112,14 +115,15 @@ export default function ListScreen() {
             {visible.length > 0 && (
               <div className={s.tableWrap}>
                 <table className={s.table}>
-                  <thead><tr><th aria-label="Picture" /><th>Quotation</th><th className={s.desktopOnly}>Client</th><th className={s.right}>Before GST</th><th>Status</th><th className={s.desktopOnly}>Last activity</th>{scope === 'all' && <th className={s.desktopOnly}>Owner</th>}</tr></thead>
-                  <tbody>{visible.map(r => <Row key={r.id} r={r} scope={scope} url={p => pictureUrl(supabase, p)} onOpen={() => router.push(`/quotations/${r.id}`)} />)}</tbody>
+                  <thead><tr><th aria-label="Picture" /><th>Quotation</th><th className={s.desktopOnly}>Client</th><th className={s.right}>Before GST</th><th>Status</th><th className={s.desktopOnly}>Last activity</th>{scope === 'all' && <th className={s.desktopOnly}>Owner</th>}<th aria-label="Delete" /></tr></thead>
+                  <tbody>{visible.map(r => <Row key={r.id} r={r} scope={scope} url={p => pictureUrl(supabase, p)} onOpen={() => router.push(`/quotations/${r.id}`)} onDelete={() => setToDelete(r)} />)}</tbody>
                 </table>
               </div>
             )}
           </div>
         )}
       </div>
+      {toDelete && <DeleteQuotationDialog supabase={supabase} target={toDelete} onClose={() => setToDelete(null)} onDeleted={() => setToDelete(null)} />}
       {showNew && profile && <LeadStep supabase={supabase} userId={profile.id} canAssign={canAssign} title="New quotation" action="Start quotation" onClose={closeNew} onPick={begin} />}
       {flow === 'file' && profile && !picked && (
         <LeadStep supabase={supabase} userId={profile.id} canAssign={canAssign} askSent={canAssign} title="Start from a client file" action="Choose the file"
@@ -146,7 +150,7 @@ export default function ListScreen() {
   )
 }
 
-function Row({ r, scope, url, onOpen }: { r: ListRow; scope: 'mine' | 'all'; url: (p: string) => string; onOpen: () => void }) {
+function Row({ r, scope, url, onOpen, onDelete }: { r: ListRow; scope: 'mine' | 'all'; url: (p: string) => string; onOpen: () => void; onDelete: () => void }) {
   const day = (iso: string) => formatDateIN(istDateOf(iso))
   return (
     <tr onClick={onOpen} onKeyDown={e => { if (e.key === 'Enter') onOpen() }} tabIndex={0}>
@@ -157,6 +161,12 @@ function Row({ r, scope, url, onOpen }: { r: ListRow; scope: 'mine' | 'all'; url
       <td><StatusPill status={r.status} /></td>
       <td className={`${s.desktopOnly} ${s.small}`}>{r.last_opened_at ? <>Opened by the client {day(r.last_opened_at)}</> : <>Changed {day(r.updated_at)}</>}</td>
       {scope === 'all' && <td className={`${s.desktopOnly} ${s.small}`}>{r.owner_name}</td>}
+      <td className={s.right}>
+        {r.may_delete && (
+          <button type="button" className={`${s.iconBtn} ${s.btnQuietDanger}`} aria-label={`Delete ${r.quote_no}`} title="Delete"
+            onClick={e => { e.stopPropagation(); onDelete() }} onKeyDown={e => e.stopPropagation()}><Trash2 size={15} aria-hidden /></button>
+        )}
+      </td>
     </tr>
   )
 }
