@@ -11,14 +11,15 @@ import { useQuotations } from '@/hooks/useQuotations'
 import { formatINR } from '@/lib/currency'
 import { istDateOf } from '@/lib/istDate'
 import {
-  CLIENT_TYPES, STATUS_LABEL, createQuotation, errorText, fetchList, fetchQuotation, pictureUrl, quotationKeys, saveDoc, saveQuotation,
+  STATUS_LABEL, errorText, fetchList, fetchQuotation, pictureUrl, quotationKeys, saveDoc, saveQuotation, setStatus, startQuotation,
   type ListRow, type QuotationStatus,
 } from '@/lib/quotations/api'
-import { SUPPLY_STATES, formatDateIN, gstModeForState } from '@/lib/quotations/math'
+import { formatDateIN, gstModeForState } from '@/lib/quotations/math'
 import { ImportDialog } from './ImportDialog'
+import { HomeCards } from './HomeCards'
+import { LeadStep, leadName, type StartChoice } from './LeadStep'
 import s from './quotations.module.css'
 import { Pic } from './Pic'
-import { useDialogFocus } from '@/components/salesLeads/useDialogFocus'
 
 type StatusFilter = 'open' | 'all' | QuotationStatus
 const OPEN: QuotationStatus[] = ['draft', 'sent', 'negotiating']
@@ -33,7 +34,9 @@ export default function ListScreen() {
   const [scope, setScope] = useState<'mine' | 'all'>('mine')
   const [filter, setFilter] = useState<StatusFilter>('open')
   const [q, setQ] = useState('')
-  const [fromFile, setFromFile] = useState(false)
+  // Every quotation starts from a Sales lead (20 Nov 2026): "file" = choose the lead, then read the client's file (Excel, PDF, photo).
+  const [flow, setFlow] = useState<'file' | null>(null)
+  const [picked, setPicked] = useState<StartChoice | null>(null)
   const qc = useQueryClient()
 
   const listQ = useQuery({ queryKey: quotationKeys.list(scope), queryFn: () => fetchList(supabase, scope), enabled: accessLoaded, staleTime: 20_000 })
@@ -52,6 +55,13 @@ export default function ListScreen() {
 
   if (loading) return <LoadingScreen />
   const showNew = params.get('new') === '1' && access.create
+  // The desk (edit + see all) and Admin may put a quotation on a salesperson's page, e.g. an Excel quotation they were sent.
+  const canAssign = access.admin || (access.edit && access.view_all)
+  const begin = async (c: StartChoice) => {
+    const id = await startQuotation(supabase, c.lead.id, { ownerId: c.ownerId })
+    await qc.invalidateQueries({ queryKey: ['quotations', 'list'] })
+    router.push(`/quotations/${id}`)
+  }
   // The History API, not router.replace: on a page opened straight at ?new=1 (the menu's New quotation, a refresh),
   // router.replace left ?new=1 in the address, so Cancel and × did nothing.
   const closeNew = () => window.history.replaceState(null, '', '/quotations')
@@ -62,7 +72,7 @@ export default function ListScreen() {
       title="Quotations" subtitle={listQ.isSuccess ? `${counts.open} open · ${formatINR(openValue)} before GST` : undefined}
       actions={access.create ? (
         <span style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className={s.btn} onClick={() => setFromFile(true)} disabled={!profile}><FileUp size={16} aria-hidden /> Start from a client file</button>
+          <button className={s.btn} onClick={() => setFlow('file')} disabled={!profile}><FileUp size={16} aria-hidden /> Start from a client file</button>
           <button className={`${s.btn} ${s.btnPrimary}`} onClick={() => router.push('/quotations?new=1')}><Plus size={16} /> New quotation</button>
         </span>
       ) : undefined}
@@ -70,6 +80,7 @@ export default function ListScreen() {
       <div className={s.wrap}>
         {notSetUp && <div className={`${s.notice} ${s.noticeWarn}`}><b>Quotations is being set up.</b> Its database part has not been applied yet. Once it is, this page fills in by itself.</div>}
         {!notSetUp && accessError && <div className={`${s.notice} ${s.noticeBad}`}>{errorText(accessError)}</div>}
+        {!notSetUp && accessLoaded && profile && <HomeCards supabase={supabase} enabled userId={profile.id} onSeeTheirs={name => { setScope('all'); setFilter('all'); setQ(name) }} />}
         {!notSetUp && accessLoaded && (access.admin || (access.edit && access.view_all)) && <PriceQueue supabase={supabase} />}
         {!notSetUp && accessLoaded && (
           <div className={s.card}>
@@ -109,15 +120,24 @@ export default function ListScreen() {
           </div>
         )}
       </div>
-      {showNew && <NewQuotation onClose={closeNew} onCreated={id => router.push(`/quotations/${id}`)} create={data => createQuotation(supabase, data)} />}
-      {fromFile && profile && (
-        <ImportDialog supabase={supabase} userId={profile.id} areas={[]} start onClose={() => setFromFile(false)}
+      {showNew && profile && <LeadStep supabase={supabase} userId={profile.id} canAssign={canAssign} title="New quotation" action="Start quotation" onClose={closeNew} onPick={begin} />}
+      {flow === 'file' && profile && !picked && (
+        <LeadStep supabase={supabase} userId={profile.id} canAssign={canAssign} askSent={canAssign} title="Start from a client file" action="Choose the file"
+          onClose={() => setFlow(null)} onPick={async c => { setPicked(c) }} />
+      )}
+      {flow === 'file' && profile && picked && (
+        <ImportDialog supabase={supabase} userId={profile.id} areas={[]} start lead={{ name: leadName(picked.lead) }} onClose={() => { setPicked(null); setFlow(null) }}
           onAdd={async (areas, lines, info) => {
-            // The quotation, then its rooms and products in one save; the builder opens on it to be checked and priced.
-            const id = await createQuotation(supabase, { client_name: info.client_name.trim(), project_name: info.project_name.trim() || undefined, supply_state: info.supply_state || undefined, source: 'Client file' })
+            // The quotation from the lead (the client's details are the lead's), then its rooms and products in one save; the builder opens on it.
+            const id = await startQuotation(supabase, picked.lead.id, { ownerId: picked.ownerId, source: 'Client file' })
             const q = await fetchQuotation(supabase, id)
-            const header = { ...q.header, gst_mode: info.supply_state ? gstModeForState(info.supply_state) : q.header.gst_mode, project_type: info.project_type || q.header.project_type }
+            const header = {
+              ...q.header, project_name: info.project_name.trim() || q.header.project_name, supply_state: info.supply_state || q.header.supply_state,
+              gst_mode: info.supply_state ? gstModeForState(info.supply_state) : q.header.gst_mode, project_type: info.project_type || q.header.project_type,
+            }
             await saveQuotation(supabase, id, saveDoc(header, areas, lines, q.updated_at))
+            // A quotation that already went out as Excel: record it as Sent (the date of the first send is today; the owner can reopen it).
+            if (picked.alreadySent) await setStatus(supabase, id, 'sent', 'Added from a quotation already sent to the client')
             await qc.invalidateQueries({ queryKey: ['quotations', 'list'] })
             router.push(`/quotations/${id}`)
           }} />
@@ -138,50 +158,5 @@ function Row({ r, scope, url, onOpen }: { r: ListRow; scope: 'mine' | 'all'; url
       <td className={`${s.desktopOnly} ${s.small}`}>{r.last_opened_at ? <>Opened by the client {day(r.last_opened_at)}</> : <>Changed {day(r.updated_at)}</>}</td>
       {scope === 'all' && <td className={`${s.desktopOnly} ${s.small}`}>{r.owner_name}</td>}
     </tr>
-  )
-}
-
-export function NewQuotation({ onClose, onCreated, create }: {
-  onClose: () => void; onCreated: (id: string) => void
-  create: (d: { client_name: string; project_name?: string; contact_name?: string; contact_phone?: string; contact_role?: string; client_type?: string; supply_state?: string }) => Promise<string>
-}) {
-  const qc = useQueryClient()
-  const [f, setF] = useState({ client_name: '', project_name: '', contact_name: '', contact_phone: '', contact_role: '', client_type: '', supply_state: '' })
-  const [busy, setBusy] = useState(false)
-  const [err, setErr] = useState('')
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setF(p => ({ ...p, [k]: e.target.value }))
-  const submit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!f.client_name.trim()) { setErr('Enter the client’s name.'); return }
-    setBusy(true); setErr('')
-    try {
-      const id = await create(f)
-      await qc.invalidateQueries({ queryKey: ['quotations', 'list'] })
-      onCreated(id)
-    } catch (x) { setErr(errorText(x)); setBusy(false) }
-  }
-  const dialogRef = useDialogFocus<HTMLFormElement>(() => { if (!(busy || f.client_name.trim())) onClose() })
-  return (
-    <div className={s.scrim} onClick={busy || f.client_name.trim() ? undefined : onClose}>
-      <form ref={dialogRef} tabIndex={-1} className={s.modal} onClick={e => e.stopPropagation()} onSubmit={submit} aria-labelledby="newq-title">
-        <div className={s.cardHead}><h2 id="newq-title">New quotation</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} aria-label="Close">×</button></div>
-        <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>
-          <div className={s.grid2}>
-            <label className={s.field}><span>Client *</span><input id="newq-client" className={s.input} value={f.client_name} onChange={set('client_name')} placeholder="Babylon Resort" autoFocus /></label>
-            <label className={s.field}><span>Project</span><input id="newq-project" className={s.input} value={f.project_name} onChange={set('project_name')} placeholder="Resort, Shamshabad" /></label>
-            <label className={s.field}><span>Contact person</span><input id="newq-contact" className={s.input} value={f.contact_name} onChange={set('contact_name')} placeholder="Who decides or forwards it" /></label>
-            <label className={s.field}><span>Contact phone</span><input id="newq-phone" className={s.input} value={f.contact_phone} onChange={set('contact_phone')} inputMode="tel" placeholder="For the WhatsApp link" /></label>
-            <label className={s.field}><span>Their role</span><input id="newq-role" className={s.input} value={f.contact_role} onChange={set('contact_role')} placeholder="Architect, owner, purchase…" /></label>
-            <label className={s.field}><span>Client type</span><select id="newq-type" className={s.input} value={f.client_type} onChange={set('client_type')}><option value="">Choose…</option>{CLIENT_TYPES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></label>
-          </div>
-          <label className={s.field}><span>Delivery state (decides CGST + SGST or IGST)</span><input id="newq-state" className={s.input} list="newq-states" value={f.supply_state} onChange={set('supply_state')} placeholder="Telangana" /><datalist id="newq-states">{SUPPLY_STATES.map(x => <option key={x} value={x} />)}</datalist></label>
-          {err && <div className={`${s.notice} ${s.noticeBad}`} role="alert">{err}</div>}
-        </div>
-        <div className={s.cardHead} style={{ borderTop: '1px solid var(--boe-border)', borderBottom: 0, justifyContent: 'flex-end' }}>
-          <button type="button" className={s.btn} onClick={onClose}>Cancel</button>
-          <button type="submit" className={`${s.btn} ${s.btnPrimary}`} disabled={busy}>{busy ? 'Starting…' : 'Start quotation'}</button>
-        </div>
-      </form>
-    </div>
   )
 }

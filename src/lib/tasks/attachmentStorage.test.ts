@@ -131,7 +131,6 @@ describe('new uploads never mint a permanent public URL', () => {
       'src/app/tasks/create-self/page.tsx',
       'src/app/tasks/my/page.tsx',
       'src/app/tasks/assigned-by-me/page.tsx',
-      'src/app/tasks/quotation-requests/new/page.tsx',
     ]) {
       const src = read(f)
       assert.ok(src.includes('storage_path: path,'), `${f} must record the object path`)

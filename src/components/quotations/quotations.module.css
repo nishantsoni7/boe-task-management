@@ -371,3 +371,29 @@ textarea.t3 { min-height: 86px; }
   .chRow, .chRow:not([data-open]) { grid-template-columns: minmax(0, 1fr); }
   .chSeg button, .chToggle { min-height: 44px; }
 }
+
+/* Start from a lead (20 Nov 2026): the lead list and the "from the lead" summary of LeadStep. */
+.pickList { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 46vh; overflow: auto; }
+.pickRow { display: grid; gap: 1px; width: 100%; text-align: left; padding: 8px 12px; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); background: var(--boe-surface); cursor: pointer; font: 14px var(--boe-font-body); color: var(--boe-text); }
+.pickRow:hover { background: var(--boe-surface-hover); border-color: var(--boe-border-strong); }
+.pickRow:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: 1px; }
+.pickName { font-weight: 600; }
+.fromLead { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); background: var(--boe-surface-sunken); }
+.fromLeadList { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 13.5px; }
+.fromLeadList dt { color: var(--boe-text-muted); }
+.fromLeadList dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* Ask a senior (20 Nov 2026): one slim strip above the top row. */
+.askStrip { padding: 10px 16px; display: grid; gap: 10px; font-size: 13.5px; }
+
+/* Report cards (20 Nov 2026). */
+.cards { padding: 12px 16px; display: grid; gap: 12px; }
+.cardsTitle { margin: 0; font: 700 14px var(--boe-font-heading); color: var(--boe-text); }
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.stat { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); background: var(--boe-surface); color: var(--boe-text); text-decoration: none; min-width: 0; }
+a.stat:hover { background: var(--boe-surface-hover); }
+.statLab { font-size: 12px; font-weight: 600; color: var(--boe-text-muted); }
+.statVal { font: 700 20px var(--boe-font-heading); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.statSub { font-size: 12px; color: var(--boe-text-muted); }
+.teamBlock { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--boe-border); }

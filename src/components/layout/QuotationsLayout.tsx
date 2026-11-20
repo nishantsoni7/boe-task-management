@@ -2,9 +2,11 @@
 
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { useQuery } from '@tanstack/react-query'
+import { createClient } from '@/lib/supabase/client'
 import { BarChart3, FileText, Home, Inbox, Plus, Sparkles } from 'lucide-react'
 import type { UserProfile } from '@/lib/types'
-import type { QuotationAccess } from '@/lib/quotations/api'
+import { askKeys, fetchRequestCount, type QuotationAccess } from '@/lib/quotations/api'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
 import { SidebarPinButton, railShellClass, useSidebarPinned } from './RailControls'
@@ -32,11 +34,15 @@ export function QuotationsLayout({ profile, access, title, subtitle, actions, co
   const router = useRouter()
   const pathname = usePathname()
 
+  // Requests waiting for this person to answer (20 Nov 2026): one small read, after the page has drawn, refreshed every two minutes.
+  const waitingQ = useQuery({ queryKey: askKeys.count, queryFn: () => fetchRequestCount(createClient()), enabled: !!profile, staleTime: 60_000, refetchInterval: 120_000, retry: false })
+  const waiting = waitingQ.data ?? 0
+
   const items = [
     ...(access.create ? [{ href: `${BASE}?new=1`, label: 'New quotation', icon: Plus, active: false, primary: true }] : []),
     { href: BASE, label: 'Quotations', icon: FileText, active: pathname === BASE || (pathname.startsWith(`${BASE}/`) && !pathname.startsWith(`${BASE}/reports`) && !pathname.startsWith(`${BASE}/learning`) && !pathname.startsWith(`${BASE}/requests`)), primary: false },
     // The quotation requests, Pending and Completed (18 Nov 2026); the page says so when somebody has none.
-    { href: `${BASE}/requests`, label: 'Requests', icon: Inbox, active: pathname.startsWith(`${BASE}/requests`), primary: false },
+    { href: `${BASE}/requests`, label: 'Requests', icon: Inbox, active: pathname.startsWith(`${BASE}/requests`), primary: false, badge: waiting },
     { href: `${BASE}/reports`, label: 'Reports', icon: BarChart3, active: pathname.startsWith(`${BASE}/reports`), primary: false },
     // Price learning is the pricing desk's (Admin, or edit + see-all), the same rule as price approval; the database decides.
     ...(access.admin || (access.edit && access.view_all) ? [{ href: `${BASE}/learning`, label: 'Price learning', icon: Sparkles, active: pathname.startsWith(`${BASE}/learning`), primary: false }] : []),
@@ -87,6 +93,7 @@ export function QuotationsLayout({ profile, access, title, subtitle, actions, co
                   <Icon size={15} strokeWidth={1.8} />
                 </span>
                 <span className="boe-rail-label">{item.label}</span>
+                {'badge' in item && item.badge ? <span className="boe-rail-label" style={{ marginLeft: 'auto', minWidth: 20, padding: '0 6px', borderRadius: 10, background: '#B9472E', color: '#fff', fontSize: 11.5, fontWeight: 700, textAlign: 'center' }} aria-label={`${item.badge} waiting`}>{item.badge}</span> : null}
               </button>
             )
           })}

@@ -12,12 +12,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import { FileText, Plus } from 'lucide-react'
 import { AppLink as Link } from '@/components/ui/AppLink'
-import { createQuotation, errorText, fetchLeadQuotations, leadQuotationsKey, linkLead, STATUS_LABEL, type LeadQuotation, type LeadQuotations } from '@/lib/quotations/api'
+import { errorText, fetchLeadQuotations, leadQuotationsKey, startQuotation, STATUS_LABEL, type LeadQuotation, type LeadQuotations } from '@/lib/quotations/api'
 import { valueLabel } from '@/lib/salesLeads/board'
-import { sourceLabel } from '@/lib/salesLeads/constants'
-import { formatPhone } from '@/lib/exhibitionLeads/phone'
 import type { WorkLead } from '@/lib/salesLeads/api'
-import { leadTitle } from './LeadBits'
 import type { LeadWork } from './useLeadWork'
 import s from './leadBoard.module.css'
 
@@ -57,12 +54,8 @@ function Band({ lead, work, data, mayMake }: { lead: WorkLead; work: LeadWork; d
   async function make() {
     setBusy(true); setErr('')
     try {
-      const name = leadTitle(lead)
-      const id = await createQuotation(work.supabase, {
-        client_name: name, contact_name: lead.name?.trim() ? name : undefined, contact_phone: formatPhone(lead.phone), source: sourceLabel(lead.source),
-      })
-      // If the link fails the quotation still exists and its own Lead card offers the same lead (same phone) in one tap.
-      try { await linkLead(work.supabase, id, lead.id) } catch { /* see above */ }
+      // The database copies the lead's name, phone, city, venue and requirement into the quotation and links it in one step (20270814000000).
+      const id = await startQuotation(work.supabase, lead.id)
       void qc.invalidateQueries({ queryKey: leadQuotationsKey(lead.id) })
       router.push(`/quotations/${id}`)
     } catch (e) {

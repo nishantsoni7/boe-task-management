@@ -3,9 +3,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
-  LayoutDashboard, PlusCircle, ClipboardList, CheckSquare,
+  LayoutDashboard, ClipboardList, CheckSquare,
   ChevronRight,
-  Home, Bell, RefreshCw, FileText, Plus, UsersRound, Trophy,
+  Home, Bell, RefreshCw, Plus, UsersRound, Trophy,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import type { UserProfile } from '@/lib/types'
@@ -23,7 +23,6 @@ import { useRecordAppOpen } from '@/hooks/useRecordAppOpen'
 import { useModuleShown } from '@/lib/moduleShown'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
-import { deriveQuotationCapabilities, NO_QUOTATION_CAPABILITIES } from '@/lib/permissions/quotations'
 import { shouldShowTaskCreateActions } from '@/lib/tasks/taskCreateActions'
 import { offersTeamToday } from '@/lib/dayClose/access'
 import { PhoneHeaderMenu } from './PhoneHeaderMenu'
@@ -118,8 +117,8 @@ export function DashboardLayout({
   // NO ROLE-DERIVED SIDEBAR ENTRIES REMAIN. The admin-only Settings group and
   // the role-derived Team Performance entry both left this sidebar — the first
   // to the Control Center, the second to the launcher card Performance already
-  // has. What is left is task navigation plus the quotation entries, and those
-  // are decided by the permission engine (quotationCaps below), not by a role.
+  // has. What is left is task navigation. The quotation entries left too (20 Nov 2026):
+  // quotation requests are made and answered inside the Quotations module.
   //
   // The real logged-in user, plus their role and effective permissions, from the
   // one session-scoped resolution shared with ModuleGuard and /modules.
@@ -136,12 +135,7 @@ export function DashboardLayout({
   // WHOSE NAVIGATION IS THIS? The DISPLAY SUBJECT's — the signed-in user
   // normally, the viewed employee while previewing. See
   // src/hooks/queries/useDisplaySubject.ts for the identity model.
-  const {
-    ready: subjectReady,
-    subjectUserId,
-    subjectRole,
-    subjectPermissionsByModule: subjectPermissions,
-  } = useDisplaySubject()
+  const { subjectUserId } = useDisplaySubject()
 
   // The launcher loads when Home is clicked, never in advance (AppLink, owner
   // 2026-11-12): its stylesheet is never applied here, so warming it made Chrome
@@ -165,30 +159,6 @@ export function DashboardLayout({
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
   })
-
-  // Quotation permissions for the DISPLAY SUBJECT — the same person the counts
-  // above belong to, so "View As" shows the navigation that employee would
-  // actually get.
-  //
-  // WHAT THIS REPLACES. A local query that read `users.role` for an arbitrary id
-  // and called getEffectivePermissions(<that id>) straight from the browser. It
-  // produced the right answer, but it put "may this person preview that person"
-  // in the client — the resolver RPC is SECURITY DEFINER and takes any user id,
-  // so nothing but this component's own `enabled` flag stood between an
-  // authenticated employee and somebody else's permission tree. The subject is
-  // now resolved by /api/view-as/subject, which decides from the session.
-  //
-  // Outside View As the subject IS the signed-in user and this costs no request
-  // at all: useDisplaySubject hands back the session-scoped context that
-  // ModuleGuard and /modules already share.
-  //
-  // Still defaults to NO capabilities while unresolved, so the quotation items
-  // stay hidden until the answer is known. Hiding is not the enforcement
-  // boundary — the two routes gate themselves — but a nav item that flashes on
-  // before a permission resolves is still a leak of what exists.
-  const quotationCaps = subjectReady
-    ? deriveQuotationCapabilities(subjectRole, subjectPermissions.get('task_management') ?? [])
-    : NO_QUOTATION_CAPABILITIES
 
   const navTo = (path: string) => {
     router.push(path)
@@ -242,25 +212,6 @@ export function DashboardLayout({
             onClick={() => navTo('/dashboard')}
           />
 
-          {/* 2. New Quotation Request — hidden in view mode (read-only).
-              What is left of the old "New Task" group. Self Task and Delegate
-              Task are header actions on every Task Management screen, so the
-              group held one child; a group of one is just an item. The route
-              and its gate are unchanged — raising a request is a quotation
-              operation, manage rather than view.
-
-              canCreateQuotations, NOT canManageQuotations: an admin keeps
-              manage — review, respond, approve, reject — and loses only the
-              offer to raise one. See src/lib/permissions/quotations.ts. */}
-          {!inViewMode && quotationCaps.canCreateQuotations && (
-            <NavLeaf
-              label="New Quotation Request"
-              icon={<PlusCircle size={15} strokeWidth={1.8} />}
-              active={pathname === '/tasks/quotation-requests/new'}
-              onClick={() => navTo('/tasks/quotation-requests/new')}
-            />
-          )}
-
           {/* 3. My Tasks */}
           <CollapsibleNav
             label="My Tasks"
@@ -310,19 +261,6 @@ export function DashboardLayout({
               onClick={() => navTo('/tasks/assigned-by-me/cancelled')}
             />
           </CollapsibleNav>
-
-          {/* 4b. Quotation Requests — the register itself, gated on view.
-              The badge count goes with it: an employee who may not open the
-              register must not learn how many requests are in it either. */}
-          {quotationCaps.canViewQuotations && (
-            <NavLeaf
-              label="Quotation Requests"
-              icon={<FileText size={15} strokeWidth={1.8} />}
-              active={pathname === '/tasks/quotation-requests'}
-              onClick={() => navTo('/tasks/quotation-requests')}
-              badge={navCounts.quotationActive || undefined}
-            />
-          )}
 
           {/* 4c. Team Today (Day Close, owner 2026-11-12): administrators only, never while previewing.
               The route checks again (/api/day-close/team: an administrator or the Day Close reviewer). */}

@@ -125,7 +125,6 @@ describe('attachment-bearing creation screens compress at most twice per submiss
   const SCREENS = [
     'src/app/tasks/create/page.tsx',
     'src/app/tasks/create-self/page.tsx',
-    'src/app/tasks/quotation-requests/new/page.tsx',
   ]
 
   for (const path of SCREENS) {
@@ -137,17 +136,6 @@ describe('attachment-bearing creation screens compress at most twice per submiss
         '(once on selection for live feedback, once at submit reused for the upload)')
     })
   }
-
-  test('quotation-requests/new no longer discards a validate-only prepareFiles result', () => {
-    // The regression, named precisely: a call whose destructured `ready` was
-    // never used because a second call re-did the work to get it.
-    const src = codeOf(read('src/app/tasks/quotation-requests/new/page.tsx'))
-    assert.equal(/const \{ error: prepErr \} = await prepareFiles/.test(src), false,
-      'a prepareFiles call must not discard its `ready` result')
-    assert.ok(src.includes('const { ready: readyAttachments, error: prepErr } = await prepareFiles(attachFiles)'))
-    assert.ok(src.includes('for (const file of readyAttachments)'),
-      'the upload loop must reuse the validated set, not recompress')
-  })
 })
 
 // ── 3. Every creation screen's only follow-up write is its activity row ───
@@ -158,19 +146,16 @@ describe('attachment-bearing creation screens compress at most twice per submiss
 
 describe('every creation screen writes its activity row and requests no notification', () => {
   const SCREENS = [
-    'src/app/tasks/quotation-requests/new/page.tsx',
     'src/app/tasks/assigned-by-me/page.tsx',
     'src/components/meetings/MeetingTaskModal.tsx',
     'src/components/meetings/DiscussionTaskModal.tsx',
   ]
 
   for (const path of SCREENS) {
-    // The quotation request form alone tells the person a new request was sent to (owner, 18 Nov 2026).
-    const notifies = path === 'src/app/tasks/quotation-requests/new/page.tsx'
-    test(`${path} writes the created activity row and ${notifies ? 'tells the receiver' : 'nothing to the notification route'}`, () => {
+    test(`${path} writes the created activity row and nothing to the notification route`, () => {
       const src = codeOf(read(path))
       assert.ok(src.includes("const { error: logErr } = await supabase.from('task_activity_log').insert({"))
-      assert.equal(src.includes('requestAssignmentNotification'), notifies)
+      assert.equal(src.includes('requestAssignmentNotification'), false)
       assert.equal(src.includes('notify-assignment'), false)
     })
   }

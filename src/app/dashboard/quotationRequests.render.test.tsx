@@ -183,7 +183,7 @@ describe('what the Dashboard around it keeps', () => {
     assert.ok(PAGE.includes('count={tasks.length}'))
     assert.ok(PAGE.includes('headline="No active requests"'))
     assert.ok(PAGE.includes('onOpen={task => router.push(taskDetailHref(task.id, pathname))}'))
-    assert.ok(PAGE.includes("onViewAll={() => router.push('/tasks/quotation-requests')}"))
+    assert.ok(PAGE.includes("onViewAll={() => router.push('/quotations/requests')}"))
   })
 
   test('the order is still the Dashboard rule: longest pending first, then priority', () => {
