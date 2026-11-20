@@ -30,12 +30,14 @@ const STAGE: Record<ScanProgress['stage'], string> = {
 }
 type RequestFile = { id: string; name: string; path: string }
 
-export function ImportDialog({ supabase, userId, areas, requestId, start, onClose, onAdd }: {
+export function ImportDialog({ supabase, userId, areas, requestId, start, lead, onClose, onAdd }: {
   supabase: Supabase; userId: string; areas: QuoteArea[]
   /** The quotation request this quotation answers: its attached files can be read in one tap. */
   requestId?: string | null
   /** Starting a new quotation from the file: ask the client's name too. */
   start?: boolean
+  /** Starting from a Sales lead (20 Nov 2026): the client is the lead, already copied into the quotation, so it is shown, not asked. */
+  lead?: { name: string }
   onClose: () => void; onAdd: (areas: QuoteArea[], lines: QuoteLine[], info: StartInfo) => void | Promise<void>
 }) {
   const [res, setRes] = useState<ImportResult | null>(null)
@@ -51,7 +53,7 @@ export function ImportDialog({ supabase, userId, areas, requestId, start, onClos
   const [picking, setPicking] = useState<string | null>(null)
   /** The picture (index into res.pictures) being cropped; a crop replaces it for every row that uses it. */
   const [cropping, setCropping] = useState<number | null>(null)
-  const [info, setInfo] = useState<StartInfo>({ client_name: '', project_name: '', supply_state: '', project_type: '' })
+  const [info, setInfo] = useState<StartInfo>({ client_name: lead?.name ?? '', project_name: '', supply_state: '', project_type: '' })
   const [reqFiles, setReqFiles] = useState<RequestFile[] | null>(null)
 
   const urls = useMemo(() => (res?.pictures ?? []).map(p => URL.createObjectURL(p)), [res?.pictures])
@@ -179,7 +181,7 @@ export function ImportDialog({ supabase, userId, areas, requestId, start, onClos
               <div className={s.small}>{res?.note} {rows.length} found. <b>Shaded cells</b> are the ones to check. Untick anything that is not furniture you supply. Tap a page number to see the page.</div>
               {start && (
                 <div className={s.grid2}>
-                  <label className={s.field}><span>Client *</span><input className={s.input} value={info.client_name} onChange={e => setInfo({ ...info, client_name: e.target.value })} placeholder="Who the quotation is for" /></label>
+                  <label className={s.field}><span>{lead ? 'Client (from the lead)' : 'Client *'}</span><input className={s.input} value={info.client_name} onChange={e => setInfo({ ...info, client_name: e.target.value })} placeholder="Who the quotation is for" disabled={!!lead} /></label>
                   <label className={s.field}><span>Project</span><input className={s.input} value={info.project_name} onChange={e => setInfo({ ...info, project_name: e.target.value })} /></label>
                   <label className={s.field}><span>Delivery state (decides CGST + SGST or IGST)</span><input className={s.input} list="imp-states" value={info.supply_state} onChange={e => setInfo({ ...info, supply_state: e.target.value })} /><datalist id="imp-states">{SUPPLY_STATES.map(x => <option key={x} value={x} />)}</datalist></label>
                 </div>

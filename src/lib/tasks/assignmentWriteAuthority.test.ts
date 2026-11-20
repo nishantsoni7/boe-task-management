@@ -326,19 +326,14 @@ describe('9-10. every creation path goes through the trusted operation', () => {
   const CLIENT_PATHS = [
     'src/app/tasks/create/page.tsx',
     'src/app/tasks/assigned-by-me/page.tsx',
-    'src/app/tasks/quotation-requests/new/page.tsx',
     'src/components/meetings/MeetingTaskModal.tsx',
   ]
 
   // A new task is silent (taskNotificationPolicy.ts), so no creation screen
   // asks the route any more — the request could only ever come back
   // `skipped_acknowledgment`. The route stays for tabs still on an older build.
-  // EXCEPT the quotation request form (owner, 18 Nov 2026): a new request tells the person it was sent to.
-  const QUOTATION_FORM = 'src/app/tasks/quotation-requests/new/page.tsx'
-  test(`9. ${QUOTATION_FORM} requests the notice through the trusted route`, () => {
-    assert.ok(read(QUOTATION_FORM).includes('await requestAssignmentNotification(task.id)'))
-  })
-  for (const path of [...CLIENT_PATHS, 'src/components/meetings/DiscussionTaskModal.tsx'].filter(p => p !== QUOTATION_FORM)) {
+  // The quotation request form left Tasks (20 Nov 2026); its old page only redirects.
+  for (const path of [...CLIENT_PATHS, 'src/components/meetings/DiscussionTaskModal.tsx', 'src/app/tasks/quotation-requests/new/page.tsx']) {
     test(`9. ${path} no longer requests an assignment notification`, () => {
       const src = read(path)
       assert.equal(src.includes('requestAssignmentNotification'), false)

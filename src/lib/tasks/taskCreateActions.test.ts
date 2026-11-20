@@ -88,6 +88,6 @@ test('Task Detail hides them for a quotation_request, by task_type', () => {
   assert.match(src, /hideTaskCreateActions=\{isQuotation\}/)
 })
 
-test('quotation creation stays on the Quotation Requests list', () => {
-  assert.match(read('src/app/tasks/quotation-requests/page.tsx'), /New Request/)
+test('the old Quotation Requests list now redirects into the Quotations module', () => {
+  assert.match(read('src/app/tasks/quotation-requests/page.tsx'), /redirect\('\/quotations\/requests'\)/)
 })

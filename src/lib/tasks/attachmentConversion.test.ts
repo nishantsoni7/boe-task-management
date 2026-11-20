@@ -33,7 +33,6 @@ const UPLOAD_SITES = [
   'src/app/tasks/create-self/page.tsx',
   'src/app/tasks/my/page.tsx',
   'src/app/tasks/assigned-by-me/page.tsx',
-  'src/app/tasks/quotation-requests/new/page.tsx',
 ]
 
 // ── The canonical reference for legacy NOT NULL columns ─────────────────────
