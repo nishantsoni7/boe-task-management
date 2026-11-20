@@ -102,8 +102,8 @@ export type DecisionKind =
  * THE FOUR CARDS (owner, 2026-11-20). A row sits in exactly one card: the one for who holds the next move
  * RIGHT NOW. When the holder changes (Sales replies, the approver forwards it on), the row changes card by itself.
  */
-export type CardKey = 'new_pis' | 'changes' | 'from_ops' | 'waiting'
-export type RowTeam = 'sales' | 'operations' | 'nobody'
+export type CardKey = 'new_pis' | 'new_orders' | 'changes' | 'from_ops' | 'waiting'
+export type RowTeam = 'sales' | 'operations' | 'approver' | 'nobody'
 /** The person a row names (who sent it, or who holds it), with the word for how they relate to it. */
 export type RowWho = { name: string | null; team: RowTeam; caption: string }
 
@@ -328,7 +328,7 @@ export const CARD_VISIBLE_ROWS = 5
 
 /** Sorted rows (longest waiting first) split into the four groups, each keeping that order. */
 export function splitCards(rows: readonly DecisionRow[]): Record<CardKey, DecisionRow[]> {
-  const cards: Record<CardKey, DecisionRow[]> = { new_pis: [], changes: [], from_ops: [], waiting: [] }
+  const cards: Record<CardKey, DecisionRow[]> = { new_pis: [], new_orders: [], changes: [], from_ops: [], waiting: [] }
   for (const r of rows) cards[r.card].push(r)
   return cards
 }

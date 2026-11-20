@@ -793,6 +793,10 @@ export type QueueHandoff = {
 }
 export const QUEUE_HANDOFF_COLUMNS = 'id, order_id, status, assigned_to, chain_holder'
 
+/** The Orders dashboard's read also names who approved the version in force (the approver's side of a flag or a reply). */
+export const DASHBOARD_HANDOFF_COLUMNS = `${QUEUE_HANDOFF_COLUMNS}, approver:users!approved_by(full_name)`
+export type DashboardHandoff = QueueHandoff & { approver?: { full_name: string | null } | null }
+
 /** The Orders whose live, undecided handoff the approver has sent to Sales: "Returned to Sales", from the stored holder. */
 export function ordersWithSales(handoffs: readonly Pick<QueueHandoff, 'order_id' | 'status' | 'chain_holder'>[]): Set<string> {
   return new Set(handoffs.filter(h => h.chain_holder === 'sales' && h.status !== 'accepted').map(h => h.order_id))

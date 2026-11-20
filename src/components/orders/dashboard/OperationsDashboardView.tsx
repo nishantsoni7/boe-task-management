@@ -1,63 +1,45 @@
 'use client'
 
-// THE OPERATIONS TEAM'S ORDERS DASHBOARD (20270401000000).
+// THE OPERATIONS TEAM'S ORDERS DASHBOARD (20270401000000; redrawn 2026-11-20 in the approver's design, owner-approved preview).
 //
-//   Running · Not aligned · Changes to answer · Revenue this month      (one strip)
-//   Changes to review   — a revised PI on an order already in production, line by
-//                         line: ✔ can do · ✖ cannot do · ? needs discussion
-//   Not aligned for manufacturing
-//   Orders and dispatches — last month, last six months
-//   Revenue
+//   Needs your action   New orders to accept · Changes on running orders. A revised PI opens its line-by-line answer form
+//                       under the row: ✔ can do · ✖ cannot do · ? needs discussion.
+//   Watching            PIs Operations flagged that wait on the approver or on Sales.
 //
-// The answers are ADVICE to the approver and never touch the order: it stays aligned
-// whatever is answered. Nothing is computed here — the database sent every figure.
+// Orders and dispatches, Revenue, the not-aligned table and the list of recent answers are no longer on this page.
+// Which row sits where is lib/orders/operationsCards.ts; the rows, the sheet and the watching list are the approver's own pieces
+// (DecisionCards.tsx). The answers are ADVICE to the approver and never touch the order: it stays aligned whatever is answered.
 
 import { useMemo, useState, type ReactNode } from 'react'
-import { useRouter } from 'next/navigation'
 import { AppLink as Link } from '@/components/ui/AppLink'
-import { Check, MessageSquare, X } from 'lucide-react'
+import { Check, CircleCheck, MessageSquare, X } from 'lucide-react'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { withReturnTo } from '@/lib/navigation/recordReturn'
-import {
-  formatDate,
-  formatInstantIst,
-  formatRange,
-  formatRupees,
-  formatWaiting,
-  plural,
-  type DashboardSummary,
-} from '@/lib/orders/orderDashboardSummary'
+import { formatInstantIst, type DashboardSummary } from '@/lib/orders/orderDashboardSummary'
 import {
   BULK_NOTE_PLACEHOLDER,
-  CHANGES_STAY_ALIGNED_NOTE,
   CHANGES_UNAVAILABLE_NOTE,
   DECISION_LABEL,
   DECISION_SYMBOL,
   NOTE_PLACEHOLDER,
-  ORDERS_BASIS_NOTE,
-  ORDERS_VS_DISPATCHES_TITLE,
   applyToAll,
   buildAnswers,
   changeText,
-  NOT_ALIGNED_FILTER_LABEL,
   describeAnswerFailure,
-  dispatchGapNotes,
   emptyDraft,
-  lateLabel,
-  notAlignedStatus,
   responseSummary,
   responseTone,
   tally,
-  waitShare,
   type ChangeDecision,
   type ChangeResponse,
   type DraftAnswers,
   type OperationsRead,
-  type OrdersVsDispatches,
   type PendingChange,
 } from '@/lib/orders/operationsDashboard'
-import { RevenueSection } from '@/components/orders/dashboard/RevenueSection'
 import { BACK_WITH_OPERATIONS_NOTE } from '@/lib/orders/backWithOperations'
+import { OPS_GROUPS, OPS_WATCHING_HINT, operationsRows, type OpsHandoffInfo } from '@/lib/orders/operationsCards'
+import { ActionSheet, DecisionRowLink, WatchingSection } from './DecisionCards'
+import styles from './adminDashboard.module.css'
 
 const DECISIONS: readonly ChangeDecision[] = ['can_do', 'cannot_do', 'discuss']
 
@@ -87,7 +69,7 @@ function OrderLink({ orderId, children }: { orderId: string; children: ReactNode
 
 // ── One revised PI, answered line by line ───────────────────────────────────
 
-function PendingChangeCard({ item, isNew, supabase, onAnswered, readOnlyReason }: {
+export function PendingChangeCard({ item, isNew, supabase, onAnswered, readOnlyReason }: {
   item: PendingChange
   isNew: boolean
   supabase: SupabaseClient
@@ -230,32 +212,6 @@ function PendingChangeCard({ item, isNew, supabase, onAnswered, readOnlyReason }
   )
 }
 
-export function ChangesToReview({ items, backWithOps, supabase, onAnswered, readOnlyReason }: {
-  items: PendingChange[]
-  backWithOps: ReadonlySet<string>
-  supabase: SupabaseClient
-  onAnswered: () => void
-  readOnlyReason: string | null
-}) {
-  return (
-    <section className="ops-section" aria-label="Changes to review">
-      <p className="ops-tab-hint">Approved by the approver after the customer asked.</p>
-      {items.length === 0 ? (
-        <p className="ops-empty">No changes are waiting for your answer.</p>
-      ) : (
-        <>
-          <p className="ops-note">{CHANGES_STAY_ALIGNED_NOTE}</p>
-          <div className="ops-changes">
-            {items.map(i => (
-              <PendingChangeCard key={i.handoffId} item={i} isNew={backWithOps.has(i.orderId)} supabase={supabase} onAnswered={onAnswered} readOnlyReason={readOnlyReason} />
-            ))}
-          </div>
-        </>
-      )}
-    </section>
-  )
-}
-
 // ── What Operations answered (also drawn on the approver's dashboard) ───────
 
 export function OperationsResponses({ responses, title = 'Operations responses' }: {
@@ -302,206 +258,65 @@ export function OperationsResponses({ responses, title = 'Operations responses' 
   )
 }
 
-// ── Not aligned ─────────────────────────────────────────────────────────────
-//
-// A table, not a list: order and client, a short status, salesperson, due date, value, and how long
-// it has waited (with a bar against the longest wait). The whole row opens the order. Filter chips
-// appear only for a reason that has orders behind it. Nothing is computed here beyond layout: who an
-// order waits on, and since when, are the database's answers.
-
-function NotAlignedSection({ summary, read, backWithOps }: { summary: DashboardSummary; read: OperationsRead; backWithOps: ReadonlySet<string> }) {
-  const router = useRouter()
-  const [filter, setFilter] = useState<string>('all')
-  const rows = summary.notAligned
-  const chips = useMemo(() => {
-    const counts = new Map<string, number>()
-    for (const r of rows) {
-      const f = notAlignedStatus(r).filter
-      counts.set(f, (counts.get(f) ?? 0) + 1)
-    }
-    return [...counts.entries()]
-  }, [rows])
-  const active = filter === 'all' || chips.some(([k]) => k === filter) ? filter : 'all'
-  const shown = active === 'all' ? rows : rows.filter(r => notAlignedStatus(r).filter === active)
-  const longest = rows.reduce((m, r) => Math.max(m, r.waitingSeconds), 0)
-
-  return (
-    <section className="ops-section" aria-label="Not aligned for manufacturing">
-      <p className="ops-tab-hint">Longest waiting first.</p>
-      {rows.length === 0 ? (
-        <p className="ops-empty">Every running order is aligned for manufacturing.</p>
-      ) : (
-        <div className="ops-na">
-          {chips.length > 1 ? (
-            <div className="ops-na-filters" role="group" aria-label="Filter by status">
-              <button type="button" className="ops-na-chip" aria-pressed={active === 'all'} onClick={() => setFilter('all')}>All {rows.length}</button>
-              {chips.map(([k, n]) => (
-                <button key={k} type="button" className="ops-na-chip" aria-pressed={active === k} onClick={() => setFilter(k)}>
-                  {NOT_ALIGNED_FILTER_LABEL[k] ?? k} {n}
-                </button>
-              ))}
-            </div>
-          ) : null}
-          <table className="ops-na-table">
-            <thead>
-              <tr>
-                <th scope="col">Order</th>
-                <th scope="col">Status</th>
-                <th scope="col">Salesperson</th>
-                <th scope="col">Due</th>
-                <th scope="col" className="ops-r">Value</th>
-                <th scope="col" className="ops-r">Waiting</th>
-                <th scope="col"><span className="ops-sr">Open</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {shown.map(r => {
-                const st = notAlignedStatus(r)
-                const d = read.orderDetails[r.orderId]
-                const late = lateLabel(d?.dueDate ?? null, read.today)
-                const open = () => router.push(withReturnTo(`/orders/${r.orderId}`, '/orders'))
-                // Back from a correction or a revised PI: marked until Operations acts (backWithOperations.ts).
-                const isNew = backWithOps.has(r.orderId)
-                return (
-                  <tr key={r.orderId} className="ops-na-row" data-new={isNew ? 'true' : undefined} onClick={open}>
-                    <td data-label="Order">
-                      <OrderLink orderId={r.orderId}>{r.displayNumber}</OrderLink>
-                      <span className="ops-na-client">{r.clientName || 'Client not recorded'}</span>
-                    </td>
-                    <td data-label="Status">
-                      {isNew ? (
-                        <div className="ops-na-status">
-                          <span className="ops-status" data-tone={st.tone} title={r.detail ?? undefined}>{st.label}</span>
-                          <NewUpdateTag />
-                        </div>
-                      ) : (
-                        <span className="ops-status" data-tone={st.tone} title={r.detail ?? undefined}>{st.label}</span>
-                      )}
-                    </td>
-                    <td data-label="Salesperson" className="ops-na-sp">{d?.salesperson ?? '—'}</td>
-                    <td data-label="Due" className="ops-na-due">
-                      {d?.dueDate ? formatDate(d.dueDate) : '—'}
-                      {late ? <span className="ops-late">{late}</span> : null}
-                    </td>
-                    <td data-label="Value" className="ops-r ops-na-value">{d?.value != null ? formatRupees(d.value) : '—'}</td>
-                    <td data-label="Waiting" className="ops-r ops-na-wait">
-                      <span className="ops-na-time">{formatWaiting(r.waitingSeconds)}</span>
-                      <span className="ops-wbar" aria-hidden="true"><i style={{ width: `${waitShare(r.waitingSeconds, longest)}%` }} /></span>
-                    </td>
-                    <td className="ops-na-go" aria-hidden="true">›</td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </section>
-  )
-}
-
-// ── Orders and dispatches ───────────────────────────────────────────────────
-
-function PeriodPanel({ title, p }: { title: string; p: OrdersVsDispatches }) {
-  const top = Math.max(p.orders.value, p.dispatches.value, 1)
-  const row = (label: string, f: { count: number; value: number }, kind: 'orders' | 'dispatches') => (
-    <div className="ops-period-row">
-      <div className="ops-period-label">{label}</div>
-      <div className="ops-period-count">{f.count}</div>
-      <div className="ops-period-value">{formatRupees(f.value)}</div>
-      <div className="ops-period-bar" aria-hidden="true"><span data-kind={kind} style={{ width: `${Math.round((f.value / top) * 100)}%` }} /></div>
-    </div>
-  )
-  return (
-    <div className="ops-period">
-      <div className="ops-period-head">
-        <h3 className="ops-period-title">{title}</h3>
-        <span className="ops-period-range">{formatRange(p.from, p.to)}</span>
-      </div>
-      {row('Orders', p.orders, 'orders')}
-      {row('Dispatches', p.dispatches, 'dispatches')}
-    </div>
-  )
-}
-
-function OrdersVsDispatchesSection({ read }: { read: OperationsRead }) {
-  const notes = dispatchGapNotes(read.gaps)
-  return (
-    <section className="ops-section" aria-labelledby="ops-ovd-h">
-      <div className="ops-section-head">
-        <h2 id="ops-ovd-h" className="ops-section-title" title={ORDERS_BASIS_NOTE}>{ORDERS_VS_DISPATCHES_TITLE}</h2>
-        <span className="ops-section-hint">Product value, excl. GST</span>
-      </div>
-      <div className="ops-periods">
-        <PeriodPanel title="Last month" p={read.lastMonth} />
-        <PeriodPanel title="Last 6 months" p={read.lastSixMonths} />
-      </div>
-      {notes.length > 0 ? <ul className="ops-gaps">{notes.map(n => <li key={n}>{n}</li>)}</ul> : null}
-    </section>
-  )
-}
-
 // ── The page ────────────────────────────────────────────────────────────────
 
-type OpsTab = 'changes' | 'aligned'
+/** Who holds the PIs Operations flagged, and who approved them: read after the page draws, so it may not be there yet. */
+export type OpsHandoffsState =
+  | { kind: 'loading' }
+  | { kind: 'failed' }
+  | { kind: 'ready'; byOrder: ReadonlyMap<string, OpsHandoffInfo> }
 
-export function OperationsDashboardView({ summary, read, backWithOps, supabase, onAnswered, readOnlyReason }: {
+export function OperationsDashboardView({ summary, read, backWithOps, handoffs, supabase, onAnswered, readOnlyReason }: {
   summary: DashboardSummary
   read: OperationsRead
   /** Orders that have come back to Operations (lib/orders/backWithOperations.ts): marked "New update". */
   backWithOps: ReadonlySet<string>
+  handoffs: OpsHandoffsState
   supabase: SupabaseClient
   onAnswered: () => void
   readOnlyReason: string | null
 }) {
-  const ov = summary.overview
-  const revenue = summary.revenue
-  const [picked, setPicked] = useState<OpsTab | null>(null)
-  const counts = { changes: read.pending.length, aligned: summary.notAligned.length }
-  // Opens on what needs an answer; otherwise on what is waiting for alignment.
-  const active: OpsTab = picked ?? (counts.changes > 0 ? 'changes' : 'aligned')
-  const tabs: { key: OpsTab; label: string }[] = [
-    { key: 'changes', label: 'Changes to review' },
-    { key: 'aligned', label: 'Not aligned for manufacturing' },
-  ]
+  const [openKey, setOpenKey] = useState<string | null>(null)
+  // The read's own time, so the waits are the database's and the render stays pure.
+  const parsed = Date.parse(summary.now)
+  const nowMs = Number.isNaN(parsed) ? 0 : parsed
+  const byOrder = handoffs.kind === 'ready' ? handoffs.byOrder : null
+  const rows = useMemo(
+    () => operationsRows({ alignment: summary.notAligned, pending: read.pending, details: read.orderDetails, today: read.today, backWithOps, handoffs: byOrder }, nowMs),
+    [summary.notAligned, read.pending, read.orderDetails, read.today, backWithOps, byOrder, nowMs],
+  )
+  const groups = OPS_GROUPS.map(g => ({ ...g, rows: rows.groups[g.key] })).filter(g => g.rows.length > 0)
 
-  return (
-    <div className="od-stack">
-      <section className="ops-tabs-wrap" aria-label="Orders that need Operations">
-        <div className="ops-tabs-bar">
-          <div className="ops-tabs" role="tablist" aria-label="Operations lists">
-            {tabs.map(t => (
-              <button
-                key={t.key} type="button" role="tab" id={`ops-tab-${t.key}`}
-                aria-selected={active === t.key} aria-controls={`ops-panel-${t.key}`}
-                className="ops-tab" data-active={active === t.key ? 'true' : undefined}
-                onClick={() => setPicked(t.key)}
-              >
-                {t.label}
-                <span className="ops-tab-count" data-zero={counts[t.key] === 0 ? 'true' : undefined}>{counts[t.key]}</span>
-              </button>
-            ))}
+  const renderRow = (r: (typeof groups)[number]['rows'][number], solid: boolean) => {
+    const item = rows.changeItems.get(r.key)
+    if (!item) return <DecisionRowLink r={r} solid={solid} />
+    const open = openKey === r.key
+    return (
+      <>
+        <DecisionRowLink r={r} solid={solid} expanded={open} onToggle={() => setOpenKey(k => (k === r.key ? null : r.key))} />
+        {open ? (
+          <div className={styles.answer}>
+            <PendingChangeCard item={item} isNew={backWithOps.has(item.orderId)} supabase={supabase} onAnswered={onAnswered} readOnlyReason={readOnlyReason} />
           </div>
-          {ov ? (
-            <span className="ops-running">
-              {plural(ov.running.orders, 'running order')}
-              {ov.running.value > 0 ? ` · ${formatRupees(ov.running.value)}` : ''}
-            </span>
-          ) : null}
-        </div>
-        <div id={`ops-panel-${active}`} role="tabpanel" aria-labelledby={`ops-tab-${active}`} className="ops-tab-panel">
-          {active === 'changes' ? (
-            <ChangesToReview items={read.pending} backWithOps={backWithOps} supabase={supabase} onAnswered={onAnswered} readOnlyReason={readOnlyReason} />
-          ) : (
-            <NotAlignedSection summary={summary} read={read} backWithOps={backWithOps} />
-          )}
-        </div>
-      </section>
+        ) : null}
+      </>
+    )
+  }
 
-      <OrdersVsDispatchesSection read={read} />
-      {revenue ? <RevenueSection revenue={revenue} /> : null}
-      <OperationsResponses responses={read.responses} title="Your recent answers" />
-      <p className="ops-foot">As of {formatDate(read.today)}</p>
+  const watching = rows.watching
+  const nothing = groups.length === 0 && handoffs.kind === 'ready' && (watching?.length ?? 0) === 0
+  return (
+    <div className={styles.root}>
+      <div className={styles.cardsWrap}>
+        {handoffs.kind === 'failed' ? (
+          <section className={styles.card}><p className={styles.note} role="alert">Who holds the PIs you flagged could not be loaded, so that list is not shown. Refresh to try again.</p></section>
+        ) : null}
+        {groups.length > 0 ? <ActionSheet groups={groups} renderRow={renderRow} /> : null}
+        {watching && watching.length > 0 ? <WatchingSection rows={watching} hint={OPS_WATCHING_HINT} /> : null}
+        {nothing ? (
+          <div className={styles.clear}><CircleCheck size={20} aria-hidden="true" /><span>Nothing is waiting on you, and nobody is holding anything for you.</span></div>
+        ) : null}
+      </div>
     </div>
   )
 }

@@ -156,35 +156,27 @@ describe('the not-aligned table', () => {
     assert.equal(/insert\s+into|update\s+public\./i.test(sql), false, 'the read writes nothing')
   })
 
-  test('the screen draws the table from the summary and the details, and the row opens the order', () => {
-    const view = read('src/components/orders/dashboard/OperationsDashboardView.tsx')
-    assert.match(view, /read\.orderDetails\[r\.orderId\]/)
-    // data-new (2026-11-15) sits between the class and the click: the row is still what opens the order.
-    assert.match(view, /className="ops-na-row" data-new=\{isNew \? 'true' : undefined\} onClick=\{open\}/)
-    assert.match(view, /withReturnTo\(`\/orders\/\$\{r\.orderId\}`, '\/orders'\)/)
+  test('the screen draws the rows from the summary and the details, and a row opens the order', () => {
+    const rules = read('src/lib/orders/operationsCards.ts')
+    assert.ok(rules.includes('details[a.orderId]'))
+    assert.ok(rules.includes("withReturnTo(`/orders/${orderId}`, '/orders')"))
+    assert.ok(read('src/components/orders/dashboard/OperationsDashboardView.tsx').includes('operationsRows({ alignment: summary.notAligned, pending: read.pending, details: read.orderDetails'))
   })
 })
 
-describe('the two lists are tabs (owner, 2026-10-22)', () => {
+describe("the page is the approver's design (owner, 2026-11-20)", () => {
   const view = read('src/components/orders/dashboard/OperationsDashboardView.tsx')
 
-  test('the top strip is gone and both lists sit in one tablist with their counts', () => {
-    assert.equal(view.includes('ops-strip'), false)
-    assert.equal(/ops-stat(?![a-z])/.test(view), false)
-    assert.match(view, /role="tablist"/)
-    assert.match(view, /label: 'Changes to review'/)
-    assert.match(view, /label: 'Not aligned for manufacturing'/)
-    assert.match(view, /role="tabpanel"/)
-    assert.match(view, /ops-tab-count/)
+  test('the tabs, the table, orders and dispatches, revenue and the recent answers are gone from the Operations page', () => {
+    for (const gone of ['role="tablist"', 'ops-tab', 'ops-na-', 'NotAlignedSection', 'OrdersVsDispatchesSection', 'RevenueSection', 'Your recent answers']) {
+      assert.equal(view.includes(gone), false, gone)
+    }
   })
 
-  test('it opens on what needs an answer, else on what waits for alignment', () => {
-    assert.match(view, /picked \?\? \(counts\.changes > 0 \? 'changes' : 'aligned'\)/)
-  })
-
-  test('running orders stay visible as a quiet line beside the tabs, not as a tile', () => {
-    assert.match(view, /plural\(ov\.running\.orders, 'running order'\)/)
-    assert.match(view, /className="ops-running"/)
+  test("it is the approver's sheet and watching list, and the answer form opens under its row", () => {
+    assert.ok(view.includes('<ActionSheet groups={groups} renderRow={renderRow} />'))
+    assert.ok(view.includes('<WatchingSection rows={watching}'))
+    assert.ok(view.includes('<PendingChangeCard item={item}'))
   })
 })
 

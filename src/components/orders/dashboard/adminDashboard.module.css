@@ -158,6 +158,8 @@
 .row:hover { background: #FAF8F5; }
 .rowHot { background: #FDF6F7; }
 .rowHot:hover { background: #FBEDEF; }
+button.row { width: 100%; box-sizing: border-box; border: 0; border-bottom: 1px solid #EFEAE3; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.answer { padding: 8px var(--pad) 16px; background: var(--boe-surface-quiet); border-bottom: 1px solid #EFEAE3; }
 .row:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: -2px; }
 .watch .row { border-bottom-color: var(--boe-border); }
 .watch .row:hover { background: rgba(255, 255, 255, 0.7); }
@@ -165,8 +167,8 @@
 .cOrd { font-weight: 600; color: var(--boe-text-muted); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .oi { display: none; }
 .cCli { font-weight: 600; overflow-wrap: anywhere; }
-.cAsk { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-.st { font-weight: 600; }
+.cAsk { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.st { display: block; font-weight: 600; }
 .st svg { display: inline-block; vertical-align: -3px; margin-right: 8px; }
 .stOk { color: var(--boe-completed-fg); }
 .stWarn { color: var(--boe-waiting-fg); }
@@ -174,12 +176,10 @@
 .stInfo { color: var(--boe-working-fg); }
 .stNeutral { color: var(--boe-pending-fg); }
 .round { margin-left: 8px; font-size: 12px; font-weight: 600; color: var(--boe-text-muted); }
-.q { color: var(--boe-text-strong); margin-left: 8px; }
-.q:first-child { margin-left: 0; }
+.q { display: block; margin-top: 2px; color: var(--boe-text-strong); }
+.q:first-child { margin-top: 0; }
 .watch .q { color: var(--boe-text-muted); }
 .cWho { font-weight: 500; }
-.pre { margin-right: 4px; font-weight: 400; color: var(--boe-text-muted); }
-.nm { font-weight: 500; }
 .cAge { display: flex; flex-direction: column; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .cAgeMain { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .ic { display: inline-grid; place-items: center; width: 16px; height: 16px; }
