@@ -3,7 +3,8 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import type { QuotationEvent, QuotationStatus } from './api'
-import { FOLLOW_UP_DAYS, followUpDefault, leadAction, logNote, lostNote } from './leadLink'
+import { FOLLOW_UP_DAYS, followUpDefault, leadAction, logNote, lostNote, lostReason } from './leadLink'
+import { lostReasonLabel } from './report'
 
 describe('which button a quotation offers on its lead', () => {
   test('Sent and Negotiating log it; Confirmed converts; Lost kills; a draft or archived quotation offers nothing', () => {
@@ -51,5 +52,20 @@ describe('the lost note carried to the lead', () => {
     assert.equal(lostNote([ev('sent', 'x'), { kind: 'saved', detail: {}, at: '', actor_name: null }]), '')
     assert.equal(lostNote([ev('lost', null)]), '')
     assert.equal(lostNote([]), '')
+  })
+})
+
+describe('the lost reason carried to the lead and the report', () => {
+  const ev = (to: string, reason?: unknown): QuotationEvent => ({ kind: 'status', detail: { from: 'sent', to, note: null, ...(reason === undefined ? {} : { reason }) }, at: '', actor_name: null })
+  test('the reason of the newest entry that went to lost; empty for one lost before reasons, or not lost', () => {
+    assert.equal(lostReason([ev('lost', 'price_too_high'), ev('lost', 'other')]), 'price_too_high')
+    assert.equal(lostReason([ev('lost')]), '')
+    assert.equal(lostReason([ev('sent', 'price_too_high')]), '')
+    assert.equal(lostReason([ev('lost', 5)]), '')
+  })
+  test('a report line: the lead\'s label for a key, the typed text as it was for an older one', () => {
+    assert.equal(lostReasonLabel({ reason: 'price_too_high', keyed: true }), 'Price too high')
+    assert.equal(lostReasonLabel({ reason: 'Went with a cheaper vendor', keyed: false }), 'Went with a cheaper vendor')
+    assert.equal(lostReasonLabel({ reason: 'other' }), 'other', 'no key flag: shown as typed')
   })
 })

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `3d29925e` — Quotations: every quotation starts from a Sales lead; the desk can put one on a salesperson's page
-- Commits on this branch: 1512
+- Commit: `76f82454` — Quotations: requests move into the module (Tasks no longer has them), report cards, price brief
+- Commits on this branch: 1513
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
-- Migrations: 493 (first `20260530_create_positions.sql`, latest `20270814000300_quotation_cards_and_briefs.sql`)
+- Migrations: 494 (first `20260530_create_positions.sql`, latest `20270814000300_quotation_cards_and_briefs.sql`)
 - Tables ever created: 270 (dropped at some point: 8)   SQL functions: 1093   Enums: 0
 - Test files: 920   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `76f82454` 2026-11-20 Quotations: requests move into the module (Tasks no longer has them), report cards, price brief
 - `3d29925e` 2026-11-20 Quotations: every quotation starts from a Sales lead; the desk can put one on a salesperson's page
 - `d0fe51aa` 2026-11-19 Lead popup: the lead's quotations in one line, and Make quotation from the lead (#952)
 - `c000801a` 2026-11-19 Docs: record 20270803000000 (held-day decision) as applied (no SQL) (#918)
@@ -38,7 +39,6 @@
 - `c7f03dcd` 2026-11-18 Picture credits: a wallet and a tracking page for every paid picture press (limits ship off; migration not applied) (#932)
 - `8a0b1f21` 2026-11-18 Quotations: nothing waits for price approval, suggestions for the pricing desk, bank account + UPI QR on the quotation (#933)
 - `ff8dedc3` 2026-11-18 Quotations: a styled, editable Excel with pictures and the standard terms; GST as one line (#931)
-- `a08a1d5f` 2026-11-18 Docs: stamp #929 (shared image model on Nano Banana 2) as merged (#930)
 
 ## Pages by top-level area
 
@@ -521,7 +521,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270723000000_pricing_training_structure.sql`
 - `20270724000000_pricing_training_submit_counts.sql`
 - `20270725000000_pricing_woods.sql`
 - `20270726000000_pricing_training_library.sql`
@@ -547,6 +546,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270810000000_task_nav_counts.sql`
 - `20270811000000_quotation_lead_link.sql`
 - `20270812000000_quotation_for_lead.sql`
+- `20270813000000_quotation_lost_reasons.sql`
 - `20270814000000_quotation_start_from_lead.sql`
 - `20270814000100_quotation_lead_required.sql`
 - `20270814000200_quotation_requests.sql`
