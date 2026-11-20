@@ -40,8 +40,9 @@ import { AdminDashboardView } from '@/components/orders/dashboard/AdminDashboard
 import { FlaggedPiStrip } from '@/components/orders/dashboard/FlaggedPiStrip'
 import { useViewAs } from '@/contexts/ViewAsContext'
 import { SalespersonDashboardView } from '@/components/orders/dashboard/SalespersonDashboardView'
-import { OperationsDashboardView, OperationsResponses } from '@/components/orders/dashboard/OperationsDashboardView'
-import { QUEUE_HANDOFF_COLUMNS, ordersWithSales, type QueueHandoff } from '@/lib/orders/operationsHandoff'
+import { OperationsDashboardView, OperationsResponses, type OpsHandoffsState } from '@/components/orders/dashboard/OperationsDashboardView'
+import { DASHBOARD_HANDOFF_COLUMNS, ordersWithSales, type DashboardHandoff } from '@/lib/orders/operationsHandoff'
+import { handoffInfoByOrder } from '@/lib/orders/operationsCards'
 import { loadOrdersBackWithOperations } from '@/lib/orders/backWithOperations'
 import {
   OPS_ERROR_BODY,
@@ -104,6 +105,9 @@ export default function OrdersDashboardPage() {
   // Operations dashboard. Read only for the Operations team; empty for everybody else and on a failed read.
   const [backWithOps, setBackWithOps] = useState<ReadonlySet<string>>(new Set())
   const [counts,      setCounts]      = useState<OrderDashboardCounts>(NO_ORDER_DASHBOARD_COUNTS)
+  // Who holds each live handoff and who approved it, from the same read as the queue counts (read after the first draw).
+  // The Operations dashboard names the approver and tells "with the approver" from "with Sales" with it.
+  const [opsHandoffs, setOpsHandoffs] = useState<OpsHandoffsState>({ kind: 'loading' })
   // The owner's "Select an order" control opens the Factory Focus form.
   const [focusFormOpen, setFocusFormOpen] = useState(false)
   // The board's open tab; null until somebody picks one, when it is the first with rows.
@@ -206,11 +210,12 @@ export default function OrdersDashboardPage() {
     const [{ count: draftCount }, handoffsRes] = await Promise.all([
       supabase.from('order_submissions').select('*', { count: 'exact', head: true })
         .in('status', PI_DRAFT_LIST_STATUSES as unknown as string[]),
-      supabase.from('order_operations_handoffs').select(QUEUE_HANDOFF_COLUMNS)
+      supabase.from('order_operations_handoffs').select(DASHBOARD_HANDOFF_COLUMNS)
         .in('status', ['awaiting', 'clarification_needed']).is('superseded_at', null),
     ])
     if (ticket !== latest.current) return
-    const all = handoffsRes.error ? null : ((handoffsRes.data ?? []) as unknown as QueueHandoff[])
+    const all = handoffsRes.error ? null : ((handoffsRes.data ?? []) as unknown as DashboardHandoff[])
+    setOpsHandoffs(all ? { kind: 'ready', byOrder: handoffInfoByOrder(all) } : { kind: 'failed' })
     // Returned to Sales (2026-11-13): said apart, never counted as waiting on Operations.
     const withSales = all ? ordersWithSales(all) : new Set<string>()
     const live = all ? all.filter(h => !withSales.has(h.order_id)) : null
@@ -320,12 +325,13 @@ export default function OrdersDashboardPage() {
           )}
         </div>
       ) : operationsView ? (
-        // ── THE OPERATIONS TEAM'S DASHBOARD ── changes to answer, what is not aligned, orders and dispatches.
+        // ── THE OPERATIONS TEAM'S DASHBOARD ── needs your action (new orders, changes to answer) and watching.
         summary.kind === 'ready' && operations.kind === 'ready' ? (
           <OperationsDashboardView
             summary={summary.summary}
             read={operations.read}
             backWithOps={backWithOps}
+            handoffs={opsHandoffs}
             supabase={supabase}
             onAnswered={reload}
             readOnlyReason={viewAsUserId ? 'View As is read-only' : null}

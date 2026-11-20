@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `0da52ac1` — Docs: stamp #961 (delete a quotation) as merged and live, migration 20270817000000 applied (#964)
-- Commits on this branch: 1522
+- Commit: `076b6668` — Orders: the approver's dashboard is one "Needs your action" sheet and a "Watching" list (no SQL) (#965)
+- Commits on this branch: 1523
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 497 (first `20260530_create_positions.sql`, latest `20270817000000_quotation_delete.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1096   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `076b6668` 2026-11-20 Orders: the approver's dashboard is one "Needs your action" sheet and a "Watching" list (no SQL) (#965)
 - `0da52ac1` 2026-11-20 Docs: stamp #961 (delete a quotation) as merged and live, migration 20270817000000 applied (#964)
 - `7172f6c2` 2026-11-20 Quotations: typing in Material and Remarks no longer refits the price model for every product (#962)
 - `b5f21118` 2026-11-20 Quotations: delete an unsent draft (its maker) or any quotation but a PI-linked one (administrator) (#961)
@@ -38,7 +39,6 @@
 - `006ad8fe` 2026-11-19 Payment window: stop offering already-matched payments as duplicates, and let a different client name through (#943)
 - `5efcad37` 2026-11-19 My Tasks opens sooner: open work only, Top 3 in one request (no SQL) (#942)
 - `68597159` 2026-11-19 Docs: stamp #940 (credits left this month) as merged (#941)
-- `83186471` 2026-11-19 Picture credits page: a "Left this month" column for each person (#940)
 
 ## Pages by top-level area
 
@@ -166,7 +166,7 @@
 - `src/lib/modules` — 7 source, 8 test
 - `src/lib/navigation` — 6 source, 9 test
 - `src/lib/notifications` — 9 source, 25 test
-- `src/lib/orders` — 113 source, 173 test
+- `src/lib/orders` — 114 source, 173 test
 - `src/lib/payroll` — 36 source, 36 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test

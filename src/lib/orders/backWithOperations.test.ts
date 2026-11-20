@@ -167,9 +167,11 @@ describe('the screens draw it', () => {
     assert.ok(dash.includes('backWithOps={backWithOps}'))
   })
 
-  test('the dashboard marks the row in Not aligned and the card in Changes to review', () => {
-    assert.ok(view.includes("data-new={isNew ? 'true' : undefined}"))
-    assert.ok(view.includes('isNew={backWithOps.has(i.orderId)}'))
-    assert.equal((view.match(/<NewUpdateTag \/>/g) ?? []).length, 2, 'one in the row, one on the card')
+  test('the dashboard marks an order that came back, in the Operations rows and on the answer card', () => {
+    const rules = readFileSync(join(process.cwd(), 'src/lib/orders/operationsCards.ts'), 'utf8')
+    assert.ok(rules.includes('BACK_WITH_OPERATIONS_NOTE'))
+    assert.ok(rules.includes('if (input.backWithOps.has(a.orderId)) changes.push(replyBackRow('))
+    assert.ok(view.includes('isNew={backWithOps.has(item.orderId)}'))
+    assert.equal((view.match(/<NewUpdateTag \/>/g) ?? []).length, 1, 'one on the answer card')
   })
 })
