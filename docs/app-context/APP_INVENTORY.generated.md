@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `076b6668` — Orders: the approver's dashboard is one "Needs your action" sheet and a "Watching" list (no SQL) (#965)
-- Commits on this branch: 1523
+- Commit: `30ab89a1` — Remove the Operations Review chip from the Orders dashboard (#968)
+- Commits on this branch: 1526
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 497 (first `20260530_create_positions.sql`, latest `20270817000000_quotation_delete.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1096   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `30ab89a1` 2026-11-21 Remove the Operations Review chip from the Orders dashboard (#968)
+- `28127b1f` 2026-11-21 Docs: stamp #965 (approver dashboard: Needs your action and Watching) as merged and live (#966)
+- `a8d44009` 2026-11-21 Orders: the Operations team's dashboard in the approver's design (no SQL) (#967)
 - `076b6668` 2026-11-20 Orders: the approver's dashboard is one "Needs your action" sheet and a "Watching" list (no SQL) (#965)
 - `0da52ac1` 2026-11-20 Docs: stamp #961 (delete a quotation) as merged and live, migration 20270817000000 applied (#964)
 - `7172f6c2` 2026-11-20 Quotations: typing in Material and Remarks no longer refits the price model for every product (#962)
@@ -36,9 +39,6 @@
 - `616efe75` 2026-11-19 Task Management sidebar: the three badge counts in one call (migration 20270810000000, apply before merge) (#946)
 - `5d3584b6` 2026-11-19 Docs: stamp #942 (My Tasks open-work list, Top 3 in one request) as merged and verified live (no SQL) (#944)
 - `4eac169b` 2026-11-19 Docs: stamp #943 (payment window: matched payments, different name) as merged (#945)
-- `006ad8fe` 2026-11-19 Payment window: stop offering already-matched payments as duplicates, and let a different client name through (#943)
-- `5efcad37` 2026-11-19 My Tasks opens sooner: open work only, Top 3 in one request (no SQL) (#942)
-- `68597159` 2026-11-19 Docs: stamp #940 (credits left this month) as merged (#941)
 
 ## Pages by top-level area
 

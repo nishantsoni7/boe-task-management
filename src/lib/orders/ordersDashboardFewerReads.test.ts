@@ -19,9 +19,19 @@ const QUEUES = PAGE.slice(PAGE.indexOf('const loadQueueCounts = async'), PAGE.in
 
 describe('the first group', () => {
   test('holds only the three dashboard reads', () => {
-    const group = LOAD.slice(LOAD.indexOf('await Promise.all(['), LOAD.indexOf('if (ticket !== latest.current) return'))
+    // 2026-11-21: the group is a named promise (`dashboardReads`), so the approver's cards' read can be started right
+    // after it is sent and before it is awaited. The group itself is unchanged: the same three reads.
+    const group = LOAD.slice(LOAD.indexOf('const dashboardReads = Promise.all(['), LOAD.indexOf('const started ='))
+    assert.ok(group.length > 0, 'the group is found')
     assert.equal((group.match(/supabase\.rpc\(/g) ?? []).length, 3)
     assert.equal(/\.from\(/.test(group), false, 'no table read is left in the first group')
+  })
+
+  test('the approver\'s cards are the only other read the page starts with it, and the page itself asks for nothing more', () => {
+    // It is started by startDecisionRead (DecisionQueue.tsx), which the page only calls: the page's own source still
+    // holds exactly the reads counted in orderStartupShape.test.ts.
+    assert.equal((LOAD.match(/startDecisionRead\(/g) ?? []).length, 1)
+    assert.equal((LOAD.match(/\.from\(/g) ?? []).length, 0)
   })
 
   test('starts the queue links after the page state is set, without waiting for them', () => {

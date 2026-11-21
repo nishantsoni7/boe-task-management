@@ -57,7 +57,13 @@ import {
   type ReviewSource,
   type RevisionSource,
 } from '@/lib/orders/adminDashboard'
-import { readOpenDocumentSubmissions, readOpenPiRevisions } from '@/components/orders/DocumentActionQueue'
+import {
+  readOpenDocumentSubmissions,
+  readOpenPiRevisions,
+  rememberName,
+  type PersonEmbed,
+  type QueueRead,
+} from '@/components/orders/DocumentActionQueue'
 import { DecisionCards, type DecisionState } from './DecisionCards'
 
 export type { DecisionState }
@@ -69,9 +75,10 @@ type OrderEmbed = { display_number?: string | null; client_name?: string | null 
 type RevisionRaw = {
   id: string; order_id: string; version_number: number; status: 'pending' | 'admin_approved'
   uploaded_by: string | null; uploaded_at: string; operations_reviewer: string | null
-  revision_reason: string | null; order: OrderEmbed
+  revision_reason: string | null; order: OrderEmbed; uploader: PersonEmbed
 }
-type DocumentRaw = PersistedDocumentSubmission & { order: OrderEmbed }
+type DocumentRaw = PersistedDocumentSubmission & { order: OrderEmbed; submitter: PersonEmbed }
+type ReviewRaw = ReviewSource & { submitter: PersonEmbed }
 type ChangeRaw = ChangeRequestSource & { requested_by_user: { full_name: string } | null }
 type SalespersonRaw = { id: string; salesperson: { full_name: string | null } | null }
 
@@ -84,25 +91,55 @@ export type PageHeldRows = {
   answers?: readonly ChangeResponse[]
 }
 
+// ── TWO ROUNDS, NOT THREE, AND THE FIRST ONE BESIDE THE PAGE'S OWN READS (2026-11-21) ──────────────────────────────────
+//
+// This list used to be read after the page's first batch had landed (round 2), and then looked up the people's names
+// and the rest in a third round. Now:
+//   ROUND 1  the page starts startDecisionRead beside its three dashboard reads: the PIs, the revised PIs, the
+//            documents, the flagged PIs and (for an acting administrator) the change requests. Each of those names its
+//            people in the same request (an embed over the foreign key to users), so no lookup of users follows.
+//   ROUND 2  what depends on round 1's rows: one payment summary per PI, the send-back comments and the flagged
+//            Orders' salespeople, all at once, and only as soon as round 1 has answered, not after the page's batch.
+// What the page's own read adds (Operations' answers, the orders waiting on Operations) is applied on top by
+// composeDecisionRows, which reads nothing. Same reads under the same rights as before: the page only starts them sooner.
+
+/** Everything the list needs from the database, before the page's own rows are laid over it. */
+export type DecisionRead = {
+  reviews: ReviewRaw[]
+  myRevisions: RevisionSource[]
+  myDocuments: DocumentSource[]
+  /** null = the flagged-PI read failed (the card says so); [] = none, or this database does not have the function. */
+  flagged: Awaited<ReturnType<typeof loadFlaggedPis>>
+  changeRows: ChangeRaw[]
+  changesFailed: boolean
+  names: ReadonlyMap<string, string>
+  summaries: Awaited<ReturnType<typeof loadPiPaymentSummary>>[]
+  sent: Awaited<ReturnType<typeof loadSentBackComments>>
+  salespeople: ReadonlyMap<string, string>
+}
+
+type DecisionViewer = { viewerId: string; isAdmin: boolean; canReviewChanges: boolean }
+
 /**
- * null = the PI read failed, which the card says; anything else is the list (and whether the flagged-PI or
- * change-request read failed). `canReviewChanges` is the ACTING administrator (role admin, not under View As):
- * it is not `isAdmin`, which here means "can approve PIs".
+ * The reads, in two rounds. null = the PI read failed, which the card says. `canReviewChanges` is the ACTING
+ * administrator (role admin, not under View As): it is not `isAdmin`, which here means "can approve PIs".
+ * `open` carries the two open-queue reads when somebody started them already (see startDecisionRead).
  */
-export async function loadDecisionRows(
+export async function readDecisionData(
   supabase: SupabaseClient,
-  viewer: { viewerId: string; isAdmin: boolean; canReviewChanges: boolean } & PageHeldRows,
-): Promise<{ rows: DecisionRow[]; flaggedFailed: boolean; changesFailed: boolean } | null> {
+  viewer: DecisionViewer,
+  open?: { revisions: Promise<QueueRead>; documents: Promise<QueueRead> },
+): Promise<DecisionRead | null> {
   const [subs, revs, docs, flagged, changes] = await Promise.all([
     supabase
       .from('order_submissions')
-      .select('id, client_name, bill_to_name, draft_reference, subtotal_after_discount, submitted_by, submitted_at')
+      .select('id, client_name, bill_to_name, draft_reference, subtotal_after_discount, submitted_by, submitted_at, submitter:users!submitted_by(full_name)')
       .eq('status', 'submitted')
       .order('submitted_at', { ascending: true })
       .limit(200),
     // Shared with the documents list below, which loads at the same moment from the same two tables.
-    readOpenPiRevisions(supabase),
-    readOpenDocumentSubmissions(supabase),
+    open?.revisions ?? readOpenPiRevisions(supabase),
+    open?.documents ?? readOpenDocumentSubmissions(supabase),
     // The ONE definition of "a flagged PI that waits on me": the database's (20270611000000).
     loadFlaggedPis({ rpc: async (fn: string) => supabase.rpc(fn) }),
     // Pending amendments and cancellations, oldest first. Nobody but an acting admin is asked, so nobody else reads them.
@@ -121,7 +158,7 @@ export async function loadDecisionRows(
   ])
   if (subs.error) return null
 
-  const reviews = (subs.data ?? []) as unknown as ReviewSource[]
+  const reviews = (subs.data ?? []) as unknown as ReviewRaw[]
 
   const ctx = { viewerId: viewer.viewerId, isAdmin: viewer.isAdmin, viewingAs: false }
   const revisions: RevisionSource[] = revs.error ? [] : ((revs.data ?? []) as unknown as RevisionRaw[]).map(r => ({
@@ -142,22 +179,19 @@ export async function loadDecisionRows(
 
   const changeRows = changes.error ? [] : ((changes.data ?? []) as unknown as ChangeRaw[])
 
-  const ids = new Set<string>()
-  for (const r of reviews) if (r.submitted_by) ids.add(r.submitted_by)
-  for (const r of myRevisions) if (r.uploadedBy) ids.add(r.uploadedBy)
-  for (const r of myDocuments) if (r.submission.submitted_by) ids.add(r.submission.submitted_by)
+  // The people's names arrived with the rows above, as embeds. Only the ones these lists use are looked at.
+  const names = new Map<string, string>()
+  for (const r of reviews) rememberName(names, r.submitted_by, r.submitter)
+  for (const r of (revs.error ? [] : ((revs.data ?? []) as unknown as RevisionRaw[]))) rememberName(names, r.uploaded_by, r.uploader)
+  for (const r of (docs.error ? [] : ((docs.data ?? []) as unknown as DocumentRaw[]))) rememberName(names, r.submitted_by, r.submitter)
 
   // The Order's salesperson stands in for "Sales" on a PI the approver sent them: the database records that holder as
-  // a team, not a person. Only the Orders of flagged PIs are asked, in the same burst as the names.
+  // a team, not a person. Only the Orders of flagged PIs are asked, in the same burst as the payment summaries.
   const flaggedOrderIds = [...new Set((flagged ?? []).map(r => r.orderId))]
 
   // loadPiPaymentSummary wants a promise from rpc(); the client's builder is a thenable, so await it here.
   const rpcClient = { rpc: async (fn: string, args: Record<string, unknown>) => supabase.rpc(fn, args) }
-  const [names, summaries, sent, salespeople] = await Promise.all([
-    ids.size === 0
-      ? Promise.resolve(new Map<string, string>())
-      : supabase.from('users').select('id, full_name').in('id', [...ids]).then(({ data }) =>
-          new Map(((data ?? []) as { id: string; full_name: string }[]).map(u => [u.id, u.full_name] as const))),
+  const [summaries, sent, salespeople] = await Promise.all([
     Promise.all(reviews.slice(0, CHIP_READS).map(r => loadPiPaymentSummary(rpcClient, r.id))),
     // Which flagged PIs were returned to Sales (no read when none is flagged; a failed read changes nothing).
     loadSentBackComments(sentBackHistoryRead(supabase), flagged ?? []),
@@ -166,6 +200,16 @@ export async function loadDecisionRows(
       : supabase.from('orders').select('id, salesperson:users!assigned_to(full_name)').in('id', flaggedOrderIds).then(({ data }) =>
           new Map(((data ?? []) as unknown as SalespersonRaw[]).flatMap(o => (o.salesperson?.full_name ? [[o.id, o.salesperson.full_name] as const] : [])))),
   ])
+
+  return { reviews, myRevisions, myDocuments, flagged, changeRows, changesFailed: !!changes.error, names, summaries, sent, salespeople }
+}
+
+/** The rows, with the page's own answers laid over what was read. Reads nothing. */
+export function composeDecisionRows(
+  read: DecisionRead,
+  held: PageHeldRows,
+): { rows: DecisionRow[]; flaggedFailed: boolean; changesFailed: boolean } {
+  const { reviews, myRevisions, myDocuments, flagged, changeRows, names, summaries, sent, salespeople } = read
   const nameOf = (id: string | null) => (id ? names.get(id) ?? null : null)
 
   const nowMs = Date.now()
@@ -175,13 +219,48 @@ export async function loadDecisionRows(
     ...myDocuments.map(r => documentRow(r, nameOf(r.submission.submitted_by))),
     ...(flagged ?? []).map(r => flaggedRow(r, sent[r.handoffId], salespeople.get(r.orderId) ?? null)),
     ...changeRows.map(r => changeRequestRow(r, r.requested_by_user?.full_name ?? null)),
-    ...(viewer.answers ?? []).filter(a => needsFollowUp(a, nowMs)).map(operationsAnswerRow),
-    ...(viewer.alignment ?? []).flatMap(a => awaitingReviewRow(a, viewer.reviewerName ?? null) ?? []),
+    ...(held.answers ?? []).filter(a => needsFollowUp(a, nowMs)).map(operationsAnswerRow),
+    ...(held.alignment ?? []).flatMap(a => awaitingReviewRow(a, held.reviewerName ?? null) ?? []),
   ], nowMs)
-  return { rows, flaggedFailed: flagged === null, changesFailed: !!changes.error }
+  return { rows, flaggedFailed: flagged === null, changesFailed: read.changesFailed }
 }
 
-export function DecisionQueue({ supabase, viewerId, isAdmin, canReviewChanges, viewingAs, reloadKey, alignment, reviewerName, answers }: {
+/** Both stages in one call: the reads, then the rows. null = the PI read failed, which the card says. */
+export async function loadDecisionRows(
+  supabase: SupabaseClient,
+  viewer: DecisionViewer & PageHeldRows,
+): Promise<{ rows: DecisionRow[]; flaggedFailed: boolean; changesFailed: boolean } | null> {
+  const read = await readDecisionData(supabase, viewer)
+  return read ? composeDecisionRows(read, viewer) : null
+}
+
+/**
+ * A read started for a given reader, to be handed to DecisionQueue (and its open-queue reads to the documents list).
+ * It records WHO it was started for, so a list drawn for somebody else never takes it.
+ */
+export type EarlyDecisionRead = DecisionViewer & {
+  revisions: Promise<QueueRead>
+  documents: Promise<QueueRead>
+  /** Never rejects: a failed read is null, which the card says. */
+  read: Promise<DecisionRead | null>
+}
+
+/** Starts the list's reads now, for the page's first batch. */
+export function startDecisionRead(supabase: SupabaseClient, viewer: DecisionViewer): EarlyDecisionRead {
+  const revisions = readOpenPiRevisions(supabase)
+  const documents = readOpenDocumentSubmissions(supabase)
+  const read = readDecisionData(supabase, viewer, { revisions, documents }).catch(() => null)
+  return { viewerId: viewer.viewerId, isAdmin: viewer.isAdmin, canReviewChanges: viewer.canReviewChanges, revisions, documents, read }
+}
+
+/** The early read, only when it was started for exactly this reader and these rights; otherwise null and the list reads for itself. */
+export function usableEarlyRead(early: EarlyDecisionRead | null | undefined, viewer: DecisionViewer): Promise<DecisionRead | null> | null {
+  return early && early.viewerId === viewer.viewerId && early.isAdmin === viewer.isAdmin && early.canReviewChanges === viewer.canReviewChanges
+    ? early.read
+    : null
+}
+
+export function DecisionQueue({ supabase, viewerId, isAdmin, canReviewChanges, viewingAs, reloadKey, alignment, reviewerName, answers, early }: {
   supabase: SupabaseClient
   viewerId: string | null
   isAdmin: boolean
@@ -190,17 +269,22 @@ export function DecisionQueue({ supabase, viewerId, isAdmin, canReviewChanges, v
   viewingAs: boolean
   /** Changes whenever the page re-reads the dashboard, so the list is read again with it. */
   reloadKey: string
+  /** The read the page started in its first batch; used only when it was started for this very reader. */
+  early?: EarlyDecisionRead | null
 } & PageHeldRows) {
   const [state, setState] = useState<DecisionState>({ kind: 'loading' })
 
   useEffect(() => {
     if (!viewerId || viewingAs) return
     let live = true
-    void loadDecisionRows(supabase, { viewerId, isAdmin, canReviewChanges, alignment, reviewerName, answers }).then(read => {
-      if (live) setState(read ? { kind: 'ready', rows: read.rows, flaggedFailed: read.flaggedFailed, changesFailed: read.changesFailed } : { kind: 'error' })
+    const viewer = { viewerId, isAdmin, canReviewChanges }
+    // Reading the page's early read again costs nothing: it only lays the page's answers over rows already read.
+    const read = usableEarlyRead(early, viewer) ?? startDecisionRead(supabase, viewer).read
+    void read.then(data => {
+      if (live) setState(data ? { kind: 'ready', ...composeDecisionRows(data, { alignment, reviewerName, answers }) } : { kind: 'error' })
     })
     return () => { live = false }
-  }, [supabase, viewerId, viewingAs, isAdmin, canReviewChanges, reloadKey, alignment, reviewerName, answers])
+  }, [supabase, viewerId, viewingAs, isAdmin, canReviewChanges, reloadKey, alignment, reviewerName, answers, early])
 
   return <DecisionCards state={!viewerId || viewingAs ? { kind: 'unavailable' } : state} />
 }

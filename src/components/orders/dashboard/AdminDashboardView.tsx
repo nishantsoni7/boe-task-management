@@ -13,10 +13,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { DashboardSummary } from '@/lib/orders/orderDashboardSummary'
 import type { ChangeResponse } from '@/lib/orders/operationsDashboard'
-import { DecisionQueue } from './DecisionQueue'
+import { DecisionQueue, type EarlyDecisionRead } from './DecisionQueue'
 import styles from './adminDashboard.module.css'
 
-export function AdminDashboardView({ summary, answers, supabase, viewerId, isAdmin, canReviewChanges, viewingAs }: {
+export function AdminDashboardView({ summary, answers, supabase, viewerId, isAdmin, canReviewChanges, viewingAs, early }: {
   summary: DashboardSummary
   /** Operations' answers on revised PIs, from the page's own Operations read; empty when it is not available. */
   answers: readonly ChangeResponse[]
@@ -26,11 +26,13 @@ export function AdminDashboardView({ summary, answers, supabase, viewerId, isAdm
   /** The acting administrator (role admin, not under View As): the only reader asked to decide change requests. */
   canReviewChanges: boolean
   viewingAs: boolean
+  /** The list's read, started by the page beside its own (first batch); null when it did not start one. */
+  early?: EarlyDecisionRead | null
 }) {
   return (
     <div className={styles.root}>
       <DecisionQueue
-        supabase={supabase} viewerId={viewerId} isAdmin={isAdmin} canReviewChanges={canReviewChanges} viewingAs={viewingAs}
+        supabase={supabase} viewerId={viewerId} isAdmin={isAdmin} canReviewChanges={canReviewChanges} viewingAs={viewingAs} early={early}
         reloadKey={summary.now} alignment={summary.notAligned} reviewerName={summary.reviewer?.name ?? null} answers={answers}
       />
     </div>
