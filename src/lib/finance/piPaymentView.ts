@@ -771,6 +771,29 @@ export async function loadPiPaymentSummary(
 }
 
 /**
+ * The summaries of many PIs in ONE call (pi_submissions_payment_summaries, 20270818000000), as a list in the order
+ * the ids were given; null for a PI the caller may not view, as one failed single read was.
+ *
+ * Where the batch is not available (the function is not on this database yet) or fails, each PI is asked for
+ * on its own exactly as before, so nothing is ever read as "no chip" because the batch could not answer.
+ */
+export async function loadPiPaymentSummaries(
+  client: PaymentRpcClient,
+  submissionIds: readonly string[],
+): Promise<(PiPaymentSummary | null)[]> {
+  if (submissionIds.length === 0) return []
+  const { data, error } = await client.rpc('pi_submissions_payment_summaries', { p_submission_ids: [...submissionIds] })
+  if (!error && Array.isArray(data)) {
+    const byId = new Map<string, PiPaymentSummary | null>()
+    for (const row of data as { submission_id?: unknown; summary?: unknown }[]) {
+      if (typeof row?.submission_id === 'string') byId.set(row.submission_id, (row.summary as PiPaymentSummary | null) ?? null)
+    }
+    return submissionIds.map(id => byId.get(id) ?? null)
+  }
+  return Promise.all(submissionIds.map(id => loadPiPaymentSummary(client, id)))
+}
+
+/**
  * Today's date as YYYY-MM-DD in the reader's OWN time zone.
  *
  * LAUNCH AUDIT (2026-09-19). The PI payment form took "today" from

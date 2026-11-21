@@ -30,7 +30,7 @@
 
 import { useEffect, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { loadPiPaymentSummary } from '@/lib/finance/piPaymentView'
+import { loadPiPaymentSummaries } from '@/lib/finance/piPaymentView'
 import { displayOrderNumber } from '@/lib/orderNumbering'
 import type { AlignmentRow } from '@/lib/orders/orderDashboardSummary'
 import type { ChangeResponse } from '@/lib/orders/operationsDashboard'
@@ -68,7 +68,7 @@ import { DecisionCards, type DecisionState } from './DecisionCards'
 
 export type { DecisionState }
 
-/** Payment summaries are read for this many PIs at most: one call each, side by side. */
+/** Payment summaries are read for this many PIs at most, in one call (the database takes up to 50). */
 const CHIP_READS = 12
 
 type OrderEmbed = { display_number?: string | null; client_name?: string | null } | null
@@ -98,7 +98,8 @@ export type PageHeldRows = {
 //   ROUND 1  the page starts startDecisionRead beside its three dashboard reads: the PIs, the revised PIs, the
 //            documents, the flagged PIs and (for an acting administrator) the change requests. Each of those names its
 //            people in the same request (an embed over the foreign key to users), so no lookup of users follows.
-//   ROUND 2  what depends on round 1's rows: one payment summary per PI, the send-back comments and the flagged
+//   ROUND 2  what depends on round 1's rows: the payment summaries (one call for all the PIs, 20270818000000; per
+//            PI where the database does not have it yet), the send-back comments and the flagged
 //            Orders' salespeople, all at once, and only as soon as round 1 has answered, not after the page's batch.
 // What the page's own read adds (Operations' answers, the orders waiting on Operations) is applied on top by
 // composeDecisionRows, which reads nothing. Same reads under the same rights as before: the page only starts them sooner.
@@ -113,7 +114,7 @@ export type DecisionRead = {
   changeRows: ChangeRaw[]
   changesFailed: boolean
   names: ReadonlyMap<string, string>
-  summaries: Awaited<ReturnType<typeof loadPiPaymentSummary>>[]
+  summaries: Awaited<ReturnType<typeof loadPiPaymentSummaries>>
   sent: Awaited<ReturnType<typeof loadSentBackComments>>
   salespeople: ReadonlyMap<string, string>
 }
@@ -189,10 +190,11 @@ export async function readDecisionData(
   // a team, not a person. Only the Orders of flagged PIs are asked, in the same burst as the payment summaries.
   const flaggedOrderIds = [...new Set((flagged ?? []).map(r => r.orderId))]
 
-  // loadPiPaymentSummary wants a promise from rpc(); the client's builder is a thenable, so await it here.
+  // The payment helpers want a promise from rpc(); the client's builder is a thenable, so await it here.
   const rpcClient = { rpc: async (fn: string, args: Record<string, unknown>) => supabase.rpc(fn, args) }
   const [summaries, sent, salespeople] = await Promise.all([
-    Promise.all(reviews.slice(0, CHIP_READS).map(r => loadPiPaymentSummary(rpcClient, r.id))),
+    // ONE call for all the chips (20270818000000); per PI as before where the database does not have it yet.
+    loadPiPaymentSummaries(rpcClient, reviews.slice(0, CHIP_READS).map(r => r.id)),
     // Which flagged PIs were returned to Sales (no read when none is flagged; a failed read changes nothing).
     loadSentBackComments(sentBackHistoryRead(supabase), flagged ?? []),
     flaggedOrderIds.length === 0
