@@ -16,6 +16,8 @@ import {
   billExtension,
   billFileProblem,
   billStoragePath,
+  nameBillFiles,
+  pastedBillFiles,
   friendlyReimbursementError,
   isReimbursable,
   mayAddBillAsPayer,
@@ -327,6 +329,59 @@ describe('bills', () => {
   test('a failed bill row removes its own upload (compensation), and nothing else is ever deleted', () => {
     assert.ok(/if \(rowError\) \{[\s\S]{0,200}\.remove\(\[path\]\)/.test(BILLS))
     assert.equal(/\.delete\(\)/.test(BILLS + MODALS), false, 'bills are removed by tombstone')
+  })
+
+  describe('pasting or dropping a bill (Ctrl+V, drag and drop)', () => {
+    const clip = (text: string, files: File[]) => ({ files, getData: (t: string) => (t === 'text/plain' ? text : '') })
+    const at = new Date(2026, 10, 21, 14, 5, 9)
+
+    test('a copied screenshot becomes a PNG bill named for when it arrived; two do not share a name', () => {
+      const shot = () => new File([new Uint8Array([1, 2, 3])], 'image.png', { type: 'image/png' })
+      const [one, two] = pastedBillFiles(clip('', [shot(), shot()]), at)
+      assert.equal(one.name, 'expense-bill-2026-11-21-140509.png')
+      assert.equal(two.name, 'expense-bill-2026-11-21-140509-2.png')
+      assert.equal(one.type, 'image/png')
+      assert.equal(one.size, 3)
+      assert.equal(billFileProblem(one), null)
+    })
+
+    test('a dropped file is named the same way: nameless ones get a stamp, real names are kept', () => {
+      const nameless = new File([new Uint8Array([1])], '', { type: 'image/jpeg' })
+      const real = new File([new Uint8Array([1])], 'Diesel bill.jpg', { type: 'image/jpeg' })
+      assert.deepEqual(nameBillFiles([nameless, real], at).map(f => f.name), ['expense-bill-2026-11-21-140509.jpg', 'Diesel bill.jpg'])
+    })
+
+    test('a file with a real name keeps it (a PDF copied from Explorer)', () => {
+      const pdf = new File([new Uint8Array([1])], 'Diesel bill.pdf', { type: 'application/pdf' })
+      assert.deepEqual(pastedBillFiles(clip('', [pdf]), at).map(f => f.name), ['Diesel bill.pdf'])
+    })
+
+    test('a paste that carries TEXT is left to the text box (Excel copies a picture beside its cells)', () => {
+      const picture = new File([new Uint8Array([1])], 'image.png', { type: 'image/png' })
+      assert.deepEqual(pastedBillFiles(clip('Ramesh\t850', [picture]), at), [])
+      assert.deepEqual(pastedBillFiles(clip('', []), at), [])
+      assert.deepEqual(pastedBillFiles(null, at), [])
+    })
+
+    test('a file the form cannot take is still handed over, so the form can say why', () => {
+      const doc = new File([new Uint8Array([1])], 'bill.docx', { type: 'application/vnd.ms-word' })
+      const [kept] = pastedBillFiles(clip('', [doc]), at)
+      assert.ok(billFileProblem(kept))
+    })
+
+    test('both bill surfaces take a paste and a drop, through the shared drag hook, and say so on screen', () => {
+      assert.ok(BILLS.includes('useBillIntake(addFiles, mayAttach)'), 'the bills of a saved expense (edit form, bills window)')
+      assert.ok(/useBillIntake\(added => onChange\(\[\.\.\.files, \.\.\.added\]\), !disabled\)/.test(BILLS), 'the Add form, off while saving')
+      assert.ok(BILLS.includes("from '@/hooks/useDragAndPaste'") && BILLS.includes('useDragAndPaste(files =>'), 'the same hook the payment-proof control uses')
+      assert.ok(BILLS.includes('pastedBillFiles(e.clipboardData)') && BILLS.includes('nameBillFiles(files)'))
+      assert.equal((BILLS.match(/<BillDropZone drag=\{drag\}>/g) ?? []).length, 2)
+      assert.ok(BILLS.includes('or drag a bill here, or press Ctrl+V'))
+    })
+
+    test('a file dropped beside the dashed area never makes the browser open it and leave the form', () => {
+      assert.ok(/addEventListener\('dragover', keepPage\)/.test(BILLS) && /addEventListener\('drop', keepPage\)/.test(BILLS))
+      assert.ok(/removeEventListener\('drop', keepPage\)/.test(BILLS), 'and the guard goes when the bill area does')
+    })
   })
 })
 
