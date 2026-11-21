@@ -25,10 +25,75 @@ import {
   billFileProblem,
   billStoragePath,
   formatFileSize,
+  nameBillFiles,
+  pastedBillFiles,
   type ExpenseBillRow,
 } from '@/lib/finance/expenseReimbursements'
+import { useDragAndPaste } from '@/hooks/useDragAndPaste'
 
 type Supabase = ReturnType<typeof createClient>
+
+/**
+ * The two ways a bill arrives besides the picker, as on the payment-proof control
+ * (ProofDropZone): a file DROPPED on the dashed area (the shared useDragAndPaste
+ * hook), and Ctrl+V ANYWHERE on the page while this is mounted. A text paste is
+ * never touched (pastedBillFiles), so the Remark box still pastes text.
+ * shortcut: listens on the document, so it assumes one bill area is on screen at
+ * a time — true today (the Add/Edit form and the bills window are separate
+ * dialogs); scope it to a ref if that changes.
+ */
+function useBillIntake(onFiles: (files: File[]) => void, enabled: boolean) {
+  const live = useRef({ onFiles, enabled })
+  useEffect(() => { live.current = { onFiles, enabled } })
+  useEffect(() => {
+    const onPaste = (e: ClipboardEvent) => {
+      if (!live.current.enabled) return
+      const files = pastedBillFiles(e.clipboardData)
+      if (files.length === 0) return
+      e.preventDefault()
+      live.current.onFiles(files)
+    }
+    // A file dropped BESIDE the dashed area would make the browser open it and
+    // leave the half-filled form. Refuse that, here and while saving too.
+    const keepPage = (e: DragEvent) => { if (e.dataTransfer?.types.includes('Files')) e.preventDefault() }
+    document.addEventListener('paste', onPaste)
+    document.addEventListener('dragover', keepPage)
+    document.addEventListener('drop', keepPage)
+    return () => {
+      document.removeEventListener('paste', onPaste)
+      document.removeEventListener('dragover', keepPage)
+      document.removeEventListener('drop', keepPage)
+    }
+  }, [])
+  return useDragAndPaste(files => {
+    if (live.current.enabled && files.length > 0) live.current.onFiles(nameBillFiles(files))
+  })
+}
+
+/** The dashed area that takes a dropped file; the picker button sits inside it. */
+function BillDropZone({ drag, children }: { drag: ReturnType<typeof useBillIntake>; children: React.ReactNode }) {
+  const { dropActive, onDragOver, onDragEnter, onDragLeave, onDrop } = drag
+  return (
+    <div
+      data-testid="bill-drop-zone"
+      onDragOver={onDragOver}
+      onDragEnter={onDragEnter}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap',
+        padding: '8px 10px', borderRadius: '8px',
+        border: `1.5px dashed ${dropActive ? colors.brand : colors.borderMed}`,
+        background: dropActive ? colors.brandTint : colors.base,
+      }}
+    >
+      {children}
+      <span style={{ fontSize: '12px', color: dropActive ? colors.brandInk : colors.muted }}>
+        {dropActive ? 'Drop to attach' : 'or drag a bill here, or press Ctrl+V to paste a copied bill or screenshot'}
+      </span>
+    </div>
+  )
+}
 
 const BILL_COLUMNS = 'id, expense_id, storage_path, file_name, mime_type, size_bytes, uploaded_by, created_at, removed_at'
 
@@ -155,6 +220,7 @@ export function ExpenseBills({
     await load()
     setBusy(false)
   }
+  const drag = useBillIntake(addFiles, mayAttach)
 
   const remove = async (bill: ExpenseBillRow) => {
     if (busy) return
@@ -239,12 +305,14 @@ export function ExpenseBills({
               void addFiles(files)
             }}
           />
-          <button type="button" className="boe-btn boe-btn-ghost" disabled={busy}
-            style={{ alignSelf: 'flex-start', minHeight: '40px', fontSize: '12.5px' }}
-            onClick={() => inputRef.current?.click()}>
-            <Paperclip size={14} strokeWidth={2} style={{ marginRight: '6px', verticalAlign: '-2px' }} />
-            {busy ? 'Uploading…' : 'Add bill'}
-          </button>
+          <BillDropZone drag={drag}>
+            <button type="button" className="boe-btn boe-btn-ghost" disabled={busy}
+              style={{ minHeight: '40px', fontSize: '12.5px' }}
+              onClick={() => inputRef.current?.click()}>
+              <Paperclip size={14} strokeWidth={2} style={{ marginRight: '6px', verticalAlign: '-2px' }} />
+              {busy ? 'Uploading…' : 'Add bill'}
+            </button>
+          </BillDropZone>
         </>
       )}
     </div>
@@ -279,6 +347,7 @@ export function PendingBillPicker({
 }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const problems = files.map(billFileProblem).filter((p): p is string => p !== null)
+  const drag = useBillIntake(added => onChange([...files, ...added]), !disabled)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
       {files.length > 0 && (
@@ -312,12 +381,14 @@ export function PendingBillPicker({
           onChange([...files, ...picked])
         }}
       />
-      <button type="button" className="boe-btn boe-btn-ghost" disabled={disabled}
-        style={{ alignSelf: 'flex-start', minHeight: '40px', fontSize: '12.5px' }}
-        onClick={() => inputRef.current?.click()}>
-        <Paperclip size={14} strokeWidth={2} style={{ marginRight: '6px', verticalAlign: '-2px' }} />
-        Attach bill
-      </button>
+      <BillDropZone drag={drag}>
+        <button type="button" className="boe-btn boe-btn-ghost" disabled={disabled}
+          style={{ minHeight: '40px', fontSize: '12.5px' }}
+          onClick={() => inputRef.current?.click()}>
+          <Paperclip size={14} strokeWidth={2} style={{ marginRight: '6px', verticalAlign: '-2px' }} />
+          Attach bill
+        </button>
+      </BillDropZone>
     </div>
   )
 }

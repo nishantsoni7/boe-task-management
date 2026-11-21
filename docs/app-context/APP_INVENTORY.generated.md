@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `30ab89a1` — Remove the Operations Review chip from the Orders dashboard (#968)
-- Commits on this branch: 1526
+- Commit: `631ed075` — Orders: the approver's dashboard reads in two rounds, not three (no SQL) (#969)
+- Commits on this branch: 1527
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 497 (first `20260530_create_positions.sql`, latest `20270817000000_quotation_delete.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1096   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `631ed075` 2026-11-21 Orders: the approver's dashboard reads in two rounds, not three (no SQL) (#969)
 - `30ab89a1` 2026-11-21 Remove the Operations Review chip from the Orders dashboard (#968)
 - `28127b1f` 2026-11-21 Docs: stamp #965 (approver dashboard: Needs your action and Watching) as merged and live (#966)
 - `a8d44009` 2026-11-21 Orders: the Operations team's dashboard in the approver's design (no SQL) (#967)
@@ -38,7 +39,6 @@
 - `adf5ef86` 2026-11-19 Docs: stamp #946 (sidebar badge counts in one call) as merged and verified live (no SQL change) (#947)
 - `616efe75` 2026-11-19 Task Management sidebar: the three badge counts in one call (migration 20270810000000, apply before merge) (#946)
 - `5d3584b6` 2026-11-19 Docs: stamp #942 (My Tasks open-work list, Top 3 in one request) as merged and verified live (no SQL) (#944)
-- `4eac169b` 2026-11-19 Docs: stamp #943 (payment window: matched payments, different name) as merged (#945)
 
 ## Pages by top-level area
 
