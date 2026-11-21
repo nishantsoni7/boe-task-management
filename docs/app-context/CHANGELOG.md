@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-21 — Quotation PDF: no blank pages, no hole before the last product (PR open, not merged) · no migration
+- **Why.** The owner's saved PDF (QT-N-01015) had 18 pages for 9 sheets and white bands top and bottom, and a half-empty page before the last product.
+- **What.** (1) `document.module.css` print: `.sheet` gets `zoom: min(1, calc(100vh / 296.6mm))` and centring, so a margin the print window forces no longer pushes each sheet onto a second page; the hint beside Download PDF now says Margins None, Headers and footers off. (2) `planTablePages` no longer drags the last product over with the totals; they take their own page when they do not fit. Test updated.
+- **Checked.** Headless Edge 158 on the real document with a forced 5 mm margin: 10 pages for 10 sheets; with none, 10 for 10. Not checked in Chrome's own print window; the cause of the forced margin is unconfirmed.
+
 ## 2026-11-21 — Expenses: paste (Ctrl+V) or drag and drop a bill (PR open, not merged) · no migration
 - **Why.** The owner asked for copy-and-paste of the attachment in the Add Expense form (a screenshot of a UPI payment or a bill is usually already on the clipboard), then for drag and drop too, "as already done on other pages".
 - **What.** `useBillIntake` (`ExpenseBills.tsx`) feeds both bill surfaces: `PendingBillPicker` (Add / Complete form, off while saving) and `ExpenseBills` (Edit form and the bills window, when the person may attach). Drop uses the shared `useDragAndPaste` hook and a dashed area (`BillDropZone`) that holds the button and says "or drag a bill here, or press Ctrl+V to paste a copied bill or screenshot" (the same pattern as the payment-proof `ProofDropZone`); paste is a document `paste` listener. A file dropped BESIDE the area is refused by a document `dragover`/`drop` guard, so the browser cannot open it and leave the half-filled form. `pastedBillFiles` / `nameBillFiles` (`lib/finance/expenseReimbursements.ts`) leave any paste that carries text alone (Excel copies a picture beside its cells) and name a nameless screenshot `expense-bill-YYYY-MM-DD-HHMMSS.png` using the proof intake's `isGenericProofName`.

@@ -42,7 +42,7 @@ function Bar({ back, fileName }: { back?: React.ReactNode; fileName: string }) {
     <div className={p.bar}>
       {back}
       <span style={{ flex: 1 }} />
-      <span className={p.barHint}>In the print window, choose “Save as PDF”</span>
+      <span className={p.barHint}>In the print window: Save as PDF, Margins None, Headers and footers off</span>
       <button className={p.btn} onClick={() => void savePdf(fileName)}><Download size={15} aria-hidden /> Download PDF</button>
     </div>
   )
