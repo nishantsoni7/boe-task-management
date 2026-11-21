@@ -119,7 +119,7 @@ describe('products and prices: one table (owner, 18 Nov 2026)', () => {
   test('a page that opens in the middle of a room type repeats its heading as "continued"', () => {
     const pages = planTablePages(groupsOf([area('a', 3)], lines(20, 'a')), small)
     assert.ok(pages.length >= 2)
-    for (const p of pages.slice(1)) assert.deepEqual([p.rows[0].kind, p.rows[0].kind === 'group' && p.rows[0].continued], ['group', true])
+    for (const p of pages.slice(1).filter(x => x.rows.length)) assert.deepEqual([p.rows[0].kind, p.rows[0].kind === 'group' && p.rows[0].continued], ['group', true])
     assert.ok(!(pages[0].rows[0].kind === 'group' && pages[0].rows[0].continued), 'the first heading is not "continued"')
   })
   test('a room-type heading is never the last row of a page', () => {
@@ -138,13 +138,9 @@ describe('products and prices: one table (owner, 18 Nov 2026)', () => {
       })
     }
   })
-  test('the totals never stand alone: when they do not fit under the last rows, the last product goes over with them', () => {
+  test('when the totals do not fit under the last rows, they take a page of their own: no product is dragged over (owner, 21 Nov 2026)', () => {
     const pages = planTablePages(groupsOf([area('a', 2)], lines(7, 'a')), 80)
-    assert.deepEqual(pages.map(p => p.summary), [false, true])
-    assert.deepEqual(pages[1].rows.map(r => r.kind), ['group', 'line'], 'the "continued" heading and the last product')
-    // only when even one product cannot fit with them do the totals take a page of their own
-    const alone = planTablePages(groupsOf([area('a', 2)], lines(7, 'a')), 110)
-    assert.deepEqual(alone.map(p => [p.summary, p.rows.length]), [[false, 8], [true, 0]])
+    assert.deepEqual(pages.map(p => [p.summary, p.rows.length]), [[false, 8], [true, 0]], 'every product stays on the first page')
     for (const huge of [200, 0, 199]) {
       const p = planTablePages(groupsOf([area('a', 2)], lines(9, 'a')), huge)
       assert.equal(p.filter(x => x.summary).length, 1); assert.equal(keys(p).length, 9)

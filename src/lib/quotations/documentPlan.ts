@@ -174,8 +174,8 @@ export const rowUnits = (r: TableRow): number => r.kind === 'group' ? GROUP_UNIT
 export const summaryUnits = (sumRows: number): number => 36 + 3.4 * sumRows
 
 /**
- * Page by page: rows until a page is full; the summary goes under the last rows when it fits. When it does not, the last
- * product moves to the next page with it, so the totals never stand on a page of their own (unless even that cannot fit).
+ * Page by page: rows until a page is full; the summary goes under the last rows when it fits. When it does not, it takes a page
+ * of its own: no product is moved over with it (owner, 21 Nov 2026: a half-empty page before the last product looked unfinished).
  */
 export function planTablePages(groups: readonly Group[], summary: number): TablePage[] {
   const rows: TableRow[] = []
@@ -195,12 +195,6 @@ export function planTablePages(groups: readonly Group[], summary: number): Table
     let used = lead.length ? GROUP_UNITS : 0, take = 0
     while (i + take < rows.length && used + rowUnits(rows[i + take]) <= cap) { used += rowUnits(rows[i + take]); take++ }
     if (take === 0) take = 1
-    if (i + take === rows.length) {
-      // every row fits but the summary does not: the last product goes over with it
-      let c = rows.length - 1
-      if (c > i && rows[c - 1].kind === 'group') c -= 1
-      if (c > i && units(c) + summary <= TABLE_NEXT_UNITS) take = c - i
-    }
     // a room-type heading is never the last row of a page
     if (take > 1 && i + take < rows.length && rows[i + take - 1].kind === 'group') take -= 1
     pages.push({ rows: [...lead, ...rows.slice(i, i + take)], summary: false })
