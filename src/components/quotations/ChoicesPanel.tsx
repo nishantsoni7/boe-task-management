@@ -62,6 +62,8 @@ function ChoiceRow({ kind, v, editable, url, onChange, onUpload }: {
     )
   }
   const catalog = v.source === 'catalog'
+  // The client sent a code and BOE sources the fabric (20270819000000): fabric only.
+  const sourced = v.source === 'code'
   const text = (f: 'name' | 'code' | 'supplier' | 'used_for' | 'note', name: string, ph: string, wide = false) => (
     <label className={`${s.field} ${wide ? s.chWide : ''}`}><span>{name}</span>
       <input aria-label={`${label} ${name.toLowerCase()}`} className={s.input} maxLength={CHOICE_MAX[f]} placeholder={ph} value={v[f] ?? ''} onChange={e => onChange({ ...v, [f]: e.target.value })} disabled={!editable} />
@@ -78,12 +80,13 @@ function ChoiceRow({ kind, v, editable, url, onChange, onUpload }: {
       <div className={s.chForm}>
         <div className={s.chSeg} role="group" aria-label={`${label} comes from`}>
           <button type="button" aria-pressed={catalog} className={catalog ? s.chOn : undefined} disabled={!editable} onClick={() => onChange({ ...v, source: 'catalog' })}>From our catalog</button>
-          <button type="button" aria-pressed={!catalog} className={!catalog ? s.chOn : undefined} disabled={!editable} onClick={() => onChange({ ...v, source: 'client' })}>Client&apos;s own</button>
+          <button type="button" aria-pressed={v.source === 'client'} className={v.source === 'client' ? s.chOn : undefined} disabled={!editable} onClick={() => onChange({ ...v, source: 'client' })}>Client&apos;s own</button>
+          {kind === 'fabric' && <button type="button" aria-pressed={sourced} className={sourced ? s.chOn : undefined} disabled={!editable} onClick={() => onChange({ ...v, source: 'code' })}>Client&apos;s code, we source it</button>}
         </div>
         <div className={s.chGrid}>
-          {text('name', catalog ? 'Name' : 'What the client chose', catalog ? 'e.g. Berlin velvet' : 'e.g. their own linen, 4 m')}
-          {catalog && text('code', 'Code / shade', 'e.g. F18')}
-          {text('supplier', catalog ? 'Supplier' : 'Who supplies it', catalog ? 'e.g. V2 Homes' : 'Client sends it, or a supplier')}
+          {text('name', catalog ? 'Name' : sourced ? 'Name (if known)' : 'What the client chose', catalog ? 'e.g. Berlin velvet' : sourced ? 'e.g. dark green velvet' : 'e.g. their own linen, 4 m')}
+          {(catalog || sourced) && text('code', sourced ? 'Client’s code' : 'Code / shade', sourced ? 'The code they send' : 'e.g. F18')}
+          {text('supplier', catalog ? 'Supplier' : sourced ? 'Supplier we ask' : 'Who supplies it', catalog ? 'e.g. V2 Homes' : sourced ? 'Optional' : 'Client sends it, or a supplier')}
           {text('used_for', 'Where used', 'e.g. seat and back')}
           {text('note', 'Note', 'Anything the factory should know', true)}
         </div>

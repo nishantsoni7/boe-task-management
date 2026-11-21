@@ -28,6 +28,8 @@ export type QuoteLine = {
   references?: LineRef[]
   /** What the client picked for this product (20270808000100): fabric, finish, stone, rope weave. Internal for now; never changes a price. */
   choices?: LineChoices
+  /** Fabric and packing priced per piece (20270819000000); finish has no price, only its code and picture in `choices`. */
+  costing?: LineCosting
 }
 
 export type LineRef = { path: string; kind: 'swatch' | 'drawing' | 'reference'; note?: string }
@@ -38,9 +40,10 @@ export const MAX_LINE_REFS = 8
 export const CHOICE_KINDS = ['fabric', 'finish', 'stone', 'rope_weave'] as const
 export type ChoiceKind = (typeof CHOICE_KINDS)[number]
 export const CHOICE_LABEL: Record<ChoiceKind, string> = { fabric: 'Fabric', finish: 'Finish', stone: 'Stone', rope_weave: 'Rope weave' }
-/** 'catalog' = picked from our catalog; 'client' = the client's own (name is then their description, supplier who supplies it). */
+/** 'catalog' = picked from our catalog; 'client' = the client's own (name is then their description, supplier who supplies it);
+ *  'code' = the client sends a code and BOE sources the fabric (20270819000000). */
 export type LineChoice = {
-  source: 'catalog' | 'client'
+  source: 'catalog' | 'client' | 'code'
   name?: string; code?: string; supplier?: string; used_for?: string; note?: string
   /** A swatch picture in quotation-images, same shape as a product's picture path. */
   photo?: string | null
@@ -75,6 +78,100 @@ export function choiceCounts(c: LineChoices | undefined): { total: number; open:
   const all = CHOICE_KINDS.map(k => c?.[k]).filter((v): v is LineChoice => !!v)
   return { total: all.length, open: all.filter(v => v.status !== 'confirmed').length }
 }
+
+// ── costing: fabric and packing per product (20270819000000) ─────────────────────────────────────
+/**
+ * Fabric and packing each carry a price PER PIECE on every product, multiplied by that product's quantity (owner, 21 Nov 2026:
+ * "per piece packing cost of a product multiplied by total quantities"). Fabric = metres per piece × rupees per metre. Finish has no price:
+ * it is only a code and a picture, which live in the client choices. The two sums are written into the header's fabric_amount and
+ * packing_amount on every save, so everything that already reads those two keys (totals, list value, PDF, Excel, PI draft) keeps working.
+ */
+export type LineCosting = { fabric?: { metres?: number; rate?: number }; packing?: { type?: string; per_piece?: number } }
+/** The longest packing type the database allows (quotation_line_costing_ok). */
+export const PACKING_TYPE_MAX = 80
+
+const typed = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : undefined)
+
+/** What is saved: only numbers that were typed (whole rupees, metres to two decimals), and an empty object when nothing is left. */
+export function cleanCosting(c: LineCosting | undefined): LineCosting {
+  const out: LineCosting = {}
+  const metres = typed(c?.fabric?.metres), rate = typed(c?.fabric?.rate)
+  if (metres !== undefined || rate !== undefined) {
+    out.fabric = {}
+    if (metres !== undefined) out.fabric.metres = Math.min(999.99, Math.round(metres * 100) / 100)
+    if (rate !== undefined) out.fabric.rate = Math.min(10_000_000, Math.round(rate))
+  }
+  const type = (c?.packing?.type ?? '').trim().slice(0, PACKING_TYPE_MAX), per = typed(c?.packing?.per_piece)
+  if (type || per !== undefined) {
+    out.packing = {}
+    if (type) out.packing.type = type
+    if (per !== undefined) out.packing.per_piece = Math.min(10_000_000, Math.round(per))
+  }
+  return out
+}
+
+/** none = not used; ok = costed; wait = picked but no price yet; metres = a rate but no metres per piece. */
+export type CostState = 'none' | 'ok' | 'wait' | 'metres'
+/** per = rupees per piece, total = rupees for the quantity, priced = a number was typed (a client's own fabric with no rate is ok at ₹0 but not priced). */
+export type CostPart = { state: CostState; per: number; total: number; priced: boolean }
+export type LineCost = { fabric: CostPart; packing: CostPart; per: number; total: number }
+
+const NONE: CostPart = { state: 'none', per: 0, total: 0, priced: false }
+
+/** The fabric of a product is "in use" once it has a name or a code, or any number has been typed for it. */
+export function fabricInUse(line: Pick<QuoteLine, 'choices' | 'costing'>): boolean {
+  const f = line.choices?.fabric
+  return !!(f && ((f.name ?? '').trim() || (f.code ?? '').trim())) || line.costing?.fabric?.metres !== undefined || line.costing?.fabric?.rate !== undefined
+}
+
+/** One product's fabric and packing for `qty` pieces: price per piece × quantity (rounded to a whole rupee per part). */
+export function lineCost(line: Pick<QuoteLine, 'choices' | 'costing'>, qty: number): LineCost {
+  const q = Number.isFinite(qty) && qty > 0 ? qty : 0
+  let fabric = NONE
+  if (fabricInUse(line)) {
+    const metres = line.costing?.fabric?.metres, rate = line.costing?.fabric?.rate
+    if (rate === undefined) {
+      // a client's own fabric costs nothing until a rate is typed; a catalog fabric or a code waits for its price
+      fabric = line.choices?.fabric?.source === 'client' ? { state: 'ok', per: 0, total: 0, priced: false } : { state: 'wait', per: 0, total: 0, priced: false }
+    } else if (!metres) {
+      fabric = { state: 'metres', per: 0, total: 0, priced: true }
+    } else {
+      fabric = { state: 'ok', per: Math.round(metres * rate * 100) / 100, total: Math.round(q * metres * rate), priced: true }
+    }
+  }
+  let packing = NONE
+  const p = line.costing?.packing
+  if (p && ((p.type ?? '').trim() || p.per_piece !== undefined)) {
+    packing = p.per_piece === undefined ? { state: 'wait', per: 0, total: 0, priced: false } : { state: 'ok', per: p.per_piece, total: Math.round(q * p.per_piece), priced: true }
+  }
+  const parts = [fabric, packing].filter(x => x.state === 'ok')
+  return { fabric, packing, per: parts.reduce((t, x) => t + x.per, 0), total: parts.reduce((t, x) => t + x.total, 0) }
+}
+
+export type CostWaiting = { key: string; name: string; what: 'fabric' | 'packing'; state: 'wait' | 'metres' }
+
+/**
+ * The two sums for the whole quotation (optional products are shown but not counted, as in the subtotal), and which pieces are still waiting for a price.
+ * `any` = at least one price was typed: only then do the sums replace the typed Fabric and Packing boxes of the totals.
+ */
+export function costingSums(areas: readonly QuoteArea[], lines: readonly QuoteLine[]): { fabric: number; packing: number; any: boolean; waiting: CostWaiting[] } {
+  let fabric = 0, packing = 0, any = false
+  const waiting: CostWaiting[] = []
+  for (const l of lines) {
+    if (l.is_optional) continue
+    const c = lineCost(l, lineQty(l, areas))
+    fabric += c.fabric.total; packing += c.packing.total
+    if (c.fabric.priced || c.packing.priced) any = true
+    for (const what of ['fabric', 'packing'] as const) {
+      const st = c[what].state
+      if (st === 'wait' || st === 'metres') waiting.push({ key: l.key, name: l.name.trim() || 'a product', what, state: st })
+    }
+  }
+  return { fabric, packing, any, waiting }
+}
+
+/** "Bar stool fabric (price to come)" for the note under the totals. */
+export const costWaitingText = (w: CostWaiting): string => `${w.name} ${w.what} (${w.state === 'wait' ? 'price to come' : 'metres per piece missing'})`
 
 export type GstMode = 'igst' | 'cgst_sgst'
 

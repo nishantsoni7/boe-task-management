@@ -29,7 +29,7 @@ import {
 } from '@/lib/quotations/api'
 import { historyOnly } from '@/lib/quotations/suggestions'
 import {
-  DIMENSION_UNITS, SUPPLY_STATES, computeTotals, formatDateIN, gstModeForState, validUntil,
+  DIMENSION_UNITS, SUPPLY_STATES, computeTotals, costingSums, formatDateIN, gstModeForState, validUntil,
   type QuoteArea, type QuoteLine,
 } from '@/lib/quotations/math'
 import { CLOSING, DEFAULT_CLIENT_NOTE, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS } from '@/lib/quotations/terms'
@@ -46,6 +46,7 @@ import { DeleteQuotationDialog } from './DeleteQuotationDialog'
 import { LeadCard } from './LeadCard'
 import { PriceCard } from './PricingDesk'
 import { LineRow } from './ProductLine'
+import { CostingPage } from './CostingPage'
 import { effectiveLeadTime } from './LeadTime'
 import { StatusCard, LOCKED } from './StatusCard'
 import { ShareCard } from './ShareCard'
@@ -97,6 +98,8 @@ export default function BuilderScreen() {
   const [studioFor, setStudioFor] = useState<string | null>(null)
   const [viewing, setViewing] = useState<string | null>(null)
   const [advOpen, setAdvOpen] = useState(false)
+  // Products, or the Fabric, finish and packing page (21 Nov 2026); both edit the same lines.
+  const [tab, setTab] = useState<'products' | 'costing'>('products')
   // The price brief (20 Nov 2026): asked of the owner / pricing desk when they send a quotation back or share it; always optional.
   const [briefing, setBriefing] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -146,7 +149,11 @@ export default function BuilderScreen() {
   }, [quoteQ.data])
 
   const editable = !!base?.may_edit && !!base && !LOCKED.includes(base.status)
-  const totals = useMemo(() => (h ? computeTotals(h, areas, lines) : null), [h, areas, lines])
+  // Fabric and packing priced per piece on the costing page (20270819000000): once any price is typed there, their sums ARE the two amounts of
+  // the totals (and what a save writes into fabric_amount and packing_amount); until then the typed boxes count, as before.
+  const costSums = useMemo(() => costingSums(areas, lines), [areas, lines])
+  const money = useMemo(() => (h ? (costSums.any ? { ...h, fabric_amount: costSums.fabric, packing_amount: costSums.packing } : h) : null), [h, costSums])
+  const totals = useMemo(() => (money ? computeTotals(money, areas, lines) : null), [money, areas, lines])
   // One fit per product type for as long as the pool is the same: typing in a line re-prices every line, and refitting the
   // model for each of them on every keystroke made typing in Material and Remarks take ~140 ms (20 Nov 2026).
   const fits = useMemo(() => (poolQ.data ? new Map<string, Fit | null>() : null), [poolQ.data])
@@ -180,7 +187,9 @@ export default function BuilderScreen() {
     if (problem) { if (problem === EMAIL_PROBLEM) setAdvOpen(true); setMsg({ tone: 'bad', text: problem }); return }
     setSaving(true)
     try {
-      const r = await saveQuotation(supabase, base.id, saveDoc({ ...h, lead_time_weeks: effectiveLeadTime(h, areas) }, areas, lines, base.updated_at))
+      const costed = costingSums(areas, lines)
+      const header = costed.any ? { ...h, fabric_amount: costed.fabric, packing_amount: costed.packing } : h
+      const r = await saveQuotation(supabase, base.id, saveDoc({ ...header, lead_time_weeks: effectiveLeadTime(h, areas) }, areas, lines, base.updated_at))
       setBase(b => (b ? { ...b, updated_at: r.updated_at } : b))
       setDirty(false); dirtyRef.current = false
       setMsg({ tone: 'ok', text: 'Saved.' })
@@ -253,7 +262,7 @@ export default function BuilderScreen() {
           unit: h.dimension_unit, transportNote: h.transport_note, notes: h.notes,
           preparedBy: { name: base.owner_display_name ?? base.owner_name ?? '', title: base.owner_title ?? '', phone: base.owner_phone ?? '', email: base.owner_email ?? '' },
         },
-        money: h, areas, lines, srcOf: picSrc,
+        money: money ?? h, areas, lines, srcOf: picSrc,
         payment: await fetchPaymentDetails(supabase).catch(() => null), // the bank account and QR; the Excel is still made without them
       })
       if (missing > 0) setMsg({ tone: 'warn', text: `The Excel was downloaded, but ${missing} picture${missing === 1 ? '' : 's'} could not be loaded and ${missing === 1 ? 'is' : 'are'} left out.` })
@@ -365,7 +374,23 @@ export default function BuilderScreen() {
       <ClientCard h={h} areas={areas} editable={editable} advOpen={advOpen} onAdv={() => setAdvOpen(o => !o)} onField={updH}
         onPatch={patch => { setH(p => (p ? { ...p, ...patch } : p)); touch() }} onCity={setCity} onState={setState} />
 
-      <section className={s.card} aria-labelledby="q-products">
+      {/* Products, or the page where fabric, finish and packing are priced per piece (21 Nov 2026) */}
+      <div className={s.cpTabs} role="tablist" aria-label="Products and costing">
+        <button type="button" role="tab" id="q-tab-products" aria-selected={tab === 'products'} className={s.cpTab} onClick={() => setTab('products')}>Products</button>
+        <button type="button" role="tab" id="q-tab-costing" aria-selected={tab === 'costing'} className={s.cpTab} onClick={() => setTab('costing')}>
+          Fabric, finish and packing{costSums.waiting.length > 0 ? ` · ${costSums.waiting.length} to price` : ''}
+        </button>
+      </div>
+      {tab === 'costing' && (
+        <section className={s.card} aria-labelledby="q-costing">
+          <div className={s.cardHead}><h2 id="q-costing">Fabric, finish and packing</h2><span className={s.chip}>{lines.length} {lines.length === 1 ? 'product' : 'products'}</span></div>
+          <CostingPage groups={groups} areas={areas} lines={lines} editable={editable} qtyOf={k => totals.lineQty[k] ?? 0} url={picSrc}
+            onChange={(key, patch) => updLine(key, patch)}
+            onUploadSwatch={f => (profile ? uploadPicture(supabase, profile.id, f) : Promise.reject(new Error('Sign in again to add a picture')))} />
+        </section>
+      )}
+
+      <section className={s.card} aria-labelledby="q-products" hidden={tab !== 'products'}>
         <div className={s.cardHead}>
           <h2 id="q-products">Products</h2><span className={s.chip}>{lines.length} lines · {totals.pieces.toLocaleString('en-IN')} pieces</span>
           <span className={`${s.chip} ${s.phoneOnly}`}>Total {formatINR(totals.grand)}</span><span className={s.spacer} />
@@ -414,8 +439,8 @@ export default function BuilderScreen() {
             <div style={{ display: 'grid', gap: 12, alignContent: 'start' }}>
               <div className={s.grid4}>
                 <label className={s.field}><span>Discount %</span><input id="q-disc" className={`${s.input} ${s.money}`} type="number" min={0} max={100} step={0.5} value={h.discount_pct} onChange={e => updH('discount_pct', Math.max(0, Math.min(100, Number(e.target.value) || 0)))} disabled={!editable} /></label>
-                <label className={s.field}><span>Fabric (₹)</span><input id="q-fabric" className={`${s.input} ${s.money}`} type="number" min={0} value={h.fabric_amount || ''} placeholder="0" onChange={e => updH('fabric_amount', Math.max(0, Math.round(Number(e.target.value) || 0)))} disabled={!editable} /></label>
-                <label className={s.field}><span>Packing (₹)</span><input id="q-packing" className={`${s.input} ${s.money}`} type="number" min={0} value={h.packing_amount || ''} placeholder="0" onChange={e => updH('packing_amount', Math.max(0, Math.round(Number(e.target.value) || 0)))} disabled={!editable} /></label>
+                <label className={s.field}><span>Fabric (₹)</span><input id="q-fabric" className={`${s.input} ${s.money}`} type="number" min={0} value={costSums.any ? costSums.fabric : (h.fabric_amount || '')} placeholder="0" onChange={e => updH('fabric_amount', Math.max(0, Math.round(Number(e.target.value) || 0)))} disabled={!editable || costSums.any} />{costSums.any && <span className={`${s.small} ${s.muted}`}>From the costing page</span>}</label>
+                <label className={s.field}><span>Packing (₹)</span><input id="q-packing" className={`${s.input} ${s.money}`} type="number" min={0} value={costSums.any ? costSums.packing : (h.packing_amount || '')} placeholder="0" onChange={e => updH('packing_amount', Math.max(0, Math.round(Number(e.target.value) || 0)))} disabled={!editable || costSums.any} />{costSums.any && <span className={`${s.small} ${s.muted}`}>From the costing page</span>}</label>
                 <label className={s.field}><span>Transport</span><input id="q-transport" className={s.input} value={h.transport_note} placeholder="As per actual" onChange={e => updH('transport_note', e.target.value)} disabled={!editable} /></label>
               </div>
               <div className={`${s.small} ${s.muted}`}>Valid until {formatDateIN(validUntil(issued, h.valid_days))}{base.sent_at ? '' : ' (counted from the day it is sent)'}</div>
@@ -424,8 +449,8 @@ export default function BuilderScreen() {
               <table className={s.sum}><tbody>
                 <tr><td>Products</td><td>{formatINR(totals.subtotal)}</td></tr>
                 {totals.discount > 0 && <tr><td>Discount {h.discount_pct}%</td><td>− {formatINR(totals.discount)}</td></tr>}
-                {h.fabric_amount > 0 && <tr><td>Fabric</td><td>{formatINR(h.fabric_amount)}</td></tr>}
-                {h.packing_amount > 0 && <tr><td>Packing</td><td>{formatINR(h.packing_amount)}</td></tr>}
+                {(money ?? h).fabric_amount > 0 && <tr><td>Fabric</td><td>{formatINR((money ?? h).fabric_amount)}</td></tr>}
+                {(money ?? h).packing_amount > 0 && <tr><td>Packing</td><td>{formatINR((money ?? h).packing_amount)}</td></tr>}
                 <tr className={s.hr}><td>Before GST</td><td>{formatINR(totals.taxable)}</td></tr>
                 {totals.gst.map(r => <tr key={r.rate} className={s.sub}><td>GST @{r.rate}%</td><td>{formatINR(r.gst)}</td></tr>)}
                 <tr className={s.tot}><td>Grand total</td><td>{formatINR(totals.grand)}</td></tr>

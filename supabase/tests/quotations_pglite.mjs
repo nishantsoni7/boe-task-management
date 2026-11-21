@@ -1529,4 +1529,72 @@ await db.exec(mig('20270808000100_quotation_client_choices.sql'))
   ok('the list marks may_delete the same way: the maker only for an unsent draft, the administrator for all but a PI-linked one, the pricing desk for none of other people\'s')
 }
 
+// ── 20270819000000: fabric and packing costed per product (price per piece; finish stays a code and a picture, no price) ──
+await db.exec(mig('20270819000000_quotation_line_costing.sql'))
+{
+  const L1 = '00000000-0000-0000-0000-0000000001a1'
+  const PIC = '00000000-0000-0000-0000-0000000000b2/55555555-1111-1111-1111-111111111111.jpg'
+  const id = await rpc(U.sales, 'quotation_start', L1, {})
+  const header = { client_name: 'Costing Hotel', valid_days: 7, gst_mode: 'igst', fabric_amount: 4080, packing_amount: 1950 }
+  const costing = { fabric: { metres: 1.6, rate: 850 }, packing: { type: 'Carton with foam corners', per_piece: 650 } }
+  const choices = { fabric: { source: 'code', status: 'to_confirm', code: 'F-2210' }, finish: { source: 'catalog', status: 'to_confirm', code: 'W-04', photo: PIC } }
+  const chair = { name: 'K1 Rocking chair', qty_fixed: 3, unit_price: 22300, tax_rate: 18, costing, client_choices: choices }
+  const table = { name: 'K2 Table', qty_fixed: 1, unit_price: 10400, tax_rate: 18 }
+  const get = () => rpc(U.sales, 'quotation_get', id)
+  const costings = async () => (await get()).lines.map(l => l.costing)
+
+  const saved = await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, table] })
+  const g = await get()
+  assert.deepEqual(g.lines.map(l => l.costing), [costing, {}])
+  assert.deepEqual([Number(g.quotation.fabric_amount), Number(g.quotation.packing_amount)], [4080, 1950])
+  assert.equal(g.lines[0].client_choices.fabric.source, 'code', 'the new source "client\'s code, we source it" is accepted')
+  assert.equal(g.lines[0].client_choices.finish.photo, PIC, 'the finish keeps its code and picture, with no price field')
+  assert.equal(Number(saved.value_before_gst), 3 * 22300 + 10400 + 4080 + 1950, 'the two amounts the browser wrote are in the list value, as always')
+  ok('save stores each line\'s costing, quotation_get returns it, the browser\'s two sums are in the value before GST, and the fabric source "code" is accepted')
+
+  const { costing: _drop, ...oldChair } = chair
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [oldChair, table] })
+  assert.deepEqual(await costings(), [costing, {}])
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [table, oldChair] })
+  assert.deepEqual(await costings(), [{}, {}])
+  ok('a save without the key (an old tab) keeps a line\'s costing only when the same line sits in the same place, never another line\'s')
+
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [{ ...chair, costing: {} }, table] })
+  assert.deepEqual(await costings(), [{}, {}])
+  ok('an empty object clears the costing')
+
+  const bad = [
+    { finish: { rate: 5 } },
+    { fabric: { metres: '1.6' } },
+    { fabric: { metres: 1.666 } },
+    { fabric: { metres: 1000 } },
+    { fabric: { rate: 850.5 } },
+    { fabric: { rate: -1 } },
+    { fabric: { rate: 10000001 } },
+    { fabric: { cost: 5 } },
+    { packing: { per_piece: '600' } },
+    { packing: { per_piece: 99999999999 } },
+    { packing: { type: 'x'.repeat(81) } },
+    { packing: { type: 5 } },
+    { packing: { colour: 'red' } },
+    [{ fabric: { rate: 1 } }],
+  ]
+  for (const b of bad) await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [id, { header, areas: [], lines: [{ ...table, costing: b }] }], /QUOTATION_INVALID/)
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [{ ...table, costing: { fabric: { rate: 0 }, packing: { type: 'x'.repeat(80), per_piece: 0 } } }] })
+  ok('unknown keys (a finish price), text where a number belongs, fractions of a rupee, too many decimals of a metre, negative or huge amounts, over-long types are refused; a price of 0 is allowed')
+
+  // the rates never reach the client: the client link and a frozen version list their line fields by name
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [chair, table] })
+  const tok = await rpc(U.sales, 'quotation_share', id, true)
+  const pub = JSON.stringify((await as(null, `select public.quotation_public($1) as r`, [tok], 'anon')).rows[0].r)
+  for (const leak of ['costing', 'Carton with foam corners', '"rate"', 'per_piece', '"metres"']) assert.ok(!pub.includes(leak), `the client link does not carry ${leak}`)
+  const ver = (await db.query(`select doc from public.quotation_versions where quotation_id = $1`, [id])).rows
+  assert.ok(ver.length > 0 && ver.every(r => !['costing', 'Carton with foam corners', '"rate"', 'per_piece'].some(w => JSON.stringify(r.doc).includes(w))), 'a frozen version does not carry the costing')
+  ok('neither the client link nor a frozen version carries the costing or a rate; only the two sums travel, as they always did')
+
+  await assert.rejects(() => as(null, `select public.quotation_line_costing_ok('{}'::jsonb)`, [], 'anon'), /permission denied/)
+  await assert.rejects(() => as(null, `select public.quotation_costing_num_ok('5'::jsonb, 10, 0)`, [], 'anon'), /permission denied/)
+  ok('the two checker functions are closed to anyone signed out')
+}
+
 console.log(`all ${checks} checks passed`)
