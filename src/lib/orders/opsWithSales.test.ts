@@ -1,5 +1,4 @@
-// "WITH SALES" ON THE OPERATIONS QUEUE (owner, 2026-11-13): a PI returned to Sales is said apart on the
-// Orders dashboard's Operations Review card and in the queue list it opens, and is never counted as
+// "WITH SALES" ON THE OPERATIONS QUEUE (owner, 2026-11-13): a PI returned to Sales is said apart in the queue list, and is never counted as
 // waiting on Operations. Same rule as the Order page (salesReturnStage).
 //
 // Run with: npm run test:file -- src/lib/orders/opsWithSales.test.ts
@@ -9,8 +8,6 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { ordersWithSales, type QueueHandoff } from './operationsHandoff'
-import { NO_ORDER_DASHBOARD_COUNTS, orderDashboardCards } from './orderDashboard'
-import type { OrdersCapabilities } from '@/lib/permissions/orders'
 
 const h = (over: Partial<QueueHandoff> = {}): QueueHandoff => ({
   id: 'h-547', order_id: 'o-547', status: 'clarification_needed', assigned_to: 'nitish', chain_holder: 'sales', ...over,
@@ -31,22 +28,6 @@ describe('which Orders are with Sales', () => {
   test('each Order once; no handoffs, none', () => {
     assert.deepEqual([...ordersWithSales([h(), h({ id: 'h-2' }), h({ id: 'h-3', order_id: 'o-9' })])], ['o-547', 'o-9'])
     assert.equal(ordersWithSales([]).size, 0)
-  })
-})
-
-describe('the Operations Review card', () => {
-  const card = (over: Partial<typeof NO_ORDER_DASHBOARD_COUNTS>) =>
-    orderDashboardCards({ counts: { ...NO_ORDER_DASHBOARD_COUNTS, ...over }, orders: {} as OrdersCapabilities })
-      .find(c => c.key === 'operations_review')
-
-  test('a PI with Sales is said apart and is not counted as flagged or waiting', () => {
-    const c = card({ operationsReview: 0, operationsUnassigned: 0, operationsFlagged: 0, operationsWithSales: 1 })
-    assert.equal(c?.sub, '1 with Sales: waiting for the revised PI')
-    assert.equal(c?.value, 1)
-    const mixed = card({ operationsReview: 2, operationsUnassigned: 0, operationsFlagged: 1, operationsWithSales: 1 })
-    assert.equal(mixed?.value, 2)
-    assert.match(mixed?.sub ?? '', /1 flagged: clarification needed · 1 with Sales/)
-    assert.equal(card({ operationsReview: 0, operationsUnassigned: 0, operationsFlagged: 0, operationsWithSales: 0 }), undefined)
   })
 })
 

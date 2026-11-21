@@ -21,12 +21,6 @@
 // A COUNT NOBODY MAY SEE IS NOT ZERO. An absent count draws no card at all.
 
 import type { OrdersCapabilities } from '@/lib/permissions/orders'
-import {
-  AWAITING_OPERATIONS_REVIEW_LABEL,
-  AWAITING_OPERATIONS_REVIEW_SUB,
-  OPERATIONS_REVIEW_QUEUE_HREF,
-  WITH_SALES_NOTE,
-} from './operationsHandoff'
 
 /** The importer. The one way a new Order begins. */
 export const UPLOAD_PI_PATH = '/orders/import'
@@ -89,7 +83,7 @@ export function orderDashboardCards(input: {
 
   // ── The pre-approval workflow ──
   //
-  // OFFERED ONLY WHEN SOMETHING IS WAITING, like the handoff below: a permanent
+  // OFFERED ONLY WHEN SOMETHING IS WAITING, like any queue link: a permanent
   // "0 awaiting approval" is not a queue anybody can work, and PI Drafts stays one
   // click away in the sidebar. An unknown count draws nothing either — never a
   // dash beside a number that was not read.
@@ -101,38 +95,6 @@ export function orderDashboardCards(input: {
       sub: 'Awaiting approval',
       href: '/orders/drafts',
       tone: 'neutral',
-    })
-  }
-
-  // ── The operations handoff (20261229000000) ──
-  //
-  // OFFERED ONLY WHEN SOMETHING IS WAITING. To the assigned operations
-  // reviewer the count is the PI versions awaiting their acceptance; to
-  // anybody else it is zero and the card is meaningless — except for the
-  // versions NOBODY is assigned to, which need an administrator, so those are
-  // counted for everyone who can see the Orders they belong to. Never drawn
-  // at zero: a permanent "0 awaiting you" would be a card about nothing.
-  const awaitingMe = counts.operationsReview ?? 0
-  const unassigned = counts.operationsUnassigned ?? 0
-  const flagged = counts.operationsFlagged ?? 0
-  const withSales = counts.operationsWithSales ?? 0
-  if (awaitingMe > 0 || unassigned > 0 || flagged > 0 || withSales > 0) {
-    // The headline is what waits on THIS reader; the subtitle names the two
-    // things that wait on an administrator: nobody assigned, and a version the
-    // reviewer could not accept (flagged), which stays here until resolved.
-    const admin = [
-      unassigned > 0 ? `${unassigned} with no reviewer assigned` : null,
-      flagged > 0 ? `${flagged} flagged: clarification needed` : null,
-      // Returned to Sales: said, but never counted as waiting on Operations.
-      withSales > 0 ? `${withSales} with Sales: ${WITH_SALES_NOTE.charAt(0).toLowerCase()}${WITH_SALES_NOTE.slice(1)}` : null,
-    ].filter(Boolean).join(' · ')
-    cards.push({
-      key: 'operations_review',
-      label: AWAITING_OPERATIONS_REVIEW_LABEL,
-      value: awaitingMe > 0 ? awaitingMe : (unassigned + flagged || withSales),
-      sub: awaitingMe > 0 ? (admin ? `${AWAITING_OPERATIONS_REVIEW_SUB} · ${admin}` : AWAITING_OPERATIONS_REVIEW_SUB) : admin,
-      href: OPERATIONS_REVIEW_QUEUE_HREF,
-      tone: 'attention',
     })
   }
 
