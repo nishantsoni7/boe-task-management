@@ -47,7 +47,13 @@ import { readFlaggedPis } from './flaggedPis'
 import type { PersistedDocumentSubmission } from './orderDocumentSubmissions'
 import type { AlignmentRow, DashboardSummary } from './orderDashboardSummary'
 import type { ChangeResponse } from './operationsDashboard'
-import { loadDecisionRows } from '@/components/orders/dashboard/DecisionQueue'
+import {
+  composeDecisionRows,
+  loadDecisionRows,
+  readDecisionData,
+  startDecisionRead,
+  usableEarlyRead,
+} from '@/components/orders/dashboard/DecisionQueue'
 import { DecisionCards } from '@/components/orders/dashboard/DecisionCards'
 import { AdminRevenueCard } from '@/components/orders/dashboard/AdminRevenueCard'
 import { AdminOrdersBoard } from '@/components/orders/dashboard/AdminOrdersBoard'
@@ -812,5 +818,159 @@ describe('the page', () => {
     assert.ok(src.includes('loadPiPaymentSummary'))
     assert.equal(/service|createClient|attached_percent/.test(src), false, 'no service role, and no percentage worked out for the chip')
     assert.ok(src.includes('viewingAs'), 'nothing is read under View As')
+  })
+})
+
+// ── The approver's first paint: two rounds, the first beside the page's own reads (2026-11-21) ──────────────────────
+
+describe('the approver\'s cards read in two rounds, and the first starts with the page', () => {
+  // A stand-in for the client that records what is asked of it, and answers each table from `answers`. The documents
+  // table is recognised by its ending so this file never needs to spell the whole name.
+  function fakeClient(answers: Record<string, unknown[]>, opts: { failTable?: string } = {}) {
+    const asked: string[] = []
+    const selects: Record<string, string> = {}
+    const answerFor = (table: string) => answers[table] ?? (table.endsWith('document_submissions') ? answers.documents ?? [] : [])
+    const chain = (table: string): unknown => new Proxy({}, {
+      get: (_t, prop) => {
+        if (prop === 'then') {
+          return (resolve: (v: unknown) => unknown) => resolve(table === opts.failTable
+            ? { data: null, error: { message: 'refused' } }
+            : { data: answerFor(table), error: null })
+        }
+        if (prop === 'select') return (s: string) => { selects[table] = s; return chain(table) }
+        return () => chain(table)
+      },
+    })
+    const rpcs: string[] = []
+    return {
+      asked, selects, rpcs,
+      client: {
+        from: (table: string) => { asked.push(table); return chain(table) },
+        rpc: async (fn: string) => { rpcs.push(fn); return { data: fn === 'my_flagged_pis' ? [] : null, error: null } },
+      },
+    }
+  }
+  const viewer = { viewerId: 'u-admin', isAdmin: true, canReviewChanges: true }
+  const full = () => ({
+    order_submissions: [review(1, { submitter: { full_name: 'Ashok Choudhary' } })],
+    order_pi_versions: [{
+      id: 'v-1', order_id: 'o-9', version_number: 2, status: 'pending', uploaded_by: 'u-up', uploaded_at: '2026-10-29T10:00:00Z',
+      operations_reviewer: null, revision_reason: 'Change fabric', order: { display_number: '531', client_name: 'Aarav Interiors' },
+      uploader: { full_name: 'Mohit Sharma' }, ops_reviewer: null,
+    }],
+    documents: [{
+      ...documentSubmission({ submitted_by: 'u-doc' }), order: { display_number: '534', client_name: 'Lakeview Resort' },
+      submitter: { full_name: 'Rohit Verma' }, ops_reviewer: null,
+    }],
+  })
+
+  test('the people on every row are named by the row itself: users is never read, and the names are the embedded ones', async () => {
+    const f = fakeClient(full())
+    const read = await loadDecisionRows(f.client as never, viewer)
+    assert.ok(read)
+    assert.equal(f.asked.includes('users'), false, 'no second lookup of users')
+    assert.deepEqual(read.rows.map(r => r.by).sort(), ['Ashok Choudhary', 'Mohit Sharma', 'Rohit Verma'])
+    // The embeds are asked for on all three lists, over the foreign keys that exist on those tables.
+    assert.ok(f.selects.order_submissions.includes('submitter:users!submitted_by(full_name)'))
+    assert.ok(f.selects.order_pi_versions.includes('uploader:users!uploaded_by(full_name)'))
+    assert.ok(f.selects.order_pi_versions.includes('ops_reviewer:users!operations_reviewer(full_name)'))
+    const docsSelect = Object.entries(f.selects).find(([t]) => t.endsWith('document_submissions'))?.[1] ?? ''
+    assert.ok(docsSelect.includes('submitter:users!submitted_by(full_name)'))
+    assert.ok(docsSelect.includes('ops_reviewer:users!operations_reviewer(full_name)'))
+  })
+
+  test('a person the reader may not see comes back null and is left unnamed, as a missing lookup was', async () => {
+    const answers = full()
+    answers.order_submissions = [review(1, { submitter: null })]
+    const read = await loadDecisionRows(fakeClient(answers).client as never, viewer)
+    assert.equal(read?.rows.find(r => r.key === 'pi-sub-1')?.by, null)
+  })
+
+  test('the first round is the five lists beside each other; only the payment summaries wait for it', async () => {
+    const f = fakeClient({ ...full() })
+    const data = await readDecisionData(f.client as never, viewer)
+    assert.ok(data)
+    assert.deepEqual([...new Set(f.asked)].sort(), ['order_change_requests', 'order_pi_versions', 'order_submissions',
+      ...f.asked.filter(t => t.endsWith('document_submissions'))].sort())
+    assert.deepEqual(f.rpcs.sort(), ['my_flagged_pis', 'pi_submission_payment_summary'])
+  })
+
+  test('the page\'s own answers are laid over rows already read: composing again reads nothing', async () => {
+    const f = fakeClient(full())
+    const data = await readDecisionData(f.client as never, viewer)
+    assert.ok(data)
+    const askedBefore = f.asked.length + f.rpcs.length
+    const plain = composeDecisionRows(data, {})
+    const recent = new Date(Date.now() - 3600 * 1000).toISOString()
+    const withWaiting = composeDecisionRows(data, { alignment: [alignment({ since: recent })], reviewerName: 'Nitish Bansal' })
+    assert.equal(withWaiting.rows.length, plain.rows.length + 1, 'the page\'s alignment list adds its row')
+    assert.equal(f.asked.length + f.rpcs.length, askedBefore, 'and costs no read')
+  })
+
+  test('a failed PI read is still an error: null, never an empty list, and the early read never rejects', async () => {
+    const f = fakeClient(full(), { failTable: 'order_submissions' })
+    assert.equal(await readDecisionData(f.client as never, viewer), null)
+    assert.equal(await startDecisionRead(fakeClient(full(), { failTable: 'order_submissions' }).client as never, viewer).read, null)
+  })
+
+  test('started early, each open-queue table is read once and the same reads are handed on', async () => {
+    const reads: string[] = []
+    const from = (table: string) => {
+      const query: Record<string, unknown> = {}
+      for (const m of ['select', 'in', 'eq', 'order']) query[m] = () => query
+      query.limit = () => { reads.push(table); return Promise.resolve({ data: [], error: null }) }
+      return query
+    }
+    const client = { from, rpc: async () => ({ data: [], error: null }) } as never
+    const early = startDecisionRead(client, viewer)
+    await Promise.all([early.read, early.revisions, early.documents])
+    assert.equal(reads.filter(t => t === 'order_pi_versions').length, 1, 'revised PIs: one read for both lists')
+    assert.equal(reads.filter(t => t.endsWith('document_submissions')).length, 1, 'documents: one read for both lists')
+    assert.equal(reads.filter(t => t === 'order_submissions').length, 1)
+  })
+
+  test('an early read is used only for the reader and the rights it was started for', () => {
+    const f = fakeClient({})
+    const early = startDecisionRead(f.client as never, viewer)
+    assert.equal(usableEarlyRead(early, viewer), early.read)
+    assert.equal(usableEarlyRead(early, { ...viewer, canReviewChanges: false }), null, 'change requests were read for an acting administrator only')
+    assert.equal(usableEarlyRead(early, { ...viewer, isAdmin: false }), null)
+    assert.equal(usableEarlyRead(early, { ...viewer, viewerId: 'u-other' }), null)
+    assert.equal(usableEarlyRead(null, viewer), null)
+    assert.equal(usableEarlyRead(undefined, viewer), null)
+  })
+
+  describe('in the page', () => {
+    const page = read('src/app/orders/page.tsx')
+    const view = read('src/components/orders/dashboard/AdminDashboardView.tsx')
+    const queue = read('src/components/orders/dashboard/DecisionQueue.tsx')
+    const documents = read('src/components/orders/DocumentActionQueue.tsx')
+
+    test('it is started right after the dashboard\'s own reads are sent, and before they are awaited', () => {
+      const group = page.indexOf('const dashboardReads = Promise.all([')
+      const started = page.indexOf('startDecisionRead(supabase')
+      const awaited = page.indexOf('] = await dashboardReads')
+      assert.ok(group > 0 && started > group && awaited > started)
+    })
+
+    test('only a reader who can approve PIs starts it, never under View As, and it is kept only if the read is still the latest', () => {
+      assert.ok(page.includes('ordersCaps.canApproveOrderSubmission && !viewAsUserId'))
+      assert.ok(page.indexOf('if (ticket !== latest.current) return') < page.indexOf('setEarly(started)'))
+      assert.equal(/\.from\(|\.rpc\(/.test(queue.slice(queue.indexOf('export function startDecisionRead'), queue.indexOf('export function DecisionQueue'))), false,
+        'starting it asks for nothing outside the reads the list already made')
+    })
+
+    test('the list and the documents list are handed the same early reads, so nothing is read twice', () => {
+      assert.ok(page.includes('early={early}'))
+      assert.ok(page.includes('early={early ?? undefined}'))
+      assert.ok(view.includes('early={early}'))
+      assert.ok(documents.includes('early?.documents ?? readOpenDocumentSubmissions(supabase)'))
+      assert.ok(documents.includes('early?.revisions ?? readOpenPiRevisions(supabase)'))
+      assert.equal(documents.includes(".from('users')"), false, 'and the documents list names its people from the rows too')
+    })
+
+    test('the list falls back to reading for itself when the early read is not for this reader', () => {
+      assert.ok(queue.includes('usableEarlyRead(early, viewer) ?? startDecisionRead(supabase, viewer).read'))
+    })
   })
 })

@@ -38,6 +38,7 @@ import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { RevenueSection } from '@/components/orders/dashboard/RevenueSection'
 import { AdminDashboardView } from '@/components/orders/dashboard/AdminDashboardView'
 import { FlaggedPiStrip } from '@/components/orders/dashboard/FlaggedPiStrip'
+import { startDecisionRead, type EarlyDecisionRead } from '@/components/orders/dashboard/DecisionQueue'
 import { useViewAs } from '@/contexts/ViewAsContext'
 import { SalespersonDashboardView } from '@/components/orders/dashboard/SalespersonDashboardView'
 import { OperationsDashboardView, OperationsResponses, type OpsHandoffsState } from '@/components/orders/dashboard/OperationsDashboardView'
@@ -114,6 +115,8 @@ export default function OrdersDashboardPage() {
   const [boardTab, setBoardTab] = useState<BoardKey | null>(null)
   // Counts the page's refreshes, so the flagged-PI strip (its own read, 20270611000000) is read again with them.
   const [reloadTick, setReloadTick] = useState(0)
+  // The approver's cards' read, started in the first batch (loadData). Set with the summary so a refresh swaps both at once.
+  const [early, setEarly] = useState<EarlyDecisionRead | null>(null)
 
   const router   = useRouter()
   const supabase = useMemo(() => createClient(), [])
@@ -146,12 +149,7 @@ export default function OrdersDashboardPage() {
     // about 770 ms. The links to other queues (PI Drafts, the operations handoffs) sit at the
     // foot of the page; they are read after it has drawn (loadQueueCounts below), and a link
     // whose count has not landed is simply not drawn yet.
-    const [
-      personalRes,
-      summaryRes,
-      operationsRes,
-      backRes,
-    ] = await Promise.all([
+    const dashboardReads = Promise.all([
       // THE SALESPERSON'S OWN DASHBOARD (20270228000000): the caller's own orders only, scoped by the
       // database to auth.uid(). { applicable: false } for everybody who is not a salesperson.
       supabase.rpc('salesperson_orders_dashboard'),
@@ -167,7 +165,24 @@ export default function OrdersDashboardPage() {
       profile?.team === 'operations' ? loadOrdersBackWithOperations(supabase) : Promise.resolve(new Set<string>()),
     ])
 
+    // THE APPROVER'S CARDS START HERE, NOT AFTER THE READS ABOVE (2026-11-21). Their list used to mount only once the
+    // summary had landed, read its rows, then read the names and payment chips: three rounds in a row, each 200+ ms
+    // from India. Started now (after the three reads above, so those are sent first), its rows are on their way
+    // while the summary is, and the list asks only for what depends on them afterwards. The same reads under the
+    // reader's own rights; only the moment moves. Nobody else starts it, and nothing is read under View As.
+    const started = ordersCaps.canApproveOrderSubmission && !viewAsUserId
+      ? startDecisionRead(supabase, { viewerId, isAdmin: ordersCaps.canApproveOrderSubmission, canReviewChanges: profile?.role === 'admin' })
+      : null
+
+    const [
+      personalRes,
+      summaryRes,
+      operationsRes,
+      backRes,
+    ] = await dashboardReads
+
     if (ticket !== latest.current) return
+    setEarly(started)
     setBackWithOps(backRes)
 
     // A FAILED READ IS AN ERROR, NEVER ZEROS. Only "this function is not on this database yet" leaves
@@ -424,6 +439,7 @@ export default function OrdersDashboardPage() {
               // The same rule the Order page uses to offer a change request's review: View As never lends authority.
               canReviewChanges={profile?.role === 'admin' && !viewAsUserId}
               viewingAs={!!viewAsUserId}
+              early={early}
             />
           ) : summary.summary.overview ? (
             <>
@@ -459,6 +475,8 @@ export default function OrdersDashboardPage() {
           viewingAs={!!viewAsUserId}
           // The approver's "Needs your decision" already lists what waits on them.
           hideNeedsYou={approverView}
+          // The two reads the approver's first batch already started: this list takes them instead of asking again.
+          early={early ?? undefined}
           formatWhen={iso => new Date(iso).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
         />
 

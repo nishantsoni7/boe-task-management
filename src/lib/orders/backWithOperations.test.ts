@@ -163,7 +163,10 @@ describe('the screens draw it', () => {
 
   test('the dashboard reads it for the Operations team only, inside its existing Promise.all', () => {
     assert.ok(dash.includes("profile?.team === 'operations' ? loadOrdersBackWithOperations(supabase)"))
-    assert.match(dash, /operationsRes,\s+backRes,\s+\] = await Promise\.all\(\[/)
+    // 2026-11-21: the group is a named promise now, so the approver's cards' read can be started right after the group
+    // is sent and before it is awaited. The Operations read is still one of its entries, and the page still waits for it.
+    assert.ok(dash.includes('const dashboardReads = Promise.all(['))
+    assert.match(dash, /operationsRes,\s+backRes,\s+\] = await dashboardReads/)
     assert.ok(dash.includes('backWithOps={backWithOps}'))
   })
 

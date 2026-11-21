@@ -37,7 +37,16 @@ export const OPEN_STATUSES = ['pending_admin', 'awaiting_operations', 'rejected_
 // On the approver's dashboard "Needs your decision" (DecisionQueue) and this list load at the same
 // moment from the same two tables. Each read below is shared while it is on its way, so each table
 // is asked once; nothing is kept after it answers. The column lists are the union of both lists.
-type QueueRead = { data: unknown[] | null; error: { message: string } | null }
+export type QueueRead = { data: unknown[] | null; error: { message: string } | null }
+/** What an embedded `users(full_name)` brings back: null for a person the reader may not see. */
+export type PersonEmbed = { full_name: string | null } | null
+/** Remembers who an embedded name belongs to. A person who came back null is left out, so the screen's own fallback shows. */
+export function rememberName(names: Map<string, string>, id: string | null | undefined, who: PersonEmbed | undefined): void {
+  if (id && typeof who?.full_name === 'string') names.set(id, who.full_name)
+}
+// NAMES RIDE WITH THE ROWS (2026-11-21). Both reads below name the people on each row in the same request, as a
+// PostgREST embed over the foreign key to users, so no second lookup of users has to follow them. The embed runs
+// under the reader's own rights exactly as the separate lookup did: a person the reader may not see comes back null.
 const readsOnTheirWay = new WeakMap<SupabaseClient, Map<string, Promise<QueueRead>>>()
 
 function sharedRead(supabase: SupabaseClient, key: string, run: () => PromiseLike<QueueRead>): Promise<QueueRead> {
@@ -54,7 +63,7 @@ function sharedRead(supabase: SupabaseClient, key: string, run: () => PromiseLik
 export function readOpenDocumentSubmissions(supabase: SupabaseClient): Promise<QueueRead> {
   return sharedRead(supabase, 'documents', () => supabase
     .from('order_document_submissions')
-    .select(`${ORDER_DOCUMENT_SUBMISSION_SELECT}, order:orders!order_id(display_number, client_name)`)
+    .select(`${ORDER_DOCUMENT_SUBMISSION_SELECT}, order:orders!order_id(display_number, client_name), submitter:users!submitted_by(full_name), ops_reviewer:users!operations_reviewer(full_name)`)
     .in('status', OPEN_STATUSES)
     // Documents sent with a PI ride with the PI review and the handoff.
     .eq('stage', 'amendment')
@@ -66,7 +75,7 @@ export function readOpenDocumentSubmissions(supabase: SupabaseClient): Promise<Q
 export function readOpenPiRevisions(supabase: SupabaseClient): Promise<QueueRead> {
   return sharedRead(supabase, 'revisions', () => supabase
     .from('order_pi_versions')
-    .select('id, order_id, version_number, status, uploaded_by, uploaded_at, operations_reviewer, revision_reason, order:orders!order_id(display_number, client_name)')
+    .select('id, order_id, version_number, status, uploaded_by, uploaded_at, operations_reviewer, revision_reason, order:orders!order_id(display_number, client_name), uploader:users!uploaded_by(full_name), ops_reviewer:users!operations_reviewer(full_name)')
     .in('status', ['pending', 'admin_approved'])
     .order('uploaded_at', { ascending: true })
     .limit(100) as unknown as PromiseLike<QueueRead>)
@@ -88,7 +97,7 @@ const TONE: Record<string, { bg: string; fg: string }> = {
   accepted: { bg: '#E8F5EE', fg: '#276247' },
 }
 
-export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, formatWhen, hideNeedsYou = false }: {
+export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, formatWhen, hideNeedsYou = false, early }: {
   supabase: SupabaseClient
   viewerId: string | null
   isAdmin: boolean
@@ -96,6 +105,8 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
   formatWhen: (iso: string) => string
   /** The approver's dashboard lists what needs them in "Needs your decision"; here only "awaiting someone else" is drawn. */
   hideNeedsYou?: boolean
+  /** The two reads the page already started beside its own (the approver's first batch): used instead of asking again. */
+  early?: { revisions: Promise<QueueRead>; documents: Promise<QueueRead> }
 }) {
   const [loaded, setLoaded] = useState<Loaded | null>(null)
 
@@ -105,8 +116,8 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
     void (async () => {
       // Both at once, and shared with "Needs your decision" on the approver's dashboard.
       const [{ data, error }, { data: revData, error: revErr }] = await Promise.all([
-        readOpenDocumentSubmissions(supabase),
-        readOpenPiRevisions(supabase),
+        early?.documents ?? readOpenDocumentSubmissions(supabase),
+        early?.revisions ?? readOpenPiRevisions(supabase),
       ])
       // An absent table (migration not applied) or a refused read draws nothing.
       if (error || !live) return
@@ -122,17 +133,17 @@ export function DocumentActionQueue({ supabase, viewerId, isAdmin, viewingAs, fo
         versionNumber: r.version_number, status: r.status, uploadedBy: r.uploaded_by ?? null,
         uploadedAt: r.uploaded_at, operationsReviewer: r.operations_reviewer ?? null,
       }))
-      const ids = new Set<string>()
-      for (const { submission: s } of rows) for (const uid of [s.submitted_by, s.operations_reviewer]) if (uid) ids.add(uid)
-      for (const r of revisions) for (const uid of [r.uploadedBy, r.operationsReviewer]) if (uid) ids.add(uid)
-      let names = new Map<string, string>()
-      if (ids.size > 0) {
-        const { data: users } = await supabase.from('users').select('id, full_name').in('id', [...ids])
-        names = new Map((users ?? []).map((u: { id: string; full_name: string }) => [u.id, u.full_name]))
-      }
+      // The names came with the rows (see the reads above): no second lookup of users.
+      const names = new Map<string, string>()
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const r of (data ?? []) as any[]) { rememberName(names, r.submitted_by, r.submitter); rememberName(names, r.operations_reviewer, r.ops_reviewer) }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (!revErr) for (const r of (revData ?? []) as any[]) { rememberName(names, r.uploaded_by, r.uploader); rememberName(names, r.operations_reviewer, r.ops_reviewer) }
       if (live) setLoaded({ rows, revisions, names })
     })()
     return () => { live = false }
+  // `early` matters to the FIRST read only: this list is not read again when the page refreshes, as before.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase, viewerId, viewingAs])
 
   if (!loaded || !viewerId || viewingAs) return null
