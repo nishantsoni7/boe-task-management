@@ -93,12 +93,12 @@ describe('the printed quotation', () => {
     const h = html([L(1, { choices: undefined })])
     assert.ok(!h.includes('aria-label="Client choices"') && !plain(h).includes('What you chose'))
   })
-  test('the page numbers follow: the terms page moves down by the choice pages, and "sign on page" names it', () => {
-    const none = plain(html([L(1, { choices: undefined })]))
-    const some = plain(html([L(1)]))
-    const sign = (t: string) => Number(/sign on page (\d+)/.exec(t)![1])
+  test('the page numbers follow: the terms page moves down by the choice pages', () => {
+    const none = html([L(1, { choices: undefined })])
+    const some = html([L(1)])
+    const sign = (t: string) => Number(/Terms and acceptance<\/span><b>——<\/b><span>(\d+)/.exec(t)![1])
     assert.equal(sign(some), sign(none) + 1)
-    const many = plain(html(Array.from({ length: 12 }, (_, i) => L(i + 1))))
+    const many = html(Array.from({ length: 12 }, (_, i) => L(i + 1)))
     assert.ok(sign(many) > sign(some))
   })
 })

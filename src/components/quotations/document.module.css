@@ -196,9 +196,6 @@
 .payQr img { width: calc(13 * var(--u)); height: calc(13 * var(--u)); object-fit: contain; display: block; }
 .payQr span { font-size: calc(1.05 * var(--u)); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); }
 .fine { margin: calc(1.6 * var(--u)) 0 0; font-size: calc(1.15 * var(--u)); letter-spacing: .08em; color: var(--muted); }
-.accept { margin-top: calc(3.4 * var(--u)); border: calc(.15 * var(--u)) solid var(--ink); padding: calc(2.6 * var(--u)) calc(3 * var(--u)); display: grid; gap: calc(2 * var(--u)); }
-.sign { display: grid; grid-template-columns: repeat(3, 1fr); gap: calc(3 * var(--u)); }
-.sign > div { border-bottom: calc(.12 * var(--u)) solid var(--ink); height: calc(5 * var(--u)); display: flex; align-items: flex-end; font-size: var(--fs-micro); letter-spacing: .26em; text-transform: uppercase; color: var(--muted); padding-bottom: calc(.6 * var(--u)); }
 .addr { margin-top: calc(3 * var(--u)); display: flex; gap: calc(2 * var(--u)); font-size: calc(1.14 * var(--u)); letter-spacing: .2em; text-transform: uppercase; color: var(--muted); line-height: 1.8; }
 .annex .kick { margin-bottom: calc(2.4 * var(--u)); }
 .terms { margin-bottom: calc(1.6 * var(--u)); }
@@ -290,7 +287,6 @@
   .tline > div { font-size: 12px; padding-top: 22px; }
   .tline > div::before { top: 4px; width: 11px; height: 11px; }
   .fine { font-size: 11px; }
-  .sign { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   /* client choices on a phone: each product is a block, each choice a labelled line */
   .chIntro { max-width: none; }
   .chtbl thead { display: none; }
@@ -306,7 +302,6 @@
   .chChip { font-size: 11px; padding: 0 8px; }
   .chSign { grid-template-columns: minmax(0, 1fr); gap: 20px; margin-top: 28px; }
   .chSign > div { height: 44px; }
-  .sign > div { height: 44px; font-size: 10px; }
   .addr { font-size: 10.5px; }
   .terms h2 { font-size: 11px; }
   .terms dl { column-count: 1; }

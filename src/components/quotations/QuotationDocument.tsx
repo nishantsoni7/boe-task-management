@@ -8,7 +8,7 @@ import { computeTotals, formatDateIN, sizeInInches, sizeWithUnit, toDimensionUni
 import { CLOSING, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS } from '@/lib/quotations/terms'
 import {
   ADDRESS, ADVANCE_PCT, PROOF, WEBSITE, WORKSHOP_LINE, capitalised, compactAmount, countsSeats, groupsOf, numberInWords,
-  NOTES_ON_TERMS_LINES, noteLinesOf, planTablePages, planTermsPages, roomsOf, rupeesInWords, summaryUnits, toProjectType,
+  noteLinesOf, planTablePages, planTermsPages, roomsOf, rupeesInWords, summaryUnits, toProjectType,
   type TableRow,
 } from '@/lib/quotations/documentPlan'
 import { WORK_PULL, workSetFor } from '@/lib/quotations/documentWork'
@@ -135,10 +135,9 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
   const rooms = roomsOf(doc.areas)
   const groups = groupsOf(doc.areas, doc.lines)
   const sumRows = 1 + (t.discount > 0 ? 1 : 0) + (doc.fabric_amount > 0 ? 1 : 0) + (doc.packing_amount > 0 ? 1 : 0) + (t.discount > 0 || doc.fabric_amount > 0 || doc.packing_amount > 0 ? 1 : 0) + t.gst.length * (doc.gst_mode === 'cgst_sgst' ? 2 : 1)
-  // the notes sit with the terms (there is room there); long notes get a page of their own just before them
+  // the notes (what is included and what is not) print right under the total, where the client reads the price
   const hasNotes = !!(doc.notes || doc.transport_note)
-  const notesPage = noteLinesOf(doc.notes, doc.transport_note) > NOTES_ON_TERMS_LINES
-  const tablePages = planTablePages(groups, summaryUnits(sumRows))
+  const tablePages = planTablePages(groups, summaryUnits(sumRows, hasNotes ? noteLinesOf(doc.notes, doc.transport_note) : 0))
   // the client's choices (fabric, finish, stone, rope weave): one table, a row per product that has any; none, no page (20270809000000)
   const choiceRows = choiceRowsOf(doc.areas, doc.lines)
   const choicePages = choiceRows.length ? planChoicePages(choiceRows) : []
@@ -146,7 +145,6 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
   const work = workSetFor(type)
   const title = doc.project_name || doc.client_name
   const who = firstName(doc.salesperson)
-  const signedFor = doc.company_name || doc.client_name
   const productCount = doc.lines.filter(l => !l.is_optional).length
   const unitWord = doc.areas.length && doc.areas.every(a => a.unit_label === doc.areas[0].unit_label) ? doc.areas[0].unit_label : 'rooms'
 
@@ -154,7 +152,6 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
   const nGlance = ++n, nWork = ++n
   const firstTable = n + 1
   n += tablePages.length
-  const nNotes = notesPage ? ++n : 0
   const firstChoice = n + 1
   n += choicePages.length
   const nTerms = ++n
@@ -261,7 +258,7 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
             <h3>Your next step</h3>
             <div className={d.steps}>
               <div className={d.step}><b>1</b><p><strong>Review</strong>Check the pieces, sizes and prices on the next pages.</p></div>
-              <div className={d.step}><b>2</b><p><strong>Approve</strong>Reply “Approved” to {who}{doc.salesperson_phone ? ' on WhatsApp' : ''}, or sign on page {pad2(nTerms)}.</p></div>
+              <div className={d.step}><b>2</b><p><strong>Approve</strong>Reply “Approved” to {who}{doc.salesperson_phone ? ' on WhatsApp' : ''}.</p></div>
               <div className={d.step}><b>3</b><p><strong>Advance {ADVANCE_PCT}%</strong>Production starts after the advance is received.</p></div>
             </div>
           </div>
@@ -310,6 +307,7 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
                 <tr className={d.tot}><td colSpan={3}>Grand total</td><td className={d.r}>{formatINR(t.grand)}</td></tr>
               </tbody></table>
               <p className={d.words}>{rupeesInWords(t.grand)}</p>
+              {hasNotes ? notesBox : null}
               <div className={d.sched}><div className={d.a}><b>{ADVANCE_PCT}%</b>Advance, on confirmation of the order</div><div className={d.b}><b>{100 - ADVANCE_PCT}%</b>Before dispatch</div></div>
               <div className={d.tline}>
                 <div><b>Approval</b>Advance received</div>
@@ -321,8 +319,6 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
           ) : null}
         </Page>
       ))}
-
-      {notesPage ? <Page n={nNotes} section="Notes" kicker="Notes">{notesBox}</Page> : null}
 
       {/* ── the client's choices, one table (only when a product has any) ── */}
       {choicePages.map((rows, ci) => (
@@ -370,12 +366,7 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
             <li>One single point of contact for the project</li></ul></div>
         </div>
         {hasPayment(payment) ? <PayBlock p={payment} /> : null}
-        {hasNotes && !notesPage ? notesBox : null}
         <p className={d.fine}>The full terms and conditions (7 expectations, 23 terms) follow on the next {termPages.length === 1 ? 'page' : 'pages'} and are part of this quotation.</p>
-        <div className={d.accept}>
-          <div className={d.tlabel}>Accepted for {signedFor}</div>
-          <div className={d.sign}><div>Name</div><div>Signature</div><div>Date and PO number</div></div>
-        </div>
         <Person name={doc.salesperson} title={doc.salesperson_title} phone={doc.salesperson_phone} email={doc.salesperson_email} lead={<b>Questions? Talk to {who}.</b>} />
         <div className={d.addr}><div className={d.vrt} /><div>{WEBSITE}<br />{ADDRESS.map(x => <span key={x}>{x}<br /></span>)}</div></div>
       </Page>
