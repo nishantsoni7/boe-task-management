@@ -11,6 +11,7 @@
 // trip, and put the database's refusal into words after it.
 
 import { sumExact, exactToString } from './exactMoney'
+import { isGenericProofName } from './proofIntake'
 import type { ExpenseFilters, ExpenseRow } from './expenses'
 
 // ── Payment source ───────────────────────────────────────────────────────────
@@ -298,6 +299,34 @@ export function billStoragePath(expenseId: string, randomId: string, mimeType: s
 export function billDisplayName(name: string): string {
   const clean = name.trim() || 'bill'
   return clean.length > 200 ? clean.slice(0, 200) : clean
+}
+
+/**
+ * Files that arrive by paste or drop, ready for the bill rules. A screenshot has
+ * no real name ("image.png"), so it is named for when it arrived
+ * ("expense-bill-2026-11-21-140509.png", then "-2" for a second one in the same
+ * paste) — two of them must not look like one file. A file with a real name
+ * keeps it. The same "is this name generic?" test as the payment-proof intake.
+ */
+export function nameBillFiles(files: ArrayLike<File>, now: Date = new Date()): File[] {
+  const two = (n: number) => String(n).padStart(2, '0')
+  const stamp = `${now.getFullYear()}-${two(now.getMonth() + 1)}-${two(now.getDate())}-${two(now.getHours())}${two(now.getMinutes())}${two(now.getSeconds())}`
+  return Array.from(files, (file, i) => isGenericProofName(file.name)
+    ? new File([file], `expense-bill-${stamp}${i > 0 ? `-${i + 1}` : ''}.${billExtension(file.type) ?? 'png'}`, { type: file.type, lastModified: file.lastModified })
+    : file)
+}
+
+/**
+ * The bill files on a paste, or [] when the paste is ordinary text. Excel and
+ * Word put a picture on the clipboard BESIDE the cells or words they copy; text
+ * on the clipboard means the person is pasting text, so that paste is left alone.
+ */
+export function pastedBillFiles(
+  data: { files: ArrayLike<File>; getData(type: string): string } | null,
+  now: Date = new Date(),
+): File[] {
+  if (!data || data.getData('text/plain')) return []
+  return nameBillFiles(data.files, now)
 }
 
 export function formatFileSize(bytes: number): string {
