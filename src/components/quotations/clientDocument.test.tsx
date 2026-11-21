@@ -46,20 +46,20 @@ const sheets = (h: string) => [...h.matchAll(/<section class="(?:sheet|sheet cov
 
 describe('the pages', () => {
   const h = html(doc())
-  test('cover, at a glance, our work, ONE page of products and prices, terms and acceptance, then the standard terms', () => {
-    // since 18 Nov 2026 the pictures and the prices are one table: two room types (the second holds only an optional product) and the
-    // totals fit one page; the notes print on the terms page
-    assert.deepEqual(sheets(h), ['Cover', 'At a glance', 'Our work', 'Products and prices', 'Terms and acceptance', 'Terms and conditions', 'Terms and conditions'])
+  test('cover, at a glance, our work, the products and prices (the totals and notes on a page of their own), terms and acceptance, then the standard terms', () => {
+    // since 18 Nov 2026 the pictures and the prices are one table: two room types (the second holds only an optional product); the
+    // totals and the notes under them (14 units of notes) do not fit under three rows on the first page, so they take the next one
+    assert.deepEqual(sheets(h), ['Cover', 'At a glance', 'Our work', 'Products and prices', 'Products and prices', 'Terms and acceptance', 'Terms and conditions', 'Terms and conditions'])
   })
-  test('the page numbers run on from 02 without a gap, and the signing page is the one named on page 2', () => {
+  test('the page numbers run on from 02 without a gap', () => {
     const nums = [...h.matchAll(/<span>(\d\d)<\/span><\/div>/g)].map(m => Number(m[1]))
-    assert.deepEqual(nums, [2, 3, 4, 5, 6, 7])
-    assert.equal(sheets(h).indexOf('Terms and acceptance') + 1, 5)
-    assert.ok(plain(h).includes('sign on page 05'), 'the terms and acceptance page is page 5 here')
+    assert.deepEqual(nums, [2, 3, 4, 5, 6, 7, 8])
+    assert.equal(sheets(h).indexOf('Terms and acceptance') + 1, 6)
   })
-  test('there is no Accept button: the document says how to approve (reply, or sign) and nothing on it is a control', () => {
+  test('there is no Accept button: the document says how to approve (reply) and nothing on it is a control', () => {
     assert.ok(!/<button|<a /.test(h))
-    assert.ok(plain(h).includes('Reply “Approved” to Nishant, or sign on page 05'))
+    assert.ok(plain(h).includes('Reply “Approved” to Nishant'))
+    assert.ok(!plain(h).includes('Accepted for'), 'no signing box on the document')
   })
   test('the cover shows the project, the client, the number with its version, the date and the validity', () => {
     const t = plain(h)

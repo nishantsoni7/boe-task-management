@@ -4,6 +4,11 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-21 — Quotation document: notes under the total, signing box removed (PR open, not merged) · no migration
+- **Why.** Owner: the notes (what is and is not included in the price) belong right under the total, where the client reads the price; the "Accepted for ..." box is not wanted.
+- **What.** `QuotationDocument.tsx`: the notes box moves into the summary under the amount in words; the Notes page, the notes on the terms page and the "Accepted for" box (and its `.accept`/`.sign` CSS) are gone; the step "Approve" no longer says "or sign on page N". `summaryUnits` takes the notes' lines so the planner leaves room. Tests updated.
+- **Checked.** Quotation tests 426/426, tsc, eslint; real layout rendered in headless Edge (summary page with notes, terms page without the box).
+
 ## 2026-11-21 — Quotation PDF: no blank pages, no hole before the last product (PR open, not merged) · no migration
 - **Why.** The owner's saved PDF (QT-N-01015) had 18 pages for 9 sheets and white bands top and bottom, and a half-empty page before the last product.
 - **What.** (1) `document.module.css` print: `.sheet` gets `zoom: min(1, calc(100vh / 296.6mm))` and centring, so a margin the print window forces no longer pushes each sheet onto a second page; the hint beside Download PDF now says Margins None, Headers and footers off. (2) `planTablePages` no longer drags the last product over with the totals; they take their own page when they do not fit. Test updated.

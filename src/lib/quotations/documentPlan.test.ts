@@ -154,6 +154,7 @@ describe('products and prices: one table (owner, 18 Nov 2026)', () => {
   })
   test('the summary grows with its sum rows; notes are counted in lines of about 85 characters', () => {
     assert.ok(summaryUnits(6) > summaryUnits(2))
+    assert.ok(summaryUnits(2, 3) > summaryUnits(2) && summaryUnits(2, 0) === summaryUnits(2))
     assert.equal(noteLinesOf('Prices are ex-factory.\nSamples after the advance.', 'As per actual'), 3)
     assert.equal(noteLinesOf('x'.repeat(170), null), 2)
     assert.equal(noteLinesOf(null, null), 0)

@@ -171,7 +171,8 @@ export const rowUnits = (r: TableRow): number => r.kind === 'group' ? GROUP_UNIT
  * What the summary under the last row needs, in page units: the subtotal-to-total lines, the amount in words, the 70 / 30
  * bar and the timeline. Measured: 51.3 with five sum lines (planned 53).
  */
-export const summaryUnits = (sumRows: number): number => 36 + 3.4 * sumRows
+// the notes box (what is included and what is not) prints under the total: its padding and heading, then a line each (estimate, a little generous)
+export const summaryUnits = (sumRows: number, noteLines = 0): number => 36 + 3.4 * sumRows + (noteLines > 0 ? 8.5 + 2.9 * noteLines : 0)
 
 /**
  * Page by page: rows until a page is full; the summary goes under the last rows when it fits. When it does not, it takes a page
@@ -203,8 +204,7 @@ export function planTablePages(groups: readonly Group[], summary: number): Table
   return pages
 }
 
-/** The notes print on the Terms and acceptance page, which has room for about this many lines of them; longer notes get a page of their own. */
-export const NOTES_ON_TERMS_LINES = 10
+/** Lines the notes box takes: about 85 characters to a line. */
 export const noteLinesOf = (notes: string | null | undefined, transport: string | null | undefined): number =>
   (notes ? notes.split('\n').reduce((k, x) => k + Math.max(1, Math.ceil(x.length / 85)), 0) : 0) + (transport ? 1 : 0)
 
