@@ -215,7 +215,9 @@
 
 @media print {
   .doc { display: block; gap: 0; }
-  .sheet { width: 210mm; height: 296.6mm; aspect-ratio: auto; box-shadow: none; break-inside: avoid; }
+  /* 100vh is the page area in print. When the print window takes margins of its own (it does, whatever @page says, with some settings),
+     the sheet shrinks to the page it is given instead of spilling its last millimetres onto a blank page. No margin: the ratio is above 1, no change. */
+  .sheet { width: 210mm; height: 296.6mm; aspect-ratio: auto; box-shadow: none; break-inside: avoid; margin-inline: auto; zoom: min(1, calc(100vh / 296.6mm)); }
   .sheet + .sheet { break-before: page; }
 }
 
