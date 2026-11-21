@@ -385,22 +385,9 @@ describe('the attention strip and the dashboard', () => {
     assert.deepEqual(orderAttentionItems({ ...quiet, status: 'cancelled', operationsReview: { versionNumber: 1, status: 'awaiting', unassigned: true }, alignmentPredatesVersion: 1 }), [])
     assert.deepEqual(orderAttentionItems(quiet), [])
   })
-  test('the dashboard offers an Operations Review card only when something waits — including a flagged version', () => {
-    const cards = (over: Partial<typeof NO_ORDER_DASHBOARD_COUNTS>) =>
-      orderDashboardCards({ counts: { ...NO_ORDER_DASHBOARD_COUNTS, ...over }, orders: NO_ORDERS_CAPABILITIES })
-        .find(c => c.key === 'operations_review')
-    assert.equal(cards({}), undefined)
-    assert.equal(cards({ operationsReview: 0, operationsUnassigned: 0, operationsFlagged: 0 }), undefined)
-    const mine = cards({ operationsReview: 2, operationsUnassigned: 0, operationsFlagged: 0 })
-    assert.equal(mine?.value, 2)
-    assert.equal(mine?.href, '/orders/all?ops=awaiting')
-    assert.equal(mine?.tone, 'attention')
-    const unassigned = cards({ operationsReview: 0, operationsUnassigned: 1, operationsFlagged: 0 })
-    assert.equal(unassigned?.value, 1)
-    assert.match(unassigned?.sub ?? '', /no reviewer assigned/)
-    const flagged = cards({ operationsReview: 0, operationsUnassigned: 0, operationsFlagged: 1 })
-    assert.equal(flagged?.value, 1)
-    assert.match(flagged?.sub ?? '', /flagged: clarification needed/)
+  test('the dashboard has no Operations Review card: what needs the reader is in Needs your action (owner, 2026-11-21)', () => {
+    const counts = { ...NO_ORDER_DASHBOARD_COUNTS, operationsReview: 2, operationsUnassigned: 1, operationsFlagged: 1 }
+    assert.equal(orderDashboardCards({ counts, orders: NO_ORDERS_CAPABILITIES }).find(c => c.key === 'operations_review'), undefined)
   })
 })
 
