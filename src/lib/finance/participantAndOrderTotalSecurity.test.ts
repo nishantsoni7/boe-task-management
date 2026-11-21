@@ -1364,6 +1364,8 @@ describe('the applied migrations are frozen', () => {
       '20270816000000_quotation_start_contact_role.sql',
       // Quotations: delete (one new table closed to the browser, three functions, quotation_list replaced with one more field, the price-review trigger now fires on a direct change only); no rows change.
       '20270817000000_quotation_delete.sql',
+      // Orders: pi_submissions_payment_summaries, the approver's payment chips in one call (a read-only wrapper over pi_submission_payment_summary; no table or data changes). NOT APPLIED YET: waits for the owner.
+      '20270818000000_pi_payment_summaries_batch.sql',
     ])
   })
 
@@ -1939,6 +1941,8 @@ describe('the applied migrations are frozen', () => {
       '20270816000000_quotation_start_contact_role.sql',
       // Quotations: delete (one new table closed to the browser, three functions, quotation_list replaced with one more field, the price-review trigger now fires on a direct change only); no rows change.
       '20270817000000_quotation_delete.sql',
+      // Orders: pi_submissions_payment_summaries, the approver's payment chips in one call (a read-only wrapper over pi_submission_payment_summary; no table or data changes). NOT APPLIED YET: waits for the owner.
+      '20270818000000_pi_payment_summaries_batch.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

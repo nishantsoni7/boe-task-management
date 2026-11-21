@@ -815,7 +815,7 @@ describe('the page', () => {
     assert.ok(shared.includes(".from('order_pi_versions')"))
     assert.ok(shared.includes(".from('order_document_submissions')"))
     assert.equal(/service|createClient/.test(shared), false, 'no service role in the shared reads')
-    assert.ok(src.includes('loadPiPaymentSummary'))
+    assert.ok(src.includes('loadPiPaymentSummaries'))
     assert.equal(/service|createClient|attached_percent/.test(src), false, 'no service role, and no percentage worked out for the chip')
     assert.ok(src.includes('viewingAs'), 'nothing is read under View As')
   })
@@ -846,7 +846,7 @@ describe('the approver\'s cards read in two rounds, and the first starts with th
       asked, selects, rpcs,
       client: {
         from: (table: string) => { asked.push(table); return chain(table) },
-        rpc: async (fn: string) => { rpcs.push(fn); return { data: fn === 'my_flagged_pis' ? [] : null, error: null } },
+        rpc: async (fn: string) => { rpcs.push(fn); return { data: fn === 'my_flagged_pis' || fn === 'pi_submissions_payment_summaries' ? [] : null, error: null } },
       },
     }
   }
@@ -892,7 +892,7 @@ describe('the approver\'s cards read in two rounds, and the first starts with th
     assert.ok(data)
     assert.deepEqual([...new Set(f.asked)].sort(), ['order_change_requests', 'order_pi_versions', 'order_submissions',
       ...f.asked.filter(t => t.endsWith('document_submissions'))].sort())
-    assert.deepEqual(f.rpcs.sort(), ['my_flagged_pis', 'pi_submission_payment_summary'])
+    assert.deepEqual(f.rpcs.sort(), ['my_flagged_pis', 'pi_submissions_payment_summaries'], 'the chips are one call, not one per PI')
   })
 
   test('the page\'s own answers are laid over rows already read: composing again reads nothing', async () => {
