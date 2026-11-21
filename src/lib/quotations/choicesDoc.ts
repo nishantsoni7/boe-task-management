@@ -14,7 +14,7 @@ export function choiceRowsOf(areas: readonly QuoteArea[], lines: readonly QuoteL
 
 export const hasChoices = (lines: readonly QuoteLine[]): boolean => lines.some(l => choiceCounts(l.choices).total > 0)
 
-export const sourceText = (c: LineChoice): string => (c.source === 'client' ? 'Client’s own' : 'From our catalog')
+export const sourceText = (c: LineChoice): string => (c.source === 'client' ? 'Client’s own' : c.source === 'code' ? 'Client’s code, we source it' : 'From our catalog')
 export const statusText = (c: LineChoice): string => (c.status === 'confirmed' ? (c.confirmed_on ? `Confirmed ${formatDateIN(c.confirmed_on)}` : 'Confirmed') : 'To confirm')
 
 /** The words of one choice, a line each: the name, "code · supplier", and where it is used. Empty parts are left out. */

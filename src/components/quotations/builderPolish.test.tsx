@@ -88,7 +88,8 @@ describe('contact person and email (items 5 and 7)', () => {
     for (const k of ['contact_name', 'contact_phone', 'contact_role', 'client_email', 'supply_state', 'delivery_city', 'client_type'] as const) {
       assert.equal(doc.header[k], header()[k], k)
     }
-    assert.match(SCREEN, /saveDoc\(\{ \.\.\.h, lead_time_weeks: effectiveLeadTime\(h, areas\) \}/, 'the builder sends the whole header')
+    assert.match(SCREEN, /saveDoc\(\{ \.\.\.header, lead_time_weeks: effectiveLeadTime\(h, areas\) \}/, 'the builder sends the whole header')
+    assert.ok(SCREEN.includes('const header = costed.any ? { ...h, fabric_amount: costed.fabric, packing_amount: costed.packing } : h'), 'the whole header, with the two costing sums once a price was typed on the costing page')
   })
   test('a wrong email opens the advanced section, where the box is, before saying so', () => {
     assert.match(SCREEN, /const EMAIL_PROBLEM = 'Check the email address\.'/)

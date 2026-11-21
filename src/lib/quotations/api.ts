@@ -1,7 +1,7 @@
 import type { createClient } from '@/lib/supabase/client'
 import { toJpeg } from '@/lib/inventory/images'
 import { ORIGINALS_BUCKET } from './pictureStore'
-import { cleanChoices, toDimensionUnit, type DimensionUnit, type GstMode, type LineChoices, type LineRef, type QtyMode, type QuoteArea, type QuoteLine } from './math'
+import { cleanChoices, cleanCosting, toDimensionUnit, type DimensionUnit, type GstMode, type LineChoices, type LineCosting, type LineRef, type QtyMode, type QuoteArea, type QuoteLine } from './math'
 
 // Thin typed wrappers over the database functions of 20270614000000. No API route in between: every function
 // reads auth.uid() itself, so the browser's own session is the identity. The client link uses the same client
@@ -162,6 +162,8 @@ type DbLine = {
   unit_price: number | string | null; tax_rate: number | string; image_path: string | null; is_optional: boolean
   client_note: string | null; internal_note?: string | null; reference_images?: LineRef[] | null
   client_choices?: LineChoices | null
+  /** 20270819000000: fabric metres and rate, packing type and price per piece. Absent before that migration. */
+  costing?: LineCosting | null
 }
 
 export function toAreas(rows: DbArea[]): QuoteArea[] {
@@ -181,6 +183,7 @@ export function toLines(rows: DbLine[]): QuoteLine[] {
       client_note: l.client_note ?? '', internal_note: l.internal_note ?? '',
       ...(Array.isArray(l.reference_images) && l.reference_images.length ? { references: l.reference_images } : {}),
       ...(l.client_choices && Object.keys(l.client_choices).length ? { choices: l.client_choices } : {}),
+      ...(l.costing && Object.keys(l.costing).length ? { costing: l.costing } : {}),
     }
   })
 }
@@ -243,6 +246,7 @@ export function saveDoc(header: Header, areas: QuoteArea[], lines: QuoteLine[], 
       unit_price: l.unit_price, tax_rate: l.tax_rate, image_path: l.image_path, is_optional: l.is_optional,
       client_note: l.client_note, internal_note: l.internal_note, reference_images: l.references ?? [],
       client_choices: cleanChoices(l.choices),
+      costing: cleanCosting(l.costing),
     })),
   }
 }
