@@ -119,3 +119,6 @@
   .step { padding-right: 8px; }
   .barRow { grid-template-columns: 90px minmax(0, 1fr) 100px; }
 }
+
+/* "Teach next" (AccuracyCard.tsx): the product types to teach first. */
+.teachNext { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13.5px; }

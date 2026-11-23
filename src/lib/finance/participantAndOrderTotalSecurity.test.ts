@@ -1376,6 +1376,8 @@ describe('the applied migrations are frozen', () => {
       '20270822000000_quotation_cards_open_owned_or_made.sql',
       // Pricing: elements worked out by calculators (wood cut list, metal weight, area, percentage), price level, metals and dated rates (two new closed tables, three new columns, the kind check widened, pricing_training_save re-created). APPLIED 2026-11-23 18:05 IST.
       '20270823000000_pricing_calculators.sql',
+      // Pricing: the echo guard (pricing_used_suggestion; pricing_pool and pricing_all_points re-created to leave out a line still at the price a suggestion's Use set; no table or row changes). NOT APPLIED.
+      '20270824000000_pricing_echo_guard.sql',
     ])
   })
 
@@ -1963,6 +1965,8 @@ describe('the applied migrations are frozen', () => {
       '20270822000000_quotation_cards_open_owned_or_made.sql',
       // Pricing: elements worked out by calculators (wood cut list, metal weight, area, percentage), price level, metals and dated rates (two new closed tables, three new columns, the kind check widened, pricing_training_save re-created). APPLIED 2026-11-23 18:05 IST.
       '20270823000000_pricing_calculators.sql',
+      // Pricing: the echo guard (pricing_used_suggestion; pricing_pool and pricing_all_points re-created to leave out a line still at the price a suggestion's Use set; no table or row changes). NOT APPLIED.
+      '20270824000000_pricing_echo_guard.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
