@@ -9,6 +9,7 @@ import type { createClient } from '@/lib/supabase/client'
 import { PRODUCT_TYPES, TYPE_LABEL } from '@/lib/pricing/features'
 import { explainFit, fitType } from '@/lib/pricing/model'
 import { fetchPool, poolWords } from '@/lib/pricing/pool'
+import { compareEngines } from '@/lib/pricing/exam'
 import s from '@/components/quotations/quotations.module.css'
 
 type Supabase = ReturnType<typeof createClient>
@@ -16,7 +17,8 @@ type Supabase = ReturnType<typeof createClient>
 export function HowPricesAreMade({ supabase }: { supabase: Supabase }) {
   const [type, setType] = useState('bed')
   const q = useQuery({ queryKey: ['pricing', 'pool', type], queryFn: () => fetchPool(supabase, poolWords([type])), retry: false })
-  const fit = useMemo(() => (q.data ? fitType(q.data, type) : null), [q.data, type])
+  // The engine quotations get for this type (phase 3C): v3 only where it beat v2 on the blind test.
+  const fit = useMemo(() => (q.data ? fitType(q.data, type, undefined, compareEngines(q.data, type).leader === 'v3') : null), [q.data, type])
   const effects = useMemo(() => (fit ? explainFit(fit).sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct)) : []), [fit])
   return (
     <div className={s.cardBody} style={{ display: 'grid', gap: 12 }}>
@@ -42,7 +44,8 @@ export function HowPricesAreMade({ supabase }: { supabase: Supabase }) {
               <tbody>{effects.map(e => <tr key={e.label} style={{ cursor: 'default' }}><td>{e.label}</td><td className={s.right}><b>{e.pct > 0 ? '+' : ''}{e.pct}%</b></td></tr>)}</tbody>
             </table></div>
           )}
-          <div className={`${s.small} ${s.muted}`}>Learned again each time from approved PIs (full weight), won quotations, prices the desk approved and open quotes (less weight). Lost quotations are not learned from.</div>
+          <div className={`${s.small} ${s.muted}`}>Learned again each time from approved PIs (full weight), won quotations, prices the desk approved and open quotes (less weight). Lost quotations are not learned from.
+            {fit.facts && ' The new engine prices this type, because it priced it closer on the blind test: it also learns what each product photo shows, and the cases taught in Training (full weight).'}</div>
         </>
       )}
     </div>

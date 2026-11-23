@@ -58,6 +58,8 @@ import { MyDetailsReminder } from './MyDetails'
 import { productType } from '@/lib/pricing/features'
 import { priceLine, type Fit, type ModelSuggestion } from '@/lib/pricing/model'
 import { fetchPool, poolWords } from '@/lib/pricing/pool'
+import { compareEngines } from '@/lib/pricing/exam'
+import { fetchFactsFor } from '@/lib/pricing/photoFactsApi'
 import s from './quotations.module.css'
 
 const newKey = () => `n${Math.random().toString(36).slice(2, 10)}`
@@ -126,6 +128,10 @@ export default function BuilderScreen() {
   // Pricing model v2: one pool for every product type on screen, then each line priced for its own parameters.
   const typeWords = useMemo(() => poolWords(hintNames.split('\n').map(productType).filter((t): t is string => !!t)).join(' '), [hintNames])
   const poolQ = useQuery({ queryKey: ['quotations', 'pool', id, typeWords], queryFn: () => fetchPool(supabase, typeWords.split(' '), id), enabled: accessLoaded && !notSetUp && suggestOn && typeWords !== '', staleTime: 300_000, retry: false })
+  // Engine v3 (Price Brain v2, phase 3C): the facts of each line's photo, once Pricing has read it. Until 20270826000000 is applied
+  // the read fails and every line is priced as before.
+  const photoKeysOn = useMemo(() => [...new Set(lines.flatMap(l => (l.image_path ? [`quotation-images/${l.image_path}`] : [])))].sort().slice(0, 200).join('\n'), [lines])
+  const factsQ = useQuery({ queryKey: ['pricing', 'facts-for', photoKeysOn], queryFn: () => fetchFactsFor(supabase, photoKeysOn.split('\n')), enabled: accessLoaded && !notSetUp && suggestOn && photoKeysOn !== '', staleTime: 300_000, retry: false })
   // Pricing > Training: the submitted cases a line can be told it is. Until 20270726000000 is applied the read fails and nothing shows.
   const libraryQ = useQuery({ queryKey: trainingKeys.library, queryFn: () => fetchLibrary(supabase), enabled: accessLoaded && !notSetUp && suggestOn, staleTime: 300_000, retry: false })
   // The reason for a price that differs from the taught one also goes to the Price learning inbox. If that send fails the reason is
@@ -176,12 +182,21 @@ export default function BuilderScreen() {
   // One fit per product type for as long as the pool is the same: typing in a line re-prices every line, and refitting the
   // model for each of them on every keystroke made typing in Material and Remarks take ~140 ms (20 Nov 2026).
   const fits = useMemo(() => (poolQ.data ? new Map<string, Fit | null>() : null), [poolQ.data])
+  // Which engine prices each product type: v3 only where it beat v2 on the blind test of this pool (exam.ts), worked out once per type per pool.
+  const leaders = useMemo(() => (poolQ.data ? new Map<string, boolean>() : null), [poolQ.data])
   const modelFor = useMemo(() => {
     const m = new Map<string, ModelSuggestion | null>()
-    if (!poolQ.data || !fits || !totals) return m
-    for (const l of lines) m.set(l.key, priceLine(poolQ.data, { name: l.name, size: l.size_text, material: l.material, finish: l.finish, spec: l.spec, qty: totals.lineQty[l.key], clientType: h?.client_type }, undefined, fits))
+    const pool = poolQ.data
+    if (!pool || !fits || !leaders || !totals) return m
+    // Nothing read and nothing taught in this pool: v3 is v2, so no exam is run.
+    const anyV3 = pool.some(p => p.f || p.k === 'taught')
+    const useFacts = (type: string) => { if (!anyV3) return false; if (!leaders.has(type)) leaders.set(type, compareEngines(pool, type).leader === 'v3'); return leaders.get(type)! }
+    for (const l of lines) {
+      const facts = l.image_path ? factsQ.data?.[`quotation-images/${l.image_path}`] ?? null : null
+      m.set(l.key, priceLine(pool, { name: l.name, size: l.size_text, material: l.material, finish: l.finish, spec: l.spec, qty: totals.lineQty[l.key], clientType: h?.client_type }, undefined, fits, { facts, useFacts }))
+    }
     return m
-  }, [poolQ.data, fits, lines, totals, h?.client_type])
+  }, [poolQ.data, fits, leaders, factsQ.data, lines, totals, h?.client_type])
   const touch = () => { setDirty(true); setMsg(m => (m?.tone === 'ok' ? null : m)) }
   const updH = <K extends keyof Header>(k: K, v: Header[K]) => { setH(p => (p ? { ...p, [k]: v } : p)); touch() }
   const updArea = (key: string, patch: Partial<QuoteArea>) => { setAreas(p => p.map(a => (a.key === key ? { ...a, ...patch } : a))); touch() }

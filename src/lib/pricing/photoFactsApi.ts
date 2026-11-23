@@ -19,6 +19,8 @@ async function rpc<T>(run: () => PromiseLike<{ data: unknown; error: { message?:
 export const fetchPhotoQueue = (s: Supabase, limit = 10) => rpc<PhotoQueue>(() => s.rpc('pricing_photo_queue', { p_limit: limit }))
 export const fetchPhotoFacts = (s: Supabase) => rpc<PhotoFactRow[]>(() => s.rpc('pricing_photo_facts_list'))
 export const correctPhotoFact = (s: Supabase, key: string, facts: Facts) => rpc<null>(() => s.rpc('pricing_photo_fact_correct', { p_key: key, p_facts: facts }))
+/** The facts of these photos ("<bucket>/<path>", at most 200), for pricing quotation lines (20270826000000). Read photos only. */
+export const fetchFactsFor = (s: Supabase, keys: string[]) => rpc<Record<string, Partial<Facts>>>(() => s.rpc('pricing_photo_facts_for', { p_keys: keys }))
 
 /** Reads up to five photos on the server. A failure of the whole call throws a sentence; each photo has its own result. */
 export async function readPhotos(s: Supabase, photos: readonly { key: string; label: string | null }[]): Promise<PhotoResult[]> {
