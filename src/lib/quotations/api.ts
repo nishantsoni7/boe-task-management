@@ -1,7 +1,7 @@
 import type { createClient } from '@/lib/supabase/client'
 import { toJpeg } from '@/lib/inventory/images'
 import { ORIGINALS_BUCKET } from './pictureStore'
-import { cleanChoices, cleanCosting, toDimensionUnit, type DimensionUnit, type GstMode, type LineChoices, type LineCosting, type LineRef, type QtyMode, type QuoteArea, type QuoteLine } from './math'
+import { cleanChoices, cleanCosting, costingViewOf, toDimensionUnit, type CostingView, type DimensionUnit, type GstMode, type LineChoices, type LineCosting, type LineRef, type QtyMode, type QuoteArea, type QuoteLine } from './math'
 
 // Thin typed wrappers over the database functions of 20270614000000. No API route in between: every function
 // reads auth.uid() itself, so the browser's own session is the identity. The client link uses the same client
@@ -164,6 +164,8 @@ type DbLine = {
   client_choices?: LineChoices | null
   /** 20270819000000: fabric metres and rate, packing type and price per piece. Absent before that migration. */
   costing?: LineCosting | null
+  /** 20270820000000: what the client may see (per-piece figures, packing type); only on a client copy. */
+  costing_view?: CostingView | null
 }
 
 export function toAreas(rows: DbArea[]): QuoteArea[] {
@@ -184,6 +186,8 @@ export function toLines(rows: DbLine[]): QuoteLine[] {
       ...(Array.isArray(l.reference_images) && l.reference_images.length ? { references: l.reference_images } : {}),
       ...(l.client_choices && Object.keys(l.client_choices).length ? { choices: l.client_choices } : {}),
       ...(l.costing && Object.keys(l.costing).length ? { costing: l.costing } : {}),
+      // a client copy carries the database's view; a staff copy works it out, and only for a line that has costing (as the database does)
+      ...(() => { const v = l.costing_view ?? (l.costing && Object.keys(l.costing).length ? costingViewOf({ choices: l.client_choices ?? undefined, costing: l.costing }) : undefined); return v ? { costingView: v } : {} })(),
     }
   })
 }

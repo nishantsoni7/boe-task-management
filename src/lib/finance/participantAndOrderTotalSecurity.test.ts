@@ -1368,6 +1368,8 @@ describe('the applied migrations are frozen', () => {
       '20270818000000_pi_payment_summaries_batch.sql',
       // Quotations: fabric and packing costed per product (one nullable-free column with a default and two checker functions; quotation_save and quotation_line_choices_ok re-created; no existing row changes).
       '20270819000000_quotation_line_costing.sql',
+      // Quotations: the client's copy carries per-piece fabric and packing figures (one new immutable function; quotation_client_doc re-created; no table or row changes).
+      '20270820000000_quotation_client_costing_view.sql',
     ])
   })
 
@@ -1947,6 +1949,8 @@ describe('the applied migrations are frozen', () => {
       '20270818000000_pi_payment_summaries_batch.sql',
       // Quotations: fabric and packing costed per product (one nullable-free column with a default and two checker functions; quotation_save and quotation_line_choices_ok re-created; no existing row changes).
       '20270819000000_quotation_line_costing.sql',
+      // Quotations: the client's copy carries per-piece fabric and packing figures (one new immutable function; quotation_client_doc re-created; no table or row changes).
+      '20270820000000_quotation_client_costing_view.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

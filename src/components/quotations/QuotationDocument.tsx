@@ -12,7 +12,7 @@ import {
   type TableRow,
 } from '@/lib/quotations/documentPlan'
 import { WORK_PULL, workSetFor } from '@/lib/quotations/documentWork'
-import { CHOICE_KINDS, CHOICE_LABEL, choiceRowsOf, choiceWords, planChoicePages, sourceText, statusText } from '@/lib/quotations/choicesDoc'
+import { CHOICE_KINDS, CHOICE_LABEL, choiceRowsOf, choiceWords, choicesIntro, lineCostWords, planChoicePages, sourceText, statusText } from '@/lib/quotations/choicesDoc'
 import type { PaymentDetails } from '@/lib/quotations/api'
 import d from './document.module.css'
 import { Pic } from './Pic'
@@ -323,19 +323,20 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
       {/* ── the client's choices, one table (only when a product has any) ── */}
       {choicePages.map((rows, ci) => (
         <Page key={`c${ci}`} n={firstChoice + ci} section="Client choices" kicker="Client choices" title={ci === 0 ? 'What you chose, and what is still open.' : undefined}>
-          {ci === 0 ? <p className={d.chIntro}>Fabrics, finishes, stone and rope weaves for your products. Rows marked To confirm still wait for your decision. None of this changes the price.</p> : null}
+          {ci === 0 ? <p className={d.chIntro}>{choicesIntro(doc.lines)}</p> : null}
           <table className={`${d.tbl} ${d.chtbl}`}>
             <thead><tr><th>Product</th>{CHOICE_KINDS.map(k => <th key={k}>{CHOICE_LABEL[k]}</th>)}</tr></thead>
             <tbody>{rows.map(r => (
               <tr key={r.line.key}>
-                <td className={d.chProd} data-label="Product"><b className={d.pname}>{r.line.name}</b><small>{[r.area?.name, r.line.is_optional ? 'Optional' : ''].filter(Boolean).join(' · ')}</small></td>
+                <td className={d.chProd} data-label="Product"><b className={d.pname}>{r.line.name}</b><small>{[r.area?.name, r.line.is_optional ? 'Optional' : ''].filter(Boolean).join(' · ')}</small>{lineCostWords(r.line).packing ? <small>{lineCostWords(r.line).packing}</small> : null}</td>
                 {CHOICE_KINDS.map(k => {
                   const c = r.line.choices?.[k]
-                  if (!c) return <td key={k} data-label={CHOICE_LABEL[k]} className={d.chNone}><span>Not used</span></td>
+                  if (!c) return <td key={k} data-label={CHOICE_LABEL[k]} className={d.chNone}>{k === 'fabric' && lineCostWords(r.line).fabric ? <span>{lineCostWords(r.line).fabric}</span> : <span>Not used</span>}</td>
                   return (
                     <td key={k} data-label={CHOICE_LABEL[k]}>
                       {c.photo ? <div className={d.chSw}><Pic src={pictureUrl(c.photo)} alt={`${CHOICE_LABEL[k]} swatch for ${r.line.name}`} lazy /></div> : null}
                       {choiceWords(c).map((w, i) => i === 0 ? <b key={i} className={d.chName}>{w}</b> : <span key={i} className={d.chWord}>{w}</span>)}
+                      {k === 'fabric' && lineCostWords(r.line).fabric ? <span className={d.chWord}>{lineCostWords(r.line).fabric}</span> : null}
                       <span className={d.chSrc}>{sourceText(c)}</span>
                       <span className={`${d.chChip} ${c.status === 'confirmed' ? d.chOk : d.chWait}`}>{statusText(c)}</span>
                     </td>

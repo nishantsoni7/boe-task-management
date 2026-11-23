@@ -5,7 +5,7 @@
  */
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { cleanCosting, computeTotals, costWaitingText, costingSums, fabricInUse, lineCost, type LineChoice, type QuoteArea, type QuoteLine } from './math'
+import { cleanCosting, computeTotals, costWaitingText, costingSums, costingViewOf, costingWords, fabricInUse, lineCost, type LineChoice, type QuoteArea, type QuoteLine } from './math'
 
 const areas: QuoteArea[] = [{ key: 'a', name: 'Lobby lounge', style: '', multiplier: 10, unit_label: 'rooms' }]
 const line = (over: Partial<QuoteLine> = {}): QuoteLine => ({
@@ -118,5 +118,29 @@ describe('what a save writes (cleanCosting)', () => {
     assert.equal(c.fabric?.rate, 10_000_000)
     assert.equal(c.packing?.per_piece, 10_000_000)
     assert.equal(c.packing?.type?.length, 80)
+  })
+})
+
+describe('what the client may see (costingViewOf), the twin of quotation_costing_view in the database', () => {
+  const view = (over: Partial<QuoteLine>) => costingViewOf(line(over))
+  test('the same cases the database test checks: per piece, no charge, waiting, fractions', () => {
+    assert.deepEqual(view({ choices: fabric('catalog'), costing: { fabric: { metres: 1.6, rate: 850 }, packing: { type: 'Carton with foam corners', per_piece: 650 } } }),
+      { fabric: { per: 1360 }, packing: { per: 650, type: 'Carton with foam corners' } })
+    assert.deepEqual(view({ choices: fabric('client', 'Own linen'), costing: { packing: { per_piece: 0 } } }), { fabric: { free: true }, packing: { per: 0 } })
+    assert.deepEqual(view({ choices: fabric('code', '', 'F-2210'), costing: { packing: { type: 'Crate' } } }), { fabric: { wait: true }, packing: { type: 'Crate', wait: true } })
+    assert.deepEqual(view({ costing: { fabric: { rate: 700 } } }), { fabric: { wait: true } })
+    assert.deepEqual(view({ choices: fabric('catalog', 'V'), costing: { fabric: { metres: 1.25, rate: 333 } } }), { fabric: { per: 416.25 } })
+    assert.equal(view({}), undefined)
+  })
+  test('never carries the metres or the rate', () => {
+    const s = JSON.stringify(view({ choices: fabric('catalog'), costing: { fabric: { metres: 1.6, rate: 850 }, packing: { per_piece: 650 } } }))
+    assert.ok(!/metres|rate|costing/.test(s), s)
+  })
+  test('the words the client reads', () => {
+    assert.deepEqual(costingWords({ fabric: { per: 1360 }, packing: { type: 'Carton', per: 650 } }), { fabric: '₹1,360 per piece', packing: 'Packing: Carton · ₹650 per piece' })
+    assert.deepEqual(costingWords({ fabric: { free: true }, packing: { wait: true } }), { fabric: 'No charge for the fabric', packing: 'Packing · price to be confirmed' })
+    assert.deepEqual(costingWords({ fabric: { wait: true } }), { fabric: 'Fabric price to be confirmed', packing: '' })
+    assert.deepEqual(costingWords({ fabric: { per: 416.25 } }), { fabric: '₹416.25 per piece', packing: '' })
+    assert.deepEqual(costingWords(undefined), { fabric: '', packing: '' })
   })
 })
