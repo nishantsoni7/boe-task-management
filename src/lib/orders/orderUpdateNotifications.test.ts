@@ -37,7 +37,7 @@ import {
   type OrderUpdateCandidate,
   type OrderUpdateRecipientRole,
 } from './orderUpdateNotifications'
-import { ORDER_NOTIFICATION_TYPES } from '@/lib/notifications'
+import { ORDER_NOTIFICATION_TYPES, ORDER_ROUTINE_NOTIFICATION_TYPES } from '@/lib/notifications'
 import { insertUserNotifications, type NotificationInsert } from '@/lib/notificationWrites'
 import {
   ORDER_UNREAD_TYPES,
@@ -336,10 +336,16 @@ describe('the event map is the definition of "meaningful"', () => {
     }
   })
 
-  test('every type reaches the Orders feed, the bell and mark-all-read', () => {
+  test('only a status change reaches the Orders feed; the other three are routine but still written', () => {
+    // MAJOR ACTIVITY ONLY (2026-11-23). The other three stay in
+    // ORDER_UNREAD_TYPES (next test), so they still mark the Order "New update"
+    // on Confirmed Orders; they are just not in the inbox list.
+    const shown = ORDER_UPDATE_NOTIFICATION_TYPES.filter(t => (ORDER_NOTIFICATION_TYPES as readonly string[]).includes(t))
+    assert.deepEqual(shown, ['order_update_status'])
     for (const type of ORDER_UPDATE_NOTIFICATION_TYPES) {
-      assert.ok((ORDER_NOTIFICATION_TYPES as readonly string[]).includes(type),
-        `${type} would be written but never shown`)
+      if (type === 'order_update_status') continue
+      assert.ok((ORDER_ROUTINE_NOTIFICATION_TYPES as readonly string[]).includes(type),
+        `${type} is neither shown nor listed as routine`)
     }
   })
 
