@@ -323,4 +323,78 @@ let id
   ok('the watcher: feedback accepts differs_taught, and Pricing people read the priced lines that picked a taught product')
 }
 
+{ // 20270823000000: elements worked out by calculators, what a price is, metals and dated rates
+  await db.exec(mig('20270823000000_pricing_calculators.sql'))
+  const old = await rpc(U.teacher, 'pricing_training_get', id)
+  assert.equal(old.price_level, 'selling'); assert.deepEqual(old.includes, []); assert.equal(old.per_set, null)
+  assert.ok(old.lines.every((l) => l.calc === null))
+  let h = await rpc(U.viewer, 'pricing_rate_history_list')
+  assert.deepEqual(h.map((x) => [x.kind, x.name, Number(x.rate)]).sort(), [['wood', 'Sheesham', 2300], ['wood', 'Teak', 4600]]) // today's rates are the first entries
+  const m = await rpc(U.viewer, 'pricing_metals_list')
+  assert.deepEqual(m.map((x) => [x.name, Number(x.density), x.rate]), [['MS bar and flat', 7850, null], ['MS sheet', 7850, null], ['MS tube and pipe', 7850, null]])
+  ok('existing cases read as a selling price per piece; the rate history starts with today\'s wood rates; three MS metals without rates')
+}
+
+{ // metals and the rate history
+  await fails(U.viewer, 'select public.pricing_metal_save($1, $2, $3)', ['MS tube and pipe', null, 75], /PRICING_METALS_FORBIDDEN/)
+  await fails(U.viewer, 'select public.pricing_metal_remove($1)', ['MS sheet'], /PRICING_METALS_FORBIDDEN/)
+  await rpc(U.teacher, 'pricing_metal_save', 'ms tube and pipe', null, 75)
+  await rpc(U.checker, 'pricing_metal_save', 'MS TUBE AND PIPE', null, 78)
+  await rpc(U.teacher, 'pricing_metal_save', 'MS tube and pipe', 7850, null)   // the density again, the rate untouched: no history row
+  await rpc(U.teacher, 'pricing_metal_save', 'SS 304 tube', 7900, null)        // a new metal without a rate: no history row
+  await fails(U.teacher, 'select public.pricing_metal_save($1, $2, $3)', ['S', 7900, 10], /PRICING_METALS_INVALID/)
+  await fails(U.teacher, 'select public.pricing_metal_save($1, $2, $3)', ['Gold leaf', 100, 10], /PRICING_METALS_INVALID/)
+  await fails(U.teacher, 'select public.pricing_metal_save($1, $2, $3)', ['MS sheet', null, 0], /PRICING_METALS_INVALID/)
+  await rpc(U.teacher, 'pricing_wood_save', 'Teak', 4800)
+  await rpc(U.teacher, 'pricing_wood_save', 'teak', 4800)                     // the same rate again: no history row
+  const h = await rpc(U.viewer, 'pricing_rate_history_list')
+  assert.deepEqual(h.slice(0, 3).map((x) => [x.kind, x.name, Number(x.rate), x.set_by_name]),
+    [['wood', 'Teak', 4800, 'Teacher'], ['metal', 'MS tube and pipe', 78, 'Checker'], ['metal', 'MS tube and pipe', 75, 'Teacher']])
+  assert.equal(h.length, 5)
+  const tube = (await rpc(U.viewer, 'pricing_metals_list')).find((x) => x.name === 'MS tube and pipe')
+  assert.deepEqual([Number(tube.density), Number(tube.rate), tube.updated_by_name], [7850, 78, 'Teacher'])
+  await rpc(U.teacher, 'pricing_metal_remove', 'ss 304 TUBE')
+  assert.ok(!(await rpc(U.viewer, 'pricing_metals_list')).some((x) => x.name === 'SS 304 tube'))
+  await fails(U.teacher, 'select * from public.pricing_metals', [], /permission denied/)
+  await fails(U.teacher, 'select * from public.pricing_rate_history', [], /permission denied/)
+  await fails(U.teacher, `insert into public.pricing_rate_history (kind, name, rate) values ('wood', 'x', 1)`, [], /permission denied/)
+  await fails(null, 'select public.pricing_metals_list()', [], /permission denied/, 'anon')
+  await fails(null, 'select public.pricing_rate_history_list()', [], /permission denied/, 'anon')
+  await fails(U.nobody, 'select public.pricing_rate_history_list()', [], /PRICING_TRAINING_FORBIDDEN/)
+  ok('metals: Pricing reads, teachers change; every new or different rate is kept with who and when; nothing else writes the history')
+}
+
+{ // a case with worked-out elements, a metal frame, and what its price is
+  const C = { name: 'Set of 2 coffee tables', price_level: 'cost', includes: ['packing', 'delivery', 'packing'], per_set: 2, width_in: 36, depth_in: 36, height_in: 24, lines: [
+    { element: 'Top and sides', kind: 'material', quantity: 33, unit: 'sq ft', rate: 200, amount: 6600, calc: { type: 'area', faces: 'top_sides', rate: 200 } },
+    { element: 'Frame', kind: 'metal', amount: 553, calc: { type: 'metal', metal: 'MS tube and pipe', density: 7850, rate: 75, parts: [{ profile: 'sqtube', a: 25, t: 1.6, length: 0.75, length_unit: 'm', qty: 4 }] } },
+    { element: 'Margin', kind: 'margin', amount: 2146, calc: { type: 'percent', pct: 30, of: 'cost' } },
+  ] }
+  const save = 'select public.pricing_training_save(null, $1)'
+  await fails(U.teacher, save, [{ ...C, price_level: 'wholesale' }], /PRICING_TRAINING_INVALID/)
+  await fails(U.teacher, save, [{ ...C, includes: ['gst'] }], /PRICING_TRAINING_INVALID/)
+  await fails(U.teacher, save, [{ ...C, per_set: 1 }], /PRICING_TRAINING_INVALID/)
+  await fails(U.teacher, save, [{ ...C, per_set: '2.5' }], /PRICING_TRAINING_INVALID/)
+  await fails(U.teacher, save, [{ ...C, lines: [{ element: 'x', amount: 1, calc: { type: 'magic' } }] }], /PRICING_TRAINING_INVALID/)
+  await fails(U.teacher, save, [{ ...C, lines: [{ element: 'x', amount: 1, calc: { type: 'wood', parts: Array.from({ length: 41 }, () => ({})) } }] }], /PRICING_TRAINING_INVALID/)
+  await fails(U.teacher, save, [{ ...C, lines: [{ element: 'x', kind: 'steel', amount: 1 }] }], /PRICING_TRAINING_INVALID/)
+  const before = (await db.query('select count(*)::int n from public.pricing_training_cases')).rows[0].n
+  const cid = await rpc(U.teacher, 'pricing_training_save', null, C)
+  assert.equal((await db.query('select count(*)::int n from public.pricing_training_cases')).rows[0].n, before + 1) // the refused saves left nothing
+  let got = await rpc(U.viewer, 'pricing_training_get', cid)
+  assert.equal(got.price_level, 'cost'); assert.deepEqual(got.includes, ['delivery', 'packing']); assert.equal(got.per_set, 2)
+  assert.deepEqual(got.lines.map((l) => [l.kind, l.calc?.type ?? null]), [['material', 'area'], ['metal', 'metal'], ['margin', 'percent']])
+  assert.equal(got.lines[1].calc.parts[0].profile, 'sqtube')
+  await rpc(U.teacher, 'pricing_training_submit', cid)
+  const lib = (await rpc(U.nobody, 'pricing_training_library')).cases.find((x) => x.id === cid)
+  assert.equal(Number(lib.total), 9299)
+  assert.deepEqual(lib.parts.map((p) => p.element), ['Top and sides'])                // never the frame or the margin
+  assert.equal(lib.lines, undefined)
+  // a screen that does not send the new fields saves a selling price per piece, with no calc
+  await rpc(U.teacher, 'pricing_training_save', cid, { name: 'Plain', lines: [{ element: 'x', amount: 5, calc: 'wood' }] })
+  got = await rpc(U.teacher, 'pricing_training_get', cid)
+  assert.equal(got.price_level, 'selling'); assert.deepEqual(got.includes, []); assert.equal(got.per_set, null); assert.equal(got.lines[0].calc, null)
+  ok('a case keeps how each element was worked out and what its price is; bad cases are refused whole; the library is unchanged for a metal frame')
+}
+
 console.log(`all ${checks} checks passed`)
