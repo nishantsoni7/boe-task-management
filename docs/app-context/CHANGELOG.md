@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-23 — Quotations: the builder's top section tidied, and Price approval moved up into the Status card (PR #994, branch `feat/quotation-builder-top-redesign`, open, not merged) · no migration
+
+- **Why.** Owner: "redesign the top section in a more professional way and remove irrelevant elements", naming the Other outcome row; then, after a mockup ("Rest seems good"), the Price approval card from the bottom of the page "on top only" and "visible to me only", which he settled as approvers.
+- **What.** `StatusCard.tsx`, `ShareCard.tsx`, `AskCard.tsx`, `LeadCard.tsx`, `BuilderScreen.tsx`, `PricingDesk.tsx` (`PriceBlock` replaces `PriceCard`), `needsYou.ts`, the builder block of `quotations.module.css`. The "Other outcome" row is a **More** menu (Confirmed, no PI, Mark as lost…, Archive, Delete…; the Orders menu, same conditions). The "Needs you" strip and the bottom Price approval card are one block in the Status card: approvers (administrator, or Edit with See all) see the reasons, the limits, Approve prices and Send back…; a salesperson sees one sentence, the desk's note and Ask for price approval. Lead and Ask a senior are two halves of one strip under the top row. Removed: the green "Saved." message and the header's Print / PDF (Download PDF is in the Share card); the Share card's explanations are one or two lines. The Client card starts about 450 px down the page instead of 935. Dossier 29 section 30.
+- **Not changed.** No SQL; what is saved and every permission rule. The reasons are hidden on screen only: the quotation read still carries them to every reader (hiding them in the data is a database change, not done).
+- **Checked.** New `statusMore.dom.test.tsx` (13); `topRow`, `builderPolish`, `deleteQuotation.dom` updated; `tsc --noEmit` 0 errors; eslint clean on the changed files. Not seen: the real page in a browser, a real phone.
+- **Rollback.** Revert the PR. No data was changed.
+
 ## 2026-11-23 — Quotations: Improve picture sends the product's details and has a proper reference picture box (PR #990, branch `feat/picture-studio-details`, merged by the owner's go 23 Nov 2026 16:34 IST as `43175621`, live 16:36 IST (Vercel production success)) · no migration
 
 - **Why.** Owner: "Given an option to add a reference image in case we want you to take some inspiration from that. Also by default it should show the dimensions entered in this screen and those basic details should be by default included in the improving the image." The reference option already existed under Change it, but as the browser's plain file picker (no thumbnail, no remove, locked after a result).

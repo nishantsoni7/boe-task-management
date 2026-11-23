@@ -8,9 +8,10 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useQuery } from '@tanstack/react-query'
-import { BadgeCheck } from 'lucide-react'
+import { BadgeCheck, TriangleAlert } from 'lucide-react'
 import type { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
+import type { NeedsYou } from '@/lib/quotations/needsYou'
 import { formatDateIN } from '@/lib/quotations/math'
 import { suggestPrice } from '@/lib/pricing/suggest'
 import type { ModelSuggestion } from '@/lib/pricing/model'
@@ -111,46 +112,51 @@ const STATE_TEXT: Record<PriceState['state'], string> = {
   approved: 'Prices approved', returned: 'Sent back by the pricing desk',
 }
 
-/** The approval card on a quotation. Hidden when nothing needs approval and nothing was ever asked. */
-export function PriceCard({ id, price, mayEdit, dirty, busy, onAsk, onDecide }: {
-  id?: string; price: PriceState | null; mayEdit: boolean; dirty: boolean; busy: boolean
+/**
+ * The price approval block inside the Status card (owner, 23 Nov 2026: it was a card at the very bottom of the page). Hidden when nothing
+ * needs approval and nothing was ever asked. Only people the database lets decide (`price.may_decide`: an administrator, or Edit with
+ * See all) see the reasons and the limits and get Approve prices / Send back…; a salesperson sees one line (`needs`, the same words the
+ * old "Needs you" strip used), what the desk said (its note) and their own Ask for price approval button. This is a need-to-see filter
+ * on screen, not a security boundary: the quotation read still carries the reasons.
+ */
+export function PriceBlock({ price, needs, mayEdit, dirty, busy, onAsk, onDecide }: {
+  price: PriceState | null; needs: readonly NeedsYou[]; mayEdit: boolean; dirty: boolean; busy: boolean
   onAsk: () => void; onDecide: (approve: boolean, note: string | null) => void
 }) {
   const [note, setNote] = useState<string | null>(null)
   if (!price || (price.state === 'not_needed')) return null
+  const decider = price.may_decide
   const tone = price.state === 'approved' ? s.noticeOk : price.state === 'returned' ? s.noticeBad : s.noticeWarn
+  const headline = decider ? (needs.find(n => n.key === 'price_decide')?.text ?? STATE_TEXT[price.state]) : (needs[0]?.text ?? STATE_TEXT[price.state])
+  const canAsk = mayEdit && !dirty && (price.state === 'to_ask' || price.state === 'returned')
+  const canDecide = decider && !dirty && price.state !== 'approved'
   return (
-    <section id={id} className={s.card}>
-      <div className={s.cardHead}><h2>Price approval</h2></div>
-      <div className={s.cardBody} style={{ display: 'grid', gap: 8 }}>
-        <div className={`${s.notice} ${tone}`}>
-          <b>{STATE_TEXT[price.state]}</b>
-          {price.reasons.map((r, i) => <div key={i}>{reasonText(r)}</div>)}
-          {price.note && <div style={{ marginTop: 4 }}>“{price.note}”{price.by ? ` · ${price.by}` : ''}</div>}
-        </div>
-        {price.state !== 'approved' && <div className={`${s.small} ${s.muted}`}>Optional: you can share the client link and Confirm → PI without it.</div>}
-        {dirty && <div className={`${s.small} ${s.dirty}`}>Save first: approval is for the saved prices.</div>}
-        {mayEdit && !dirty && (price.state === 'to_ask' || price.state === 'returned') && (
-          <button className={`${s.btn} ${s.btnPrimary}`} disabled={busy} onClick={onAsk}>Ask for price approval</button>
-        )}
-        {price.may_decide && !dirty && price.state !== 'approved' && (
-          note === null ? (
-            <div className={s.row}>
-              <button className={`${s.btn} ${s.btnPrimary} ${s.btnSm}`} disabled={busy} onClick={() => onDecide(true, null)}><BadgeCheck size={14} aria-hidden /> Approve prices</button>
-              <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => setNote('')}>Send back…</button>
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gap: 6 }}>
-              <label className={s.field}><span>What should change?</span><input id="price-note" className={s.input} value={note} onChange={e => setNote(e.target.value)} placeholder="Hold the bed at ₹55,000" autoFocus /></label>
-              <div className={s.row}>
-                <button className={`${s.btn} ${s.btnSm} ${s.btnDanger}`} disabled={busy || note.trim().length < 3} onClick={() => { onDecide(false, note); setNote(null) }}>Send back</button>
-                <button className={`${s.btn} ${s.btnSm}`} onClick={() => setNote(null)}>Cancel</button>
-              </div>
-            </div>
-          )
-        )}
+    <div className={`${s.notice} ${tone} ${s.priceBlock}`} role="group" aria-label="Price approval">
+      <div className={s.priceHead}>
+        {price.state === 'approved' ? <BadgeCheck size={16} aria-hidden /> : <TriangleAlert size={16} aria-hidden />}
+        <b>{headline}</b>
+        {decider && <span className={`${s.chip} ${s.priceChip}`}>Approvers only</span>}
       </div>
-    </section>
+      {decider && price.reasons.map((r, i) => <div key={i}>{reasonText(r)}</div>)}
+      {price.note && <div>“{price.note}”{price.by ? ` · ${price.by}` : ''}</div>}
+      {decider && price.state !== 'approved' && <div className={s.small}>Optional: you can share the client link and Confirm → PI without it.</div>}
+      {dirty && <div className={`${s.small} ${s.dirty}`}>Save first: approval is for the saved prices.</div>}
+      {canDecide && note !== null ? (
+        <div style={{ display: 'grid', gap: 6 }}>
+          <label className={s.field}><span>What should change?</span><input id="price-note" className={s.input} value={note} onChange={e => setNote(e.target.value)} placeholder="Hold the bed at ₹55,000" autoFocus /></label>
+          <div className={s.row}>
+            <button className={`${s.btn} ${s.btnSm} ${s.btnDanger}`} disabled={busy || note.trim().length < 3} onClick={() => { onDecide(false, note); setNote(null) }}>Send back</button>
+            <button className={`${s.btn} ${s.btnSm}`} onClick={() => setNote(null)}>Cancel</button>
+          </div>
+        </div>
+      ) : (canAsk || canDecide) && (
+        <div className={s.row}>
+          {canDecide && <button className={`${s.btn} ${s.btnPrimary} ${s.btnSm}`} disabled={busy} onClick={() => onDecide(true, null)}><BadgeCheck size={14} aria-hidden /> Approve prices</button>}
+          {canDecide && <button className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => setNote('')}>Send back…</button>}
+          {canAsk && <button className={`${s.btn} ${s.btnSm} ${canDecide ? '' : s.btnPrimary}`} disabled={busy} onClick={onAsk}>Ask for price approval</button>}
+        </div>
+      )}
+    </div>
   )
 }
 

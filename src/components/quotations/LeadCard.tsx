@@ -3,7 +3,7 @@
 // The Lead card (owner-approved 19 Nov 2026; migration 20270811000000): the Sales lead a quotation came from, and ONE button that fits
 // where the quotation is (Sent: log it on the lead; Confirmed: mark the lead Converted; Lost: mark it Dead). Never automatic: each
 // button calls the lead's own function (add_sales_lead_comment, move_sales_lead), so the lead's permission rules, checks and Undo
-// apply as if the person had done it on the lead. A slim strip under the top row, so the three-card row stays as approved.
+// apply as if the person had done it on the lead. One half of the slim strip under the top row (beside Ask a senior, 23 Nov 2026).
 
 import { useState, type FormEvent } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -109,7 +109,7 @@ export function LeadCard({ supabase, base, dirty, onChanged }: { supabase: Supab
   const cancel = <button type="button" className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => setMode(null)}>Cancel</button>
 
   return (
-    <section className={`${s.card} ${s.leadStrip}`} aria-label="Lead">
+    <section className={s.leadStrip} aria-label="Lead">
       <div className={s.leadHead}>
         <h2 className={s.tileLab}><Link2 size={15} aria-hidden /> Lead</h2>
 
