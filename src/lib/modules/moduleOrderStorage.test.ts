@@ -318,7 +318,10 @@ describe('the gate runs first, and ordering only sorts its output', () => {
 
   test('only the visible modules are saved, by key', () => {
     assert.match(LAUNCHER, /const keys = moduleOrderKeys\(modules\)/)
-    assert.match(LAUNCHER, /saveModuleOrder\(userId, keys\)/)
+    // The big blocks ride along ONLY when they changed (undefined otherwise, so a
+    // save that leaves them alone keeps whatever is stored, "never chosen" included).
+    assert.match(LAUNCHER, /const big = bigIsDirty \? moduleOrderKeys\(essentialModules\) : undefined/)
+    assert.match(LAUNCHER, /saveModuleOrder\(userId, keys, big\)/)
   })
 
   test('a save that fails keeps edit mode open and says so', () => {

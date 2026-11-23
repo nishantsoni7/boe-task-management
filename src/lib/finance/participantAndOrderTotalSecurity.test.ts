@@ -1370,6 +1370,8 @@ describe('the applied migrations are frozen', () => {
       '20270819000000_quotation_line_costing.sql',
       // Quotations: the client's copy carries per-piece fabric and packing figures (one new immutable function; quotation_client_doc re-created; no table or row changes).
       '20270820000000_quotation_client_costing_view.sql',
+      // Launcher: which cards are the big blocks (one nullable text[] column and a check on user_module_order; no row changes). APPLIED 2026-11-23 14:02 IST.
+      '20270821000000_launcher_big_module_keys.sql',
     ])
   })
 
@@ -1951,6 +1953,8 @@ describe('the applied migrations are frozen', () => {
       '20270819000000_quotation_line_costing.sql',
       // Quotations: the client's copy carries per-piece fabric and packing figures (one new immutable function; quotation_client_doc re-created; no table or row changes).
       '20270820000000_quotation_client_costing_view.sql',
+      // Launcher: which cards are the big blocks (one nullable text[] column and a check on user_module_order; no row changes). APPLIED 2026-11-23 14:02 IST.
+      '20270821000000_launcher_big_module_keys.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

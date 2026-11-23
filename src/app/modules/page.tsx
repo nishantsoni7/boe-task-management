@@ -25,17 +25,22 @@ import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
 import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
 import { intakeState, showQuickLink } from '@/lib/exhibitionLeads/intake'
-import { Armchair, ArrowUpRight, ChartNoAxesCombined, Check, ChevronRight, ContactRound, Factory, FileText, Image as ImageIcon, Megaphone, Search, Tag } from 'lucide-react'
+import { Armchair, ArrowUpRight, ChartNoAxesCombined, Check, ChevronRight, ContactRound, Factory, FileText, Image as ImageIcon, Megaphone, Search, Star, Tag } from 'lucide-react'
 import {
   TaskIcon, BoxIcon, CalIcon, AssetIcon, MembersIcon, ControlCenterIcon, FinanceIcon,
   OrdersIcon, ReviewOutreachIcon, MeetingsIcon, ShowroomIcon,
 } from '@/components/modules/ModuleIcons'
 import {
+  DEFAULT_BIG_MODULE_KEYS,
   IDLE_MODULE_ORDER_EDIT,
+  MAX_BIG_MODULES,
   moduleOrderEditReducer,
   moduleOrderEquals,
   moduleCardPressProps,
   moduleOrderKeys,
+  NO_MODULE_PREFERENCE,
+  sameBigModules,
+  splitBigModules,
   visibleModuleOrder,
 } from '@/lib/modules/moduleOrder'
 import {
@@ -85,22 +90,35 @@ type ModuleDef = {
   description: string
   href: string
   icon: React.ReactNode
-  // undefined = not resolved YET → the footer line stays empty, because the
-  //             card is now shown before its count has arrived and printing
-  //             "No notifications" there would be asserting something we do
-  //             not know. null = there is no count API for this module at all
-  //             → "No notifications", as before. 0 = confirmed zero, >0 = badge.
+  // THE COUNT UNDER THE NAME, on every tile, big or small (owner, 2026-11-23).
+  // undefined = not resolved YET → the line stays empty, because the card is
+  //             shown before its count has arrived and printing "Nothing new"
+  //             there would be asserting something we do not know (a failed
+  //             request is also undefined, never zero).
+  // null      = this module has NO notifications at all (no feed, no count) →
+  //             "No alerts". Not "Nothing new": that says "we looked".
+  // 0         = confirmed zero → "Nothing new".  >0 = the red chip.
   notificationCount?: number | null
+  // What the chip calls the number. Unread notifications unless said otherwise;
+  // Quotations counts requests WAITING for the person, which is not an inbox.
+  countLabel?: 'unread' | 'waiting'
 }
 
-// ── The essentials ───────────────────────────────────────────────────────────
+// ── The big blocks ───────────────────────────────────────────────────────────
 //
-// The three modules most people open most days, featured as a larger row above
-// the rest. A PRESENTATION GROUPING AND NOTHING ELSE: a key here only decides
-// which section an authorized card is drawn in. A person who cannot open one of
-// these simply has no card for it, in either section. The row's sequence follows
-// the rendered order, so Edit order still arranges it.
-const ESSENTIAL_MODULE_KEYS: readonly string[] = ['tasks', 'orders', 'finance']
+// The modules a person chose to feature as a larger row above the rest (up to
+// four; Task, Order, Finance and Sales until they choose, see
+// DEFAULT_BIG_MODULE_KEYS in src/lib/modules/moduleOrder.ts). A PRESENTATION
+// GROUPING AND NOTHING ELSE: a key only decides which section an authorized card
+// is drawn in. A person who cannot open one of them simply has no card for it, in
+// either section. The row's sequence follows the rendered order, so Edit order
+// still arranges it, and "Make big" in Edit order chooses them.
+
+// Quotations' "requests waiting for you" count. The SAME cache entry as
+// askKeys.count in src/lib/quotations/api.ts (a test holds the two equal): that
+// module is imported by its own pages and is not loaded by the launcher for one
+// number.
+const QUOTATION_WAITING_KEY = ['quotations', 'requests-count'] as const
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
@@ -243,7 +261,11 @@ export default function BoeOsHomePage() {
   // IT SORTS; IT NEVER ADMITS. The array further down is built by canOpenModule
   // first and this list is applied to the result, so a stored key naming a module
   // this person may not open selects no card. See src/lib/modules/moduleOrder.ts.
-  const { data: savedOrder = null, isLoading: orderLoading } = useModuleOrder(userId)
+  //
+  // THE BIG BLOCKS ARE READ WITH IT (one row, one read): `savedPreference.big` is
+  // null until the person chooses, and then the default four apply.
+  const { data: savedPreference = NO_MODULE_PREFERENCE, isLoading: orderLoading } = useModuleOrder(userId)
+  const savedOrder = savedPreference.order
   const cacheModuleOrder = useModuleOrderCache()
   const [orderEdit, dispatchOrderEdit] = useReducer(
     moduleOrderEditReducer,
@@ -449,6 +471,45 @@ export default function BoeOsHomePage() {
   const financeCount = useUnreadCountState('finance', mayOpenFinance)
   const orderCount   = useUnreadCountState('order',   mayOpenOrders)
 
+  // THE OTHER MODULES THAT ALREADY HAVE A FEED (2026-11-23). Each reads the same
+  // category count its own sidebar reads, through the same hook, so the two cannot
+  // disagree and TanStack serves both from one entry. Every one keeps the rule
+  // above: a module this person cannot open issues no request.
+  //   - Review Workflow's feed is addressed to verifiers only (its sidebar asks
+  //     only when the person resolves `verify`), so the count waits for `verify`.
+  //   - Attendance & Payroll's card is one for both halves; its feed is the
+  //     admin's raised issues and the employee's outcomes.
+  const mayOpenSales     = permsReady && canOpenModule('sales')
+  const mayOpenAssets    = permsReady && canOpenModule('assets_access')
+  const mayOpenInventory = permsReady && canOpenModule('inventory')
+  const mayVerifyReviews = permsReady && deriveCustomerReviewCapabilities(
+    subjectRole,
+    subjectPermissions.get('customer_review_requests') ?? [],
+  ).canVerify
+
+  const salesCount      = useUnreadCountState('sales', mayOpenSales)
+  const assetCount      = useUnreadCountState('asset', mayOpenAssets)
+  const inventoryCount  = useUnreadCountState('inventory', mayOpenInventory)
+  const reviewCount     = useUnreadCountState('review', mayVerifyReviews)
+  const attendanceCount = useUnreadCountState('attendance_payroll', permsReady && (canSeeAttendance || canSeePayroll))
+
+  // Quotations has no feed: its sidebar badge is the number of requests waiting
+  // for THIS person to answer (an RPC on auth.uid()). Not while previewing
+  // somebody else, because the number would be the administrator's, shown under
+  // the employee's name.
+  const mayOpenQuotations = permsReady && canOpenModule('quotations')
+  const quotationWaiting = useQuery<number>({
+    queryKey: QUOTATION_WAITING_KEY,
+    enabled: mayOpenQuotations && !viewMode,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('quotation_requests_count')
+      if (error) throw error
+      return Number(data ?? 0)
+    },
+    staleTime: 60_000,
+    retry: false,
+  })
+
   const attendancePayrollHref = isModuleAdmin
     ? '/payroll'
     : (canSeeAttendance ? '/my-attendance' : '/my-payroll')
@@ -464,7 +525,7 @@ export default function BoeOsHomePage() {
     // The two experiences are told apart by the description above and by where
     // the card goes, not by a pill. This is still the one card whose visibility
     // comes from app_modules, and it is unchanged by the parent-gate work.
-    notificationCount: null,
+    notificationCount: attendanceCount.count,
   } : null
 
   // THE CANONICAL ORDER, and the complete answer to "what may this person open".
@@ -500,7 +561,8 @@ export default function BoeOsHomePage() {
       description: 'Request sample catalogs, track dispatch and returns, follow up on overdue items.',
       href: '/samples',
       icon: <BoxIcon />,
-      notificationCount: counts.sample,
+      // A failed request is "not known", never "no alerts" (null means no feed).
+      notificationCount: counts.sample ?? undefined,
     }] : []),
     ...(attendancePayroll ? [attendancePayroll] : []),
     ...(canOpenModule('showroom_qr') ? [{
@@ -517,7 +579,7 @@ export default function BoeOsHomePage() {
       description: 'View your assigned devices and access records, or manage the company inventory.',
       href: '/assets-access',
       icon: <AssetIcon />,
-      notificationCount: null,
+      notificationCount: assetCount.count,
     }] : []),
     ...(canOpenModule('employee_records') ? [{
       key: 'members',
@@ -551,7 +613,9 @@ export default function BoeOsHomePage() {
       description: 'Draft reviews for customers to use. The candidate chooses the WhatsApp recipient. Nothing is posted publicly, and BOE does not send the message automatically.',
       href: '/customer-reviews',
       icon: <ReviewOutreachIcon />,
-      notificationCount: null,
+      // Somebody who may use the module but not verify has no feed (it is
+      // addressed to verifiers): "No alerts", which is true for them.
+      notificationCount: mayVerifyReviews ? reviewCount.count : null,
     }] : []),
     ...(canOpenModule('image_editor') ? [{
       key: 'image_editor',
@@ -591,7 +655,7 @@ export default function BoeOsHomePage() {
       description: 'Furniture stock for sale: stage, condition, availability and booking requests.',
       href: '/inventory',
       icon: <Armchair size={26} strokeWidth={1.8} />,
-      notificationCount: null,
+      notificationCount: inventoryCount.count,
     }] : []),
     // Sales opens the Lead Master. Marketing opens Meta Ads. Pricing still opens a Coming soon page: that tile is an
     // ordinary tile and says so when opened, not with a status pill here (see the note above ModuleDef).
@@ -602,7 +666,7 @@ export default function BoeOsHomePage() {
       description: 'Sales: the Lead Master, every lead and who holds it.',
       href: '/sales',
       icon: <ChartNoAxesCombined size={26} strokeWidth={1.8} />,
-      notificationCount: null,
+      notificationCount: salesCount.count,
     }] : []),
     ...(canOpenModule('quotations') ? [{
       key: 'quotations',
@@ -611,7 +675,9 @@ export default function BoeOsHomePage() {
       description: 'Build quotations by room type, price them and share a client link.',
       href: '/quotations',
       icon: <FileText size={26} strokeWidth={1.8} />,
-      notificationCount: null,
+      // Requests waiting for this person to answer, not an inbox (see countLabel).
+      notificationCount: quotationWaiting.data,
+      countLabel: 'waiting' as const,
     }] : []),
     ...(canOpenModule('marketing') ? [{
       key: 'marketing',
@@ -675,11 +741,18 @@ export default function BoeOsHomePage() {
 
   // ── Two sections, one list ──────────────────────────────────────────────────
   //
-  // Both are FILTERS OF `modules`, so each keeps the rendered order and together
-  // they hold every authorized card exactly once.
-  const isEssential = (key: string) => ESSENTIAL_MODULE_KEYS.includes(key)
-  const essentialModules = modules.filter(mod => isEssential(mod.key))
-  const moreModules = modules.filter(mod => !isEssential(mod.key))
+  // Both come out of `modules`, so each keeps the rendered order and together
+  // they hold every authorized card exactly once (splitBigModules guarantees it).
+  //
+  // WHICH ARE BIG is the person's saved choice, or the default four until they
+  // choose; while previewing somebody else it is the default, like the order. In
+  // edit mode the choice being edited decides, so the pills and the count follow
+  // every tap before Save.
+  const savedBigKeys = (viewMode ? null : savedPreference.big) ?? DEFAULT_BIG_MODULE_KEYS
+  const { big: essentialModules, rest: moreModules } = splitBigModules(
+    modules,
+    orderEdit.workingBig ?? savedBigKeys,
+  )
 
   // EDIT ORDER ARRANGES THE WHOLE LIST, exactly as it did before the sections.
   // While arranging, every card is drawn in one grid in its stored position, so
@@ -713,12 +786,21 @@ export default function BoeOsHomePage() {
   // Whether Save has anything to write: the working arrangement against what is
   // stored, resolved through the same function the grid renders with, so "no
   // change" means the same thing to the button as it does to the screen.
+  //
+  // The big blocks count too: choosing different ones is a change even if no card
+  // moved. The choice is compared as the cards that are big right now.
+  const bigIsDirty =
+    editingOrder &&
+    !sameBigModules(
+      moduleOrderKeys(essentialModules),
+      moduleOrderKeys(splitBigModules(modules, savedBigKeys).big),
+    )
   const orderIsDirty =
     editingOrder &&
-    !moduleOrderEquals(
+    (bigIsDirty || !moduleOrderEquals(
       moduleOrderKeys(modules),
       moduleOrderKeys(visibleModuleOrder(canonicalModules, savedOrder, null)),
-    )
+    ))
 
   const beginPointerDrag = useModuleReorderPointer({
     enabled: editingOrder && !orderEdit.saving,
@@ -733,9 +815,13 @@ export default function BoeOsHomePage() {
     // card has disappeared while edit mode was open (a permission revoked in
     // another tab) is dropped rather than stored back.
     const keys = moduleOrderKeys(modules)
+    // The big blocks go with it ONLY when they changed, as the cards that are big
+    // right now (so a key without a card is not stored back). Left alone, the
+    // stored choice stays as it is, including "never chosen".
+    const big = bigIsDirty ? moduleOrderKeys(essentialModules) : undefined
 
     dispatchOrderEdit({ type: 'saveStart' })
-    const result = await saveModuleOrder(userId, keys)
+    const result = await saveModuleOrder(userId, keys, big)
 
     if (!result.ok) {
       // NOTHING IS DISCARDED. Edit mode stays open on the same arrangement, the
@@ -749,7 +835,7 @@ export default function BoeOsHomePage() {
 
     // Written before leaving edit mode, so the grid outside it renders the order
     // that was just stored rather than briefly falling back to the old one.
-    cacheModuleOrder(userId, keys)
+    cacheModuleOrder(userId, keys, big)
     dispatchOrderEdit({ type: 'saveSucceeded' })
     showToast('Module order saved', 'success')
   }
@@ -844,6 +930,14 @@ export default function BoeOsHomePage() {
           onPointerDown={beginPointerDrag}
         />
       ) : null}
+      // "Make big" / "Big block", while arranging only. At the cap, the cards that
+      // are not big are locked rather than hidden, so the person sees why.
+      bigToggle={editingOrder ? {
+        on: orderEdit.workingBig?.includes(mod.key) ?? false,
+        locked: !(orderEdit.workingBig?.includes(mod.key)) && essentialModules.length >= MAX_BIG_MODULES,
+        disabled: orderEdit.saving,
+        onToggle: () => dispatchOrderEdit({ type: 'toggleBig', key: mod.key }),
+      } : null}
     />
   )
 
@@ -889,7 +983,7 @@ export default function BoeOsHomePage() {
           // ONE CONTENT COLUMN. The header and the launcher share a 1400px
           // column, centred in whatever the sidebar leaves, so the title,
           // Edit order and the tiles line up on the same two edges. Wide
-          // enough for three Essentials and five compact tiles across, and
+          // enough for four big blocks and five compact tiles across, and
           // narrow enough that a 1920 screen keeps real margins either side.
           contentMaxWidth={1400}
           // The reorder control now travels with the heading it belongs to.
@@ -903,10 +997,17 @@ export default function BoeOsHomePage() {
               saving={orderEdit.saving}
               error={orderEdit.error}
               dirty={orderIsDirty}
-              onEdit={() => dispatchOrderEdit({ type: 'open', order: moduleOrderKeys(modules) })}
+              // Opens on the cards that are big RIGHT NOW (a key without a card is
+              // not carried in, so it cannot use up one of the four).
+              onEdit={() => dispatchOrderEdit({ type: 'open', order: moduleOrderKeys(modules), big: moduleOrderKeys(essentialModules) })}
               onSave={handleSaveOrder}
               onCancel={() => dispatchOrderEdit({ type: 'cancel' })}
-              onReset={() => dispatchOrderEdit({ type: 'reset', canonical: canonicalKeys })}
+              // Reset puts back the default order AND the default big blocks.
+              onReset={() => dispatchOrderEdit({
+                type: 'reset',
+                canonical: canonicalKeys,
+                big: moduleOrderKeys(splitBigModules(canonicalModules, DEFAULT_BIG_MODULE_KEYS).big),
+              })}
             />}
           </>) : null}
         >
@@ -991,12 +1092,14 @@ export default function BoeOsHomePage() {
             {editingOrder && (
               <section className={styles.section} aria-labelledby="modules-arrange-heading">
                 <h2 id="modules-arrange-heading" className={styles.sectionTitle}>Arrange your modules</h2>
-                {essentialModules.length > 0 && (
-                  <p className={styles.arrangeNote}>
-                    Task Management, Order Management and Finance stay in Your essentials. Their order
-                    there, and the order of every other module, follows this list.
-                  </p>
-                )}
+                <p className={styles.arrangeNote}>
+                  <span className={styles.bigCount}>
+                    <Star size={13} strokeWidth={2} aria-hidden="true" />
+                    {essentialModules.length} of {MAX_BIG_MODULES} big blocks
+                  </span>
+                  {' '}· Tap <b>Make big</b> to feature a module in Your essentials (up to four; take one off to
+                  pick another). Drag a handle to change the order of every card, in Your essentials and below.
+                </p>
                 <div className={styles.grid}>
                   {modules.map((mod, index) => renderCard(mod, 'compact', index + 1))}
                 </div>
@@ -1030,10 +1133,16 @@ export default function BoeOsHomePage() {
 // go the role, the tabIndex and the key handler; the handle becomes the tile's
 // only control, and the arrow — a promise to open something — is not drawn.
 //
-// TWO SIZES, ONE COMPONENT. `essential` is the larger row tile of the three
-// featured modules; `compact` is the smaller tile of the grid beneath. Every
+// TWO SIZES, ONE COMPONENT. `essential` is the larger tile of the (up to four)
+// big blocks; `compact` is the smaller tile of the grid beneath. Every
 // state — rest, hover, focus, pressed, editing, held — is a stylesheet rule.
-function ModuleCard({ mod, variant, onClick, dragging = false, handle = null }: {
+//
+// BOTH SIZES SAY THEIR COUNT IN WORDS, under the name (owner, 2026-11-23): a red
+// "N unread" chip, "Nothing new" for a known zero, "No alerts" for a module that
+// has no notifications at all, nothing while the count is still unknown. The red
+// number that used to sit on the icon of a small tile is gone: it said the same
+// thing a second time.
+function ModuleCard({ mod, variant, onClick, dragging = false, handle = null, bigToggle = null }: {
   mod: ModuleDef
   variant: 'essential' | 'compact'
   /** null in edit mode: the card does not navigate. */
@@ -1042,9 +1151,12 @@ function ModuleCard({ mod, variant, onClick, dragging = false, handle = null }: 
   dragging?: boolean
   /** The drag handle, in edit mode only. */
   handle?: React.ReactNode
+  /** The "Make big" switch, in edit mode only. `locked`: four are chosen and this is not one. */
+  bigToggle?: { on: boolean; locked: boolean; disabled: boolean; onToggle: () => void } | null
 }) {
   const hasNotif = (mod.notificationCount ?? 0) > 0
   const count    = mod.notificationCount
+  const label    = mod.countLabel ?? 'unread'
   const editing  = onClick === null
 
   // Whether this card is a button, and what pressing it does. Null in edit mode
@@ -1055,8 +1167,9 @@ function ModuleCard({ mod, variant, onClick, dragging = false, handle = null }: 
   const className = [
     styles.card,
     variant === 'essential' ? styles.cardEssential : styles.cardCompact,
-    // No tinted fill for unread notifications: the badge on the icon says it.
+    // No tinted fill for unread notifications: the chip under the name says it.
     editing ? styles.cardEditing : '',
+    editing && bigToggle?.on ? styles.cardChosenBig : '',
     dragging ? styles.cardDragging : '',
   ].filter(Boolean).join(' ')
 
@@ -1070,24 +1183,17 @@ function ModuleCard({ mod, variant, onClick, dragging = false, handle = null }: 
       // "Finance, 7 unread" once rather than a bare "7" after the name. Not
       // while arranging: the card is not a button then, and a label on a plain
       // div is not announced.
-      aria-label={editing ? undefined : hasNotif ? `${mod.title}, ${count} unread` : mod.title}
+      aria-label={editing ? undefined : hasNotif ? `${mod.title}, ${count} ${label}` : mod.title}
       className={className}
     >
       {handle}
 
       <div className={styles.cardBody}>
-        {/* ── Icon block with notification badge ──
-            The badge is positioned against THIS wrapper, not the tile, so it
-            stays on the icon at every width and in both tile sizes. */}
+        {/* ── Icon ── */}
         <div className={styles.iconWrap}>
           <div className={styles.iconBox}>
             {mod.icon}
           </div>
-          {hasNotif && (
-            <div className={styles.badge}>
-              {count! > 99 ? '99+' : count}
-            </div>
-          )}
         </div>
 
         {/* ── Name ── the only text on a tile, never clamped. */}
@@ -1096,25 +1202,44 @@ function ModuleCard({ mod, variant, onClick, dragging = false, handle = null }: 
             {mod.title}
           </div>
 
-          {/* Essentials, from 720px of launcher width only (CSS hides it below,
-              where the badge on the icon carries the count): the same count the
-              badge shows, said in words. The row is always drawn so a count that
-              arrives late does not move the tile; only a count KNOWN to be zero
-              says "Nothing new", and an unresolved one says nothing. */}
-          {variant === 'essential' && !editing && (
+          {/* The count in words, on every tile at every width. The row is always
+              drawn so a count that arrives late does not move the tile; only a
+              count KNOWN to be zero says "Nothing new", a module with no feed
+              says "No alerts", and an unresolved one says nothing. */}
+          {!editing && (
             <div className={styles.status} aria-hidden="true">
               {hasNotif ? (
                 <span className={styles.chip}>
                   <span className={styles.chipDot} />
-                  {count! > 99 ? '99+' : count} unread
+                  {count! > 99 ? '99+' : count} {label}
                 </span>
               ) : count === 0 ? (
                 <span className={styles.calm}>
                   <Check size={14} strokeWidth={2.2} />
                   Nothing new
                 </span>
+              ) : count === null ? (
+                <span className={styles.none}>No alerts</span>
               ) : null}
             </div>
+          )}
+
+          {/* Arranging: choose whether this module is a big block. A real button
+              with its state in aria-pressed; at four, the others are disabled and
+              the title says why. It is not the drag handle and does not move the card. */}
+          {editing && bigToggle && (
+            <button
+              type="button"
+              className={bigToggle.on ? `${styles.bigToggle} ${styles.bigToggleOn}` : styles.bigToggle}
+              aria-pressed={bigToggle.on}
+              aria-label={bigToggle.on ? `Take ${mod.title} off the big blocks` : `Make ${mod.title} a big block`}
+              title={bigToggle.locked ? `All ${MAX_BIG_MODULES} big blocks are in use. Take one off first.` : undefined}
+              disabled={bigToggle.disabled || bigToggle.locked}
+              onClick={bigToggle.onToggle}
+            >
+              <Star size={13} strokeWidth={2} aria-hidden="true" />
+              {bigToggle.on ? 'Big block' : 'Make big'}
+            </button>
           )}
         </div>
 

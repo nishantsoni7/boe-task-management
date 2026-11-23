@@ -1,12 +1,12 @@
 /**
  * What the Modules launcher shows, and what happens when you activate a tile.
  *
- * The page is an Essentials row and a compact "All modules" grid, with the For
- * you panel beside them (attentionPanel.test.ts). A tile is AN ICON, ITS NOTIFICATION BADGE AND
- * THE MODULE NAME, plus a decorative arrow on an Essentials tile. Never a
+ * The page is a row of up to four big blocks and a compact "All modules" grid, with the For
+ * you panel beside them (attentionPanel.test.ts). A tile is AN ICON, THE MODULE NAME AND ITS
+ * COUNT IN WORDS, plus a decorative arrow on a big block. Never a
  * description, at any width: that
  * furniture used to cost a phone most of the card to restate what the icon, the
- * name and the badge had already said.
+ * name and the count had already said.
  *
  * These read the SOURCE rather than render it. The repository has no DOM test
  * harness for a client page of this size, and the facts worth pinning here are
@@ -22,7 +22,7 @@ import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { applyPersonalModuleOrder, moduleCardPressProps } from '@/lib/modules/moduleOrder'
+import { applyPersonalModuleOrder, DEFAULT_BIG_MODULE_KEYS, moduleCardPressProps } from '@/lib/modules/moduleOrder'
 
 const ROOT = process.cwd()
 // \r is stripped on read. A rebase or a fresh clone under core.autocrlf can
@@ -95,15 +95,15 @@ describe('a card shows the module name and nothing else', () => {
   })
 })
 
-// The badge is unchanged on every compact tile and on a phone. From 720px an
-// Essentials tile also says the same count in words (see "the Essentials tile
-// says its count in words" below); that is the one place a count is spelled out.
-describe('the notification badge is unchanged on the icon', () => {
-  test('a positive count draws a badge and a zero or missing one does not', () => {
+// THE COUNT IS SAID IN WORDS ON EVERY TILE (owner, 2026-11-23). The red number on
+// the icon of a small tile is gone: the chip under the name says the same thing,
+// in both sizes, at every width (see "every tile says its count in words" below).
+describe('the notification count is a chip under the name, not a badge on the icon', () => {
+  test('a positive count draws the chip and a zero or missing one does not', () => {
     assert.ok(CARD.includes('const hasNotif = (mod.notificationCount ?? 0) > 0'))
-    assert.ok(CARD.includes('{hasNotif && ('))
-    assert.ok(CARD.includes(styleClass('badge')))
-    assert.ok(CARD.includes("{count! > 99 ? '99+' : count}"), '99+ cap is unchanged')
+    assert.ok(CARD.includes('{hasNotif ? ('))
+    assert.ok(CARD.includes(styleClass('chip')))
+    assert.ok(CARD.includes("{count! > 99 ? '99+' : count} {label}"), '99+ cap is unchanged')
   })
 
   test('the old "N notifications" footer stays gone', () => {
@@ -112,10 +112,9 @@ describe('the notification badge is unchanged on the icon', () => {
       'the "3 notifications" line went with the footer')
   })
 
-  test('the badge travels with the icon, so centring the icon centres both', () => {
-    // .badge is positioned against .iconWrap, and only .iconWrap is centred.
-    assert.ok(/\.badge\s*\{[^}]*position:\s*absolute/.test(CSS))
-    assert.ok(/\.iconWrap\s*\{[^}]*position:\s*relative/.test(CSS))
+  test('there is no badge on the icon any more', () => {
+    assert.equal(CARD.includes(styleClass('badge')), false, 'the markup draws no badge')
+    assert.equal(/\.badge\b/.test(stripCss(CSS)), false, 'and the stylesheet keeps no .badge rule')
   })
 })
 
@@ -141,11 +140,15 @@ describe('the WHOLE card is one control', () => {
       'the card must take its interactive props from the one helper')
     assert.ok(CARD.includes('{...press}'), 'and spread them on the root')
 
-    // A SECOND onClick would be a duplicate navigation handler. The helper
-    // supplies the only one, so the card itself must declare none.
+    // A SECOND NAVIGATION onClick would be a duplicate handler. The helper
+    // supplies the only one. The single onClick the card declares itself is the
+    // "Make big" switch, which exists only while arranging (when the card is not a
+    // button at all) and navigates nowhere.
     const handlers = CARD.match(/onClick=/g) ?? []
-    assert.equal(handlers.length, 0,
+    assert.equal(handlers.length, 1,
       'a second onClick would be a duplicate navigation handler')
+    assert.ok(CARD.includes('onClick={bigToggle.onToggle}'), 'and the one there is the Make big switch')
+    assert.ok(CARD.includes('{editing && bigToggle && ('), 'drawn only while arranging')
 
     // It is on the ROOT: the spread sits on the first element of the returned
     // tree, before the icon wrapper. Everything inside it — the icon, the badge,
@@ -166,7 +169,12 @@ describe('the WHOLE card is one control', () => {
     // names <button>, and that sentence is not an element.
     const markup = CARD.replace(/\/\/[^\n]*/g, '').replace(/\/\*[\s\S]*?\*\//g, '')
     assert.equal(/<a\b/.test(markup), false, 'no anchor may nest inside a role="button"')
-    assert.equal(/<button\b/.test(markup), false, 'and no nested button either')
+    // The one <button> is the Make big switch, drawn only while arranging, when
+    // the card is not a role="button" (see the handle note below).
+    assert.equal((markup.match(/<button\b/g) ?? []).length, 1, 'and no nested button but the Make big switch')
+    assert.ok(markup.indexOf('{editing && bigToggle && (') > -1
+      && markup.indexOf('{editing && bigToggle && (') < markup.indexOf('<button'),
+    'which sits inside the arranging-only branch')
     assert.equal(/<Link\b/.test(markup), false, 'and no next/link')
     const roles = markup.match(/role="/g) ?? []
     assert.equal(roles.length, 0, 'the only role comes from the press props')
@@ -343,31 +351,26 @@ describe('the tile: icon, name, and an arrow on Essentials', () => {
     assert.ok(size && Number(size[1]) >= 14, 'the name is not shrunk to fit')
   })
 
-  test('the badge stays on the icon in BOTH tile sizes', () => {
-    // .badge is positioned against .iconWrap, which both sizes render, and no
-    // rule anywhere repositions it against the tile. The one other rule that
-    // names it only HIDES it on a wide Essentials tile, where the count is said
-    // in words instead.
-    assert.equal((stripCss(CSS).match(/^\.badge\s*\{/gm) ?? []).length, 1,
-      'one rule that places the badge, not a per-size override that could move it to a corner')
-    const others = (stripCss(CSS).match(/[^\n]*\.badge\s*\{[^}]*\}/g) ?? [])
-      .map(rule => rule.trim())
-      .filter(rule => !rule.startsWith('.badge {'))
-    assert.deepEqual(others.map(rule => rule.replace(/\s+/g, ' ')), ['.cardEssential .badge { display: none; }'],
-      'the only other badge rule hides it on a wide Essentials tile')
-    assert.ok(CARD.indexOf(styleClass('badge')) > CARD.indexOf(styleClass('iconWrap')))
-    assert.ok(CARD.indexOf(styleClass('badge')) < CARD.indexOf(styleClass('titleWrap')),
-      'the badge is inside the icon wrapper, before the name')
+  test('the count sits under the name in BOTH tile sizes', () => {
+    const title = CARD.indexOf(styleClass('titleWrap'))
+    const status = CARD.indexOf(styleClass('status'))
+    assert.ok(title > -1 && status > title, 'the status row is inside the name block, after the name')
+    assert.equal(/variant === 'essential' && !editing && \(\s*<div className=\{styles\.status\}/.test(CARD), false,
+      'it is not an Essentials-only line any more')
   })
 })
 
 // ── The phone ────────────────────────────────────────────────────────────────
-describe('a phone gets one row of Essentials tiles and a grouped list of modules', () => {
-  test('Essentials are one column on a tablet, until the launcher is 720px wide', () => {
+describe('a phone gets two by two big blocks and a grouped list of modules', () => {
+  test('big blocks are two by two from 720px of launcher width, and four across from 1040px', () => {
     assert.match(baseRule('.essentialsGrid'), /grid-template-columns:\s*minmax\(0, 1fr\)/)
-    const at = CSS.indexOf('@container (min-width: 720px)')
-    assert.match(CSS.slice(at, CSS.indexOf('}', at)),
-      /\.essentialsGrid\s*\{[^}]*repeat\(3, minmax\(0, 1fr\)\)/)
+    const two = CSS.indexOf('@container (min-width: 720px)')
+    assert.match(CSS.slice(two, CSS.indexOf('}', two)),
+      /\.essentialsGrid\s*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/)
+    const four = CSS.indexOf('@container (min-width: 1040px)')
+    assert.notEqual(four, -1, 'the four-across step exists')
+    assert.match(CSS.slice(four, CSS.indexOf('}', four)),
+      /\.essentialsGrid\s*\{[^}]*repeat\(4, minmax\(0, 1fr\)\)/)
   })
 
   test('every tile is a comfortable tap target', () => {
@@ -400,10 +403,10 @@ describe('a phone gets one row of Essentials tiles and a grouped list of modules
     assert.match(CARD, /variant === 'compact' && !editing && \(\s*<ChevronRight className=\{styles\.cardChevron\} aria-hidden="true"/)
   })
 
-  test('Essentials share ONE row of icon-over-name tiles on a phone', () => {
-    assert.notEqual(PHONE_ESSENTIALS, '', 'the 719px Essentials block exists')
-    assert.match(PHONE_ESSENTIALS, /\.essentialsGrid\s*\{[^}]*grid-auto-flow:\s*column/,
-      'fewer than three Essentials still share the width')
+  test('big blocks are icon-over-name tiles, two by two, on a phone', () => {
+    assert.notEqual(PHONE_ESSENTIALS, '', 'the 719px big-block block exists')
+    assert.match(PHONE_ESSENTIALS, /\.essentialsGrid\s*\{[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\)/,
+      'a fixed two columns, so one to four blocks keep the same tile and a lone one does not stretch')
     assert.match(PHONE_ESSENTIALS, /\.cardEssential \.cardBody\s*\{[^}]*flex-direction:\s*column/)
     const tile = PHONE_ESSENTIALS.match(/\.cardEssential\s*\{[^}]*min-height:\s*(\d+)px/)
     assert.ok(tile && Number(tile[1]) >= 88, 'an Essentials tile is a generous tap target')
@@ -580,13 +583,18 @@ describe('a neutral canvas under white surfaces, with red only in small accents'
 
 // ── Essentials and More to explore ───────────────────────────────────────────
 describe('two sections, drawn from one gated list', () => {
-  test('the Essentials are Task, Order and Finance, by key', () => {
-    assert.ok(PAGE.includes("const ESSENTIAL_MODULE_KEYS: readonly string[] = ['tasks', 'orders', 'finance']"))
+  test('until somebody chooses, the big blocks are Task, Order, Finance and Sales, by key', () => {
+    assert.deepEqual([...DEFAULT_BIG_MODULE_KEYS], ['tasks', 'orders', 'finance', 'sales'])
+    assert.equal(PAGE.includes('ESSENTIAL_MODULE_KEYS'), false, 'the fixed list is gone')
+    assert.ok(PAGE.includes('?? DEFAULT_BIG_MODULE_KEYS'), 'the default applies when nothing is saved')
   })
 
-  test('BOTH SECTIONS ARE FILTERS OF THE RENDERED LIST — neither can admit a card', () => {
-    assert.ok(PAGE.includes('const essentialModules = modules.filter(mod => isEssential(mod.key))'))
-    assert.ok(PAGE.includes('const moreModules = modules.filter(mod => !isEssential(mod.key))'))
+  test('BOTH SECTIONS COME OUT OF THE RENDERED LIST — neither can admit a card', () => {
+    assert.match(PAGE, /const \{ big: essentialModules, rest: moreModules \} = splitBigModules\(\s*modules,\s*orderEdit\.workingBig \?\? savedBigKeys,\s*\)/)
+  })
+
+  test('the big blocks follow the saved choice, and the default while previewing somebody else', () => {
+    assert.ok(PAGE.includes('const savedBigKeys = (viewMode ? null : savedPreference.big) ?? DEFAULT_BIG_MODULE_KEYS'))
   })
 
   test('a section with no cards is not drawn at all', () => {
@@ -792,43 +800,46 @@ describe('this page has no dark variant, and adds none', () => {
 })
 
 // ── The A+ refinement: count in words, section count, Edit order, icons ──────
-describe('the Essentials tile says its count in words, from 720px', () => {
+describe('every tile says its count in words, at every width', () => {
   /** The status row inside ModuleCard. */
   const STATUS = (() => {
     const at = CARD.indexOf('styles.status')
     assert.notEqual(at, -1, 'the status row exists on the card')
     return CARD.slice(at, CARD.indexOf('</div>', at))
   })()
-  /** The container block for a launcher 720px wide or more, Essentials part. */
+  /** The container block for a launcher 720px wide or more, big-block part. */
   const WIDE = (() => {
     const at = CSS.indexOf('@container (min-width: 720px) {\n  .cardEssential {')
-    assert.notEqual(at, -1, 'the wide Essentials block exists')
+    assert.notEqual(at, -1, 'the wide big-block block exists')
     return CSS.slice(at, CSS.indexOf('\n}\n', at))
   })()
 
-  test('only an Essentials tile draws it, and never while arranging', () => {
+  test('both sizes draw it, and never while arranging', () => {
     assert.match(CARD,
-      /\{variant === 'essential' && !editing && \(\s*<div className=\{styles\.status\} aria-hidden="true">/)
+      /\{!editing && \(\s*<div className=\{styles\.status\} aria-hidden="true">/)
   })
 
-  test('a count above zero is a chip, and only a count KNOWN to be zero says Nothing new', () => {
+  test('a count above zero is a chip, zero says Nothing new, a module with no feed says No alerts', () => {
     assert.ok(STATUS.includes('{hasNotif ? ('))
-    assert.ok(STATUS.includes("{count! > 99 ? '99+' : count} unread"), 'the same 99+ cap as the badge')
+    assert.ok(STATUS.includes("{count! > 99 ? '99+' : count} {label}"), 'the same 99+ cap as before')
     assert.ok(STATUS.includes('count === 0'), 'a count that has not arrived must not read as zero')
     assert.ok(STATUS.includes('Nothing new'))
+    assert.ok(STATUS.includes('count === null') && STATUS.includes('No alerts'),
+      'null means no notifications at all, and is not told as zero')
+    assert.equal(STATUS.includes('count === undefined'), false, 'an unresolved count draws nothing')
     assert.equal(STATUS.includes("'No notifications'"), false)
   })
 
-  test('the row is hidden below 720px, keeps its height from there, and the badge steps aside', () => {
-    assert.match(baseRule('.status'), /display:\s*none/)
-    assert.match(WIDE, /\.status\s*\{[^}]*display:\s*flex[^}]*min-height:\s*24px/,
-      'a count that arrives late moves nothing')
-    assert.match(WIDE, /\.cardEssential \.badge\s*\{\s*display:\s*none;\s*\}/)
+  test('the row is always drawn, so a count that arrives late moves nothing', () => {
+    assert.match(baseRule('.status'), /display:\s*flex[^}]*min-height:\s*22px/)
+    assert.match(baseRule('.cardEssential .status'), /min-height:\s*24px/)
   })
 
   test('the button is named with its count once, and only while it is a button', () => {
     assert.ok(CARD.includes(
-      'aria-label={editing ? undefined : hasNotif ? `${mod.title}, ${count} unread` : mod.title}'))
+      'aria-label={editing ? undefined : hasNotif ? `${mod.title}, ${count} ${label}` : mod.title}'))
+    assert.ok(CARD.includes("const label    = mod.countLabel ?? 'unread'"),
+      'Quotations counts requests waiting, not an inbox')
   })
 
   test('the icon tile is ink at rest and BOE red while the tile is pointed at', () => {
