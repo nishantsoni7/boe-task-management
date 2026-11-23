@@ -9,7 +9,7 @@ import { describeSaveFailure, discardUnsavedDraft, WORKBOOK_UPLOAD_MIME, workboo
 import { classifyError, type Quotation } from './api'
 import { ORIGINALS_BUCKET } from './pictureStore'
 import { toJpeg } from '@/lib/inventory/images'
-import { buildPiWorkbook, fitExtras, piLines } from './piWorkbook'
+import { buildPiWorkbook, extraPathsOf, fitExtras, piLines } from './piWorkbook'
 
 type Supabase = SupabaseClient
 export type PiStage = 'pictures' | 'creating' | 'uploading' | 'verifying' | 'linking'
@@ -38,7 +38,7 @@ export async function loadPictures(s: Supabase, q: Pick<Quotation, 'lines'>): Pr
     if (!blob) throw new Error('A product picture could not be loaded. Check your connection and try again.')
     out.set(p, new Uint8Array(await blob.arrayBuffer()))
   }))
-  const extraPaths = [...new Set(lines.flatMap(l => (l.references ?? []).map(r => r.path)))].filter(p => !out.has(p))
+  const extraPaths = [...new Set(lines.flatMap(l => extraPathsOf(l)))].filter(p => !out.has(p))
   const extras: { path: string; data: Uint8Array }[] = []
   const loaded = await Promise.all(extraPaths.map(async path => {
     try {
