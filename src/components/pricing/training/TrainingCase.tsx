@@ -13,11 +13,15 @@ import { AppLink as Link } from '@/components/ui/AppLink'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
-import { KINDS, KIND_LABEL, emptyForm, emptyLine, lineAmount, newWoods, num, parseReading, problems, readingToLines, shortDate, statusLabel, statusText, structureRest, toLine, totals, usesQuantity, type CaseForm, type Kind, type Line } from '@/lib/pricing/training/doc'
-import { fetchAccess, fetchCase, fetchWoods, saveWood, photoUrl, readPhoto, saveCase, sendMessage, submitCase, trainingKeys, uploadPhoto, type TrainingError } from '@/lib/pricing/training/api'
+import { INCLUDES, INCLUDE_LABEL, KINDS, KIND_LABEL, PRICE_LEVELS, PRICE_LEVEL_LABEL, caseTerms, emptyForm, emptyLine, newWoods, num, parseReading, problems, readingToLines, shortDate, sizeOf, statusLabel, statusText, structureRest, toLine, totals, usesQuantity, workCase, type CaseForm, type Include, type Kind, type Line, type PriceLevel } from '@/lib/pricing/training/doc'
+import { CALC_LABEL, newCalc, type CalcType } from '@/lib/pricing/training/calc'
+import { fetchAccess, fetchCase, fetchMetals, fetchWoods, saveWood, photoUrl, readPhoto, saveCase, sendMessage, submitCase, trainingKeys, uploadPhoto, type TrainingError } from '@/lib/pricing/training/api'
+import { CalcEditor } from './CalcEditors'
 import t from './training.module.css'
 
 const str = (v: number | null) => (v === null || v === undefined ? '' : String(Number(v)))
+/** The ways each kind of element can be worked out besides an amount or quantity × rate. */
+const WAYS: Record<Kind, CalcType[]> = { structure: ['wood', 'area'], metal: ['metal'], material: ['area'], labour: ['area', 'percent'], overhead: ['percent'], margin: ['percent'], other: ['area', 'percent'] }
 
 export function TrainingCase() {
   const supabase = useMemo(() => createClient(), [])
@@ -28,6 +32,7 @@ export function TrainingCase() {
 
   const access = useQuery({ queryKey: trainingKeys.access, queryFn: () => fetchAccess(supabase), retry: false })
   const woods = useQuery({ queryKey: trainingKeys.woods, queryFn: () => fetchWoods(supabase), enabled: access.isSuccess, retry: false })
+  const metals = useQuery({ queryKey: trainingKeys.metals, queryFn: () => fetchMetals(supabase), enabled: access.isSuccess, retry: false })
   const saved = useQuery({ queryKey: trainingKeys.one(routeId), queryFn: () => fetchCase(supabase, routeId), enabled: !isNew && access.isSuccess, retry: false })
 
   const [form, setForm] = useState<CaseForm>(emptyForm)
@@ -47,7 +52,7 @@ export function TrainingCase() {
   if (saved.data && saved.data.updated_at !== loadedAt) {
     const d = saved.data
     setLoadedAt(d.updated_at)
-    setForm({ name: d.name, variant: d.variant ?? '', width_in: str(d.width_in), depth_in: str(d.depth_in), height_in: str(d.height_in), sold_price: str(d.sold_price), notes: d.notes ?? '', image_path: d.image_path, ai_reading: parseReading(d.ai_reading) })
+    setForm({ name: d.name, variant: d.variant ?? '', width_in: str(d.width_in), depth_in: str(d.depth_in), height_in: str(d.height_in), sold_price: str(d.sold_price), notes: d.notes ?? '', image_path: d.image_path, ai_reading: parseReading(d.ai_reading), ...caseTerms(d) })
     setLines(d.lines.map(toLine))
     setDirty(false)
   }
@@ -62,11 +67,16 @@ export function TrainingCase() {
   const a = access.data
   const c = saved.data
   const editable = isNew ? !!a?.create : !!c?.may_edit
-  const sum = useMemo(() => totals(lines), [lines])
+  const size = useMemo(() => sizeOf(form), [form])
+  const work = useMemo(() => workCase(lines, size), [lines, size])
+  const sum = useMemo(() => totals(lines, size), [lines, size])
   const sold = num(form.sold_price)
 
   const edit = (patch: Partial<CaseForm>) => { setForm(f => ({ ...f, ...patch })); setDirty(true) }
   const editLine = (i: number, patch: Partial<Line>) => { setLines(ls => ls.map((l, n) => (n === i ? { ...l, ...patch } : l))); setDirty(true) }
+  // A kind keeps its way of working out only when that kind allows it; a metal frame starts weighed.
+  const setKind = (l: Line, i: number, kind: Kind) => editLine(i, { kind, calc: l.calc && WAYS[kind].includes(l.calc.type) ? l.calc : kind === 'metal' ? newCalc('metal') : null })
+  const toggleInclude = (x: Include) => edit({ includes: form.includes.includes(x) ? form.includes.filter(y => y !== x) : [...form.includes, x] })
   const addLine = () => { setLines(ls => [...ls, emptyLine()]); setDirty(true) }
   const removeLine = (i: number) => { setRemoved({ line: lines[i], at: i }); setLines(ls => ls.filter((_, n) => n !== i)); setDirty(true) }
   const undoRemove = () => { if (!removed) return; setLines(ls => [...ls.slice(0, removed.at), removed.line, ...ls.slice(removed.at)]); setRemoved(null) }
@@ -192,7 +202,13 @@ export function TrainingCase() {
               <label className={t.field}><span className="boe-input-label">Width (in)</span><input className="boe-input" inputMode="decimal" value={form.width_in} disabled={!editable} onChange={e => edit({ width_in: e.target.value })} /></label>
               <label className={t.field}><span className="boe-input-label">Depth (in)</span><input className="boe-input" inputMode="decimal" value={form.depth_in} disabled={!editable} onChange={e => edit({ depth_in: e.target.value })} /></label>
               <label className={t.field}><span className="boe-input-label">Height (in)</span><input className="boe-input" inputMode="decimal" value={form.height_in} disabled={!editable} onChange={e => edit({ height_in: e.target.value })} /></label>
-              <label className={`${t.field} ${t.span3}`}><span className="boe-input-label">Price on the PI or quotation, per piece (₹)</span><input className="boe-input" inputMode="decimal" value={form.sold_price} disabled={!editable} onChange={e => edit({ sold_price: e.target.value })} placeholder="If it was sold, what the client paid" /></label>
+              <label className={`${t.field} ${t.span3}`}><span className="boe-input-label">Price on the PI or quotation, per {num(form.per_set) ? `set of ${num(form.per_set)}` : 'piece'} (₹)</span><input className="boe-input" inputMode="decimal" value={form.sold_price} disabled={!editable} onChange={e => edit({ sold_price: e.target.value })} placeholder="If it was sold, what the client paid" /></label>
+              <label className={t.field}><span className="boe-input-label">This price is</span><select className="boe-input" value={form.price_level} disabled={!editable} onChange={e => edit({ price_level: e.target.value as PriceLevel })}>{PRICE_LEVELS.map(p => <option key={p} value={p}>{PRICE_LEVEL_LABEL[p]}</option>)}</select></label>
+              <label className={t.field}><span className="boe-input-label">For a set of (pieces)</span><input className="boe-input" inputMode="numeric" value={form.per_set} disabled={!editable} onChange={e => edit({ per_set: e.target.value })} placeholder="Blank: per piece" /></label>
+              <fieldset className={`${t.field} ${t.span3} ${t.terms}`} disabled={!editable} style={{ border: 0, padding: 0, margin: 0 }}>
+                <legend className="boe-input-label">The price already includes</legend>
+                {INCLUDES.map(x => <label key={x}><input type="checkbox" checked={form.includes.includes(x)} onChange={() => toggleInclude(x)} /> {INCLUDE_LABEL[x]}</label>)}
+              </fieldset>
               <label className={`${t.field} ${t.span3}`}><span className="boe-input-label">Anything else (special work, why this client paid more or less)</span><textarea className="boe-input" rows={3} value={form.notes} disabled={!editable} onChange={e => edit({ notes: e.target.value })} maxLength={2000} /></label>
             </div>
           </div>
@@ -209,20 +225,33 @@ export function TrainingCase() {
           <div key={i} className={t.el}>
             <div className={t.elGrid}>
               <label className={t.field}><span className="boe-input-label">Element {i + 1} {l.from_ai && <span className={t.fromAi}>from the photo</span>}</span><input className="boe-input" value={l.element} onChange={e => editLine(i, { element: e.target.value })} placeholder="e.g. Wooden structure" maxLength={120} /></label>
-              <label className={t.field}><span className="boe-input-label">Kind</span><select className="boe-input" value={l.kind} onChange={e => editLine(i, { kind: e.target.value as Kind })}>{KINDS.map(k => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></label>
+              <label className={t.field}><span className="boe-input-label">Kind</span><select className="boe-input" value={l.kind} onChange={e => setKind(l, i, e.target.value as Kind)}>{KINDS.map(k => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></label>
               {l.kind === 'structure'
                 ? <label className={t.field}><span className="boe-input-label">Wood</span><input className="boe-input" list="training-woods" value={l.material} onChange={e => editLine(i, { material: e.target.value })} placeholder="Pick or type a wood" maxLength={40} /></label>
                 : <label className={t.field}><span className="boe-input-label">Material / what it is</span><input className="boe-input" value={l.material} onChange={e => editLine(i, { material: e.target.value })} maxLength={160} /></label>}
-              <label className={t.field}><span className="boe-input-label">Quantity</span><input className="boe-input" inputMode="decimal" value={l.quantity} onChange={e => editLine(i, { quantity: e.target.value })} /></label>
-              <label className={t.field}><span className="boe-input-label">Unit</span><input className="boe-input" value={l.unit} onChange={e => editLine(i, { unit: e.target.value })} placeholder="cu ft" maxLength={30} /></label>
-              <label className={t.field}><span className="boe-input-label">Rate (₹)</span><input className="boe-input" inputMode="decimal" value={l.rate} onChange={e => editLine(i, { rate: e.target.value })} /></label>
-              {usesQuantity(l)
-                ? <div className={t.field}><span className="boe-input-label">Amount (₹)</span><div className={t.amount} aria-live="polite">{formatINR(lineAmount(l))}</div></div>
+              {l.calc
+                ? <span className={`${t.muted} ${t.calcSpan}`}>Worked out below: {CALC_LABEL[l.calc.type].toLowerCase()}</span>
+                : <>
+                  <label className={t.field}><span className="boe-input-label">Quantity</span><input className="boe-input" inputMode="decimal" value={l.quantity} onChange={e => editLine(i, { quantity: e.target.value })} /></label>
+                  <label className={t.field}><span className="boe-input-label">Unit</span><input className="boe-input" value={l.unit} onChange={e => editLine(i, { unit: e.target.value })} placeholder="cu ft" maxLength={30} /></label>
+                  <label className={t.field}><span className="boe-input-label">Rate (₹)</span><input className="boe-input" inputMode="decimal" value={l.rate} onChange={e => editLine(i, { rate: e.target.value })} /></label>
+                </>}
+              {l.calc || usesQuantity(l)
+                ? <div className={t.field}><span className="boe-input-label">Amount (₹)</span><div className={t.amount} aria-live="polite">{formatINR(work[i]?.amount ?? 0)}</div></div>
                 : <label className={t.field}><span className="boe-input-label">Amount (₹)</span><input className="boe-input" inputMode="decimal" value={l.amount} onChange={e => editLine(i, { amount: e.target.value })} /></label>}
               <button type="button" className={t.iconBtn} onClick={() => removeLine(i)} aria-label={`Remove element ${i + 1}`}><Trash2 size={16} aria-hidden /></button>
             </div>
-            <label className={t.field}><span className="boe-input-label">How you worked this out</span><input className="boe-input" value={l.reasoning} onChange={e => editLine(i, { reasoning: e.target.value })} placeholder="e.g. Four legs, two rails, back posts, with cutting waste" maxLength={1000} /></label>
-            {l.kind === 'structure' && <div className={t.split}>
+            <div className={t.split}>
+              <label className={t.field}><span className="boe-input-label">Worked out as</span>
+                <select className="boe-input" value={l.calc?.type ?? ''} onChange={e => editLine(i, { calc: e.target.value ? newCalc(e.target.value as CalcType) : null })}>
+                  <option value="">An amount, or quantity × rate</option>
+                  {WAYS[l.kind].map(w => <option key={w} value={w}>{CALC_LABEL[w]}</option>)}
+                </select>
+              </label>
+              <label className={t.field}><span className="boe-input-label">How you worked this out</span><input className="boe-input" value={l.reasoning} onChange={e => editLine(i, { reasoning: e.target.value })} placeholder="e.g. Four legs, two rails, back posts, with cutting waste" maxLength={1000} /></label>
+            </div>
+            {l.calc && <CalcEditor calc={l.calc} onChange={calc => editLine(i, { calc })} worked={work[i]} size={size} woodName={l.material} woods={woods.data ?? []} metals={metals.data ?? []} idPrefix={`el${i}`} />}
+            {l.kind === 'structure' && !l.calc && <div className={t.split}>
               <label className={t.field}><span className="boe-input-label">Of which wood (₹), optional</span><input className="boe-input" inputMode="decimal" value={l.wood} onChange={e => editLine(i, { wood: e.target.value })} placeholder="The wood alone" /></label>
               <p className={t.muted} aria-live="polite">{structureRest(l) === null ? 'One price for the whole wooden structure is enough. If you also give the wood alone, the rest is counted as labour and hardware, and a price can be worked out for another wood later.' : structureRest(l)! < 0 ? 'The wood share is more than the structure price.' : `Labour and hardware: ${formatINR(structureRest(l)!)}`}</p>
             </div>}
@@ -231,9 +260,10 @@ export function TrainingCase() {
           <div key={i} className={t.read}>
             <span><b>{l.element}</b>{l.material ? ` · ${l.material}` : ''}</span>
             <span className={t.muted}>{KIND_LABEL[l.kind]}</span>
-            <span className={t.muted}>{usesQuantity(l) ? `${l.quantity} ${l.unit} × ${formatINR(num(l.rate) ?? 0)}` : 'Amount given'}</span>
-            <b className={t.num}>{formatINR(lineAmount(l))}</b>
-            {structureRest(l) !== null && <small>Wood {formatINR(num(l.wood) ?? 0)} · labour and hardware {formatINR(structureRest(l)!)}</small>}
+            <span className={t.muted}>{l.calc ? CALC_LABEL[l.calc.type] : usesQuantity(l) ? `${l.quantity} ${l.unit} × ${formatINR(num(l.rate) ?? 0)}` : 'Amount given'}</span>
+            <b className={t.num}>{formatINR(work[i]?.amount ?? 0)}</b>
+            {l.calc && work[i]?.note && <small>{work[i].note}</small>}
+            {!l.calc && structureRest(l) !== null && <small>Wood {formatINR(num(l.wood) ?? 0)} · labour and hardware {formatINR(structureRest(l)!)}</small>}
             {l.reasoning && <small>{l.reasoning}</small>}
           </div>
         ))}

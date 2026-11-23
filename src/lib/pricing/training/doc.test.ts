@@ -53,8 +53,9 @@ describe('a training case: what is sent to the database, and read back', () => {
     const doc = saveDoc({ ...emptyForm(), name: '  Chair ', width_in: '16', sold_price: '6,260' },
       [line({ element: ' Frame wood ', material: 'Teak', quantity: '0.81', unit: 'cu ft', rate: '2900', from_ai: true }), line({ element: 'Carpenter', kind: 'labour', amount: '650' })])
     assert.equal(doc.name, 'Chair'); assert.equal(doc.width_in, 16); assert.equal(doc.depth_in, null); assert.equal(doc.sold_price, 6260); assert.equal(doc.variant, null)
-    assert.deepEqual(doc.lines[0], { element: 'Frame wood', kind: 'material', material: 'Teak', quantity: 0.81, unit: 'cu ft', rate: 2900, amount: 2349, reasoning: null, from_ai: true, wood_amount: null })
-    assert.deepEqual(doc.lines[1], { element: 'Carpenter', kind: 'labour', material: null, quantity: null, unit: null, rate: null, amount: 650, reasoning: null, from_ai: false, wood_amount: null })
+    assert.deepEqual(doc.lines[0], { element: 'Frame wood', kind: 'material', material: 'Teak', quantity: 0.81, unit: 'cu ft', rate: 2900, amount: 2349, reasoning: null, from_ai: true, wood_amount: null, calc: null })
+    assert.deepEqual(doc.lines[1], { element: 'Carpenter', kind: 'labour', material: null, quantity: null, unit: null, rate: null, amount: 650, reasoning: null, from_ai: false, wood_amount: null, calc: null })
+    assert.equal(doc.price_level, 'selling'); assert.deepEqual(doc.includes, []); assert.equal(doc.per_set, null)
     const back = doc.lines.map(toLine)
     assert.equal(back[0].amount, ''); assert.equal(back[0].quantity, '0.81'); assert.equal(lineAmount(back[0]), 2349)
     assert.equal(back[1].amount, '650'); assert.equal(lineAmount(back[1]), 650)
@@ -162,13 +163,13 @@ describe('the photo reading', () => {
 describe('the Training screens follow the house rules', () => {
   test('AppLink only, every CSS class exists, and nothing reads the closed tables directly', () => {
     const css = readFileSync('src/components/pricing/training/training.module.css', 'utf8')
-    for (const f of ['TrainingList.tsx', 'TrainingCase.tsx', 'WoodRates.tsx']) {
+    for (const f of ['TrainingList.tsx', 'TrainingCase.tsx', 'WoodRates.tsx', 'CalcEditors.tsx']) {
       const src = readFileSync(`src/components/pricing/training/${f}`, 'utf8')
       assert.doesNotMatch(src, /from 'next\/link'|router\.prefetch|prefetch=\{true\}/, f)
       assert.doesNotMatch(src, /\.from\('pricing_training/, f)
       for (const m of src.matchAll(/\bt\.([A-Za-z0-9_]+)/g)) assert.ok(new RegExp(`\\.${m[1]}\\b`).test(css), `${f}: .${m[1]} is not in training.module.css`)
     }
     const shell = readFileSync('src/components/layout/ComingSoonModule.tsx', 'utf8')
-    assert.match(shell, /pricing: \[\{ href: '\/pricing\/training', label: 'Training' \}, \{ href: '\/pricing\/woods', label: 'Wood rates' \}, \{ href: '\/pricing\/logic', label: 'Price logic' \}\]/)
+    assert.match(shell, /pricing: \[\{ href: '\/pricing\/training', label: 'Training' \}, \{ href: '\/pricing\/woods', label: 'Wood and metal rates' \}, \{ href: '\/pricing\/logic', label: 'Price logic' \}\]/)
   })
 })

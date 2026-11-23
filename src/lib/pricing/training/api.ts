@@ -6,15 +6,17 @@ import { parseReading, type CaseForm, type Line, type Reading, saveDoc } from '.
 
 type Supabase = ReturnType<typeof createClient>
 export const TRAINING_BUCKET = 'pricing-training'
-export const trainingKeys = { access: ['pricing', 'training', 'access'] as const, list: ['pricing', 'training', 'list'] as const, woods: ['pricing', 'woods'] as const, library: ['pricing', 'training', 'library'] as const, quotes: ['pricing', 'training', 'quotes'] as const, one: (id: string) => ['pricing', 'training', 'case', id] as const }
+export const trainingKeys = { access: ['pricing', 'training', 'access'] as const, list: ['pricing', 'training', 'list'] as const, woods: ['pricing', 'woods'] as const, metals: ['pricing', 'metals'] as const, rateHistory: ['pricing', 'rates', 'history'] as const, library: ['pricing', 'training', 'library'] as const, quotes: ['pricing', 'training', 'quotes'] as const, one: (id: string) => ['pricing', 'training', 'case', id] as const }
 
 export type Status = 'draft' | 'submitted'
 export type Access = { uid: string; admin: boolean; create: boolean }
 export type CaseRow = { id: string; case_no: number; name: string; variant: string | null; status: Status; image_path: string | null; created_by: string; created_by_name: string | null; submitted_by_name: string | null; submit_count: number; submitted_at: string | null; created_at: string; updated_at: string; total: number; line_count: number; sold_price: number | null }
-export type SavedLine = { element: string; kind: string; material: string | null; quantity: number | null; unit: string | null; rate: number | null; amount: number; reasoning: string | null; from_ai: boolean; wood_amount: number | null }
+export type SavedLine = { element: string; kind: string; material: string | null; quantity: number | null; unit: string | null; rate: number | null; amount: number; reasoning: string | null; from_ai: boolean; wood_amount: number | null; calc?: unknown }
 export type Message = { id: string; body: string; created_at: string; created_by: string; created_by_name: string | null }
 export type CaseEvent = { what: 'saved' | 'submitted'; created_at: string; created_by: string; created_by_name: string | null; total: number }
-export type CaseFull = Omit<CaseRow, 'total' | 'line_count'> & { width_in: number | null; depth_in: number | null; height_in: number | null; notes: string | null; ai_reading: unknown; updated_by_name: string | null; may_edit: boolean; lines: SavedLine[]; messages: Message[]; events: CaseEvent[] }
+export type CaseFull = Omit<CaseRow, 'total' | 'line_count'> & { width_in: number | null; depth_in: number | null; height_in: number | null; notes: string | null; ai_reading: unknown; updated_by_name: string | null; may_edit: boolean; lines: SavedLine[]; messages: Message[]; events: CaseEvent[]
+  /** 20270823000000; absent until that migration is applied. */
+  price_level?: unknown; includes?: unknown; per_set?: unknown }
 
 export class TrainingError extends Error {
   constructor(public kind: 'not_set_up' | 'forbidden' | 'invalid' | 'locked' | 'not_found' | 'network' | 'unknown', message: string) { super(message) }
@@ -23,8 +25,8 @@ type RpcError = { message?: string; code?: string } | null
 function classify(e: NonNullable<RpcError>): TrainingError {
   const m = e.message ?? ''
   const said = m.replace(/^.*PRICING_TRAINING_[A-Z_]+:\s*/, '')
-  if (/PRICING_WOODS_FORBIDDEN/.test(m)) return new TrainingError('forbidden', m.replace(/^.*PRICING_WOODS_[A-Z_]+:\s*/, ''))
-  if (/PRICING_WOODS_INVALID/.test(m)) return new TrainingError('invalid', m.replace(/^.*PRICING_WOODS_[A-Z_]+:\s*/, ''))
+  if (/PRICING_(WOODS|METALS)_FORBIDDEN/.test(m)) return new TrainingError('forbidden', m.replace(/^.*PRICING_(WOODS|METALS)_[A-Z_]+:\s*/, ''))
+  if (/PRICING_(WOODS|METALS)_INVALID/.test(m)) return new TrainingError('invalid', m.replace(/^.*PRICING_(WOODS|METALS)_[A-Z_]+:\s*/, ''))
   if (/PRICING_TRAINING_FORBIDDEN/.test(m)) return new TrainingError('forbidden', said)
   if (/PRICING_TRAINING_LOCKED/.test(m)) return new TrainingError('locked', said)
   if (/PRICING_TRAINING_INVALID/.test(m)) return new TrainingError('invalid', said)
@@ -81,6 +83,15 @@ export type Wood = { name: string; rate: number | null; updated_at: string; upda
 export const fetchWoods = (s: Supabase) => call<Wood[]>(() => s.rpc('pricing_woods_list'))
 export const saveWood = (s: Supabase, name: string, rate: number | null) => call<null>(() => s.rpc('pricing_wood_save', { p_name: name, p_rate: rate }))
 export const removeWood = (s: Supabase, name: string) => call<null>(() => s.rpc('pricing_wood_remove', { p_name: name }))
+/** Metals and what they cost per kg (20270823000000): a metal frame row picks one. */
+export type Metal = { name: string; density: number; rate: number | null; updated_at: string; updated_by_name: string | null }
+export const fetchMetals = (s: Supabase) => call<Metal[]>(() => s.rpc('pricing_metals_list'))
+/** A null density or rate leaves it as it is (a new metal takes mild steel's 7,850). */
+export const saveMetal = (s: Supabase, name: string, density: number | null, rate: number | null) => call<null>(() => s.rpc('pricing_metal_save', { p_name: name, p_density: density, p_rate: rate }))
+export const removeMetal = (s: Supabase, name: string) => call<null>(() => s.rpc('pricing_metal_remove', { p_name: name }))
+/** Every rate ever set, newest first: a rate is never lost when it changes. */
+export type RateChange = { kind: 'wood' | 'metal'; name: string; rate: number | null; set_at: string; set_by_name: string | null }
+export const fetchRateHistory = (s: Supabase) => call<RateChange[]>(() => s.rpc('pricing_rate_history_list'))
 /** Submitted cases for the quotation screen to pick from (20270726000000). Open to Quotations people too. */
 export const fetchLibrary = (s: Supabase) => call<import('./match').Library>(() => s.rpc('pricing_training_library'))
 /** Priced quotation lines that picked a taught product (20270729000000). Pricing people only. */
