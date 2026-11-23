@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `9b3c0ffc` — Docs: put the PR number (#994) on the builder top-section entries
+- Commit: `c25d27c9` — Docs: the Fabric From box fix (#995) in the Quotations dossier, context map, changelog and inventory
 - Commits on this branch: 1552
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 502 (first `20260530_create_positions.sql`, latest `20270822000000_quotation_cards_open_owned_or_made.sql`)
@@ -14,9 +14,9 @@
 
 ## Latest 25 commits
 
-- `9b3c0ffc` 2026-11-23 Docs: put the PR number (#994) on the builder top-section entries
-- `0a947072` 2026-11-23 Merge remote-tracking branch 'origin/main' into feat/quotation-builder-top-redesign
-- `5a60a521` 2026-11-23 Quotations: the builder's top section tidied, and Price approval moved up into the Status card (no SQL)
+- `c25d27c9` 2026-11-23 Docs: the Fabric From box fix (#995) in the Quotations dossier, context map, changelog and inventory
+- `5e014108` 2026-11-23 Quotations: the Fabric From box works on a row with nothing typed yet
+- `f904e860` 2026-11-23 Docs: stamp #989 (the Open-tile migration file) as merged and live (no SQL) (#991)
 - `0b74fdbb` 2026-11-23 Docs: stamp the merge of #990 (Improve picture: line details and reference box) on its entries (#992)
 - `43175621` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
 - `32004032` 2026-11-23 Quotations: the Open tile's migration file (already applied) and the merge stamps for #986 and #988 (#989)
