@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `3033f882` — Merge remote-tracking branch 'origin/main' into feat/notifications-major-only
-- Commits on this branch: 1536
+- Commit: `f12d6e84` — Test: the other-module fixture row uses a shown Finance type
+- Commits on this branch: 1538
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 500 (first `20260530_create_positions.sql`, latest `20270820000000_quotation_client_costing_view.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
-- Test files: 927   Next.js 16.2.6, React 19.2.4
+- Test files: 930   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `f12d6e84` 2026-11-23 Test: the other-module fixture row uses a shown Finance type
+- `24956d7a` 2026-11-23 Docs: regenerate the app inventory after merging main
 - `3033f882` 2026-11-23 Merge remote-tracking branch 'origin/main' into feat/notifications-major-only
 - `843cb1fb` 2026-11-23 Quotations: the PI draft carries the costing (PR 3 of 3; no SQL) (#976)
 - `ac729ace` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL)
@@ -37,8 +39,6 @@
 - `ae0b9a67` 2026-11-20 Sales leads: a contact role, and the quick note Waiting for BOQ (#957)
 - `7aaa6aaf` 2026-11-20 Docs: stamp #952 (lead popup quotations line, Make quotation) as merged and verified live (migration applied) (#953)
 - `570f4635` 2026-11-20 Docs: stamp #954 (Lost carries the lead's eleven reasons) as merged and verified live (migration applied) (#956)
-- `2c57b210` 2026-11-20 Quotations: requests move into the module, lead-first creation, report cards, price brief (#955)
-- `2014e0a2` 2026-11-20 Quotations: Lost carries one of the lead's eleven reasons; the report counts reasons (#954)
 
 ## Pages by top-level area
 
@@ -175,7 +175,7 @@
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
 - `src/lib/quotations` — 30 source, 28 test
-- `src/lib/salesLeads` — 16 source, 16 test
+- `src/lib/salesLeads` — 17 source, 17 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
 - `src/lib/security` — 2 source, 7 test

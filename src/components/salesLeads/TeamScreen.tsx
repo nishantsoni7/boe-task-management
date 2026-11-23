@@ -4,7 +4,7 @@ import { AppLink as Link } from '@/components/ui/AppLink'
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BellRing, UserRoundPen } from 'lucide-react'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
@@ -60,16 +60,19 @@ export function TeamScreen() {
   const [now] = useState(() => Date.now())
   const from = fromDate(period, today)
 
+  // Started while the permission answer is still on its way (2026-11-23: the guard builds the page hidden), and stopped if the
+  // answer says this person is not a manager. The link to this page is only offered to managers, so the early read is the rule.
+  const mayRead = !ready || canSeeAll
   const team = useQuery({
     queryKey: [SALES_KEY, 'team', from, market, holder],
     queryFn: () => fetchTeam(supabase, from, market, holder),
     staleTime: 30_000,
-    enabled: ready && canSeeAll,
+    enabled: mayRead,
   })
   // Everybody with a Sales job: the filter lists them all whoever is picked, and Change holder offers them.
-  const people = useQuery({ queryKey: [SALES_KEY, 'people'], queryFn: () => fetchPeople(supabase), staleTime: 300_000, enabled: ready && canSeeAll })
+  const people = useQuery({ queryKey: [SALES_KEY, 'people'], queryFn: () => fetchPeople(supabase), staleTime: 300_000, enabled: mayRead })
   // Premium leads the allotment rule gave a Junior or Backup this week, because the Seniors were full or away.
-  const premium = useQuery({ queryKey: [SALES_KEY, 'premium-misplaced'], queryFn: () => fetchPremiumMisplaced(supabase), staleTime: 30_000, enabled: ready && canSeeAll })
+  const premium = useQuery({ queryKey: [SALES_KEY, 'premium-misplaced'], queryFn: () => fetchPremiumMisplaced(supabase), staleTime: 30_000, enabled: mayRead })
   const refresh = () => queryClient.invalidateQueries({ queryKey: [SALES_KEY] })
   const data = team.data
 
@@ -98,7 +101,7 @@ export function TeamScreen() {
 
   let body: React.ReactNode
   if (!ready || (team.isPending && canSeeAll && !data)) {
-    body = <LoadingScreen message="Loading the team..." />
+    body = <ModulePageSkeleton variant="list" label="Loading the team" />
   } else if (!canSeeAll) {
     body = <div className="boe-empty"><p className="boe-empty-title">This page is for managers</p><p>Your own leads are on My day and the Lead Board.</p></div>
   } else if (team.isError && !data) {

@@ -46,6 +46,8 @@ type ViewProps = {
   allowed: boolean
   /** The page may be built hidden while the answer is pending: in the browser, and the first answer not yet seen. */
   buildHidden: boolean
+  /** Shown instead of the spinner while the answer is pending (Sales: its static page frame). Never shown once the answer is no. */
+  checking?: ReactNode
   children: ReactNode
 }
 
@@ -62,13 +64,13 @@ export function useBuildHidden(ready: boolean, inBrowser: boolean): boolean {
 }
 
 /** The states, with no hooks of its own, so a test can drive every one. */
-export function ModuleGuardStartsEarlyView({ ready, allowed, buildHidden, children }: ViewProps) {
-  // Answered no (or no session): the spinner, never the page. The redirect lands from the effect in the wrapper.
+export function ModuleGuardStartsEarlyView({ ready, allowed, buildHidden, checking, children }: ViewProps) {
+  // Answered no (or no session): the spinner, never the page or the frame. The redirect lands from the effect in the wrapper.
   if (ready && !allowed) return <LoadingScreen />
   const pending = !ready
   return (
     <ModuleShownContext.Provider value={!pending}>
-      {pending && <LoadingScreen />}
+      {pending && (checking ?? <LoadingScreen />)}
       {(buildHidden || !pending) && (
         <div data-module-page={pending ? 'waiting' : 'shown'} inert={pending} style={{ display: pending ? 'none' : 'contents' }}>
           {children}
@@ -82,11 +84,14 @@ export default function ModuleGuardStartsEarly({
   moduleKey,
   children,
   deniedRoute = '/coming-soon',
+  checking,
 }: {
   moduleKey: string
   children: ReactNode
   /** Where an unauthorized employee lands. Same default as ModuleGuard. */
   deniedRoute?: string
+  /** What to show beside the hidden page while the answer is pending, instead of the spinner (Sales: its static frame). */
+  checking?: ReactNode
 }) {
   const router = useRouter()
   const inBrowser = useSyncExternalStore(subscribeNothing, () => true, () => false)
@@ -115,7 +120,7 @@ export default function ModuleGuardStartsEarly({
   }, [ready, userId, allowed, router, deniedRoute])
 
   return (
-    <ModuleGuardStartsEarlyView ready={ready} allowed={allowed} buildHidden={buildHidden}>
+    <ModuleGuardStartsEarlyView ready={ready} allowed={allowed} buildHidden={buildHidden} checking={checking}>
       {children}
     </ModuleGuardStartsEarlyView>
   )
