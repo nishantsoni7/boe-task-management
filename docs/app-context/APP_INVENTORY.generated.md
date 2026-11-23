@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `ab3cdddd` — Pricing: "Teach this price" from a feedback card or a quotation line, and "In your words" (#997)
-- Commits on this branch: 1555
+- Commit: `ed9d98bc` — Docs: phase 2 full suite and build results
+- Commits on this branch: 1557
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 225
 - Migrations: 503 (first `20260530_create_positions.sql`, latest `20270823000000_pricing_calculators.sql`)
 - Tables ever created: 273 (dropped at some point: 8)   SQL functions: 1105   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `ed9d98bc` 2026-11-23 Docs: phase 2 full suite and build results
+- `4ccde56b` 2026-11-23 Pricing: a taught price worked out again for each quotation line
 - `ab3cdddd` 2026-11-23 Pricing: "Teach this price" from a feedback card or a quotation line, and "In your words" (#997)
 - `3b7839d6` 2026-11-23 Docs: stamp #995 (the Fabric From box fix) as merged and live (no SQL) (#996)
 - `47f146a3` 2026-11-23 Pricing: work out a Training element by wood cut list, metal weight, area or percentage (migration 20270823000000 APPLIED) (#993)
@@ -37,8 +39,6 @@
 - `9d2ec62e` 2026-11-23 Sales: every Sales page starts while the access check runs (no SQL) (#977)
 - `843cb1fb` 2026-11-23 Quotations: the PI draft carries the costing (PR 3 of 3; no SQL) (#976)
 - `5f248a5d` 2026-11-23 Quotations: the client's copy shows per-piece fabric and packing (PR 2 of 3; migration 20270820000000 NOT applied) (#975)
-- `e38573c9` 2026-11-23 Quotations: a Fabric, finish and packing page, priced per piece (PR 1 of 3; migration 20270819000000 NOT applied) (#974)
-- `4e7f1b2d` 2026-11-21 Orders: the approver's payment chips in one call (migration 20270818000000, NOT applied) (#970)
 
 ## Pages by top-level area
 

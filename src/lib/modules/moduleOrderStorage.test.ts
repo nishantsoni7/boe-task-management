@@ -379,6 +379,9 @@ describe('normal mode', () => {
     // phone redesign then made those rows 52px inside one grouped list. The A+
     // refinement then shortened the compact tile to 68px and raised the wide
     // Essentials tile to 148px, with the count said in words beneath its name.
+    // The "quiet tiles" change (2026-11-23, evening) took that line away, so the
+    // wide Essentials tile is 128px (88px two by two, 104px on a phone) and the
+    // small tiles sit on one surface from 480px.
     //
     // WHAT THIS TEST IS FOR HAS NOT CHANGED. It is the ordering feature's
     // promise that it owns no card dimension. The card's own shape is pinned by
@@ -388,7 +391,7 @@ describe('normal mode', () => {
       'grid-template-columns: repeat(5, minmax(0, 1fr))',
       'grid-template-columns: repeat(3, minmax(0, 1fr))',
       'min-height: 68px',
-      'min-height: 148px',
+      'min-height: 128px',
       'min-height: 72px',
       'min-height: 52px',
       'width: 40px',

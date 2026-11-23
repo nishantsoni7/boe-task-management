@@ -25,7 +25,7 @@ import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { buildQuickActions, QuickActionList } from '@/components/layout/QuickActions'
 import { exhibitionsQuery, readCachedExhibitions } from '@/lib/exhibitionLeads/queries'
 import { intakeState, showQuickLink } from '@/lib/exhibitionLeads/intake'
-import { Armchair, ArrowUpRight, ChartNoAxesCombined, Check, ChevronRight, ContactRound, Factory, FileText, Image as ImageIcon, Megaphone, Search, Star, Tag } from 'lucide-react'
+import { Armchair, ArrowUpRight, ChartNoAxesCombined, ChevronRight, ContactRound, Factory, FileText, Image as ImageIcon, Megaphone, Search, Star, Tag } from 'lucide-react'
 import {
   TaskIcon, BoxIcon, CalIcon, AssetIcon, MembersIcon, ControlCenterIcon, FinanceIcon,
   OrdersIcon, ReviewOutreachIcon, MeetingsIcon, ShowroomIcon,
@@ -90,14 +90,14 @@ type ModuleDef = {
   description: string
   href: string
   icon: React.ReactNode
-  // THE COUNT UNDER THE NAME, on every tile, big or small (owner, 2026-11-23).
-  // undefined = not resolved YET → the line stays empty, because the card is
-  //             shown before its count has arrived and printing "Nothing new"
-  //             there would be asserting something we do not know (a failed
-  //             request is also undefined, never zero).
+  // THE COUNT, on every tile, big or small (owner, 2026-11-23). Only a count above
+  // zero is DRAWN (a red chip); the other three states draw nothing and differ
+  // only in the tile's hover text (owner, 2026-11-23, evening: "quiet tiles").
+  // undefined = not resolved YET (a failed request is also undefined, never
+  //             zero): no hover text, because we do not know.
   // null      = this module has NO notifications at all (no feed, no count) →
-  //             "No alerts". Not "Nothing new": that says "we looked".
-  // 0         = confirmed zero → "Nothing new".  >0 = the red chip.
+  //             hover "No alerts". Not "Nothing new": that says "we looked".
+  // 0         = confirmed zero → hover "Nothing new".  >0 = the red chip.
   notificationCount?: number | null
   // What the chip calls the number. Unread notifications unless said otherwise;
   // Quotations counts requests WAITING for the person, which is not an inbox.
@@ -614,7 +614,7 @@ export default function BoeOsHomePage() {
       href: '/customer-reviews',
       icon: <ReviewOutreachIcon />,
       // Somebody who may use the module but not verify has no feed (it is
-      // addressed to verifiers): "No alerts", which is true for them.
+      // addressed to verifiers): null, a quiet tile, which is true for them.
       notificationCount: mayVerifyReviews ? reviewCount.count : null,
     }] : []),
     ...(canOpenModule('image_editor') ? [{
@@ -1078,7 +1078,7 @@ export default function BoeOsHomePage() {
                   {essentialModules.length > 0 ? 'All modules' : 'Your modules'}
                   <span className={styles.sectionCount} aria-hidden="true">{moreModules.length}</span>
                 </h2>
-                <div className={styles.grid}>
+                <div className={`${styles.grid} ${styles.gridQuiet}`}>
                   {moreModules.map((mod, index) =>
                     renderCard(mod, 'compact', essentialModules.length + index + 1))}
                 </div>
@@ -1137,11 +1137,11 @@ export default function BoeOsHomePage() {
 // big blocks; `compact` is the smaller tile of the grid beneath. Every
 // state — rest, hover, focus, pressed, editing, held — is a stylesheet rule.
 //
-// BOTH SIZES SAY THEIR COUNT IN WORDS, under the name (owner, 2026-11-23): a red
-// "N unread" chip, "Nothing new" for a known zero, "No alerts" for a module that
-// has no notifications at all, nothing while the count is still unknown. The red
-// number that used to sit on the icon of a small tile is gone: it said the same
-// thing a second time.
+// BOTH SIZES SHOW A COUNT ONLY WHEN IT IS ABOVE ZERO (owner, 2026-11-23): a red
+// chip, in words on a big block and the number alone on a small tile. A known
+// zero, a module with no notifications at all and a count not yet known draw
+// nothing; the first two say so in the tile's hover text. The red number that
+// used to sit on the icon of a small tile is gone: it said the same thing twice.
 function ModuleCard({ mod, variant, onClick, dragging = false, handle = null, bigToggle = null }: {
   mod: ModuleDef
   variant: 'essential' | 'compact'
@@ -1184,6 +1184,10 @@ function ModuleCard({ mod, variant, onClick, dragging = false, handle = null, bi
       // while arranging: the card is not a button then, and a label on a plain
       // div is not announced.
       aria-label={editing ? undefined : hasNotif ? `${mod.title}, ${count} ${label}` : mod.title}
+      // What the quiet tile would have said: a count KNOWN to be zero is "Nothing
+      // new", a module with no notifications at all is "No alerts", and a count
+      // that has not arrived (or failed) says nothing.
+      title={editing || hasNotif ? undefined : count === 0 ? 'Nothing new' : count === null ? 'No alerts' : undefined}
       className={className}
     >
       {handle}
@@ -1202,25 +1206,19 @@ function ModuleCard({ mod, variant, onClick, dragging = false, handle = null, bi
             {mod.title}
           </div>
 
-          {/* The count in words, on every tile at every width. The row is always
-              drawn so a count that arrives late does not move the tile; only a
-              count KNOWN to be zero says "Nothing new", a module with no feed
-              says "No alerts", and an unresolved one says nothing. */}
-          {!editing && (
+          {/* The count, ONLY when it is above zero (owner, 2026-11-23, evening): a
+              tile with nothing to say says nothing, so no "Nothing new" and no
+              "No alerts" are drawn. The chip is out of flow (see .status), so a
+              count that arrives late moves nothing. A big block says it in words,
+              a small tile and a phone's corner say the number alone; the word is
+              the chip's tooltip and the button's aria-label. */}
+          {!editing && hasNotif && (
             <div className={styles.status} aria-hidden="true">
-              {hasNotif ? (
-                <span className={styles.chip}>
-                  <span className={styles.chipDot} />
-                  {count! > 99 ? '99+' : count} {label}
-                </span>
-              ) : count === 0 ? (
-                <span className={styles.calm}>
-                  <Check size={14} strokeWidth={2.2} />
-                  Nothing new
-                </span>
-              ) : count === null ? (
-                <span className={styles.none}>No alerts</span>
-              ) : null}
+              <span className={styles.chip} title={`${count} ${label}`}>
+                <span className={styles.chipDot} />
+                {count! > 99 ? '99+' : count}
+                <span className={styles.chipWord}>{label}</span>
+              </span>
             </div>
           )}
 
