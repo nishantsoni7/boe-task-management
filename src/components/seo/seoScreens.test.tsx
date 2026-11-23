@@ -137,7 +137,7 @@ describe('the 6-month review and the discussion brief', () => {
 
   test('a brief with a report is drawn as the report: its blocks in its order, its headings, none of the owner notes', () => {
     const page = html(<BriefBody brief={SAMPLE_REPORT} />)
-    const order = ['Sample kicker', 'Sample report title', 'Sample tile', 'Sample went well', 'Sample win', 'Sample rankings in the report', 'sample keyword', 'Sample report table', 'Sample table takeaway.', 'Sample went wrong', 'Sample miss card', SAMPLE_CASE.proof.title, 'Sample case footnote.']
+    const order = ['Sample kicker', 'Sample report title', 'Sample tile', 'Sample went well', 'Sample win', 'Sample rankings in the report', 'sample keyword', 'Sample report table', 'Sample table takeaway.', 'Sample went wrong', 'Sample miss card', SAMPLE_CASE.proof.title, 'Sample short version', 'Sample case footnote.']
     let at = -1
     for (const text of order) {
       const next = page.indexOf(text, at + 1)
@@ -148,6 +148,31 @@ describe('the 6-month review and the discussion brief', () => {
       assert.equal(page.includes(note), false, `the report leaves out "${note}"`)
     }
     assert.ok(/<a [^>]*href="https:\/\/example\.com\/win"[^>]*target="_blank"/.test(page), 'a card proof opens its source in a new tab')
+  })
+
+  test('the short version draws its sections, charts and source, and counts the searches from the rankings rows', () => {
+    const page = html(<BriefBody brief={SAMPLE_REPORT} />)
+    const order = ['Sample short version', 'Sample good section', 'Sample good lead.', '+23%', 'Sample figure note', 'Sample bars', 'Sample searches section', 'Sample tally', 'Sample categories', 'Sample pie', 'Sample reason text.', 'Sample source title', 'Sample source text.', 'Sample source point.']
+    let at = -1
+    for (const text of order) {
+      const next = page.indexOf(text, at + 1)
+      assert.ok(next > at, `"${text}" comes after the part before it`)
+      at = next
+    }
+    // The three sample searches: one fell by 8 places, one improved, one is newly in view.
+    assert.ok(page.includes('Of the 2 searches Google showed us at least 20 times in Q1') && page.includes('1 improved') && page.includes('1 fell') && page.includes('by 8.0 places on average'), 'the sentence counts the rows')
+    assert.ok(page.includes('about 50%') && page.includes('Not compared: 1 newly in view, 0 with too few showings'), 'one of the two compared lost ground; the third is newly in view')
+    assert.ok(page.includes('role="img" aria-label="1 of 2 searches shown a year ago'), 'the donut says the same in words')
+    assert.ok(page.includes('▲1') && page.includes('▼1'), 'each category shows what rose and what fell')
+    assert.ok(page.includes('Sample slice') && page.includes('75%'), 'a pie lists its slices with their share')
+    assert.ok(page.includes('1,300'), 'a bar carries its value')
+  })
+
+  test('the rankings carry a total, each category its own, and each search says what happened to it', () => {
+    const page = html(<BriefBody brief={SAMPLE_CASE} />)
+    assert.ok(page.includes('3 searches:') && page.includes('1 improved') && page.includes('0 dropped out of view'), 'the strip totals the rankings')
+    assert.ok(page.includes('▲ 1') && page.includes('▼ 1'), 'the category heading counts what rose and fell')
+    assert.ok(page.includes('Newly in view'), 'a search that was thin a year ago and firm now says so')
   })
 
   test('the chart axis rounds up to an easy number', () => {

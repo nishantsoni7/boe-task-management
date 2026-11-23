@@ -563,3 +563,88 @@
   .flowItem { flex-basis: 100%; }
   .arrow { display: none; }
 }
+
+/* ── The short version (23 Nov 2026): conclusions first, each with the chart that proves it ── */
+.mUp { --m: var(--boe-completed-fg); }
+.mSame { --m: #B8B0A5; }
+.mDown { --m: var(--boe-blocked-fg); }
+.mOut { --m: var(--boe-blocked-fg); }
+.mNew { --m: #2F5480; }
+.mThin { --m: #E4DFD7; }
+.mWait { --m: var(--boe-waiting-fg); }
+.swatchHatch { background: repeating-linear-gradient(45deg, var(--boe-blocked-fg) 0 2px, var(--boe-blocked-bg) 2px 5px) !important; }
+
+.sum { overflow: hidden; }
+.sumSection { --accent: var(--boe-border-strong); display: grid; gap: 14px; padding: 18px 20px 20px; border-top: 1px solid var(--boe-border); border-left: 4px solid var(--accent); min-width: 0; }
+.sumGood { --accent: var(--boe-completed-fg); }
+.sumBad { --accent: var(--boe-blocked-fg); }
+.sumWait { --accent: var(--boe-waiting-fg); }
+.sumTop { display: flex; align-items: center; gap: 10px; }
+.sumTitle { margin: 0; font: 700 16px/1.3 var(--boe-font-heading); color: var(--boe-text); }
+.sumLead { margin: 0; font: 600 18px/1.4 var(--boe-font-heading); color: var(--boe-text); max-width: 72ch; text-wrap: pretty; }
+.sumFigures { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.sumFigure { display: grid; gap: 2px; align-content: start; padding: 12px 14px; border: 1px solid var(--boe-border); border-radius: 10px; background: var(--boe-surface-quiet); min-width: 0; }
+.sumFigure b { font: 800 26px/1.1 var(--boe-font-heading); letter-spacing: -0.01em; font-variant-numeric: tabular-nums; color: var(--boe-text); overflow-wrap: anywhere; }
+.sumFigure span { font-size: 13px; font-weight: 500; line-height: 1.3; color: var(--boe-text); }
+.sumFigure small { font-size: 12px; line-height: 1.35; color: var(--boe-text-muted); }
+.sumCharts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 14px; align-items: start; }
+.chartCard { margin: 0; display: grid; gap: 12px; padding: 14px 16px 16px; border: 1px solid var(--boe-border); border-radius: 10px; background: var(--boe-surface); min-width: 0; }
+.chartCard > figcaption { display: grid; gap: 2px; }
+.chartCard > figcaption b { font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--boe-text); }
+.chartCard > figcaption span { font-size: 12px; line-height: 1.35; color: var(--boe-text-muted); }
+.chartSentence { margin: 0; font-size: 13px; line-height: 1.55; color: var(--boe-text-strong); }
+.sumPoints { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.sumPoints li { font-size: 13.5px; line-height: 1.5; color: var(--boe-text-strong); padding-left: 14px; position: relative; }
+.sumPoints li::before { content: ''; position: absolute; left: 0; top: 0.6em; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+.sumPoints b { font-weight: 600; color: var(--boe-text); }
+
+.donutRow { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 18px; }
+.donut { width: 150px; height: 150px; flex: none; }
+.donut circle:not([stroke]) { stroke: var(--m); }
+.donutValue { font: 800 24px var(--boe-font-heading); fill: var(--boe-text); }
+.donutCaption { font: 500 10px var(--boe-font-body); fill: var(--boe-text-muted); }
+.sumLegend { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; flex: 1 1 170px; min-width: 0; font-size: 12.5px; color: var(--boe-text-strong); }
+.sumLegend li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sumLegend i { width: 12px; height: 12px; flex: none; border-radius: 3px; background: var(--m); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); }
+.sumLegend span { flex: 1; min-width: 0; }
+.sumLegend b { font-variant-numeric: tabular-nums; color: var(--boe-text); }
+.sumLegend small { width: 34px; text-align: right; font-size: 12px; color: var(--boe-text-muted); font-variant-numeric: tabular-nums; }
+
+.vbars { display: flex; align-items: flex-end; gap: 8px; min-height: 190px; }
+.vbar { flex: 1 1 0; min-width: 0; display: grid; gap: 5px; justify-items: center; align-content: end; }
+.vbar b { font: 700 12px var(--boe-font-body); font-variant-numeric: tabular-nums; color: var(--boe-text); }
+.vbarTrack { width: 100%; height: 130px; display: flex; align-items: flex-end; }
+.vbarTrack i { display: block; width: 100%; min-height: 2px; border-radius: 4px 4px 0 0; background: var(--m); }
+.vbar span { font-size: 11px; line-height: 1.25; text-align: center; color: var(--boe-text-muted); overflow-wrap: anywhere; }
+
+.chartWide { grid-column: 1 / -1; }
+.legendRow { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--boe-text-strong); }
+.legendRow li { display: flex; align-items: center; gap: 6px; }
+.legendRow i { width: 12px; height: 12px; flex: none; border-radius: 3px; background: var(--m); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08); }
+.catRows { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr)); gap: 6px 28px; }
+.catRow { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(0, 1.4fr) auto; align-items: center; gap: 10px; }
+.catName { font-size: 12px; line-height: 1.3; color: var(--boe-text-strong); overflow-wrap: anywhere; }
+.catTrack { min-width: 0; }
+.catBar { display: flex; gap: 2px; height: 12px; }
+.catBar i { display: block; min-width: 3px; border-radius: 3px; background: var(--m); }
+.catCount { font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.sourceBox { margin: 0; display: grid; gap: 6px; padding: 16px 20px 18px; border-top: 1px solid var(--boe-border); background: var(--boe-surface-quiet); }
+.sourceTitle { font: 700 14px var(--boe-font-heading); color: var(--boe-text); }
+.tallyStrip { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; padding: 10px 20px; border-top: 1px solid var(--boe-border); font-size: 13px; color: var(--boe-text-strong); font-variant-numeric: tabular-nums; }
+.tallyStrip b { font-weight: 700; color: var(--boe-text); }
+
+@media (max-width: 900px) {
+  .sumSection, .sourceBox, .tallyStrip { padding-left: 16px; padding-right: 16px; }
+  .sumLead { font-size: 16px; }
+  .catRow { grid-template-columns: minmax(0, 1fr) auto; }
+  .catTrack { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (max-width: 560px) {
+  .sumFigures { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sumFigure { padding: 10px 12px; }
+  .sumFigure b { font-size: 22px; }
+  .vbars { gap: 4px; }
+  .vbar b { font-size: 11px; }
+  .vbar span { font-size: 10px; }
+}
