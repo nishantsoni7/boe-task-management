@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `c25d27c9` — Docs: the Fabric From box fix (#995) in the Quotations dossier, context map, changelog and inventory
+- Commit: `db33183d` — Quotations: the Fabric From box works on a row with nothing typed yet (no SQL) (#995)
 - Commits on this branch: 1552
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 502 (first `20260530_create_positions.sql`, latest `20270822000000_quotation_cards_open_owned_or_made.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `c25d27c9` 2026-11-23 Docs: the Fabric From box fix (#995) in the Quotations dossier, context map, changelog and inventory
-- `5e014108` 2026-11-23 Quotations: the Fabric From box works on a row with nothing typed yet
+- `db33183d` 2026-11-23 Quotations: the Fabric From box works on a row with nothing typed yet (no SQL) (#995)
+- `42e9edf6` 2026-11-23 Quotations: the builder's top section tidied, and Price approval moved up into the Status card (no SQL) (#994)
 - `f904e860` 2026-11-23 Docs: stamp #989 (the Open-tile migration file) as merged and live (no SQL) (#991)
 - `0b74fdbb` 2026-11-23 Docs: stamp the merge of #990 (Improve picture: line details and reference box) on its entries (#992)
 - `43175621` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
