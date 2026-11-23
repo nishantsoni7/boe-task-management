@@ -15,6 +15,7 @@ import { fetchHome, learningErrorKind, learningErrorText, learningKeys } from '@
 import { HitChart, MissChart, TARGET_MISS } from './charts'
 import { FeedbackInbox } from './FeedbackInbox'
 import { AccuracyCard } from './AccuracyCard'
+import { PhotoFactsCard } from './PhotoFactsCard'
 import { dateIN, inNum, isDesk } from './common'
 import s from '@/components/quotations/quotations.module.css'
 import l from './learning.module.css'
@@ -115,6 +116,7 @@ export default function LearningHome() {
         )}
 
         {accessLoaded && desk && !notSetUp && <AccuracyCard supabase={supabase} />}
+        {accessLoaded && desk && !notSetUp && <PhotoFactsCard supabase={supabase} />}
         {accessLoaded && desk && !notSetUp && <FeedbackInbox supabase={supabase} />}
       </div>
     </QuotationsLayout>

@@ -397,4 +397,45 @@ let id
   ok('a case keeps how each element was worked out and what its price is; bad cases are refused whole; the library is unchanged for a metal frame')
 }
 
+{ // 20270825000000: photo facts. The stand-in quotation lines get their photo column, and approved PIs their items.
+  await db.exec(`
+    alter table public.quotation_lines add column image_path text;
+    update public.quotation_lines set image_path = 'a1/b1.jpg' where name = 'Chair C - 1';
+    create table public.order_submissions (id uuid primary key default gen_random_uuid(), status text);
+    create table public.order_submission_items (id uuid primary key default gen_random_uuid(), submission_id uuid references public.order_submissions(id), product_name text, image_storage_path text);
+    insert into public.order_submissions (id, status) values ('00000000-0000-0000-0000-00000000bb01', 'approved'), ('00000000-0000-0000-0000-00000000bb02', 'draft');
+    insert into public.order_submission_items (submission_id, product_name, image_storage_path) values
+      ('00000000-0000-0000-0000-00000000bb01', 'Cane chair', 'submissions/s1/images/i1/representative/0-abc.png'),
+      ('00000000-0000-0000-0000-00000000bb02', 'Draft chair', 'submissions/s2/images/i2/representative/0-def.png');
+  `)
+  await db.exec(mig('20270825000000_pricing_photo_facts.sql'))
+  const casePhotos = (await db.query(`select count(distinct image_path)::int n from public.pricing_training_cases where image_path is not null`)).rows[0].n // one photo, read once, however many cases use it
+  let q = await rpc(U.viewer, 'pricing_photo_queue', 50)
+  assert.equal(q.total, 2 + casePhotos)                                 // the quotation line, the approved PI's item, the cases' photos; never a draft PI
+  assert.equal(q.read, 0)
+  assert.ok(q.waiting.some(w => w.key === 'quotation-images/a1/b1.jpg' && w.source === 'quotation' && w.label === 'Chair C - 1'))
+  assert.ok(q.waiting.some(w => w.key === 'order-files/submissions/s1/images/i1/representative/0-abc.png' && w.source === 'pi'))
+  assert.ok(!q.waiting.some(w => /0-def/.test(w.key)))
+  const facts = { kind: 'chair', arms: 'no', back: 'cane', seat: 'cane', base: 'four_legs', top: 'none', metal: 'none', carving: 'no', confidence: 90, note: 'Cane back and seat' }
+  await fails(U.viewer, 'select public.pricing_photo_fact_save($1, $2, $3, $4)', ['quotation-images/a1/b1.jpg', 'Chair', facts, 'm'], /PRICING_PHOTO_FORBIDDEN/)
+  await fails(U.teacher, 'select public.pricing_photo_fact_save($1, $2, $3, $4)', ['quotation-images/not/held.jpg', 'Chair', facts, 'm'], /PRICING_PHOTO_INVALID/)
+  await fails(U.teacher, 'select public.pricing_photo_fact_save($1, $2, $3, $4)', ['order-files/submissions/s2/images/i2/representative/0-def.png', 'Draft', facts, 'm'], /PRICING_PHOTO_INVALID/)
+  await rpc(U.teacher, 'pricing_photo_fact_save', 'quotation-images/a1/b1.jpg', 'Chair C - 1', facts, 'claude-sonnet-5-5')
+  await rpc(U.teacher, 'pricing_photo_fact_save', 'order-files/submissions/s1/images/i1/representative/0-abc.png', 'Cane chair', { ...facts, arms: 'yes' }, 'claude-sonnet-5-5')
+  q = await rpc(U.viewer, 'pricing_photo_queue', 50)
+  assert.equal(q.read, 2); assert.equal(q.waiting.length, casePhotos)
+  await fails(U.viewer, 'select public.pricing_photo_fact_correct($1, $2)', ['quotation-images/a1/b1.jpg', facts], /PRICING_PHOTO_FORBIDDEN/)
+  await fails(U.teacher, 'select public.pricing_photo_fact_correct($1, $2)', ['quotation-images/x/y.jpg', facts], /PRICING_PHOTO_NOT_FOUND/)
+  await rpc(U.checker, 'pricing_photo_fact_correct', 'quotation-images/a1/b1.jpg', { ...facts, arms: 'yes' })
+  await rpc(U.teacher, 'pricing_photo_fact_save', 'quotation-images/a1/b1.jpg', 'Chair C - 1', { ...facts, arms: 'no' }, 'again') // a corrected reading is never read over
+  const list = await rpc(U.viewer, 'pricing_photo_facts_list')
+  const corrected = list.find(x => x.key === 'quotation-images/a1/b1.jpg')
+  assert.equal(corrected.corrected, true); assert.equal(corrected.facts.arms, 'yes'); assert.equal(corrected.by_name, 'Checker')
+  await fails(U.teacher, 'select * from public.pricing_photo_facts', [], /permission denied/)
+  await fails(U.teacher, 'select * from public.pricing_photo_sources()', [], /permission denied/)
+  await fails(null, 'select public.pricing_photo_queue(5)', [], /permission denied/, 'anon')
+  await fails(U.nobody, 'select public.pricing_photo_facts_list()', [], /PRICING_TRAINING_FORBIDDEN/)
+  ok('photo facts: every product photo held is queued once (never a draft PI), teachers keep and correct readings, a correction is never read over, the table is closed')
+}
+
 console.log(`all ${checks} checks passed`)
