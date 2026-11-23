@@ -280,4 +280,24 @@ let fbId
   ok('a bad kind, source, comment length or price is refused, no grant is refused, and one person is limited to 60 notes a day')
 }
 
+// ── 20270824000000: the echo guard. A price set with "Use" and not changed is left out of learning ──
+{
+  await db.exec(mig('20270824000000_pricing_echo_guard.sql'))
+  await db.exec(`
+    insert into public.quotations (id, quote_no, status, client_name, owner_id, created_by) values
+      ('00000000-0000-0000-0000-0000000e0001', 'QT-E-00001', 'sent', 'Echo test', '${U.sales}', '${U.sales}');
+    insert into public.quotation_lines (quotation_id, position, name, unit_price, qty_fixed, internal_note) values
+      ('00000000-0000-0000-0000-0000000e0001', 0, 'Echo stool A', 4790, 10, 'Darker [Used suggestion 4790]'),
+      ('00000000-0000-0000-0000-0000000e0001', 1, 'Echo stool B', 5200, 10, '[Used suggestion 4790]'),
+      ('00000000-0000-0000-0000-0000000e0001', 2, 'Echo stool C', 4790, 10, 'Typed by hand');
+  `)
+  const pool = await rpc(U.sales, 'pricing_pool', ['stool'], null)
+  const echo = pool.filter(p => /^Echo stool/.test(p.name)).map(p => p.name).sort()
+  assert.deepEqual(echo, ['Echo stool B', 'Echo stool C'], 'A is the suggestion used as it was; B was changed after Use; C was typed')
+  const points = (await db.query(`select name from public.pricing_all_points(null) where name like 'Echo stool%' order by 1`)).rows.map(r => r.name)
+  assert.deepEqual(points, ['Echo stool B', 'Echo stool C'])
+  await fails(U.sales, `select public.pricing_used_suggestion('x', 1)`, [], /permission denied/)
+  ok('the echo guard: a line still at the price "Use" set is left out of the pool and the history points; a changed or typed price counts')
+}
+
 console.log(`all ${checks} checks passed`)

@@ -196,6 +196,8 @@ The owner found the builder messy and chose layout "B" from three mockups (priva
 
 ## 12. Price learning, piece 1 (owner approved 2026-11-13; LIVE 2026-11-14: PR #760 `b273b165`; migration `20270715000000_pricing_learning.sql` APPLIED before the merge, after a backup)
 
+**2026-11-23 (Price Brain v2 phase 3A, branch `feat/price-exam-echo-guard`, not merged):** the home page also shows **How accurate is it** and **Teach next** (`AccuracyCard.tsx`, desk only; the model priced blind on the prices it already has, against the noise floor), and a suggested price's **Use** now tags the line's internal note `[Used suggestion N]` so learning leaves that price out while it is unchanged (`20270824000000`, dossier 24).
+
 **What it is.** A place in Quotations to feed the price model with the PIs BOE has already made, 25 at a time, with an honest score for every batch, and a doorway on every suggested price to share feedback or to say how the price logic should work. Planned with the owner on 2026-11-13: plan, then a seven-screen mock-up (private design page https://claude.ai/artifact/BNkKqkj38XYNTUMKgRH2qd), approved, then built. Pieces 2 (order-level patterns: designs, total pieces, order value; step-by-step reasoning) and 3 (the desk changes the logic: pins, name rules, left-out, weights, a change log, a test on past PIs) are not built.
 
 **Who.** The pricing desk: Admin, or Quotations edit AND see-all (the same rule as price approval, `pricing_learning_require_desk()` in the database, `isDesk()` in `components/pricing/learning/common.ts`). Salespeople never see the page; they see the suggested price and the feedback doorway.

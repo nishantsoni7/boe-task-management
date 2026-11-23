@@ -14,6 +14,7 @@ import { useQuotations } from '@/hooks/useQuotations'
 import { fetchHome, learningErrorKind, learningErrorText, learningKeys } from '@/lib/pricing/learning/api'
 import { HitChart, MissChart, TARGET_MISS } from './charts'
 import { FeedbackInbox } from './FeedbackInbox'
+import { AccuracyCard } from './AccuracyCard'
 import { dateIN, inNum, isDesk } from './common'
 import s from '@/components/quotations/quotations.module.css'
 import l from './learning.module.css'
@@ -53,7 +54,7 @@ export default function LearningHome() {
               <div><span className={l.num}>2</span><b>It prices them blind first</b><span>Before learning a batch it prices every line using only what it knew, and compares. That is the honest score.</span></div>
               <div><span className={l.num}>3</span><b>Then it learns</b><span>Every suggestion in a quotation uses what was learned, and each has a way to send feedback or say how the logic should work.</span></div>
             </div>
-            <div className={`${s.notice}`}>Today the model already learns from the approved PIs and quotations in BOE One. Its accuracy has not been measured yet: the first batch sets the starting line.</div>
+            <div className={`${s.notice}`}>Today the model already learns from the approved PIs and quotations in BOE One. How accurate it is on those is measured below; each batch you learn is also priced blind first.</div>
           </>
         )}
 
@@ -113,6 +114,7 @@ export default function LearningHome() {
           </>
         )}
 
+        {accessLoaded && desk && !notSetUp && <AccuracyCard supabase={supabase} />}
         {accessLoaded && desk && !notSetUp && <FeedbackInbox supabase={supabase} />}
       </div>
     </QuotationsLayout>

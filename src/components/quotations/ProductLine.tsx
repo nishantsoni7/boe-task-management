@@ -10,6 +10,7 @@ import { PriceHintLine } from './PricingDesk'
 import { TaughtPrice, type DiffersReport } from '@/components/pricing/training/TaughtPrice'
 import type { Library } from '@/lib/pricing/training/match'
 import type { ReworkAnswer } from '@/lib/pricing/training/api'
+import { withUsedTag } from '@/lib/pricing/echo'
 import { Pic } from './Pic'
 import { ChoicesPanel } from './ChoicesPanel'
 import { forgetPicture, pointAtPicture, type PictureTarget } from './pictureClipboard'
@@ -119,7 +120,8 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
         {taught && <TaughtPrice library={taught.library} photo={taught.photo} line={l} note={l.internal_note} price={l.unit_price} editable={editable} rework={taught.reworked?.get(l.key)}
           onNote={n => onChange({ internal_note: n })} onUse={p => onChange({ unit_price: Math.round(p) })}
           onDiffers={taught.differs && (r => taught.differs!(r, { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }))} />}
-        <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p) })}
+        {/* The echo guard (20270824000000): a price set by Use is tagged, and learning leaves it out until somebody changes it. */}
+        <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p), internal_note: withUsedTag(l.internal_note, Math.round(p)) })}
           feedback={feedbackCtx && { line: { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }, ...feedbackCtx, imagePath: l.image_path, price: l.unit_price }} />
         <div className={s.plFoot}>
           <label className={s.optLab}><input type="checkbox" checked={l.is_optional} onChange={e => onChange({ is_optional: e.target.checked })} disabled={!editable} /> Optional</label>
