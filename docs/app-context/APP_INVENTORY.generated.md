@@ -10,7 +10,7 @@
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 500 (first `20260530_create_positions.sql`, latest `20270820000000_quotation_client_costing_view.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
-- Test files: 926   Next.js 16.2.6, React 19.2.4
+- Test files: 927   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 

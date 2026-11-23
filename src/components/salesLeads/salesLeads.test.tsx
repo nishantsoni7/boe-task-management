@@ -214,7 +214,7 @@ describe('the duplicate warning', () => {
 
 describe('the routes', () => {
   test('the module is guarded and a refused person goes back to Modules', () => {
-    assert.ok(read('src/app/sales/layout.tsx').includes('<ModuleGuard moduleKey="sales" deniedRoute="/modules" checking={<SalesCheckingFrame />}>'))
+    assert.ok(read('src/app/sales/layout.tsx').includes('<ModuleGuardStartsEarly moduleKey="sales" deniedRoute="/modules" checking={<SalesCheckingFrame />}>'))
   })
 
   test('/sales opens My day, and the board, the list and the add page exist', () => {
