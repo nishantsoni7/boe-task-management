@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `330dc033` — Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
-- Commits on this branch: 1542
+- Commit: `f8bca282` — Docs: record migration 20270821000000 as applied to production
+- Commits on this branch: 1544
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 501 (first `20260530_create_positions.sql`, latest `20270821000000_launcher_big_module_keys.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
-- Test files: 932   Next.js 16.2.6, React 19.2.4
+- Test files: 933   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `f8bca282` 2026-11-23 Docs: record migration 20270821000000 as applied to production
+- `72bd24b6` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
 - `741a8d4e` 2026-11-23 Docs: stamp the SEO brief short version as merged and live (no SQL) (#983)
 - `586aaf2e` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL) (#979)
@@ -37,8 +39,6 @@
 - `0da52ac1` 2026-11-20 Docs: stamp #961 (delete a quotation) as merged and live, migration 20270817000000 applied (#964)
 - `7172f6c2` 2026-11-20 Quotations: typing in Material and Remarks no longer refits the price model for every product (#962)
 - `b5f21118` 2026-11-20 Quotations: delete an unsent draft (its maker) or any quotation but a PI-linked one (administrator) (#961)
-- `a97765c4` 2026-11-20 Quotations: a quotation started from a lead copies its contact role into the client type (#960)
-- `e31bbde9` 2026-11-20 Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied) (#959)
 
 ## Pages by top-level area
 
