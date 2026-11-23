@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `ed9d98bc` — Docs: phase 2 full suite and build results
-- Commits on this branch: 1557
+- Commit: `f204c9f2` — Merge remote-tracking branch 'origin/main' into feat/taught-price-rework
+- Commits on this branch: 1559
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 225
 - Migrations: 503 (first `20260530_create_positions.sql`, latest `20270823000000_pricing_calculators.sql`)
 - Tables ever created: 273 (dropped at some point: 8)   SQL functions: 1105   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
+- `f204c9f2` 2026-11-23 Merge remote-tracking branch 'origin/main' into feat/taught-price-rework
 - `ed9d98bc` 2026-11-23 Docs: phase 2 full suite and build results
+- `6c3063dc` 2026-11-23 Modules launcher: quiet tiles, a tile with nothing to say says nothing (#998)
 - `4ccde56b` 2026-11-23 Pricing: a taught price worked out again for each quotation line
 - `ab3cdddd` 2026-11-23 Pricing: "Teach this price" from a feedback card or a quotation line, and "In your words" (#997)
 - `3b7839d6` 2026-11-23 Docs: stamp #995 (the Fabric From box fix) as merged and live (no SQL) (#996)
@@ -37,8 +39,6 @@
 - `27e81248` 2026-11-23 Sales: pages wait in their own shape, Lead Master filters stop asking the server, popup reads quotations beside the record (no SQL) (#980)
 - `f7e91f93` 2026-11-23 Sales: a saved action shows on every screen at once and reads only what changed (no SQL) (#978)
 - `9d2ec62e` 2026-11-23 Sales: every Sales page starts while the access check runs (no SQL) (#977)
-- `843cb1fb` 2026-11-23 Quotations: the PI draft carries the costing (PR 3 of 3; no SQL) (#976)
-- `5f248a5d` 2026-11-23 Quotations: the client's copy shows per-piece fabric and packing (PR 2 of 3; migration 20270820000000 NOT applied) (#975)
 
 ## Pages by top-level area
 
