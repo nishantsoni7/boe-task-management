@@ -210,7 +210,7 @@ Modules launcher (`src/app/modules/page.tsx`):
   were not touched. Decisions the owner approved: the chip reverses "the badge is the only count on a tile" for wide
   Essentials only; no pale-pink hover wash (the "no pink" pin stays).
 - **Big blocks and a count on every tile (2026-11-23, owner ask; mock-up approved first; migration `20270821000000`,
-  NOT APPLIED until the owner applies it; this section supersedes the Essentials/badge/phone wording above).**
+  APPLIED to production 2026-11-23 14:02 IST; this section supersedes the Essentials/badge/phone wording above).**
   - *Which modules are big is the person's choice, up to four.* Until they choose, the four are Task, Order, Finance and
     Sales (`DEFAULT_BIG_MODULE_KEYS`); a key without a card (a module they cannot open) selects nothing, so somebody
     without Sales has three. "Edit order" gains a "Make big / Big block" button on every card and an "N of 4 big
@@ -243,7 +243,7 @@ Modules launcher (`src/app/modules/page.tsx`):
   - *Tests.* `src/app/modules/launcherBigBlocks.test.ts` (new: the rules executed, the count wiring and the migration read
     as text); `moduleCardSurface.test.ts`, `moduleOrderStorage.test.ts`, `notificationCountCache.test.ts` and the two migration
     ledgers in `participantAndOrderTotalSecurity.test.ts` updated. The migration was rehearsed in an in-memory Postgres
-    (PGlite, 23 checks) on top of the real `20261228000000`; NOT against the real production schema.
+    (PGlite, 23 checks) on top of the real `20261228000000`, and again on the live database inside `begin … rollback` before it was applied.
   - *Traps.* Ship order: the migration FIRST, then the code. Do not turn the big-block choice into role inheritance: a stored
     key is never access. The quotation count and the category counts are display only.
 - Quick Actions, phone copy (<= 767 px, `globals.css` `.boe-quick-actions-page`): a visible "Quick Actions" label
