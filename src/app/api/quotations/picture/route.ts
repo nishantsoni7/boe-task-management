@@ -1,4 +1,5 @@
-// POST /api/quotations/picture  { sourcePath, mode: 'clean' | 'change', instruction?, reference? }
+// POST /api/quotations/picture  { sourcePath, mode: 'clean' | 'change', instruction?, reference?, details? }
+// (details: the product's name, size and material from the quotation line, up to 300 characters, a guide for the prompt)
 //
 // Image studio for a quotation product picture (phase 4, owner approved 2026-11-12). Reads the CLEAN original from
 // the private quotation-originals bucket (18 Nov 2026: the public copy carries the logo mark), sends it to the same
@@ -18,7 +19,7 @@ import { PI_IMAGE_EDIT_MODEL } from '@/lib/orders/customizationImage'
 import { sniffImageFormat } from '@/lib/xlsxMediaOptimizer'
 import { markPicture } from '@/lib/quotations/pictureMark'
 import { ORIGINALS_BUCKET } from '@/lib/quotations/pictureStore'
-import { readReference, studioProblem, studioPrompt, type StudioMode } from '@/lib/quotations/pictureStudio'
+import { MAX_DETAILS, readDetails, readReference, studioProblem, studioPrompt, type StudioMode } from '@/lib/quotations/pictureStudio'
 import { spendCredits } from '@/lib/imageCredits/spend'
 
 export const runtime = 'nodejs'
@@ -52,6 +53,8 @@ export async function POST(req: NextRequest) {
   if (problem) return fail(400, 'BAD_REQUEST', problem)
   const reference = readReference(body.reference)
   if (reference === false) return fail(400, 'BAD_REQUEST', 'The reference picture must be a JPG, PNG or WebP under 2 MB.')
+  const details = readDetails(body.details)
+  if (details === false) return fail(400, 'BAD_REQUEST', `Keep the product details under ${MAX_DETAILS} characters.`)
   const mode = body.mode as StudioMode
   const sourcePath = body.sourcePath as string
   const instruction = typeof body.instruction === 'string' ? body.instruction.trim() : ''
@@ -81,7 +84,7 @@ export async function POST(req: NextRequest) {
     deadlineAt: startedAt + ROUTE_BUDGET_MS,
     expect: 1,
     body: {
-      prompt: studioPrompt(mode, instruction, !!reference),
+      prompt: studioPrompt(mode, instruction, !!reference, details),
       image_urls: [toDataUrl(source, 'image/jpeg'), ...(reference ? [`data:${reference.mime};base64,${reference.base64}`] : [])],
       num_images: 1,
       aspect_ratio: 'auto',
