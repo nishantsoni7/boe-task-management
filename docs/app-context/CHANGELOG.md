@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-23 — Quotations: the Fabric "From" box on the Fabric, finish and packing page works on a row with nothing typed yet (PR #995, branch `fix/costing-fabric-from-empty-row`, open, not merged) · no migration
+
+- **Why.** Owner (screenshot of QT-N-01008, status Sent): the From box of the Fabric group could not be changed. Cause: `CostingPage.tsx` closed it with `disabled={!editable || !fab}`, and `fab` (the line's saved `client_choices.fabric`) only exists once a fabric name or code has been typed. The Sent status was not the cause (`LOCKED` is confirmed, lost and archived).
+- **What.** `CostingPage.tsx`: the box is closed only when the quotation cannot be edited; `tidy()` keeps a choice whose source is not "From our catalog" even with nothing else in it (without that, picking "Client's own" on an empty row was dropped at once and the box snapped back). Picking "From our catalog" again on an empty row removes the choice, so nothing is left behind. `costingPage.dom.test.tsx`: one new test (12 in all).
+- **Behaviour to know.** A client's own fabric, or a code, with nothing else typed is now saved as a choice that waits "To confirm" (the same thing the Client choices panel's "Add fabric" makes), so it shows on the client's choices page with its source and that chip until a name or code is typed. It is not priced (`fabricInUse` still needs a name, a code or a typed number), so the totals, the sums and the PI mapping are unchanged.
+- **Verification.** tsc, eslint and the targeted costing tests; not seen in a browser or signed in (the owner tests first).
+- **Rollback.** Revert the PR. Nothing in the database changed (the checker `quotation_line_choices_ok` already accepts a choice that has only a source and a status).
+
 ## 2026-11-23 — Quotations: Improve picture sends the product's details and has a proper reference picture box (PR #990, branch `feat/picture-studio-details`, merged by the owner's go 23 Nov 2026 16:34 IST as `43175621`, live 16:36 IST (Vercel production success)) · no migration
 
 - **Why.** Owner: "Given an option to add a reference image in case we want you to take some inspiration from that. Also by default it should show the dimensions entered in this screen and those basic details should be by default included in the improving the image." The reference option already existed under Change it, but as the browser's plain file picker (no thumbnail, no remove, locked after a result).
