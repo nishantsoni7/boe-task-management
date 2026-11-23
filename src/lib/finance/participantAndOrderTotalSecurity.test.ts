@@ -1370,6 +1370,8 @@ describe('the applied migrations are frozen', () => {
       '20270819000000_quotation_line_costing.sql',
       // Quotations: the client's copy carries per-piece fabric and packing figures (one new immutable function; quotation_client_doc re-created; no table or row changes).
       '20270820000000_quotation_client_costing_view.sql',
+      // Quotations: the Open quotations card counts quotations the person owns OR made, as the list does (one function re-created, same signature and grants; no table or row changes).
+      '20270822000000_quotation_cards_open_owned_or_made.sql',
     ])
   })
 
@@ -1951,6 +1953,8 @@ describe('the applied migrations are frozen', () => {
       '20270819000000_quotation_line_costing.sql',
       // Quotations: the client's copy carries per-piece fabric and packing figures (one new immutable function; quotation_client_doc re-created; no table or row changes).
       '20270820000000_quotation_client_costing_view.sql',
+      // Quotations: the Open quotations card counts quotations the person owns OR made, as the list does (one function re-created, same signature and grants; no table or row changes).
+      '20270822000000_quotation_cards_open_owned_or_made.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

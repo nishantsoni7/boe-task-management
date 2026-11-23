@@ -1645,4 +1645,40 @@ await db.exec(mig('20270819000000_quotation_line_costing.sql'))
   ok('the view function and the client document function are closed to anyone signed out')
 }
 
+// ── 20270822000000: the Open card counts what the list counts (owner OR maker) ──
+{
+  const L1 = '00000000-0000-0000-0000-0000000001a1'
+  const cards = (uid, person) => as(uid, 'select public.quotation_cards($1::date, $2::date, $3::uuid) as r', ['2020-01-01', '2099-12-31', person ?? null]).then(r => r.rows[0].r)
+  const listOpen = async uid => {
+    const rows = (await as(uid, `select public.quotation_list('mine') as r`)).rows[0].r.filter(x => ['draft', 'sent', 'negotiating'].includes(x.status))
+    return { n: rows.length, v: rows.reduce((t, x) => t + Number(x.value_before_gst || 0), 0) }
+  }
+  // The owner's real case: an Admin makes a quotation FOR a salesperson (owner = the salesperson, maker = the Admin).
+  const forPrerna = await rpc(U.admin, 'quotation_start', L1, { owner_id: U.sales2 })
+  await rpc(U.admin, 'quotation_save', forPrerna, { header: { client_name: 'Made for Prerna', valid_days: 7, gst_mode: 'igst' }, areas: [], lines: [{ name: 'Bed', qty_fixed: 2, unit_price: 25000, tax_rate: 18 }] })
+  const listed = await listOpen(U.admin)
+  const before = await cards(U.admin), beforeTeam = JSON.stringify([before.team, before.desk])
+  assert.ok(before.me.open_count < listed.n, 'the old function misses the quotation the Admin made for someone else (the owner\'s 0 beside 3 open)')
+
+  await db.exec(mig('20270822000000_quotation_cards_open_owned_or_made.sql'))
+  const after = await cards(U.admin)
+  assert.equal(after.me.open_count, listed.n); assert.equal(Number(after.me.open_value), listed.v); assert.ok(Number(after.me.open_value) >= 50000)
+  ok('the Open card now equals the list header: quotations the person owns OR made, same open statuses, same value')
+
+  assert.deepEqual({ ...after.me, open_count: 0, open_value: 0 }, { ...before.me, open_count: 0, open_value: 0 })
+  assert.equal(JSON.stringify([after.team, after.desk]), beforeTeam)
+  ok('nothing else changed: the period numbers, the desk block and the team block still count by owner')
+
+  assert.ok((await cards(U.sales2)).me.open_count >= 1)
+  const theirs = await cards(U.admin, U.sales2)
+  assert.equal(theirs.me.person, U.sales2); assert.ok(theirs.me.open_count >= 1)
+  await rpc(U.admin, 'quotation_set_status', forPrerna, 'archived', null)
+  assert.equal((await cards(U.admin)).me.open_count, listed.n - 1)
+  ok('the owner still counts it, a drilled-in candidate counts their own, and an archived quotation leaves the card as it leaves the list')
+
+  await fails(U.sales, 'select public.quotation_cards($1::date, $2::date, $3::uuid)', ['2020-01-01', '2099-12-31', U.sales2], /only see your own/)
+  await fails(null, 'select public.quotation_cards($1::date, $2::date, null)', ['2020-01-01', '2020-01-02'], /permission denied/, 'anon')
+  ok('a salesperson still sees only their own card and a signed-out caller still cannot call it')
+}
+
 console.log(`all ${checks} checks passed`)
