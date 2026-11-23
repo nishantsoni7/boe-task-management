@@ -29,7 +29,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Checked.** New `statusMore.dom.test.tsx` (13); `topRow`, `builderPolish`, `deleteQuotation.dom` updated; `tsc --noEmit` 0 errors; eslint clean on the changed files. Not seen: the real page in a browser, a real phone.
 - **Rollback.** Revert the PR. No data was changed.
 
-## 2026-11-23 — Quotations: the Fabric "From" box on the Fabric, finish and packing page works on a row with nothing typed yet (PR #995, branch `fix/costing-fabric-from-empty-row`, open, not merged) · no migration
+## 2026-11-23 — Quotations: the Fabric "From" box on the Fabric, finish and packing page works on a row with nothing typed yet (PR #995, branch `fix/costing-fabric-from-empty-row`, merged by the owner's go 23 Nov 2026 17:58 IST as `db33183d`, live 18:00 IST (GitHub Production deployment success)) · no migration
 
 - **Why.** Owner (screenshot of QT-N-01008, status Sent): the From box of the Fabric group could not be changed. Cause: `CostingPage.tsx` closed it with `disabled={!editable || !fab}`, and `fab` (the line's saved `client_choices.fabric`) only exists once a fabric name or code has been typed. The Sent status was not the cause (`LOCKED` is confirmed, lost and archived).
 - **What.** `CostingPage.tsx`: the box is closed only when the quotation cannot be edited; `tidy()` keeps a choice whose source is not "From our catalog" even with nothing else in it (without that, picking "Client's own" on an empty row was dropped at once and the box snapped back). Picking "From our catalog" again on an empty row removes the choice, so nothing is left behind. `costingPage.dom.test.tsx`: one new test (12 in all).
