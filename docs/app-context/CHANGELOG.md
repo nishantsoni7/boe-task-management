@@ -17,6 +17,12 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Checked.** `costing.test.ts` (17), `costingPage.dom.test.tsx` (11), `quotations_pglite.mjs` (152 checks; the new block proves apply, store, return, refusals and no leak to the client link or a frozen version). Both migration ledgers in `participantAndOrderTotalSecurity.test.ts` list the new file. Not seen signed in.
 - **Rollback.** Revert the code; by hand re-create the two functions from 20270808000100 and drop the column and the checkers (in the migration header). Nothing else depends on the column.
 
+## 2026-11-23 — Quotations: the PI draft carries the costing (PR 3 of 3, open, not merged; follows #974 and #975) · no SQL
+- **Why.** Owner, 23 Nov: "start the PI draft next".
+- **What.** The PI draft workbook now also has the sheet Orders reads, "Packing cost and Fabric Cost" (metres per piece, rate per metre, packing per piece, packing type per product), when any product has costing; each product's Customization starts with "Fabric: name (code)" and "Finish: code"; the fabric's and finish's swatch photos go on the PI as extra pictures. The two footer totals (A) and (B) already came from PR 1.
+- **Checked.** `piWorkbook.test.ts` (13, 5 new) through the real PI reader; 936 quotation and PI tests pass; tsc, eslint, build clean. Not seen on a real Order.
+- **Rollback.** Revert the commit; nothing else depends on it.
+
 ## 2026-11-23 — Quotations: the client's copy shows per-piece fabric and packing (PR 2 of 3, open, not merged; follows #974) · migration 20270820000000 (NOT APPLIED: needs the owner's go, BEFORE the merge)
 - **Why.** Owner, 23 Nov: "Yes, add both": the client sees the price per piece of the fabric and the packing, and the packing type.
 - **What.** On the Client choices page (link, PDF) and the Excel sheet: the fabric's price per piece in its cell, the packing line under the product, a row for a product that only has packing. Never the metres or a rate. The intro line changes only when a product has figures.
