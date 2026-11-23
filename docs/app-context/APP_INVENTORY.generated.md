@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `92a01b49` — Merge remote-tracking branch 'origin/main' into feat/notifications-major-only
-- Commits on this branch: 1543
+- Commit: `586aaf2e` — Notifications: Orders and Finance show major activity only (no SQL) (#979)
+- Commits on this branch: 1540
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 500 (first `20260530_create_positions.sql`, latest `20270820000000_quotation_client_costing_view.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
@@ -14,16 +14,13 @@
 
 ## Latest 25 commits
 
-- `92a01b49` 2026-11-23 Merge remote-tracking branch 'origin/main' into feat/notifications-major-only
-- `f12d6e84` 2026-11-23 Test: the other-module fixture row uses a shown Finance type
+- `586aaf2e` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL) (#979)
+- `97b0fdbc` 2026-11-23 SEO brief: a short version on top and a total under every part (no SQL) (#981)
 - `057443db` 2026-11-23 Sales: the Lead Board's columns start with the page; stamps and live timings for #977, #978, #980 (no SQL) (#982)
 - `27e81248` 2026-11-23 Sales: pages wait in their own shape, Lead Master filters stop asking the server, popup reads quotations beside the record (no SQL) (#980)
 - `f7e91f93` 2026-11-23 Sales: a saved action shows on every screen at once and reads only what changed (no SQL) (#978)
 - `9d2ec62e` 2026-11-23 Sales: every Sales page starts while the access check runs (no SQL) (#977)
-- `24956d7a` 2026-11-23 Docs: regenerate the app inventory after merging main
-- `3033f882` 2026-11-23 Merge remote-tracking branch 'origin/main' into feat/notifications-major-only
 - `843cb1fb` 2026-11-23 Quotations: the PI draft carries the costing (PR 3 of 3; no SQL) (#976)
-- `ac729ace` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL)
 - `5f248a5d` 2026-11-23 Quotations: the client's copy shows per-piece fabric and packing (PR 2 of 3; migration 20270820000000 NOT applied) (#975)
 - `e38573c9` 2026-11-23 Quotations: a Fabric, finish and packing page, priced per piece (PR 1 of 3; migration 20270819000000 NOT applied) (#974)
 - `4e7f1b2d` 2026-11-21 Orders: the approver's payment chips in one call (migration 20270818000000, NOT applied) (#970)
@@ -39,6 +36,9 @@
 - `7172f6c2` 2026-11-20 Quotations: typing in Material and Remarks no longer refits the price model for every product (#962)
 - `b5f21118` 2026-11-20 Quotations: delete an unsent draft (its maker) or any quotation but a PI-linked one (administrator) (#961)
 - `a97765c4` 2026-11-20 Quotations: a quotation started from a lead copies its contact role into the client type (#960)
+- `e31bbde9` 2026-11-20 Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied) (#959)
+- `f928263f` 2026-11-20 Quotations: an old Task request no longer makes a quotation without a lead; docs say 20270814000100 is applied (#958)
+- `ae0b9a67` 2026-11-20 Sales leads: a contact role, and the quick note Waiting for BOQ (#957)
 
 ## Pages by top-level area
 
