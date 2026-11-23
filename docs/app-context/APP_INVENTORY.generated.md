@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `586aaf2e` — Notifications: Orders and Finance show major activity only (no SQL) (#979)
-- Commits on this branch: 1540
+- Commit: `8d753a96` — Merge remote-tracking branch 'origin/main' into docs/stamp-979-notifications
+- Commits on this branch: 1543
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 500 (first `20260530_create_positions.sql`, latest `20270820000000_quotation_client_costing_view.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `8d753a96` 2026-11-23 Merge remote-tracking branch 'origin/main' into docs/stamp-979-notifications
+- `741a8d4e` 2026-11-23 Docs: stamp the SEO brief short version as merged and live (no SQL) (#983)
+- `891f872b` 2026-11-23 Docs: stamp #979 (Orders and Finance notifications, major activity only) as merged and deployed (no SQL)
 - `586aaf2e` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL) (#979)
 - `97b0fdbc` 2026-11-23 SEO brief: a short version on top and a total under every part (no SQL) (#981)
 - `057443db` 2026-11-23 Sales: the Lead Board's columns start with the page; stamps and live timings for #977, #978, #980 (no SQL) (#982)
@@ -36,9 +39,6 @@
 - `7172f6c2` 2026-11-20 Quotations: typing in Material and Remarks no longer refits the price model for every product (#962)
 - `b5f21118` 2026-11-20 Quotations: delete an unsent draft (its maker) or any quotation but a PI-linked one (administrator) (#961)
 - `a97765c4` 2026-11-20 Quotations: a quotation started from a lead copies its contact role into the client type (#960)
-- `e31bbde9` 2026-11-20 Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied) (#959)
-- `f928263f` 2026-11-20 Quotations: an old Task request no longer makes a quotation without a lead; docs say 20270814000100 is applied (#958)
-- `ae0b9a67` 2026-11-20 Sales leads: a contact role, and the quick note Waiting for BOQ (#957)
 
 ## Pages by top-level area
 
