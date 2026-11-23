@@ -94,9 +94,11 @@ describe('the routes and the launcher', () => {
   for (const { key, title } of MODULES) {
     test(`${key}: the layout guards the module and a refused person goes back to Modules`, () => {
       const layout = read(`src/app/${key}/layout.tsx`)
-      // Sales alone also passes the frame shown while the check runs (owner, 2026-11-14; salesCheckingFrame.test.tsx pins how far).
+      // Sales alone also passes the frame shown while the check runs (owner, 2026-11-14; salesCheckingFrame.test.tsx pins how far),
+      // and since 2026-11-23 uses the guard that builds its page hidden meanwhile (startDuringCheckSales.test.ts).
+      const guard = key === 'sales' ? 'ModuleGuardStartsEarly' : 'ModuleGuard'
       const frame = key === 'sales' ? ' checking={<SalesCheckingFrame />}' : ''
-      assert.ok(layout.includes(`<ModuleGuard moduleKey="${key}" deniedRoute="/modules"${frame}>`))
+      assert.ok(layout.includes(`<${guard} moduleKey="${key}" deniedRoute="/modules"${frame}>`))
     })
 
     test(`${key}: the page opens ${key === 'marketing' ? 'the Meta Ads Overview' : key === 'sales' ? 'My day' : 'the price book in the module shell'}`, () => {

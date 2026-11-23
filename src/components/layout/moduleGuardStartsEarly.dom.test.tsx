@@ -112,6 +112,46 @@ describe('the answer arrives', () => {
   })
 })
 
+describe('a module that gives its own frame to show while the answer is on its way (Sales, 2026-11-23)', () => {
+  const FRAME = createElement('div', { 'data-frame': 'checking' }, 'FRAME')
+  const framed = (s: State): ReactElement => <ModuleGuardStartsEarlyView {...s} checking={FRAME}><Page /></ModuleGuardStartsEarlyView>
+  const showFramed = (s: State) => {
+    const ui = mount(framed(s))
+    cleanup = () => ui.unmount()
+    return ui
+  }
+
+  test('the frame is what is seen while the answer is pending, in place of the spinner, with the page built hidden behind it', () => {
+    const ui = showFramed(COLD_START)
+    assert.equal(ui.container.querySelectorAll('[data-frame="checking"]').length, 1)
+    assert.equal(spinners(ui), 0, 'no spinner')
+    assert.equal(wrapper(ui)!.style.display, 'none')
+    assert.equal(pageMounts, 1, 'the page is built, so its reads have started')
+  })
+
+  test('yes: the frame goes and the same page is shown', () => {
+    const ui = showFramed(COLD_START)
+    const main = ui.one('main[data-page="tasks"]')
+    ui.render(framed({ ready: true, allowed: true, buildHidden: false }))
+    assert.equal(ui.container.querySelectorAll('[data-frame="checking"]').length, 0)
+    assert.ok(ui.one('main[data-page="tasks"]') === main, 'not built again')
+    assert.equal(pageMounts, 1)
+  })
+
+  test('no: neither the frame nor the page is left, only the spinner while the redirect lands', () => {
+    const ui = showFramed(COLD_START)
+    ui.render(framed({ ready: true, allowed: false, buildHidden: false }))
+    assert.equal(ui.container.querySelectorAll('[data-frame="checking"]').length, 0)
+    assert.equal(ui.container.querySelectorAll('main').length, 0)
+    assert.equal(spinners(ui), 1)
+  })
+
+  test('with no frame given the spinner is shown, as for every other module', () => {
+    const ui = show(COLD_START)
+    assert.equal(spinners(ui), 1)
+  })
+})
+
 describe('useModuleShown', () => {
   test('outside the guard a page is always "shown", so nothing else changes', () => {
     const ui = mount(createElement(Page))
