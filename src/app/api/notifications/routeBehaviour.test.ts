@@ -341,7 +341,7 @@ beforeEach(() => {
       note('hidden-system', { created_at: at(8), type: 'overdue', title: 'Task overdue' }),
       // Written before a new task stopped notifying its assignee (#255): it stays in the table and is hidden from the feed.
       note('hidden-new-task', { created_at: at(1), type: 'task_assigned', title: 'Admin assigned you a task' }),
-      note('finance-row', { task_id: null, entity_id: 'e0000000-0000-4000-8000-000000000004', created_at: at(9), type: 'finance_submitted', title: 'Payment request submitted' }),
+      note('finance-row', { task_id: null, entity_id: 'e0000000-0000-4000-8000-000000000004', created_at: at(9), type: 'finance_clarification', title: 'Payment request needs clarification' }),
       note('someone-else', { user_id: U2, created_at: at(3) }),
     ],
     task_activity_log: [],
