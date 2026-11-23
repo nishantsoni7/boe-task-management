@@ -5,16 +5,16 @@
 
 ## Snapshot
 
-- Commit: `7db891cd` — Sales: a saved action shows on every screen at once and reads only what changed (no SQL)
+- Commit: `8c2eddf1` — Sales: pages wait in their own shape, Lead Master filters stop asking the server, popup reads quotations beside the record (no SQL)
 - Commits on this branch: 1534
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 500 (first `20260530_create_positions.sql`, latest `20270820000000_quotation_client_costing_view.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
-- Test files: 928   Next.js 16.2.6, React 19.2.4
+- Test files: 929   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `7db891cd` 2026-11-23 Sales: a saved action shows on every screen at once and reads only what changed (no SQL)
+- `8c2eddf1` 2026-11-23 Sales: pages wait in their own shape, Lead Master filters stop asking the server, popup reads quotations beside the record (no SQL)
 - `5f248a5d` 2026-11-23 Quotations: the client's copy shows per-piece fabric and packing (PR 2 of 3; migration 20270820000000 NOT applied) (#975)
 - `e38573c9` 2026-11-23 Quotations: a Fabric, finish and packing page, priced per piece (PR 1 of 3; migration 20270819000000 NOT applied) (#974)
 - `4e7f1b2d` 2026-11-21 Orders: the approver's payment chips in one call (migration 20270818000000, NOT applied) (#970)

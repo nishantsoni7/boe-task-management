@@ -39,7 +39,24 @@ const NAV = [
 
 const COLUMNS = ['New', 'Under Process', 'Visit / Meeting', 'Potential Clients', 'Negotiation'] as const
 
-function BoardBlocks() {
+/** Grey blocks in the shape of Lead Board cards. Also what a column shows while its first page is on its way (2026-11-23). */
+export function SkeletonCards({ count = 5 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }, (_, n) => (
+        // The real card's own class, so the blocks are exactly as tall as a card; it cannot be pressed.
+        <div key={n} aria-hidden="true" className={b.card} style={{ cursor: 'default', pointerEvents: 'none' }}>
+          <span className={k.skelBlock} style={{ width: '62%', height: 13, margin: '2px 0' }} />
+          <span className={k.skelBlock} style={{ width: '48%', height: 12, margin: '3px 0' }} />
+          <div className={b.cardMid}><span className={k.skelBlock} style={{ width: 48, height: 22 }} /><span className={k.skelBlock} style={{ width: 84, height: 12 }} /></div>
+        </div>
+      ))}
+    </>
+  )
+}
+
+/** The board's own shape in grey: the frame while the check runs, and the board's body while it waits for its first answer. */
+export function BoardBlocks() {
   return (
     <div className={b.wrap}>
       <div className={b.bar}><span className={`${k.skelBlock} ${k.skelSearch}`} /></div>
@@ -47,16 +64,7 @@ function BoardBlocks() {
         {COLUMNS.map((name, i) => (
           <section key={name} className={`${b.col}${i === 0 ? ` ${b.colCurrent}` : ''}`}>
             <header className={b.colHead}><h2 className={b.colName}>{name}</h2><span className={k.skelBlock} style={{ width: 26, height: 18 }} /></header>
-            <div className={b.colList}>
-              {[0, 1, 2, 3, 4].map(n => (
-                // The real card's own class, so the blocks are exactly as tall as a card; it cannot be pressed.
-                <div key={n} className={b.card} style={{ cursor: 'default', pointerEvents: 'none' }}>
-                  <span className={k.skelBlock} style={{ width: '62%', height: 13, margin: '2px 0' }} />
-                  <span className={k.skelBlock} style={{ width: '48%', height: 12, margin: '3px 0' }} />
-                  <div className={b.cardMid}><span className={k.skelBlock} style={{ width: 48, height: 22 }} /><span className={k.skelBlock} style={{ width: 84, height: 12 }} /></div>
-                </div>
-              ))}
-            </div>
+            <div className={b.colList}><SkeletonCards /></div>
           </section>
         ))}
       </div>

@@ -5,7 +5,7 @@ import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Check, MessageCircle, Pencil, Phone, PhoneMissed } from 'lucide-react'
 import { formatPhone, telHref } from '@/lib/exhibitionLeads/phone'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
 import { fetchMyDay, SALES_KEY, type WorkLead } from '@/lib/salesLeads/api'
@@ -84,7 +84,8 @@ export function MyDayScreen() {
 
   let body: React.ReactNode
   if (!ready || (day.isPending && !day.data)) {
-    body = <LoadingScreen message="Loading your day..." />
+    // Grey blocks in the page's place, as the frame drew while the check ran, not a full-screen spinner inside the shell (2026-11-23).
+    body = <ModulePageSkeleton variant="list" label="Loading your day" />
   } else if (day.isError && !day.data) {
     body = (
       <div className="boe-empty">

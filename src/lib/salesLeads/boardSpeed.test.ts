@@ -95,11 +95,13 @@ describe('the address changes without asking the server', () => {
 
   test('the board and the columns are read while the permission read is still running, and drawn only when it is done', () => {
     assert.ok(!board.includes('enabled: ready') && !board.includes('enabled={ready'))
-    assert.ok(board.includes('if (!ready) {') && board.includes('<LoadingScreen message="Loading the board..." />'))
+    // The board's own shape in grey (2026-11-23), not a full-screen spinner inside the shell.
+    assert.ok(board.includes('if (!ready) {') && board.includes('body = <BoardBlocks />'))
   })
 
   test('no other list was changed', () => {
-    for (const file of ['src/app/orders/all/page.tsx', 'src/app/tasks/my/page.tsx', 'src/components/salesLeads/LeadMasterScreen.tsx']) {
+    // (The Lead Master joined the Board on 2026-11-23: see src/components/salesLeads/loadShape.test.tsx.)
+    for (const file of ['src/app/orders/all/page.tsx', 'src/app/tasks/my/page.tsx']) {
       assert.ok(!read(file).includes('shallow: true'), file)
     }
   })

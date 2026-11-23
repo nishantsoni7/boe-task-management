@@ -82,9 +82,9 @@ describe('the lead popup: its quotations', () => {
     const b = ui(fake(data({ may_create: false }))); await ready(b.u)
     assert.ok(!b.u.all('button').some(x => /Make quotation/.test(x.textContent ?? '')))
   })
-  test('nothing is asked while the lead is still being filled in from the list', async () => {
+  test('while the lead is still being filled in from the list the quotations are already being read (beside the record, not after it), and nothing is drawn yet', async () => {
     const sb = fake(data()); const { u } = ui(sb, { filling: true }); await ready(u)
-    assert.deepEqual(sb.calls, []); assert.equal(u.text().trim(), '')
+    assert.deepEqual(sb.calls.map(c => c.fn), ['quotation_for_lead']); assert.equal(u.text().trim(), '')
   })
 })
 
