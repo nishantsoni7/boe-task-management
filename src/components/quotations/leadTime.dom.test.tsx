@@ -107,6 +107,6 @@ describe('the builder uses it', () => {
     assert.ok(card.includes('<LeadTime h={h} areas={areas} editable={editable}'), 'the lead time is a field of the Client card grid')
     assert.ok(card.includes('<ProjectTypeField h={h} editable={editable}'), 'the Project type box is in Advanced client details')
     assert.ok(src.includes('<ClientCard h={h} areas={areas} editable={editable}'))
-    assert.ok(src.includes('saveDoc({ ...h, lead_time_weeks: effectiveLeadTime(h, areas) }, areas, lines, base.updated_at)'))
+    assert.ok(src.includes('saveDoc({ ...header, lead_time_weeks: effectiveLeadTime(h, areas) }, areas, lines, base.updated_at)'))
   })
 })
