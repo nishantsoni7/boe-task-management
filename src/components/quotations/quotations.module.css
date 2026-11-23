@@ -79,9 +79,6 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .modal { background: var(--boe-surface); border-radius: var(--boe-radius-panel); box-shadow: var(--boe-shadow-dialog); width: 100%; max-width: 620px; }
 
 /* builder: one column, full width (owner, 13 Nov 2026): client and status on top, products, totals and terms, then the cards */
-.needs { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.needs ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; flex: 1; min-width: 0; }
-.needs li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
 /* THE BUILDER'S TOP AREA (owner-approved preview, 18 Nov 2026): one row of three compact cards (Request | Status | Share), then the Client card
    as a grid of fields. QuotationsLayout caps the page at 1360 px (contentMaxWidth), so nothing stretches on a wide screen.
@@ -115,7 +112,7 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .leadList button { width: 100%; justify-content: flex-start; text-align: left; height: auto; padding: 8px 10px; }
 
 /* where the quotation is in its life: done steps are ticked, the current one wears its status colour */
-.steps { list-style: none; margin: 2px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); max-width: 520px; }
+.steps { list-style: none; margin: 2px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .steps[data-s='draft'] { --cur-fg: var(--boe-pending-fg); --cur-bg: var(--boe-pending-bg); }
 .steps[data-s='sent'] { --cur-fg: var(--boe-working-fg); --cur-bg: var(--boe-working-bg); }
 .steps[data-s='negotiating'] { --cur-fg: var(--boe-waiting-fg); --cur-bg: var(--boe-waiting-bg); }
@@ -141,9 +138,16 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .hintBody { display: grid; gap: 8px; padding: 0 12px 10px 36px; }
 .hintRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .hintRow .chip { background: rgba(255, 255, 255, .7); }
-.outcomes { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--boe-border); }
-.outcomesLab { font-size: 12.5px; color: var(--boe-text-muted); margin-right: 4px; }
-.quietRow { display: flex; gap: 2px; flex-wrap: wrap; }
+/* the price approval block inside the Status card (23 Nov 2026; it was a card at the bottom of the page) */
+.priceBlock { display: grid; gap: 8px; padding: 12px 14px; }
+.priceHead { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.priceChip { margin-left: auto; background: rgba(255, 255, 255, .6); }
+/* the Share card: the link and its buttons sit at the foot, under a rule */
+.shareFoot { margin-top: auto; display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--boe-border); }
+/* Lead | Ask a senior (23 Nov 2026): one strip of two halves under the top row; a half with nothing to say draws nothing, and an empty strip is hidden */
+.strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); box-shadow: var(--boe-shadow-panel); min-width: 0; }
+.strip:empty { display: none; }
+.strip > * + * { border-left: 1px solid var(--boe-border); }
 
 /* the Client card: a plain grid of fields; Advanced is a slim bar at the foot of the card */
 .fgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 20px; align-items: start; }
@@ -258,9 +262,9 @@ textarea.t3 { min-height: 86px; }
 .bottom > * { flex: 1 1 0; min-width: 0; }
 .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .linkBox { display: flex; gap: 6px; }
-.markRow { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; font-size: 13.5px; }
-.markRow > span { display: grid; gap: 2px; min-width: 0; }
-.markRow input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--boe-brand); flex: none; }
+.markRow { display: flex; gap: 10px; align-items: center; cursor: pointer; font-size: 13.5px; }
+.markRow > span { min-width: 0; }
+.markRow input { width: 18px; height: 18px; accent-color: var(--boe-brand); flex: none; }
 .event { display: flex; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--boe-surface-sunken); font-size: 12.5px; }
 .event:last-child { border-bottom: 0; }
 .dirty { color: var(--boe-waiting-fg); font-weight: 600; font-size: 12.5px; }
@@ -309,7 +313,8 @@ textarea.t3 { min-height: 86px; }
   .builder .cardHead .spacer { flex-basis: 100%; height: 0; }
   .cardFoot { padding: 4px 16px; }
   .advToggle .hintTxt { display: none; }
-  .quietRow .btn { min-height: 44px; }
+  .strip { grid-auto-flow: row; }
+  .strip > * + * { border-left: 0; border-top: 1px solid var(--boe-border); }
   .pl { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 12px; }
   .plPic { flex-direction: row; align-items: center; gap: 14px; }
   .plPicBtn, .plPicEmpty { width: 140px; height: 118px; flex-shrink: 0; }
@@ -388,7 +393,7 @@ textarea.t3 { min-height: 86px; }
 .clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
 /* Ask a senior (20 Nov 2026): one slim strip above the top row. */
-.askStrip { padding: 10px 16px; display: grid; gap: 10px; font-size: 13.5px; }
+.askStrip { padding: 12px 18px; display: grid; gap: 10px; align-content: center; min-width: 0; font-size: 13.5px; }
 
 /* The card on top of the list (owner, 23 Nov 2026): two tiles, then the value each candidate quoted as ranked bars. */
 .top { display: grid; grid-template-columns: 400px minmax(0, 1fr); padding: 14px 16px; }

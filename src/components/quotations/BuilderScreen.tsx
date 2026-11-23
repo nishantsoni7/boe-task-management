@@ -7,7 +7,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { fetchLibrary, photoUrl, trainingKeys } from '@/lib/pricing/training/api'
 import { sendFeedback, type FeedbackDoc } from '@/lib/pricing/learning/api'
 import type { DiffersReport } from '@/components/pricing/training/TaughtPrice'
-import { Check, ChevronRight, FileUp, Info, Plus, Printer, Save, Trash2, X } from 'lucide-react'
+import { Check, ChevronRight, FileUp, Plus, Save, Trash2, X } from 'lucide-react'
 import { draftDetailHref } from '@/lib/orders/draftsView'
 import { saveProblem } from '@/lib/quotations/saveCheck'
 import { fetchVersions, issuedAt } from '@/lib/quotations/versions'
@@ -34,7 +34,7 @@ import {
   type QuoteArea, type QuoteLine,
 } from '@/lib/quotations/math'
 import { CLOSING, DEFAULT_CLIENT_NOTE, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS } from '@/lib/quotations/terms'
-import { needsYou, PRICE_CARD_ID, REQUEST_CARD_ID } from '@/lib/quotations/needsYou'
+import { needsYou, REQUEST_CARD_ID } from '@/lib/quotations/needsYou'
 import { ImportDialog } from './ImportDialog'
 import { WANTS } from '@/lib/quotations/importBoq'
 import { StatusPill } from './ListScreen'
@@ -45,7 +45,6 @@ import { AskCard } from './AskCard'
 import { PriceBrief } from './PriceBrief'
 import { DeleteQuotationDialog } from './DeleteQuotationDialog'
 import { LeadCard } from './LeadCard'
-import { PriceCard } from './PricingDesk'
 import { LineRow } from './ProductLine'
 import { CostingPage } from './CostingPage'
 import { effectiveLeadTime } from './LeadTime'
@@ -201,7 +200,7 @@ export default function BuilderScreen() {
       const r = await saveQuotation(supabase, base.id, saveDoc({ ...header, lead_time_weeks: effectiveLeadTime(h, areas) }, areas, lines, base.updated_at))
       setBase(b => (b ? { ...b, updated_at: r.updated_at } : b))
       setDirty(false); dirtyRef.current = false
-      setMsg({ tone: 'ok', text: 'Saved.' })
+      setMsg(null) // the header's "✓ Saved" says it; a message left from before is cleared
       qc.invalidateQueries({ queryKey: ['quotations', 'list'] })
       quoteQ.refetch()
     } catch (e) {
@@ -315,7 +314,6 @@ export default function BuilderScreen() {
   const unit = h.dimension_unit
   const viewerItems = viewerItemsOf(groups.flatMap(g => g.lines), unit)
   const viewerAt = viewing ? viewerItems.findIndex(x => x.key === viewing) : -1
-  const goTo = (target: string) => document.getElementById(target)?.scrollIntoView({ block: 'center' })
   const waiting = needsYou(base)
   // Confirm → PI draft lives in the Status bar (the PI draft card is gone, owner 18 Nov 2026). It works on the SAVED quotation.
   const piProblems = conversionProblems(base.areas, base.lines)
@@ -335,7 +333,6 @@ export default function BuilderScreen() {
     <>
       <span className={s.hideOnPhone}><StatusPill status={base.status} /></span>
       {dirty ? <span className={`${s.dirty} ${s.saveState}`}>Unsaved changes</span> : <span className={`${s.small} ${s.muted} ${s.saveState} ${s.hideOnPhone}`}><Check size={13} aria-hidden /> Saved</span>}
-      <Link className={s.btn} href={`/quotations/${id}/print`} target="_blank" aria-label="Print / PDF"><Printer size={15} aria-hidden /> <span className={s.hideOnPhone}>Print / PDF</span></Link>
       {editable && <button className={`${s.btn} ${s.btnPrimary}`} onClick={save} disabled={!dirty || saving}><Save size={15} aria-hidden /> {saving ? 'Saving…' : 'Save'}</button>}
     </>
   )
@@ -352,36 +349,29 @@ export default function BuilderScreen() {
       {!base.may_edit && <div className={s.notice}>You can read this quotation. Only its owner, or someone with Edit and See all, can change it.</div>}
       {base.may_edit && LOCKED.includes(base.status) && <div className={`${s.notice} ${s.noticeWarn}`}>This quotation is {STATUS_LABEL[base.status].toLowerCase()} and cannot be changed. {base.status !== 'confirmed' || access.admin ? 'Reopen it from the Status card to edit.' : 'Only an administrator can reopen it.'}</div>}
 
-      {waiting.length > 0 && (
-        <div className={`${s.notice} ${s.noticeWarn} ${s.needs}`} role="status">
-          <Info size={16} aria-hidden />
-          <ul>
-            {waiting.map(w => (
-              <li key={w.key}><span><b>Needs you:</b> {w.text}</span><button type="button" className={`${s.btn} ${s.btnSm}`} onClick={() => goTo(w.target)}>Go there ↓</button></li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* sent to a senior for prices, or sent back (Quotations › Requests, 20 Nov 2026) */}
-      <AskCard supabase={supabase} base={base} dirty={dirty} onChanged={() => { quoteQ.refetch() }} onSentBack={() => { if (isDesk) setBriefing(true) }} />
       {briefing && <PriceBrief supabase={supabase} quotationId={id} lines={lines} onClose={n => { setBriefing(false); if (n > 0) setMsg({ tone: 'ok', text: `Saved the price brief for ${n} product${n === 1 ? '' : 's'}.` }) }} />}
       {deleting && <DeleteQuotationDialog supabase={supabase} onClose={() => setDeleting(false)}
         target={{ id, quote_no: base.quote_no, client_name: h.client_name, project_name: h.project_name || null, status: base.status }}
         onDeleted={() => { dirtyRef.current = false; router.push('/quotations') }} />}
 
-      {/* the top row (owner-approved layout, 18 Nov 2026): the request, where the quotation is, and sharing, as three compact cards */}
+      {/* the top row (owner-approved layout, 18 Nov 2026; tidied 23 Nov 2026): the request, where the quotation is (with the price approval), and sharing, as compact cards */}
       <div className={`${s.band} ${hasRequest ? '' : s.bandTwo}`}>
         {profile && <RequestCard id={REQUEST_CARD_ID} supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
         <StatusCard base={base} dirty={dirty} busy={busy} isAdmin={access.admin} canConfirm={canConfirm} piProblems={piProblems} priceBlocked={priceBlocked} piStage={piStage}
           lostNote={lostNote} setLostNote={setLostNote} lostReason={lostReason} setLostReason={setLostReason} onMove={moveTo} onConfirm={confirmToPi}
-          canDelete={delQ.data?.may === true} onDelete={() => setDeleting(true)} />
+          canDelete={delQ.data?.may === true} onDelete={() => setDeleting(true)}
+          needs={waiting} onAskPrice={() => act(() => requestPriceApproval(supabase, id), 'Sent to the pricing desk.')}
+          onDecidePrice={(approve, note) => act(() => decidePrice(supabase, id, approve, note), approve ? 'Prices approved.' : 'Sent back to the salesperson.')} />
         <ShareCard id={id} base={base} dirty={dirty} busy={busy} lineCount={lines.length} phone={h.contact_phone} link={link} waText={waText} copied={copied}
           onCopy={copy} onExcel={downloadExcel} markOn={markQ.data}
           onMark={on => act(async () => { await setPictureMark(supabase, id, on); qc.setQueryData(pictureMarkKey(id), on) }, on ? 'The Best of Exports logo is on the pictures.' : 'The pictures are clean, without the logo.')} onShare={on => act(async () => { await shareQuotation(supabase, id, on); if (on && isDesk) setBriefing(true) }, on ? 'The client link is on.' : 'The client link is off.')} />
       </div>
 
-      <LeadCard supabase={supabase} base={base} dirty={dirty} onChanged={() => { quoteQ.refetch() }} />
+      {/* Lead | Ask a senior: one strip of two halves; each half draws nothing when it has nothing to say, and then the strip is :empty and hidden */}
+      <div className={s.strip}>
+        <LeadCard supabase={supabase} base={base} dirty={dirty} onChanged={() => { quoteQ.refetch() }} />
+        <AskCard supabase={supabase} base={base} dirty={dirty} onChanged={() => { quoteQ.refetch() }} onSentBack={() => { if (isDesk) setBriefing(true) }} />
+      </div>
 
       <ClientCard h={h} areas={areas} editable={editable} advOpen={advOpen} onAdv={() => setAdvOpen(o => !o)} onField={updH}
         onPatch={patch => { setH(p => (p ? { ...p, ...patch } : p)); touch() }} onCity={setCity} onState={setState} />
@@ -504,9 +494,6 @@ export default function BuilderScreen() {
 
       <div className={s.bottom}>
         <VersionsCard supabase={supabase} base={base} dirty={dirty} busy={busy} onSent={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />
-        <PriceCard id={PRICE_CARD_ID} price={base.price} mayEdit={base.may_edit} dirty={dirty} busy={busy}
-          onAsk={() => act(() => requestPriceApproval(supabase, id), 'Sent to the pricing desk.')}
-          onDecide={(approve, note) => act(() => decidePrice(supabase, id, approve, note), approve ? 'Prices approved.' : 'Sent back to the salesperson.')} />
       </div>
 
       {importing && profile && (

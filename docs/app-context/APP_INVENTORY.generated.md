@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `06c21898` — Docs: put the PR number (#988) on the Quotations list-columns entries
+- Commit: `859bba0c` — Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL) (#988)
 - Commits on this branch: 1546
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 501 (first `20260530_create_positions.sql`, latest `20270821000000_launcher_big_module_keys.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
-- Test files: 937   Next.js 16.2.6, React 19.2.4
+- Test files: 938   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `06c21898` 2026-11-23 Docs: put the PR number (#988) on the Quotations list-columns entries
-- `0ee1b4e0` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL)
+- `859bba0c` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL) (#988)
+- `dc267bab` 2026-11-23 Quotations: opening a quotation answers at once and starts its reads at the click (PR A of 5, no SQL) (#987)
 - `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
 - `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)

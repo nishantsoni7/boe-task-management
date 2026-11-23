@@ -7,7 +7,6 @@ import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { createElement } from 'react'
-import { renderToStaticMarkup } from 'react-dom/server'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DeleteQuotationDialog, goneOutNote, type DeleteTarget } from './DeleteQuotationDialog'
 import { StatusCard } from './StatusCard'
@@ -76,22 +75,32 @@ describe('the delete confirm', () => {
 const quote = (o: Partial<Quotation> = {}) => ({ id: 'q1', quote_no: 'QT-1', status: 'draft' as QuotationStatus, may_edit: true, pi: null, price: null, share_token: null, ...o }) as Quotation
 function card(base: Quotation, over: Partial<Parameters<typeof StatusCard>[0]> = {}) {
   return createElement(StatusCard, { base, dirty: false, busy: false, isAdmin: false, canConfirm: false, piProblems: [], priceBlocked: false, piStage: null,
-    lostNote: null, setLostNote: () => {}, lostReason: '', setLostReason: () => {}, onMove: () => {}, onConfirm: () => {}, ...over })
+    lostNote: null, setLostNote: () => {}, lostReason: '', setLostReason: () => {}, onMove: () => {}, onConfirm: () => {},
+    needs: [], onAskPrice: () => {}, onDecidePrice: () => {}, ...over })
+}
+/** What the More menu offers: open it as a person does and read the items (none when the card has no More button at all). */
+function menuItems(base: Quotation, over: Partial<Parameters<typeof StatusCard>[0]> = {}): string[] {
+  const ui = mount(card(base, over))
+  if (ui.all('button').some(b => (b.textContent ?? '').trim() === 'More')) ui.click(ui.button('More'))
+  const items = ui.all('[role="menuitem"]').map(b => (b.textContent ?? '').trim())
+  ui.unmount()
+  return items
 }
 
-describe('the Status card\'s Delete button', () => {
-  test('is there only when the database said the person may delete, and pressing it asks to confirm', () => {
-    assert.ok(!/Delete…/.test(renderToStaticMarkup(card(quote()))), 'no answer yet: no button')
-    assert.ok(!/Delete…/.test(renderToStaticMarkup(card(quote(), { canDelete: false, onDelete: () => {} }))), 'not allowed: no button')
-    assert.match(renderToStaticMarkup(card(quote(), { canDelete: true, onDelete: () => {} })), /Delete…/)
+describe('the Status card\'s Delete item (in the More menu)', () => {
+  test('is there only when the database said the person may delete, and choosing it asks to confirm', () => {
+    assert.ok(!menuItems(quote()).includes('Delete…'), 'no answer yet: no item')
+    assert.ok(!menuItems(quote(), { canDelete: false, onDelete: () => {} }).includes('Delete…'), 'not allowed: no item')
+    assert.ok(menuItems(quote(), { canDelete: true, onDelete: () => {} }).includes('Delete…'))
     let asked = 0
     const ui = mount(card(quote(), { canDelete: true, onDelete: () => { asked++ } }))
+    ui.click(ui.button('More'))
     ui.click(ui.button('Delete…'))
     assert.equal(asked, 1)
     ui.unmount()
   })
-  test('an administrator sees it on a locked quotation too (the card has no other outcome there)', () => {
-    assert.match(renderToStaticMarkup(card(quote({ status: 'archived', may_edit: true }), { isAdmin: true, canDelete: true, onDelete: () => {} })), /Other outcome[\s\S]*Delete…/)
+  test('an administrator sees it on a locked quotation too (the menu has no other outcome there)', () => {
+    assert.deepEqual(menuItems(quote({ status: 'archived', may_edit: true }), { isAdmin: true, canDelete: true, onDelete: () => {} }), ['Delete…'])
   })
 })
 
