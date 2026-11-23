@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-23 — Quotations: the card on top of the list redone, three things only (branch `feat/quotation-top-section`, PR open, not merged) · no migration
+## 2026-11-23 — Quotations: the card on top of the list redone, three things only (PR #986, branch `feat/quotation-top-section`, open, not merged) · no migration
 
 - **Why.** Owner: keep only "Waiting for you", "Open quotations" and the quotation value by candidate "in a nice visual way without taking too much space vertically"; remove the rest. He approved a mockup ("Yes, build it").
 - **What.** `HomeCards.tsx` and its block in `quotations.module.css`: two stat tiles and ranked horizontal bars (value before GST per candidate, largest first, one scale; hover or focus gives made, sent and confirmed; a tap on a bar shows that person's open quotations, the bars stay). The period dropdown belongs to the bars and now starts on This month (it was Last month, which is empty at the start of every month). The card is about 160 px high at a 1534 px screen (was about 270). Gone: With a senior, Made, Conversion, Answered, Most quotations, Team total, Confirmed, Team conversion, the candidate table and the `conversion()` helper. Dossier 29 section 26.
