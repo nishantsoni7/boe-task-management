@@ -300,4 +300,49 @@ let fbId
   ok('the echo guard: a line still at the price "Use" set is left out of the pool and the history points; a changed or typed price counts')
 }
 
+// ── 20270826000000: engine v3's inputs. The tables it reads that belong to other migrations stand in here, at their least ──
+{
+  await db.exec(`
+    alter table public.order_submission_items add column image_storage_path text;
+    create table public.pricing_photo_facts (image_key text primary key, facts jsonb not null);
+    create table public.pricing_training_cases (id uuid primary key, name text not null, status text not null default 'draft',
+      price_level text not null default 'selling', per_set smallint, width_in numeric(7,2), depth_in numeric(7,2), height_in numeric(7,2),
+      image_path text, submitted_at timestamptz, updated_at timestamptz not null default now());
+    create table public.pricing_training_lines (case_id uuid references public.pricing_training_cases(id), position int, kind text, material text, amount numeric(12,2));
+  `)
+  await db.exec(mig('20270826000000_pricing_engine_v3.sql'))
+  const C = n => `00000000-0000-0000-0000-0000000f000${n}`
+  await db.exec(`
+    insert into public.pricing_photo_facts values
+      ('quotation-images/00000000-0000-0000-0000-0000000e0001/00000000-0000-0000-0000-00000000000c.jpg', '{"kind":"bar_stool","back":"cane","note":"Cane back","confidence":90}'),
+      ('pricing-training/t/one.jpg', '{"kind":"bar_stool","back":"none","note":"Backless","confidence":80}');
+    update public.quotation_lines set image_path = '00000000-0000-0000-0000-0000000e0001/00000000-0000-0000-0000-00000000000c.jpg' where name = 'Echo stool C';
+    insert into public.pricing_training_cases (id, name, status, price_level, per_set, width_in, depth_in, height_in, image_path, submitted_at) values
+      ('${C(1)}', 'Taught stool', 'submitted', 'selling', null, 18, 18.5, 30, 't/one.jpg', now()),
+      ('${C(2)}', 'Draft stool', 'draft', 'selling', null, 18, 18, 30, null, null),
+      ('${C(3)}', 'Cost stool', 'submitted', 'cost', null, 18, 18, 30, null, now()),
+      ('${C(4)}', 'Set of stools', 'submitted', 'selling', 4, 18, 18, 30, null, now()),
+      ('${C(5)}', 'Empty stool', 'submitted', 'selling', null, 18, 18, 30, null, now());
+    insert into public.pricing_training_lines values
+      ('${C(1)}', 1, 'labour', null, 1500), ('${C(1)}', 2, 'structure', 'Sheesham', 2500), ('${C(1)}', 3, 'structure', 'Mango', 100),
+      ('${C(2)}', 1, 'structure', 'Mango', 2000), ('${C(3)}', 1, 'structure', 'Mango', 2000), ('${C(4)}', 1, 'structure', 'Mango', 9000);
+  `)
+  const pool = await rpc(U.sales, 'pricing_pool', ['stool'], null)
+  const taught = pool.filter(p => p.k === 'taught')
+  assert.deepEqual(taught.map(p => [p.name, Number(p.p), p.dims, p.material, Number(p.q), p.finish, p.client_type]),
+    [['Taught stool', 4100, '18 x 18.5 x 30', 'Sheesham', 1, null, null]], 'only a submitted selling price per piece, its sum, its size, the wood of its first structure row')
+  assert.deepEqual(taught[0].f, { kind: 'bar_stool', back: 'none' }, 'the facts of its photo, without the reader\'s note or confidence')
+  assert.deepEqual(pool.find(p => p.name === 'Echo stool C').f, { kind: 'bar_stool', back: 'cane' })
+  assert.ok(!pool.some(p => p.name === 'Echo stool A'), 'the echo guard stays')
+  assert.ok(pool.filter(p => p.k !== 'taught' && p.name !== 'Echo stool C').every(p => !('f' in p)), 'no facts where no photo was read')
+  assert.deepEqual(pool.map(p => p.name).sort(), ['Echo stool B', 'Echo stool C', 'Taught stool'], 'a draft, a cost price, a set and a case with no elements are not prices')
+  const facts = await rpc(U.sales, 'pricing_photo_facts_for', ['quotation-images/00000000-0000-0000-0000-0000000e0001/00000000-0000-0000-0000-00000000000c.jpg', 'quotation-images/not/read.jpg'])
+  assert.deepEqual(facts, { 'quotation-images/00000000-0000-0000-0000-0000000e0001/00000000-0000-0000-0000-00000000000c.jpg': { kind: 'bar_stool', back: 'cane' } })
+  assert.deepEqual(await rpc(U.sales, 'pricing_photo_facts_for', []), {})
+  await fails(U.nobody, 'select public.pricing_photo_facts_for($1)', [['x']], /PRICING_FORBIDDEN/)
+  await fails(null, 'select public.pricing_photo_facts_for($1)', [['x']], /permission denied/, 'anon')
+  await fails(U.sales, 'select public.pricing_photo_facts_for($1)', [Array.from({ length: 201 }, (_, i) => `k${i}`)], /PRICING_INVALID/)
+  ok('engine v3: the pool carries each price\'s photo facts and the submitted selling-price Training cases; facts_for answers read photos only, behind the pool\'s door')
+}
+
 console.log(`all ${checks} checks passed`)

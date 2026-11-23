@@ -17,6 +17,7 @@ type Supabase = ReturnType<typeof createClient>
 export function AccuracyCard({ supabase }: { supabase: Supabase }) {
   const pool = useQuery({ queryKey: ['pricing', 'learning', 'whole-pool'], queryFn: () => fetchWholePool(supabase), staleTime: 10 * 60_000, retry: false })
   const exam = useMemo(() => (pool.data ? examine(pool.data) : null), [pool.data])
+  const leading = exam?.types.filter(t => t.leader === 'v3') ?? []
   const near = Math.round(CLOSE * 100)
   return (
     <section className={s.card} aria-labelledby="accuracy-h">
@@ -38,6 +39,10 @@ export function AccuracyCard({ supabase }: { supabase: Supabase }) {
                 : `Your own prices for the same product vary by about ${exam.floor.spread}% (${exam.floor.products} product${exam.floor.products === 1 ? '' : 's'} priced three times or more), so no model can be more exact than that.`}
               {' '}Prices set with a suggestion&apos;s Use button are left out, so it never learns its own guess.{exam.untyped > 0 && ` ${exam.untyped} price${exam.untyped === 1 ? ' has' : 's have'} a name it cannot place in a product type.`}
             </p>
+            <p className={s.small} style={{ margin: 0 }}>
+              <b>With photos</b> is the new engine: it also learns what each product photo shows and the cases taught in Training, and is tested on the same prices.
+              {' '}It prices a type only where it misses less ({leading.length ? leading.map(t => t.label).join(', ') : 'no type yet'}); everywhere else today&apos;s model stays.
+            </p>
             {exam.teachNext.length > 0 && (
               <div>
                 <h3 className={s.sub} style={{ margin: '4px 0 6px' }}>Teach next</h3>
@@ -49,12 +54,15 @@ export function AccuracyCard({ supabase }: { supabase: Supabase }) {
             )}
             <div className={s.tableWrap}>
               <table className={s.table}>
-                <thead><tr><th>Product type</th><th className={s.right}>Prices</th><th className={s.right}>From quotations</th><th className={s.right}>Typical miss</th><th className={s.right}>Within ±{near}%</th></tr></thead>
+                <thead><tr><th>Product type</th><th className={s.right}>Prices</th><th className={s.right}>From quotations</th><th className={s.right}>Typical miss</th><th className={s.right}>Within ±{near}%</th><th className={s.right}>Today&apos;s model</th><th className={s.right}>With photos</th></tr></thead>
                 <tbody>{exam.types.map(t => (
                   <tr key={t.type} style={{ cursor: 'default' }}>
                     <td>{t.label}</td><td className={s.right}>{t.prices}</td><td className={s.right}>{t.quoted}</td>
                     <td className={s.right}>{t.miss === null ? <span className={s.muted}>too few</span> : <b>{t.miss}%</b>}</td>
                     <td className={s.right}>{t.close === null ? '–' : `${Math.round(t.close)}%`}</td>
+                    {(['v2', 'v3'] as const).map(e => (
+                      <td key={e} className={s.right}>{t[e].miss === null ? '–' : t.leader === e ? <b>{t[e].miss}% (used)</b> : `${t[e].miss}%`}</td>
+                    ))}
                   </tr>))}</tbody>
               </table>
             </div>

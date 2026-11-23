@@ -1378,8 +1378,10 @@ describe('the applied migrations are frozen', () => {
       '20270823000000_pricing_calculators.sql',
       // Pricing: the echo guard (pricing_used_suggestion; pricing_pool and pricing_all_points re-created to leave out a line still at the price a suggestion's Use set; no table or row changes). APPLIED 2026-11-23 21:20 IST.
       '20270824000000_pricing_echo_guard.sql',
-      // Pricing: photo facts (new closed table pricing_photo_facts; queue, list, save and correct functions; no existing row changes). NOT APPLIED.
+      // Pricing: photo facts (new closed table pricing_photo_facts; queue, list, save and correct functions; no existing row changes). APPLIED 2026-11-23 22:55 IST.
       '20270825000000_pricing_photo_facts.sql',
+      // Pricing: engine v3's inputs (pricing_pool re-created with each price's photo facts and the submitted selling-price Training cases; new pricing_photo_facts_for; no table or row changes). APPLIED 2026-11-24 00:15 IST.
+      '20270826000000_pricing_engine_v3.sql',
     ])
   })
 
@@ -1969,8 +1971,10 @@ describe('the applied migrations are frozen', () => {
       '20270823000000_pricing_calculators.sql',
       // Pricing: the echo guard (pricing_used_suggestion; pricing_pool and pricing_all_points re-created to leave out a line still at the price a suggestion's Use set; no table or row changes). APPLIED 2026-11-23 21:20 IST.
       '20270824000000_pricing_echo_guard.sql',
-      // Pricing: photo facts (new closed table pricing_photo_facts; queue, list, save and correct functions; no existing row changes). NOT APPLIED.
+      // Pricing: photo facts (new closed table pricing_photo_facts; queue, list, save and correct functions; no existing row changes). APPLIED 2026-11-23 22:55 IST.
       '20270825000000_pricing_photo_facts.sql',
+      // Pricing: engine v3's inputs (pricing_pool re-created with each price's photo facts and the submitted selling-price Training cases; new pricing_photo_facts_for; no table or row changes). APPLIED 2026-11-24 00:15 IST.
+      '20270826000000_pricing_engine_v3.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600
