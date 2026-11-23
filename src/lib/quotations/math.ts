@@ -30,6 +30,8 @@ export type QuoteLine = {
   choices?: LineChoices
   /** Fabric and packing priced per piece (20270819000000); finish has no price, only its code and picture in `choices`. */
   costing?: LineCosting
+  /** The per-piece figures the client may see (PR 2): set on a client copy (from the database) and worked out for a staff copy. */
+  costingView?: CostingView
 }
 
 export type LineRef = { path: string; kind: 'swatch' | 'drawing' | 'reference'; note?: string }
@@ -168,6 +170,35 @@ export function costingSums(areas: readonly QuoteArea[], lines: readonly QuoteLi
     }
   }
   return { fabric, packing, any, waiting }
+}
+
+/**
+ * What the CLIENT may see of a product's costing (PR 2): per-piece figures and the packing type, never the metres or a rate.
+ * fabric: per = rupees per piece, free = the client's own fabric at no charge, wait = price still to be confirmed.
+ * quotation_costing_view (20270820000000) works out the same thing in the database for the client link and sent versions.
+ */
+export type CostingView = { fabric?: { per?: number; free?: true; wait?: true }; packing?: { type?: string; per?: number; wait?: true } }
+
+export function costingViewOf(line: Pick<QuoteLine, 'choices' | 'costing'>): CostingView | undefined {
+  const c = lineCost(line, 1)
+  const out: CostingView = {}
+  if (c.fabric.state === 'ok') out.fabric = c.fabric.priced ? { per: c.fabric.per } : { free: true }
+  else if (c.fabric.state === 'wait' || c.fabric.state === 'metres') out.fabric = { wait: true }
+  if (c.packing.state !== 'none') {
+    const type = (line.costing?.packing?.type ?? '').trim()
+    out.packing = { ...(type ? { type } : {}), ...(c.packing.state === 'ok' ? { per: c.packing.per } : { wait: true as const }) }
+  }
+  return out.fabric || out.packing ? out : undefined
+}
+
+/** The words printed for a product's fabric and packing; empty when there is nothing to say. */
+export function costingWords(v: CostingView | undefined): { fabric: string; packing: string } {
+  const f = v?.fabric, p = v?.packing
+  const rupees = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 2 })
+  return {
+    fabric: !f ? '' : f.free ? 'No charge for the fabric' : f.wait || f.per === undefined ? 'Fabric price to be confirmed' : `${rupees(f.per)} per piece`,
+    packing: !p ? '' : `Packing${p.type ? `: ${p.type}` : ''} · ${p.wait || p.per === undefined ? 'price to be confirmed' : `${rupees(p.per)} per piece`}`,
+  }
 }
 
 /** "Bar stool fabric (price to come)" for the note under the totals. */

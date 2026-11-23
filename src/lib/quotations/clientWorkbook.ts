@@ -15,7 +15,7 @@
 
 import type { Workbook } from 'exceljs'
 import { computeTotals, type QuoteArea, type QuoteLine, type QuoteMoney } from './math'
-import { CHOICE_KINDS, CHOICE_LABEL, choiceRowsOf, choiceWords, sourceText, statusText } from './choicesDoc'
+import { CHOICE_KINDS, CHOICE_LABEL, choiceRowsOf, choiceWords, choicesIntro, lineCostWords, sourceText, statusText } from './choicesDoc'
 import { DEFAULT_CLIENT_NOTE, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS, type TermBlock } from './terms'
 
 /** The first standard term, in the owner's words (18 Nov 2026). */
@@ -138,7 +138,7 @@ function addChoicesSheet(wb: Workbook, input: WorkbookInput): void {
   ws.getRow(2).height = 22
   ws.mergeCells(3, 1, 3, LASTC)
   const intro = ws.getCell(3, 1)
-  intro.value = 'Fabrics, finishes, stone and rope weaves for your products. Rows marked To confirm still wait for your decision. None of this changes the price.'
+  intro.value = choicesIntro(input.lines)
   intro.font = font({ size: 10, italic: true, color: MUTED })
   intro.alignment = { wrapText: true, vertical: 'top' }
   ws.getRow(3).height = 20
@@ -159,8 +159,9 @@ function addChoicesSheet(wb: Workbook, input: WorkbookInput): void {
   rows.forEach((row, idx) => {
     r++
     const cells = CHOICE_KINDS.map(k => row.line.choices?.[k])
-    const lineCount = (c: (typeof cells)[number], width: number) => (c ? [...choiceWords(c), `${sourceText(c)} · ${statusText(c)}`].reduce((n, w) => n + wrappedLines(w, width), 0) : 1)
-    const body = Math.max(wrappedLines(row.line.name, CH_WIDTHS[1]) + (row.area || row.line.is_optional ? 1 : 0), ...cells.map(c => lineCount(c, CH_WIDTHS[2])))
+    const cw = lineCostWords(row.line) // the per-piece fabric price (in the fabric cell) and the packing line (under the product)
+    const lineCount = (c: (typeof cells)[number], width: number, extra = '') => (c ? [...choiceWords(c), `${sourceText(c)} · ${statusText(c)}`, ...(extra ? [extra] : [])].reduce((n, w) => n + wrappedLines(w, width), 0) : (extra ? wrappedLines(extra, width) : 1))
+    const body = Math.max(wrappedLines(row.line.name, CH_WIDTHS[1]) + (row.area || row.line.is_optional ? 1 : 0) + (cw.packing ? wrappedLines(cw.packing, CH_WIDTHS[1]) : 0), ...cells.map((c, i) => lineCount(c, CH_WIDTHS[2], CHOICE_KINDS[i] === 'fabric' ? cw.fabric : '')))
     const photo = cells.some(c => c?.photo && input.pictures.get(c.photo))
     ws.getRow(r).height = Math.max(photo ? 0 : 36, 14.5 * body + 10 + (photo ? 56 : 0))
     const no = ws.getCell(r, 1)
@@ -169,15 +170,16 @@ function addChoicesSheet(wb: Workbook, input: WorkbookInput): void {
     no.alignment = { horizontal: 'center', vertical: 'middle' }
     no.border = box
     const pc = ws.getCell(r, 2)
-    pc.value = { richText: [{ font: font({ bold: true }), text: row.line.name }, ...((row.area || row.line.is_optional) ? [{ font: font({ size: 9.5, color: MUTED }), text: '\n' + [row.area?.name, row.line.is_optional ? 'Optional' : ''].filter(Boolean).join(' · ') }] : [])] }
+    pc.value = { richText: [{ font: font({ bold: true }), text: row.line.name }, ...((row.area || row.line.is_optional) ? [{ font: font({ size: 9.5, color: MUTED }), text: '\n' + [row.area?.name, row.line.is_optional ? 'Optional' : ''].filter(Boolean).join(' · ') }] : []), ...(cw.packing ? [{ font: font({ size: 9.5, color: MUTED }), text: '\n' + cw.packing }] : [])] }
     pc.alignment = { vertical: 'top', wrapText: true }
     pc.border = box
     CHOICE_KINDS.forEach((k, i) => {
       const c = cells[i]
       const cell = ws.getCell(r, 3 + i)
       cell.border = box
+      const fabricWords = k === 'fabric' ? cw.fabric : ''
       if (!c) {
-        cell.value = 'Not used'
+        cell.value = fabricWords || 'Not used'
         cell.font = font({ italic: true, color: MUTED })
         cell.alignment = { vertical: 'top' }
         return
@@ -186,7 +188,8 @@ function addChoicesSheet(wb: Workbook, input: WorkbookInput): void {
       cell.value = { richText: [
         ...(words[0] ? [{ font: font({ bold: true }), text: words[0] }] : []),
         ...words.slice(1).map(w => ({ font: font({ size: 10 }), text: '\n' + w })),
-        { font: font({ size: 9, color: MUTED }), text: (words.length ? '\n' : '') + `${sourceText(c)} · ${statusText(c)}` },
+        ...(fabricWords ? [{ font: font({ size: 10 }), text: (words.length ? '\n' : '') + fabricWords }] : []),
+        { font: font({ size: 9, color: MUTED }), text: (words.length || fabricWords ? '\n' : '') + `${sourceText(c)} · ${statusText(c)}` },
       ] }
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + (c.status === 'confirmed' ? CONFIRMED_FILL : WAITING_FILL) } }
       cell.alignment = { vertical: 'bottom', wrapText: true }

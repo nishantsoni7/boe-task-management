@@ -2,17 +2,29 @@
 // confirmed AND to-confirm rows both printed). Pure: shared by the PDF page, the client link and the Excel sheet.
 // Client-safe by construction: the choice's own note ("anything the factory should know") is never read here.
 
-import { CHOICE_KINDS, CHOICE_LABEL, choiceCounts, formatDateIN, type ChoiceKind, type LineChoice, type QuoteArea, type QuoteLine } from './math'
+import { CHOICE_KINDS, CHOICE_LABEL, choiceCounts, costingWords, formatDateIN, type ChoiceKind, type LineChoice, type QuoteArea, type QuoteLine } from './math'
 import { groupsOf } from './documentPlan'
 
 export type ChoiceRow = { line: QuoteLine; area: QuoteArea | null }
 
-/** The products that have at least one choice, in the order of the products table (room type by room type). */
+/** A product is on the page when it has a choice or a per-piece fabric or packing figure (PR 2). */
+const onThePage = (l: QuoteLine): boolean => choiceCounts(l.choices).total > 0 || !!l.costingView
+
+/** The products on the page, in the order of the products table (room type by room type). */
 export function choiceRowsOf(areas: readonly QuoteArea[], lines: readonly QuoteLine[]): ChoiceRow[] {
-  return groupsOf(areas, lines).flatMap(g => g.lines.filter(l => choiceCounts(l.choices).total > 0).map(line => ({ line, area: g.area })))
+  return groupsOf(areas, lines).flatMap(g => g.lines.filter(onThePage).map(line => ({ line, area: g.area })))
 }
 
-export const hasChoices = (lines: readonly QuoteLine[]): boolean => lines.some(l => choiceCounts(l.choices).total > 0)
+export const hasChoices = (lines: readonly QuoteLine[]): boolean => lines.some(onThePage)
+
+/** The line under the page's title: it speaks of prices only when a product has per-piece figures (otherwise nothing here changes the price). */
+export const choicesIntro = (lines: readonly QuoteLine[]): string =>
+  lines.some(l => !!l.costingView)
+    ? 'Fabrics, finishes, stone and rope weaves for your products, with the price per piece of the fabric and the packing. Rows marked To confirm still wait for your decision. Fabric and packing are added to the total; finish has no charge.'
+    : 'Fabrics, finishes, stone and rope weaves for your products. Rows marked To confirm still wait for your decision. None of this changes the price.'
+
+/** The per-piece words of a product: the fabric's price (printed in its cell) and the packing line (printed under the product). Empty when none. */
+export const lineCostWords = (l: QuoteLine): { fabric: string; packing: string } => costingWords(l.costingView)
 
 export const sourceText = (c: LineChoice): string => (c.source === 'client' ? 'Client’s own' : c.source === 'code' ? 'Client’s code, we source it' : 'From our catalog')
 export const statusText = (c: LineChoice): string => (c.status === 'confirmed' ? (c.confirmed_on ? `Confirmed ${formatDateIN(c.confirmed_on)}` : 'Confirmed') : 'To confirm')
@@ -32,13 +44,15 @@ export type { ChoiceKind }
 const CELL_CHARS = 17, PRODUCT_CHARS = 26, WORD_LINE = 2.0, SMALL_LINE = 1.85, SWATCH_UNITS = 7.5, CHIP_UNITS = 4.8, ROW_PAD = 3
 const lines = (t: string, chars: number) => (t ? Math.max(1, Math.ceil(t.length / chars)) : 0)
 
-export const cellUnits = (c: LineChoice | undefined): number => {
-  if (!c) return SMALL_LINE
+export const cellUnits = (c: LineChoice | undefined, extra = ''): number => {
+  if (!c) return extra ? lines(extra, CELL_CHARS + 3) * SMALL_LINE : SMALL_LINE
   const w = choiceWords(c)
-  return (c.photo ? SWATCH_UNITS : 0) + lines(w[0] ?? '', CELL_CHARS) * WORD_LINE + w.slice(1).reduce((n, x) => n + lines(x, CELL_CHARS + 3), 0) * SMALL_LINE + CHIP_UNITS
+  return (c.photo ? SWATCH_UNITS : 0) + lines(w[0] ?? '', CELL_CHARS) * WORD_LINE + w.slice(1).reduce((n, x) => n + lines(x, CELL_CHARS + 3), 0) * SMALL_LINE + lines(extra, CELL_CHARS + 3) * SMALL_LINE + CHIP_UNITS
 }
-export const choiceRowUnits = (r: ChoiceRow): number =>
-  ROW_PAD + Math.max(lines(r.line.name, PRODUCT_CHARS) * WORD_LINE + (r.area ? SMALL_LINE : 0) + (r.line.is_optional ? SMALL_LINE : 0), ...CHOICE_KINDS.map(k => cellUnits(r.line.choices?.[k])))
+export const choiceRowUnits = (r: ChoiceRow): number => {
+  const w = lineCostWords(r.line)
+  return ROW_PAD + Math.max(lines(r.line.name, PRODUCT_CHARS) * WORD_LINE + (r.area ? SMALL_LINE : 0) + (r.line.is_optional ? SMALL_LINE : 0) + lines(w.packing, PRODUCT_CHARS) * SMALL_LINE, ...CHOICE_KINDS.map(k => cellUnits(r.line.choices?.[k], k === 'fabric' ? w.fabric : '')))
+}
 
 export const CHOICE_FIRST_UNITS = 90 // under the headline and the one-line explanation, the column heads taken off
 export const CHOICE_NEXT_UNITS = 108

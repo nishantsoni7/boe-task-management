@@ -1597,4 +1597,52 @@ await db.exec(mig('20270819000000_quotation_line_costing.sql'))
   ok('the two checker functions are closed to anyone signed out')
 }
 
+// ── 20270820: the client sees the per-piece fabric and packing figures and the packing type, never metres or a rate ──
+{
+  const L1 = '00000000-0000-0000-0000-0000000001a1'
+  const header = { client_name: 'View Hotel', valid_days: 7, gst_mode: 'igst', fabric_amount: 4080, packing_amount: 1950 }
+  const costing = { fabric: { metres: 1.6, rate: 850 }, packing: { type: 'Carton with foam corners', per_piece: 650 } }
+  const choices = { fabric: { source: 'catalog', status: 'to_confirm', name: 'Berlin velvet' } }
+  const chair = { name: 'V1 Rocking chair', qty_fixed: 3, unit_price: 22300, tax_rate: 18, costing, client_choices: choices }
+  const table = { name: 'V2 Table', qty_fixed: 1, unit_price: 10400, tax_rate: 18 }
+  const make = async (lines) => {
+    const id = await rpc(U.sales, 'quotation_start', L1, {})
+    await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines })
+    return { id, tok: await rpc(U.sales, 'quotation_share', id, true) }
+  }
+  const pub = async tok => (await as(null, `select public.quotation_public($1) as r`, [tok], 'anon')).rows[0].r
+  const before = await make([chair, table]) // v1 is frozen BEFORE the new migration
+  await db.exec(mig('20270820000000_quotation_client_costing_view.sql'))
+  assert.ok(!JSON.stringify(await pub(before.tok)).includes('costing_view'), 'a version sent before the migration is untouched')
+  ok('a version sent before the change still shows no per-piece figures to the client')
+
+  const now = await make([chair, table])
+  const doc = await pub(now.tok)
+  const [l1, l2] = doc.lines
+  assert.deepEqual(l1.costing_view, { fabric: { per: 1360 }, packing: { per: 650, type: 'Carton with foam corners' } })
+  assert.equal(l2.costing_view, undefined, 'a product with no costing has no key at all')
+  for (const leak of ['"metres"', '"rate"', '"costing"', 'per_piece']) assert.ok(!JSON.stringify(doc).includes(leak), `the client copy does not carry ${leak}`)
+  assert.deepEqual([Number(doc.fabric_amount), Number(doc.packing_amount)], [4080, 1950], 'the totals travel as before')
+  ok('the next version carries per-piece figures and the packing type, nothing else of the costing, and a line without costing has no key')
+
+  const states = await make([
+    { name: 'S1 Own fabric', qty_fixed: 2, unit_price: 1000, tax_rate: 18, client_choices: { fabric: { source: 'client', status: 'to_confirm', name: 'Own linen' } }, costing: { packing: { per_piece: 0 } } },
+    { name: 'S2 Code fabric', qty_fixed: 2, unit_price: 1000, tax_rate: 18, client_choices: { fabric: { source: 'code', status: 'to_confirm', code: 'F-2210' } }, costing: { packing: { type: 'Crate' } } },
+    { name: 'S3 Rate only', qty_fixed: 2, unit_price: 1000, tax_rate: 18, costing: { fabric: { rate: 700 } } },
+    { name: 'S4 Fractions', qty_fixed: 3, unit_price: 1000, tax_rate: 18, client_choices: { fabric: { source: 'catalog', status: 'to_confirm', name: 'V' } }, costing: { fabric: { metres: 1.25, rate: 333 } } },
+  ])
+  const v = (await pub(states.tok)).lines.map(l => l.costing_view)
+  assert.deepEqual(v, [
+    { fabric: { free: true }, packing: { per: 0 } },
+    { fabric: { wait: true }, packing: { type: 'Crate', wait: true } },
+    { fabric: { wait: true } },
+    { fabric: { per: 416.25 } },
+  ])
+  ok('the client\'s own fabric is no charge, a code or a rate without metres waits, packing with a type and no price waits, fractions of a rupee are kept to two decimals')
+
+  await assert.rejects(() => as(null, `select public.quotation_costing_view('{}'::jsonb, '{}'::jsonb)`, [], 'anon'), /permission denied/)
+  await assert.rejects(() => as(null, `select public.quotation_client_doc($1::uuid)`, [now.id], 'anon'), /permission denied/)
+  ok('the view function and the client document function are closed to anyone signed out')
+}
+
 console.log(`all ${checks} checks passed`)
