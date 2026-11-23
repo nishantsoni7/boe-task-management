@@ -15,7 +15,10 @@ import { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
 import { INCLUDES, INCLUDE_LABEL, KINDS, KIND_LABEL, PRICE_LEVELS, PRICE_LEVEL_LABEL, caseTerms, emptyForm, emptyLine, newWoods, num, parseReading, problems, readingToLines, shortDate, sizeOf, statusLabel, statusText, structureRest, toLine, totals, usesQuantity, workCase, type CaseForm, type Include, type Kind, type Line, type PriceLevel } from '@/lib/pricing/training/doc'
 import { CALC_LABEL, newCalc, type CalcType } from '@/lib/pricing/training/calc'
-import { fetchAccess, fetchCase, fetchMetals, fetchWoods, saveWood, photoUrl, readPhoto, saveCase, sendMessage, submitCase, trainingKeys, uploadPhoto, type TrainingError } from '@/lib/pricing/training/api'
+import { draftFromNote, fetchAccess, fetchCase, fetchMetals, fetchWoods, saveWood, photoUrl, readPhoto, saveCase, sendMessage, submitCase, trainingKeys, uploadPhoto, type TrainingError } from '@/lib/pricing/training/api'
+import { clearPrefill, prefillForm, takePrefill, type Prefill } from '@/lib/pricing/training/prefill'
+import { draftForm, draftToLines, priceCheck } from '@/lib/pricing/training/draft'
+import { setFeedbackStatus } from '@/lib/pricing/learning/api'
 import { CalcEditor } from './CalcEditors'
 import t from './training.module.css'
 
@@ -35,10 +38,16 @@ export function TrainingCase() {
   const metals = useQuery({ queryKey: trainingKeys.metals, queryFn: () => fetchMetals(supabase), enabled: access.isSuccess, retry: false })
   const saved = useQuery({ queryKey: trainingKeys.one(routeId), queryFn: () => fetchCase(supabase, routeId), enabled: !isNew && access.isSuccess, retry: false })
 
-  const [form, setForm] = useState<CaseForm>(emptyForm)
+  // "Teach this price": a new case may start from a feedback card or a quotation line (prefill.ts). Read once, on the
+  // first render of New case; the form is only drawn after the access check, so the server and the browser agree.
+  const [origin] = useState<Prefill | null>(() => (isNew ? takePrefill() : null))
+  const [form, setForm] = useState<CaseForm>(() => (origin ? { ...emptyForm(), ...prefillForm(origin) } : emptyForm()))
   const [lines, setLines] = useState<Line[]>([])
-  const [dirty, setDirty] = useState(false)
-  const [busy, setBusy] = useState<'' | 'photo' | 'reading' | 'save' | 'send' | 'decide' | 'message'>('')
+  const [dirty, setDirty] = useState(!!origin)
+  const [note, setNote] = useState(origin?.note ?? '')
+  const [draftMissing, setDraftMissing] = useState<string[]>([])
+  const photoCopied = useRef(false)
+  const [busy, setBusy] = useState<'' | 'photo' | 'reading' | 'save' | 'send' | 'decide' | 'message' | 'draft'>('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [issues, setIssues] = useState<string[]>([])
@@ -64,7 +73,26 @@ export function TrainingCase() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
 
+  useEffect(() => { if (origin) clearPrefill() }, [origin])
+
   const a = access.data
+  // The quotation line's photo is copied into Training once the person is known (it goes into their own folder).
+  // When the case came with a note, the photo is only read, not turned into rows: the note drafts the rows.
+  useEffect(() => {
+    if (!origin?.photoUrl || !a?.create || photoCopied.current) return
+    photoCopied.current = true
+    void (async () => {
+      try {
+        const res = await fetch(origin.photoUrl!)
+        if (!res.ok) throw new Error('fetch')
+        const blob = await res.blob()
+        await onPhoto(new File([blob], 'line.jpg', { type: blob.type || 'image/jpeg' }), !origin.note)
+      } catch { setNotice('The quotation line\'s photo could not be copied. Add it with "Add a photo".') }
+    })()
+  // onPhoto is a plain function of this render; the copy runs once, guarded by photoCopied.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [origin, a])
+
   const c = saved.data
   const editable = isNew ? !!a?.create : !!c?.may_edit
   const size = useMemo(() => sizeOf(form), [form])
@@ -82,23 +110,23 @@ export function TrainingCase() {
   const undoRemove = () => { if (!removed) return; setLines(ls => [...ls.slice(0, removed.at), removed.line, ...ls.slice(removed.at)]); setRemoved(null) }
   const fail = (e: unknown) => setError((e as TrainingError)?.message || 'Something went wrong. Try again.')
 
-  async function onPhoto(file: File | undefined) {
+  async function onPhoto(file: File | undefined, addRows = true) {
     if (!file || !a) return
     setError(''); setNotice(''); setBusy('photo')
     try {
       const { path, jpeg } = await uploadPhoto(supabase, a.uid, file)
       edit({ image_path: path, ai_reading: null })
-      await read(jpeg)
+      await read(jpeg, addRows)
     } catch (e) { fail(e) } finally { setBusy(''); if (fileRef.current) fileRef.current.value = '' }
   }
 
   // Reads the photo and adds what it sees as elements (only when none are listed yet, so nothing typed is lost).
-  async function read(jpeg: Blob) {
+  async function read(jpeg: Blob, addRows = true) {
     setBusy('reading')
     try {
       const reading = await readPhoto(supabase, jpeg)
       setForm(f => ({ ...f, ai_reading: reading, name: f.name || reading.category, variant: f.variant || reading.variant }))
-      setLines(ls => (ls.length === 0 ? readingToLines(reading) : ls))
+      if (addRows) setLines(ls => (ls.length === 0 ? readingToLines(reading) : ls))
       setDirty(true)
     } catch (e) {
       // The photo is kept; reading it is a help, not a requirement.
@@ -130,8 +158,30 @@ export function TrainingCase() {
       setDirty(false)
       await qc.invalidateQueries({ queryKey: trainingKeys.list })
       await qc.invalidateQueries({ queryKey: trainingKeys.one(id) })
+      // The feedback it was taught from is answered: done, with the case it became. Only the pricing desk may mark
+      // feedback; for anyone else this quietly does nothing and the card stays open in Price learning.
+      if (isNew && origin?.feedbackId) {
+        const feedbackId = origin.feedbackId
+        void fetchCase(supabase, id).then(saved => setFeedbackStatus(supabase, feedbackId, 'done', `Taught in Training as case #${saved.case_no}`)).catch(() => null)
+      }
       if (isNew) router.replace(`/pricing/training/${id}`)
       else setNotice(send ? 'Submitted to the price estimator.' : 'Saved. Submit it when the prices are right.')
+    } catch (e) { fail(e) } finally { setBusy('') }
+  }
+
+  // "In your words": the note becomes rows to check. They are added below what is there (or replace rows that are only
+  // names read from a photo), and blanks on the case (size, set, price) are filled from the note.
+  async function draft() {
+    if (note.trim().length < 10) { setError('Write the note first: how the price is worked out.'); return }
+    setError(''); setNotice(''); setBusy('draft')
+    try {
+      const d = await draftFromNote(supabase, note.trim())
+      const rows = draftToLines(d)
+      setLines(ls => (ls.every(l => !l.amount.trim() && !l.rate.trim() && !l.calc) ? rows : [...ls, ...rows]))
+      setForm(f => ({ ...f, ...draftForm(d, f) }))
+      setDraftMissing(d.missing)
+      setDirty(true)
+      setNotice(rows.length ? `${rows.length} element${rows.length === 1 ? '' : 's'} drafted from your note. Check each one; nothing counts until you save and submit.` : 'No amounts or rates were found in the note.')
     } catch (e) { fail(e) } finally { setBusy('') }
   }
 
@@ -163,6 +213,7 @@ export function TrainingCase() {
         <span className={`boe-badge ${badge.badge}`}>{dirty ? 'Changes not saved' : badge.label}</span>
       </div>
 
+      {isNew && origin && <div className="boe-callout boe-callout-info" role="status">Started from {origin.feedbackId ? 'feedback' : 'a quotation line'}{origin.quoteNo ? ` on ${origin.quoteNo}` : ''}: the product, its size and the price are filled in{origin.photoUrl ? ' and its photo is being copied' : ''}. {origin.note ? 'Your note is below: draft the elements from it, then check them.' : 'Add what the price is made of, then save.'}</div>}
       {c && <div className={`boe-callout ${c.status === 'submitted' && !dirty ? 'boe-callout-success' : 'boe-callout-info'}`} role="status">{dirty ? `You have changes that are not saved yet. ${c.submit_count > 0 ? 'After saving, resubmit so the estimator uses the new prices.' : ''}` : statusText(c)}</div>}
       {error && <div className="boe-callout boe-callout-error" role="alert">{error}</div>}
       {notice && <div className="boe-callout boe-callout-info" role="status">{notice}</div>}
@@ -215,6 +266,21 @@ export function TrainingCase() {
         </div>
       </div>
 
+      {editable && (
+        <div className={t.card}>
+          <div className={t.cardH}>In your words
+            <button type="button" className="boe-btn boe-btn-secondary" disabled={busy !== '' || note.trim().length < 10} onClick={draft}>{busy === 'draft' ? 'Drafting…' : 'Draft the elements from my note'}</button>
+          </div>
+          <div className={t.cardB}>
+            <label className={t.field}><span className="boe-input-label">How the price is worked out, as you would write it</span>
+              <textarea className="boe-input" rows={4} value={note} onChange={e => setNote(e.target.value)} maxLength={4000}
+                placeholder="e.g. Top and four sides at 200 per sq ft, then 800 for finishing, then 30% margin. Total 9,620." /></label>
+            <p className={t.muted} style={{ margin: 0 }}>The AI only copies the numbers out of your note into rows; this page does every sum. Check the rows below: nothing counts until you save and submit.</p>
+            {draftMissing.length > 0 && <div className="boe-callout boe-callout-warning" role="status"><div><span className="boe-callout-title">Not in the note</span><ul style={{ margin: '4px 0 0', paddingLeft: 18 }}>{draftMissing.map(m => <li key={m}>{m}</li>)}</ul></div></div>}
+          </div>
+        </div>
+      )}
+
       <div className={t.card}>
         <div className={t.cardH}>What the price is made of
           {editable && <button type="button" className="boe-btn boe-btn-secondary" onClick={addLine}><Plus size={16} aria-hidden /> Add an element</button>}
@@ -224,7 +290,7 @@ export function TrainingCase() {
         {editable ? lines.map((l, i) => (
           <div key={i} className={t.el}>
             <div className={t.elGrid}>
-              <label className={t.field}><span className="boe-input-label">Element {i + 1} {l.from_ai && <span className={t.fromAi}>from the photo</span>}</span><input className="boe-input" value={l.element} onChange={e => editLine(i, { element: e.target.value })} placeholder="e.g. Wooden structure" maxLength={120} /></label>
+              <label className={t.field}><span className="boe-input-label">Element {i + 1} {l.from_ai && <span className={t.fromAi}>read by AI</span>}</span><input className="boe-input" value={l.element} onChange={e => editLine(i, { element: e.target.value })} placeholder="e.g. Wooden structure" maxLength={120} /></label>
               <label className={t.field}><span className="boe-input-label">Kind</span><select className="boe-input" value={l.kind} onChange={e => setKind(l, i, e.target.value as Kind)}>{KINDS.map(k => <option key={k} value={k}>{KIND_LABEL[k]}</option>)}</select></label>
               {l.kind === 'structure'
                 ? <label className={t.field}><span className="boe-input-label">Wood</span><input className="boe-input" list="training-woods" value={l.material} onChange={e => editLine(i, { material: e.target.value })} placeholder="Pick or type a wood" maxLength={40} /></label>
@@ -273,6 +339,13 @@ export function TrainingCase() {
           {sold !== null && sum.total > 0 && <span>Against the PI price <b>{sum.total - sold >= 0 ? '+' : '−'}{formatINR(Math.abs(sum.total - sold))}</b></span>}
           <span className={t.grand} aria-live="polite">{formatINR(sum.total)}</span>
         </div>
+        {(() => {
+          const check = priceCheck(sum.total, sold)
+          if (!check) return null
+          return check.ok
+            ? <div className={t.cardB}><p className={t.muted} style={{ margin: 0 }} role="status">The elements match the price on the case ({check.pct}% apart, which is rounding).</p></div>
+            : <div className={t.cardB}><div className="boe-callout boe-callout-warning" role="status">The elements add up to {formatINR(sum.total)} and the price on the case is {formatINR(sold!)}, {check.pct}% apart. Check a row, or say in the notes why they differ.</div></div>
+        })()}
       </div>
 
       {c && (

@@ -3,6 +3,7 @@
 import type { createClient } from '@/lib/supabase/client'
 import { toJpeg } from '@/lib/inventory/images'
 import { parseReading, type CaseForm, type Line, type Reading, saveDoc } from './doc'
+import { parseDraft, type Draft } from './draft'
 
 type Supabase = ReturnType<typeof createClient>
 export const TRAINING_BUCKET = 'pricing-training'
@@ -77,6 +78,20 @@ export async function readPhoto(s: Supabase, jpeg: Blob): Promise<Reading> {
   const reading = parseReading(json.reading)
   if (!reading) throw new TrainingError('unknown', 'I could not read this photo. You can still add the materials yourself.')
   return reading
+}
+
+/** Asks the server to draft rows from a pricing note ("In your words"). A failure is a sentence to show. */
+export async function draftFromNote(s: Supabase, note: string): Promise<Draft> {
+  const { data: { session } } = await s.auth.getSession()
+  if (!session) throw new TrainingError('forbidden', 'Your session ended. Sign in again.')
+  let res: Response
+  try { res = await fetch('/api/pricing/training/draft', { method: 'POST', body: JSON.stringify({ note }), headers: { 'content-type': 'application/json', Authorization: `Bearer ${session.access_token}` } }) } catch { throw new TrainingError('network', 'No connection. Check the network and try again.') }
+  const json = await res.json().catch(() => null) as { ok: true; draft: unknown } | { ok: false; error: string } | null
+  if (!json) throw new TrainingError('unknown', `Could not draft from the note right now (the server answered ${res.status}). You can still type the elements yourself.`)
+  if (!json.ok) throw new TrainingError('unknown', json.error)
+  const draft = parseDraft(json.draft)
+  if (!draft) throw new TrainingError('unknown', 'I could not find a price worked out in this note.')
+  return draft
 }
 
 export type Wood = { name: string; rate: number | null; updated_at: string; updated_by_name: string | null }
