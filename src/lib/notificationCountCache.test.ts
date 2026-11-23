@@ -123,21 +123,22 @@ describe('zero, missing and malformed are three different answers', () => {
     writePersistedUnreadCount(USER_A, 'task', 0, { storage, now: NOW })
     assert.deepEqual(readPersistedUnreadCount(USER_A, 'task', { storage, now: NOW }),
       { count: 0, at: NOW })
-    // THE BADGE IS THE CARD'S ONLY NOTIFICATION SURFACE. The footer that
-    // printed "No notifications" for a resolved zero, and a loading placeholder
-    // while the value was still undefined, is gone from the launcher card — the
-    // card is now an icon, its badge and the module name. So a resolved zero
-    // and a not-yet-resolved undefined look the same ON THE CARD, which is why
-    // the round-trip above still has to tell them apart IN THE CACHE: only a
-    // real number is ever persisted, and only `> 0` ever draws a badge.
+    // THE COUNT IN WORDS IS THE CARD'S NOTIFICATION SURFACE (2026-11-23: the red
+    // number on the icon is gone, every tile says its count under the name). The
+    // old footer that printed "No notifications" for a resolved zero, and a loading
+    // placeholder while the value was still undefined, stays gone. A resolved zero
+    // says "Nothing new" and a not-yet-resolved undefined says nothing, which is
+    // why the round-trip above still has to tell them apart IN THE CACHE: only a
+    // real number is ever persisted, and only `> 0` ever draws the red chip.
     assert.equal(MODULES.includes('count === undefined ? ('), false,
       'the loading placeholder went with the footer')
     assert.equal(MODULES.includes("? 'No notifications'"), false,
       'the spelled-out zero state went with the footer')
     assert.ok(MODULES.includes('const hasNotif = (mod.notificationCount ?? 0) > 0'),
-      'a missing or zero count draws no badge, and only a positive one does')
-    assert.ok(MODULES.includes('{hasNotif && ('),
-      'the badge is rendered on that test and nothing else')
+      'a missing or zero count draws no chip, and only a positive one does')
+    assert.ok(MODULES.includes('{hasNotif ? ('),
+      'the chip is rendered on that test and nothing else')
+    assert.equal(MODULES.includes('styles.badge'), false, 'the badge on the icon is gone')
   })
 
   test('6. no cache reads as null, so the caller shows the placeholder', () => {
