@@ -92,7 +92,8 @@ export function LeadMasterScreen() {
     queryKey: [SALES_KEY, 'people'],
     queryFn: () => fetchPeople(supabase),
     staleTime: 5 * 60_000,
-    enabled: ready,
+    // The reads here are not held back for the permission answer (2026-11-23): the guard builds the page hidden while the check
+    // runs and each database function checks the caller itself. Only the held-chats count needs to know who may allot.
   })
 
   // WhatsApp chats judged not to be leads (20270613000000): only people who allot see them, and only the count here.
@@ -116,7 +117,6 @@ export function LeadMasterScreen() {
     },
     placeholderData: keepPreviousData,
     staleTime: 15_000,
-    enabled: ready,
   })
 
   const first = list.data?.pages[0]

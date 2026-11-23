@@ -32,13 +32,15 @@ function files(dir: string, out: string[] = []): string[] {
 }
 
 describe('the wiring', () => {
-  test('only the two Task Management layouts use the guard that starts early; every other module keeps ModuleGuard', () => {
+  test('only the two Task Management layouts and Sales use the guard that starts early; every other module keeps ModuleGuard', () => {
     const layouts = files('src/app').filter(f => f.endsWith('/layout.tsx'))
     const early = layouts.filter(f => read(f).includes('ModuleGuardStartsEarly'))
-    assert.deepEqual(early.sort(), ['src/app/dashboard/layout.tsx', 'src/app/tasks/layout.tsx'])
-    for (const f of early) {
+    assert.deepEqual(early.sort(), ['src/app/dashboard/layout.tsx', 'src/app/sales/layout.tsx', 'src/app/tasks/layout.tsx'])
+    for (const f of early.filter(f => f !== 'src/app/sales/layout.tsx')) {
       assert.ok(read(f).includes('<ModuleGuardStartsEarly moduleKey="task_management">'), `${f} guards Task Management`)
     }
+    // Sales (2026-11-23) keeps its refused-goes-to-Modules rule and its static frame; src/components/salesLeads/startDuringCheckSales.test.ts holds its audit.
+    assert.ok(read('src/app/sales/layout.tsx').includes('<ModuleGuardStartsEarly moduleKey="sales" deniedRoute="/modules" checking={<SalesCheckingFrame />}>'))
     // A module that has not been audited cannot be moved over by accident: ModuleGuard still guards the rest.
     const classic = layouts.filter(f => /<ModuleGuard[ >]/.test(read(f)))
     assert.ok(classic.length >= 15, `the other modules still use ModuleGuard (${classic.length})`)
