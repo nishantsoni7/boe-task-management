@@ -4,7 +4,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { CLEAN_UP_PROMPT, readReference, studioProblem, studioPrompt } from './pictureStudio'
+import { CLEAN_UP_PROMPT, MAX_DETAILS, lineDetails, readDetails, readReference, studioProblem, studioPrompt } from './pictureStudio'
 
 const PATH = '00000000-0000-0000-0000-0000000000b2/0f8fad5b-d9cb-469f-a165-70867728950e.jpg'
 
@@ -36,6 +36,37 @@ describe('what the picture route accepts', () => {
   })
 })
 
+describe('the product details sent with a picture (owner, 23 Nov 2026)', () => {
+  test('the line\'s name, size (with the quotation\'s unit) and material become the details; blanks are left out', () => {
+    assert.equal(lineDetails({ name: 'Dining chair', size_text: '47 × 52 × 80', material: 'Ash\n wood' }, 'in'), 'Product: Dining chair. Size: 47 × 52 × 80 in. Material: Ash wood')
+    assert.equal(lineDetails({ name: 'Bed', size_text: '', material: ' ' }, 'cm'), 'Product: Bed')
+    assert.equal(lineDetails({ name: '', size_text: '6\'0" × 6\'6"', material: '' }, 'cm'), 'Size: 6\'0" × 6\'6"') // already carries its unit
+    assert.ok(lineDetails({ name: 'x'.repeat(500), size_text: '', material: '' }, 'in').length <= MAX_DETAILS)
+  })
+  test('they guide size and material but are never drawn; none leaves the prompt exactly as it was', () => {
+    assert.equal(studioPrompt('clean', '', false, ''), CLEAN_UP_PROMPT)
+    assert.equal(studioPrompt('clean', '', false), CLEAN_UP_PROMPT)
+    const clean = studioPrompt('clean', '', false, 'Product: Chair. Size: 47 × 52 × 80 in')
+    assert.ok(clean.startsWith(CLEAN_UP_PROMPT))
+    assert.match(clean, /Product: Chair\. Size: 47 × 52 × 80 in/)
+    assert.match(clean, /never write these words or numbers on the picture/)
+    assert.doesNotMatch(clean, /required change/)
+    const change = studioPrompt('change', 'walnut finish', false, 'Material: Ash wood')
+    assert.match(change, /Required change: walnut finish/)
+    assert.match(change, /Material: Ash wood/)
+    assert.match(change, /If they differ from the required change, follow the change/)
+    assert.equal(studioPrompt('change', 'walnut finish', false, '  '), studioPrompt('change', 'walnut finish', false))
+  })
+  test('a request carries text up to 300 characters, or nothing; anything else is refused before paying', () => {
+    assert.equal(readDetails(undefined), '')
+    assert.equal(readDetails(null), '')
+    assert.equal(readDetails('  Product: Chair '), 'Product: Chair')
+    assert.equal(readDetails('x'.repeat(MAX_DETAILS)), 'x'.repeat(MAX_DETAILS))
+    assert.equal(readDetails('x'.repeat(MAX_DETAILS + 1)), false)
+    assert.equal(readDetails(5), false)
+  })
+})
+
 describe('the picture route', () => {
   const route = readFileSync('src/app/api/quotations/picture/route.ts', 'utf8')
   test('checks access as the caller, writes as the caller, makes one JPEG request with the server key', () => {
@@ -47,6 +78,7 @@ describe('the picture route', () => {
     assert.match(route, /\$\{user\.id\}\/\$\{crypto\.randomUUID\(\)\}\.jpg/)
     // refused before paying: the checks come before the provider call
     assert.ok(route.indexOf('studioProblem(') < route.indexOf('callFal('))
+    assert.ok(route.indexOf('readDetails(') < route.indexOf('spendCredits('))
     assert.ok(route.indexOf("rpc('quotation_my_access')") < route.indexOf('callFal('))
   })
 })

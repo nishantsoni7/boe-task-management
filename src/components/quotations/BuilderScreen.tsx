@@ -37,6 +37,7 @@ import { CLOSING, DEFAULT_CLIENT_NOTE, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS }
 import { needsYou, REQUEST_CARD_ID } from '@/lib/quotations/needsYou'
 import { ImportDialog } from './ImportDialog'
 import { WANTS } from '@/lib/quotations/importBoq'
+import { lineDetails } from '@/lib/quotations/pictureStudio'
 import { StatusPill } from './ListScreen'
 import { StudioDialog } from './StudioDialog'
 import { VersionsCard } from './VersionsCard'
@@ -504,6 +505,7 @@ export default function BuilderScreen() {
         const line = lines.find(x => x.key === studioFor)
         return line?.image_path ? (
           <StudioDialog supabase={supabase} userId={profile.id} path={line.image_path} url={picSrc} onClose={() => setStudioFor(null)}
+            details={lineDetails(line, unit)}
             wants={line.spec.split('\n').find(t => t.startsWith(WANTS))?.slice(WANTS.length)} swatch={line.references?.find(r => r.kind === 'swatch')?.path}
             onUse={p => { updLine(line.key, { image_path: p }); setStudioFor(null); setMsg({ tone: 'ok', text: 'Picture changed. Save to keep it.' }) }} />
         ) : null

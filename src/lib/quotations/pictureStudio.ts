@@ -4,6 +4,7 @@
 // route's rules are pinned by tests.
 
 import { buildEditPrompt } from '@/lib/orders/customizationImage'
+import { sizeWithUnit, type DimensionUnit } from './math'
 
 export type StudioMode = 'clean' | 'change'
 
@@ -21,8 +22,33 @@ export const CLEAN_UP_PROMPT = [
   'Remove any text, watermark, logo, measurements, arrows, people, room or other objects.',
 ].join(' ')
 
-export function studioPrompt(mode: StudioMode, instruction: string, hasReference: boolean): string {
-  return mode === 'clean' ? CLEAN_UP_PROMPT : buildEditPrompt(instruction, hasReference ? 1 : 0)
+/** The product's details (name, size, material) from the quotation line, as the studio box starts out (owner, 23 Nov 2026). */
+export const MAX_DETAILS = 300
+
+/** "Product: Dining chair. Size: 47 × 52 × 80 in. Material: Ash wood": what the line already says, blanks left out. */
+export function lineDetails(line: { name: string; size_text: string; material: string }, unit: DimensionUnit): string {
+  const one = (label: string, v: string) => { const t = v.replace(/\s+/g, ' ').trim(); return t ? `${label}: ${t}` : '' }
+  return [one('Product', line.name), one('Size', sizeWithUnit(line.size_text, unit)), one('Material', line.material)]
+    .filter(Boolean).join('. ').slice(0, MAX_DETAILS)
+}
+
+/** The details as one prompt sentence; they guide proportions and materials, they are never drawn. Empty for none. */
+function detailsSentence(mode: StudioMode, details: string): string {
+  const t = details.replace(/\s+/g, ' ').trim()
+  if (!t) return ''
+  return `Product details from the quotation: ${t}. Use them only as a guide to the true proportions and materials; never write these words or numbers on the picture.${mode === 'change' ? ' If they differ from the required change, follow the change.' : ''}`
+}
+
+export function studioPrompt(mode: StudioMode, instruction: string, hasReference: boolean, details = ''): string {
+  return [mode === 'clean' ? CLEAN_UP_PROMPT : buildEditPrompt(instruction, hasReference ? 1 : 0), detailsSentence(mode, details)].filter(Boolean).join(' ')
+}
+
+/** The details a request carries: '' for none, false when unusable (not text, or over MAX_DETAILS). Checked before paying. */
+export function readDetails(value: unknown): string | false {
+  if (value === undefined || value === null) return ''
+  if (typeof value !== 'string') return false
+  const t = value.trim()
+  return t.length > MAX_DETAILS ? false : t
 }
 
 /** Why a request cannot be sent; null when it can. Checked before anything is paid for. */
