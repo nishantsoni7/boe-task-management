@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `a6985649` — Docs: 20270823000000 applied to production 23 Nov 2026 18:05 IST after a verified backup
+- Commit: `0f521bc4` — Docs: stamp #995 (the Fabric From box fix) as merged and live (no SQL)
 - Commits on this branch: 1553
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 503 (first `20260530_create_positions.sql`, latest `20270823000000_pricing_calculators.sql`)
@@ -14,10 +14,10 @@
 
 ## Latest 25 commits
 
-- `a6985649` 2026-11-23 Docs: 20270823000000 applied to production 23 Nov 2026 18:05 IST after a verified backup
-- `421abf47` 2026-11-23 Docs: PR #993 and the rolled-back rehearsal of 20270823000000 (no error, no residue)
-- `800eb744` 2026-11-23 Merge remote-tracking branch 'origin/main' into feat/price-brain-calculators
-- `0847eafd` 2026-11-23 Pricing: work out a Training element by wood cut list, metal weight, area or percentage
+- `0f521bc4` 2026-11-23 Docs: stamp #995 (the Fabric From box fix) as merged and live (no SQL)
+- `db33183d` 2026-11-23 Quotations: the Fabric From box works on a row with nothing typed yet (no SQL) (#995)
+- `42e9edf6` 2026-11-23 Quotations: the builder's top section tidied, and Price approval moved up into the Status card (no SQL) (#994)
+- `f904e860` 2026-11-23 Docs: stamp #989 (the Open-tile migration file) as merged and live (no SQL) (#991)
 - `0b74fdbb` 2026-11-23 Docs: stamp the merge of #990 (Improve picture: line details and reference box) on its entries (#992)
 - `43175621` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
 - `32004032` 2026-11-23 Quotations: the Open tile's migration file (already applied) and the merge stamps for #986 and #988 (#989)
