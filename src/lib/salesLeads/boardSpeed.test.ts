@@ -93,10 +93,13 @@ describe('the address changes without asking the server', () => {
     assert.ok(!board.includes('useRouter') && !board.includes('router.'), 'nothing on the board goes through the router')
   })
 
-  test('the board and the columns are read while the permission read is still running, and drawn only when it is done', () => {
+  test('the board and the columns are read while the permission read is still running; the guard shows the page only when it is done', () => {
     assert.ok(!board.includes('enabled: ready') && !board.includes('enabled={ready'))
-    // The board's own shape in grey (2026-11-23), not a full-screen spinner inside the shell.
-    assert.ok(board.includes('if (!ready) {') && board.includes('body = <BoardBlocks />'))
+    // The columns are children of the board's body, so a body held back for `ready` held their reads back too: that cost the Lead
+    // Board its five heaviest requests until the answer had arrived (measured live 2026-11-23). The guard
+    // (ModuleGuardStartsEarly) builds the page hidden and shows it only on a yes, so the screen itself no longer waits.
+    const code = board.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1')
+    assert.ok(!/\bready\b/.test(code), 'nothing on the board waits for `ready`')
   })
 
   test('no other list was changed', () => {

@@ -18,7 +18,7 @@ import {
 import { LEAD_SOURCES, LEAD_SOURCE_VALUES } from '@/lib/salesLeads/constants'
 import { initialsOf } from '@/lib/salesLeads/format'
 import { Due, leadTitle, TempChip } from './LeadBits'
-import { BoardBlocks, SkeletonCards } from './SalesCheckingFrame'
+import { SkeletonCards } from './SalesCheckingFrame'
 import { SalesFrame } from './SalesFrame'
 import { useLeadWork, type LeadWork } from './useLeadWork'
 import { WorkPanel, type LeadNav } from './WorkPanel'
@@ -101,7 +101,7 @@ function useColumn(stage: Stage, filter: BoardFilter, supabase: LeadWork['supaba
 }
 
 export function BoardScreen() {
-  const { ready, profile } = usePermissionContext()
+  const { profile } = usePermissionContext()
   const { canAssign, canSeeAll, readOnly } = useSalesAccess()
   const work = useLeadWork()
   // The filters, the stage tab and the open lead are in the address; changing them must not ask the server for the page.
@@ -126,7 +126,7 @@ export function BoardScreen() {
     placeholderData: keepPreviousData,
     staleTime: 15_000,
     // Not held back for the permission read (about 0.3 s of the page's load): the database decides what may be read, and
-    // the board is still not drawn until `ready`.
+    // the page is not shown until the guard has said yes.
   })
   const data = board.data
   // A senior or a view_all manager reads other people's leads; only the holder or somebody with assign works them.
@@ -173,10 +173,10 @@ export function BoardScreen() {
   )
 
   let body: React.ReactNode
-  if (!ready) {
-    // The board's own shape in grey, the same blocks the page frame drew while the check ran, not a full-screen spinner (2026-11-23).
-    body = <BoardBlocks />
-  } else if (board.isError && !data) {
+  // Not held back for the permission answer (2026-11-23): the guard builds this page hidden while the check runs and shows it only on a
+  // yes, so the columns (and their reads) start with the page instead of after the answer. Until the first answers arrive each column
+  // shows card-shaped blocks of its own.
+  if (board.isError && !data) {
     body = (
       <div className="boe-empty">
         <p className="boe-empty-title">The board could not be loaded</p>

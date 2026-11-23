@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `8c2eddf1` — Sales: pages wait in their own shape, Lead Master filters stop asking the server, popup reads quotations beside the record (no SQL)
-- Commits on this branch: 1534
+- Commit: `27e81248` — Sales: pages wait in their own shape, Lead Master filters stop asking the server, popup reads quotations beside the record (no SQL) (#980)
+- Commits on this branch: 1537
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 500 (first `20260530_create_positions.sql`, latest `20270820000000_quotation_client_costing_view.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
@@ -14,7 +14,10 @@
 
 ## Latest 25 commits
 
-- `8c2eddf1` 2026-11-23 Sales: pages wait in their own shape, Lead Master filters stop asking the server, popup reads quotations beside the record (no SQL)
+- `27e81248` 2026-11-23 Sales: pages wait in their own shape, Lead Master filters stop asking the server, popup reads quotations beside the record (no SQL) (#980)
+- `f7e91f93` 2026-11-23 Sales: a saved action shows on every screen at once and reads only what changed (no SQL) (#978)
+- `9d2ec62e` 2026-11-23 Sales: every Sales page starts while the access check runs (no SQL) (#977)
+- `843cb1fb` 2026-11-23 Quotations: the PI draft carries the costing (PR 3 of 3; no SQL) (#976)
 - `5f248a5d` 2026-11-23 Quotations: the client's copy shows per-piece fabric and packing (PR 2 of 3; migration 20270820000000 NOT applied) (#975)
 - `e38573c9` 2026-11-23 Quotations: a Fabric, finish and packing page, priced per piece (PR 1 of 3; migration 20270819000000 NOT applied) (#974)
 - `4e7f1b2d` 2026-11-21 Orders: the approver's payment chips in one call (migration 20270818000000, NOT applied) (#970)
@@ -36,9 +39,6 @@
 - `7aaa6aaf` 2026-11-20 Docs: stamp #952 (lead popup quotations line, Make quotation) as merged and verified live (migration applied) (#953)
 - `570f4635` 2026-11-20 Docs: stamp #954 (Lost carries the lead's eleven reasons) as merged and verified live (migration applied) (#956)
 - `2c57b210` 2026-11-20 Quotations: requests move into the module, lead-first creation, report cards, price brief (#955)
-- `2014e0a2` 2026-11-20 Quotations: Lost carries one of the lead's eleven reasons; the report counts reasons (#954)
-- `d0fe51aa` 2026-11-19 Lead popup: the lead's quotations in one line, and Make quotation from the lead (#952)
-- `c000801a` 2026-11-19 Docs: record 20270803000000 (held-day decision) as applied (no SQL) (#918)
 
 ## Pages by top-level area
 
