@@ -5,17 +5,18 @@
 
 ## Snapshot
 
-- Commit: `06c21898` — Docs: put the PR number (#988) on the Quotations list-columns entries
-- Commits on this branch: 1546
+- Commit: `22fede84` — Docs: stamp #986 as merged and live; the Open-tile migration file follows it (already applied)
+- Commits on this branch: 1547
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
-- Migrations: 501 (first `20260530_create_positions.sql`, latest `20270821000000_launcher_big_module_keys.sql`)
+- Migrations: 502 (first `20260530_create_positions.sql`, latest `20270822000000_quotation_cards_open_owned_or_made.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
 - Test files: 937   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `06c21898` 2026-11-23 Docs: put the PR number (#988) on the Quotations list-columns entries
-- `0ee1b4e0` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL)
+- `22fede84` 2026-11-23 Docs: stamp #986 as merged and live; the Open-tile migration file follows it (already applied)
+- `f934901b` 2026-11-23 Docs: migration 20270822000000 applied to production (23 Nov 2026, about 14:30 IST)
+- `4144b0e6` 2026-11-23 Quotations: the Open quotations tile counts what the list counts (migration 20270822000000, NOT applied)
 - `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
 - `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
@@ -38,7 +39,6 @@
 - `28127b1f` 2026-11-21 Docs: stamp #965 (approver dashboard: Needs your action and Watching) as merged and live (#966)
 - `a8d44009` 2026-11-21 Orders: the Operations team's dashboard in the approver's design (no SQL) (#967)
 - `076b6668` 2026-11-20 Orders: the approver's dashboard is one "Needs your action" sheet and a "Watching" list (no SQL) (#965)
-- `0da52ac1` 2026-11-20 Docs: stamp #961 (delete a quotation) as merged and live, migration 20270817000000 applied (#964)
 
 ## Pages by top-level area
 
@@ -522,7 +522,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270730000000_for_you_bundle.sql`
 - `20270731000000_quotation_suggestions_switch.sql`
 - `20270801000000_quotation_salesperson_card.sql`
 - `20270802000000_day_close_hold_notification_type.sql`
@@ -552,6 +551,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270819000000_quotation_line_costing.sql`
 - `20270820000000_quotation_client_costing_view.sql`
 - `20270821000000_launcher_big_module_keys.sql`
+- `20270822000000_quotation_cards_open_owned_or_made.sql`
 
 ## All SQL function names
 
