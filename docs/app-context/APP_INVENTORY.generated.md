@@ -5,16 +5,21 @@
 
 ## Snapshot
 
-- Commit: `0847eafd` — Pricing: work out a Training element by wood cut list, metal weight, area or percentage
-- Commits on this branch: 1548
+- Commit: `a6985649` — Docs: 20270823000000 applied to production 23 Nov 2026 18:05 IST after a verified backup
+- Commits on this branch: 1553
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 503 (first `20260530_create_positions.sql`, latest `20270823000000_pricing_calculators.sql`)
 - Tables ever created: 273 (dropped at some point: 8)   SQL functions: 1105   Enums: 0
-- Test files: 939   Next.js 16.2.6, React 19.2.4
+- Test files: 940   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `a6985649` 2026-11-23 Docs: 20270823000000 applied to production 23 Nov 2026 18:05 IST after a verified backup
+- `421abf47` 2026-11-23 Docs: PR #993 and the rolled-back rehearsal of 20270823000000 (no error, no residue)
+- `800eb744` 2026-11-23 Merge remote-tracking branch 'origin/main' into feat/price-brain-calculators
 - `0847eafd` 2026-11-23 Pricing: work out a Training element by wood cut list, metal weight, area or percentage
+- `0b74fdbb` 2026-11-23 Docs: stamp the merge of #990 (Improve picture: line details and reference box) on its entries (#992)
+- `43175621` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
 - `32004032` 2026-11-23 Quotations: the Open tile's migration file (already applied) and the merge stamps for #986 and #988 (#989)
 - `859bba0c` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL) (#988)
 - `dc267bab` 2026-11-23 Quotations: opening a quotation answers at once and starts its reads at the click (PR A of 5, no SQL) (#987)
@@ -34,11 +39,6 @@
 - `4e7f1b2d` 2026-11-21 Orders: the approver's payment chips in one call (migration 20270818000000, NOT applied) (#970)
 - `744d0e68` 2026-11-21 Quotation: notes under the total, signing box removed (#973)
 - `490f7b1e` 2026-11-21 Expenses: a bill can be pasted (Ctrl+V) or dragged and dropped (no SQL) (#972)
-- `1dbb8b41` 2026-11-21 Quotation PDF: sheets fit the printed page, totals no longer drag the last product (#971)
-- `631ed075` 2026-11-21 Orders: the approver's dashboard reads in two rounds, not three (no SQL) (#969)
-- `30ab89a1` 2026-11-21 Remove the Operations Review chip from the Orders dashboard (#968)
-- `28127b1f` 2026-11-21 Docs: stamp #965 (approver dashboard: Needs your action and Watching) as merged and live (#966)
-- `a8d44009` 2026-11-21 Orders: the Operations team's dashboard in the approver's design (no SQL) (#967)
 
 ## Pages by top-level area
 

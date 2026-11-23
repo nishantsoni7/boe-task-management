@@ -1,6 +1,7 @@
 /**
- * The builder's top row (owner-approved layout, 18 Nov 2026): the Status card (a four-step tracker, one main action, the reason it waits,
- * the quiet outcomes) and the Share card, drawn for real from their props, one state at a time.
+ * The builder's top row (owner-approved layout, 18 Nov 2026; tidied 23 Nov 2026): the Status card (a four-step tracker, one main action, the reason
+ * it waits, the More menu for the rarer outcomes) and the Share card, drawn for real from their props, one state at a time. The menu and the price
+ * approval block are driven in statusMore.dom.test.tsx.
  *
  * Run: npm run test:file -- src/components/quotations/topRow.test.tsx
  */
@@ -18,7 +19,8 @@ const names = (n: number) => Array.from({ length: n }, (_, i) => `Chair ${i + 1}
 type Over = Partial<Parameters<typeof StatusCard>[0]>
 const status = (base: Quotation, o: Over = {}) => renderToStaticMarkup(
   <StatusCard base={base} dirty={false} busy={false} isAdmin={false} canConfirm={false} piProblems={[]} priceBlocked={false} piStage={null}
-    lostNote={null} setLostNote={() => {}} lostReason="" setLostReason={() => {}} onMove={() => {}} onConfirm={() => {}} {...o} />)
+    lostNote={null} setLostNote={() => {}} lostReason="" setLostReason={() => {}} onMove={() => {}} onConfirm={() => {}}
+    needs={[]} onAskPrice={() => {}} onDecidePrice={() => {}} {...o} />)
 const button = (html: string, label: string) => html.match(new RegExp(`<button[^>]*>(?:(?!</button>).)*${label}[^<]*</button>`))?.[0] ?? null
 const SENT_OK: Over = { canConfirm: true }
 
@@ -43,12 +45,12 @@ describe('the Status card: what can be done', () => {
     const html = status(quote({ status: 'draft' }))
     assert.ok(button(html, 'Mark sent')?.includes('btnPrimary') && button(html, 'Negotiating') && !html.includes('Confirm → make PI draft'))
   })
-  test('a sent quotation offers Confirm → make PI draft (main), Negotiating, and the quiet outcomes', () => {
+  test('a sent quotation offers Confirm → make PI draft (main), Negotiating, and a More menu for the other outcomes (no "Other outcome" row)', () => {
     const html = status(quote({ status: 'sent' }), SENT_OK)
     assert.ok(button(html, 'Confirm → make PI draft')?.includes('btnPrimary'))
     assert.ok(!/<button[^>]*disabled[^>]*>(?:(?!<\/button>).)*Confirm/.test(html), 'nothing is missing, so it is ready')
-    assert.match(html, /Other outcome/)
-    for (const w of ['Confirmed, no PI', 'Lost…', 'Archive']) assert.ok(button(html, w)?.includes('btnQuiet'), w)
+    assert.ok(!html.includes('Other outcome') && !html.includes('Archive'), 'the outcomes are behind More, not a row of buttons')
+    assert.match(html, /<button[^>]*aria-haspopup="menu"[^>]*>More<svg/)
     assert.match(html, /Nothing is sent to anyone: the PI stays a Draft/)
   })
   test('while the main action waits: it is off, one line says what is missing, six names show and the rest are counted', () => {
@@ -75,22 +77,21 @@ describe('the Status card: what can be done', () => {
   })
   test('unsaved edits switch every status button off with "Save first", and say so', () => {
     const html = status(quote({ status: 'sent' }), { canConfirm: true, dirty: true })
-    for (const w of ['Confirm → make PI draft', 'Negotiating', 'Lost…', 'Archive']) assert.match(button(html, w) ?? '', /disabled="" title="Save first"|title="Save first"[^>]*disabled=""|disabled=""[^>]*title="Save first"/, w)
-    // Confirmed, no PI keeps its own tooltip, as before
-    assert.match(button(html, 'Confirmed, no PI') ?? '', /disabled="" title="Confirmed without making a PI from it"/)
+    for (const w of ['Confirm → make PI draft', 'Negotiating']) assert.match(button(html, w) ?? '', /disabled="" title="Save first"|title="Save first"[^>]*disabled=""|disabled=""[^>]*title="Save first"/, w)
+    // the items of the More menu wait too: statusMore.dom.test.tsx
     assert.match(html, /Save your changes before confirming\./)
   })
-  test('the made PI shows beside Open the PI draft; a confirmed quotation has no outcomes, and only an administrator can reopen it', () => {
+  test('the made PI shows beside Open the PI draft; a confirmed quotation has no More menu, and only an administrator can reopen it', () => {
     const base = quote({ status: 'confirmed', pi: { id: 'p1', draft_reference: 'DR-1042', status: 'under_review' } as never })
     const html = status(base)
     assert.match(html, /Confirmed into PI draft <b>DR-1042<\/b> \(under review\)/)
     assert.match(html, /<a class="btn btnPrimary" href="[^"]*p1[^"]*">/)
-    assert.ok(!html.includes('Other outcome') && !html.includes('Reopen'))
+    assert.ok(!html.includes('aria-haspopup') && !html.includes('Reopen'))
     assert.ok(status(base, { isAdmin: true }).includes('Reopen'))
   })
-  test('a lost quotation can be reopened or archived, not lost again; Lost… opens the box that asks why', () => {
+  test('a lost quotation can be reopened, not lost again (its menu is in statusMore.dom.test.tsx); Mark as lost… opens the box that asks why', () => {
     const html = status(quote({ status: 'lost' }))
-    assert.ok(html.includes('Reopen') && html.includes('Archive') && !html.includes('Lost…') && !html.includes('Confirmed, no PI'))
+    assert.ok(html.includes('Reopen') && !html.includes('Mark lost'))
     const asking = status(quote({ status: 'sent' }), { lostNote: '' })
     assert.match(asking, /Why was it lost\?/); assert.match(button(asking, 'Mark lost') ?? '', /disabled/, 'a reason must be chosen first')
   })
@@ -106,7 +107,7 @@ describe('the Status card: what can be done', () => {
   })
   test('a reader who may not edit sees where it is, and no buttons', () => {
     const html = status(quote({ status: 'sent', may_edit: false }))
-    assert.ok(html.includes('<ol') && !html.includes('<button') && !html.includes('Other outcome'))
+    assert.ok(html.includes('<ol') && !html.includes('<button'))
   })
 })
 
@@ -116,7 +117,7 @@ describe('the Share card', () => {
       onCopy={() => {}} onExcel={() => {}} onShare={() => {}} {...o} />)
   test('before a link: the two downloads, one line about the link, and Create client link (an outline button, not the main one)', () => {
     const html = share(quote())
-    assert.ok(html.includes('Download PDF') && html.includes('Download Excel') && html.includes('One link shows the quotation'))
+    assert.ok(html.includes('Download PDF') && html.includes('Download Excel') && html.includes('One link with the pictures and a Save as PDF button'))
     assert.ok(!html.includes('id="q-link"'))
     assert.ok(button(html, 'Create client link') && !button(html, 'Create client link')!.includes('btnPrimary'))
   })

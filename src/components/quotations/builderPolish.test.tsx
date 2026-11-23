@@ -120,9 +120,9 @@ describe('the page rows (items 8 and 9, redone on 18 Nov 2026)', () => {
     assert.ok(!pair.includes('s.grid2'), 'the two notes boxes are stacked, not side by side')
     const bottom = between('className={s.bottom}', '{importing && profile')
     assert.ok(!bottom.includes('Share with the client') && !bottom.includes('<h2>History</h2>'))
-    // the Quotation request card moved to the top row and the PI draft card is gone (owner, 18 Nov 2026): Versions and Price approval are left
-    for (const w of ['VersionsCard', 'PriceCard']) assert.ok(bottom.includes(w), w)
-    for (const w of ['RequestCard', 'PiCard']) assert.ok(!bottom.includes(w), `${w} is not at the bottom any more`)
+    // the Quotation request card moved to the top row and the PI draft card is gone (owner, 18 Nov 2026); Price approval moved into the Status card (23 Nov 2026): Versions is left
+    assert.ok(bottom.includes('VersionsCard'))
+    for (const w of ['RequestCard', 'PiCard', 'PriceCard', 'PriceBlock']) assert.ok(!bottom.includes(w), `${w} is not at the bottom any more`)
     assert.match(rule('.pair'), /repeat\(2, minmax\(0, 1fr\)\);/)
   })
   test('a button label wraps inside its card rather than push past it: on a 320 px phone a label that does not wrap used to widen the whole card', () => {
@@ -138,9 +138,9 @@ describe('the page rows (items 8 and 9, redone on 18 Nov 2026)', () => {
 
 describe('the tidy-up of 18 Nov 2026 (owner: request on top, no PI draft card, City, one-line Saved, no Total)', () => {
   const between = (from: string, to: string) => SCREEN.slice(SCREEN.indexOf(from), SCREEN.indexOf(to))
-  test('the Quotation request card is the first card of the top row: after the Needs you strip, before Status', () => {
-    assert.ok(SCREEN.indexOf('<RequestCard') > SCREEN.indexOf('waiting.length > 0'))
+  test('the Quotation request card is the first card of the top row, before Status; the Needs you strip is gone (23 Nov 2026: its words are in the Status card)', () => {
     assert.ok(SCREEN.indexOf('<RequestCard') < SCREEN.indexOf('<StatusCard'))
+    assert.ok(!SCREEN.includes('Needs you') && !SCREEN.includes('Go there'))
   })
   test('the PI draft card and the PI-format download are gone, but a sent quotation can still become a PI from the Status card', () => {
     assert.ok(!/PiCard|downloadPi|Download in PI format/.test(SCREEN + STATUS))
@@ -162,7 +162,7 @@ describe('the tidy-up of 18 Nov 2026 (owner: request on top, no PI draft card, C
     assert.match(SCREEN, /\.\.\.\(st \? \{ supply_state: st, gst_mode: gstModeForState\(st\) \} : \{\}\)/, 'an unknown city leaves the state and the tax alone')
     assert.ok(CLIENT.includes('maxLength={80}'), 'the database refuses more than 80 characters')
   })
-  test('Versions and Price approval fill the bottom row; one alone takes the whole row', () => {
+  test('Versions takes the bottom row (a card alone takes the whole row)', () => {
     assert.match(rule('.bottom'), /display: flex;/)
     assert.match(CSS, /\.bottom > \* \{ flex: 1 1 0; min-width: 0; \}/)
   })
@@ -175,10 +175,10 @@ describe('the capped page and its header (owner-approved layout, 18 Nov 2026)', 
     assert.ok(layout.includes('boe-main-content-capped') && layout.includes("'--boe-content-max'") || layout.includes('--boe-content-max'))
     assert.ok(layout.includes('contentMaxWidth?: number'))
   })
-  test('on a phone the status pill and "Saved" leave the header (the Status card shows them) and Print keeps its name for a screen reader', () => {
+  test('on a phone the status pill and "Saved" leave the header (the Status card shows them); Print / PDF is not in the header at all (23 Nov 2026: it is Download PDF in the Share card)', () => {
     const actions = SCREEN.slice(SCREEN.indexOf('const actions = ('), SCREEN.indexOf('const body = ('))
     assert.ok(actions.includes('<span className={s.hideOnPhone}><StatusPill'))
-    assert.ok(actions.includes('aria-label="Print / PDF"'))
+    assert.ok(!actions.includes('Print / PDF') && !actions.includes('/print'))
   })
   test('the rhythm: 24 px between rows, 16 px between cards, a 16 px section heading, nothing under 12 px (BOE identity)', () => {
     assert.match(rule('.builder'), /gap: 24px;/)
@@ -241,5 +241,39 @@ describe('the numbers panel of a product (owner, 15 Nov 2026)', () => {
   test('under 1200 px the panel sits under the boxes, lined up with them (up to 420 px wide); on a phone it is full width with 44 px controls', () => {
     assert.match(CSS, /@media \(max-width: 1199px\) \{[\s\S]*?\.plRight \{ grid-column: 2; justify-self: start; width: 100%; max-width: 420px; \}/)
     assert.match(CSS, /@media \(max-width: 767px\) \{[\s\S]*?\.plRight \{ grid-column: 1; justify-self: stretch; max-width: none; \}\s*\.qtyBox, \.rupeeBox \{ height: 44px; \}\s*\.qtyIn, \.rupeeIn, \.qtySel \{ font-size: 16px; \}\s*\.plTools \.iconBtn \{ width: 44px; height: 44px; \}/)
+  })
+})
+
+describe('the top section tidied on 23 Nov 2026 (owner: fewer, calmer blocks)', () => {
+  const at = (needle: string) => SCREEN.indexOf(needle)
+  test('the "Saved." message is gone (the header says Saved); every other message stays', () => {
+    assert.ok(!SCREEN.includes("text: 'Saved.'"))
+    assert.ok(SCREEN.includes("setMsg(null) // the header's"), 'a save clears what was on screen and says nothing more')
+    assert.ok(SCREEN.includes('Unsaved changes') && SCREEN.includes("tone: 'bad'") && SCREEN.includes('undo: () =>'))
+  })
+  test('Lead and Ask a senior share one strip under the top row, before the Client card; the strip hides itself when both halves are empty', () => {
+    const order = ['<StatusCard', '<ShareCard', 'className={s.strip}', '<LeadCard', '<AskCard', '<ClientCard'].map(at)
+    assert.ok(order.every(i => i > 0), 'every part is on the page')
+    assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
+    assert.match(rule('.strip:empty'), /display: none;/)
+    assert.match(rule('.strip'), /grid-auto-flow: column;/)
+    for (const [file, cls] of [['LeadCard', 'leadStrip'], ['AskCard', 'askStrip']]) {
+      const src = read(`src/components/quotations/${file}.tsx`)
+      assert.ok(src.includes(`className={s.${cls}}`) && !src.includes('${s.card} ${s.' + cls), `${file} is a half of the strip, not a card of its own`)
+    }
+  })
+  test('the price approval is in the Status card: the page has no Price approval card and no Go there jump', () => {
+    assert.ok(at('needs={waiting}') > at('<StatusCard') && at('needs={waiting}') < at('<ShareCard'))
+    assert.ok(STATUS.includes('<PriceBlock') && STATUS.includes('needs={needs}'))
+    assert.ok(!SCREEN.includes('PriceCard') && !SCREEN.includes('PRICE_CARD_ID'))
+  })
+  test('the Other outcome row is gone: the outcomes are items of a More menu that reuses the Orders menu', () => {
+    assert.ok(!STATUS.includes('Other outcome') && !CSS.includes('.outcomes') && !CSS.includes('.quietRow'))
+    assert.ok(STATUS.includes("import { MoreActionsMenu, type MoreActionItem } from '@/app/orders/[id]/MoreActionsMenu'"))
+    for (const w of ['Confirmed, no PI', 'Mark as lost…', 'Archive', 'Delete…']) assert.ok(STATUS.includes(w), w)
+  })
+  test('the Share card explains in one or two lines, not three', () => {
+    assert.ok(!SHARE.includes('The message carries the link') && !SHARE.includes('the client link and the PDF show a small Best of Exports strip'))
+    assert.match(SHARE, /WhatsApp opens with the text ready/)
   })
 })
