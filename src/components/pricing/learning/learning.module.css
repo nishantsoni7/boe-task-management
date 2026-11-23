@@ -122,3 +122,11 @@
 
 /* "Teach next" (AccuracyCard.tsx): the product types to teach first. */
 .teachNext { margin: 0; padding-left: 20px; display: grid; gap: 4px; font-size: 13.5px; }
+
+/* Photo facts (PhotoFactsCard.tsx): one reading per row, its facts as chips, a correction as selects. */
+.photoGrid { display: grid; gap: 0; }
+.photoRow { display: flex; gap: 12px; align-items: flex-start; padding: 10px 0; border-top: 1px solid #F1EEE9; font-size: 13.5px; min-width: 0; }
+.photoRow:first-child { border-top: 0; }
+.photoPi { display: grid; place-items: center; font-size: 11px; color: #686D6C; }
+.factChips { display: flex; gap: 6px; flex-wrap: wrap; }
+.factEdit { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
