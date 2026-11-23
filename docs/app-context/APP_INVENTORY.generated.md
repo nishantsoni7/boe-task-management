@@ -5,19 +5,19 @@
 
 ## Snapshot
 
-- Commit: `a6985649` — Docs: 20270823000000 applied to production 23 Nov 2026 18:05 IST after a verified backup
+- Commit: `47f146a3` — Pricing: work out a Training element by wood cut list, metal weight, area or percentage (migration 20270823000000 APPLIED) (#993)
 - Commits on this branch: 1553
-- Pages (`page.tsx`): 211   API routes (`route.ts`): 223
+- Pages (`page.tsx`): 211   API routes (`route.ts`): 224
 - Migrations: 503 (first `20260530_create_positions.sql`, latest `20270823000000_pricing_calculators.sql`)
 - Tables ever created: 273 (dropped at some point: 8)   SQL functions: 1105   Enums: 0
-- Test files: 940   Next.js 16.2.6, React 19.2.4
+- Test files: 941   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `a6985649` 2026-11-23 Docs: 20270823000000 applied to production 23 Nov 2026 18:05 IST after a verified backup
-- `421abf47` 2026-11-23 Docs: PR #993 and the rolled-back rehearsal of 20270823000000 (no error, no residue)
-- `800eb744` 2026-11-23 Merge remote-tracking branch 'origin/main' into feat/price-brain-calculators
-- `0847eafd` 2026-11-23 Pricing: work out a Training element by wood cut list, metal weight, area or percentage
+- `47f146a3` 2026-11-23 Pricing: work out a Training element by wood cut list, metal weight, area or percentage (migration 20270823000000 APPLIED) (#993)
+- `db33183d` 2026-11-23 Quotations: the Fabric From box works on a row with nothing typed yet (no SQL) (#995)
+- `42e9edf6` 2026-11-23 Quotations: the builder's top section tidied, and Price approval moved up into the Status card (no SQL) (#994)
+- `f904e860` 2026-11-23 Docs: stamp #989 (the Open-tile migration file) as merged and live (no SQL) (#991)
 - `0b74fdbb` 2026-11-23 Docs: stamp the merge of #990 (Improve picture: line details and reference box) on its entries (#992)
 - `43175621` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
 - `32004032` 2026-11-23 Quotations: the Open tile's migration file (already applied) and the merge stamps for #986 and #988 (#989)
@@ -124,7 +124,7 @@
 - **performance-audit** (1): ` [POST]`
 - **performance-metrics** (2): ` [GET]`, `/team [GET]`
 - **permanently-delete-user** (1): ` [POST]`
-- **pricing** (1): `/training/read [POST]`
+- **pricing** (2): `/training/draft [POST]`, `/training/read [POST]`
 - **push** (3): `/dispatch [POST]`, `/preferences [GET,PUT]`, `/subscription [DELETE,POST]`
 - **quotations** (4): `/picture [POST]`, `/picture-file [GET]`, `/picture-mark [POST]`, `/scan [POST]`
 - **reset-password** (1): ` [POST]`
@@ -171,7 +171,7 @@
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 10 source, 7 test
-- `src/lib/pricing` — 17 source, 11 test
+- `src/lib/pricing` — 20 source, 12 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
 - `src/lib/quotations` — 32 source, 30 test
@@ -192,7 +192,7 @@
 
 Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_BACKUP_AND_RECOVERY.md`.
 
-- `ANTHROPIC_API_KEY` (22 reads)
+- `ANTHROPIC_API_KEY` (23 reads)
 - `BACKUP_RETRY_WAIT_MS` (1 reads)
 - `BOE_BACKUP_COPY_TO` (1 reads)
 - `BOE_BACKUP_PASSPHRASE` (2 reads)
@@ -222,12 +222,12 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `NEXT_PUBLIC_BOE_PERF_DEBUG` (1 reads)
 - `NEXT_PUBLIC_META_APP_ID` (1 reads)
 - `NEXT_PUBLIC_SHOWROOM_IMAGE_HOSTS` (2 reads)
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (16 reads)
-- `NEXT_PUBLIC_SUPABASE_URL` (161 reads)
+- `NEXT_PUBLIC_SUPABASE_ANON_KEY` (17 reads)
+- `NEXT_PUBLIC_SUPABASE_URL` (162 reads)
 - `NEXT_PUBLIC_VAPID_PUBLIC_KEY` (2 reads)
 - `NEXT_PUBLIC_WA_SIGNUP_CONFIG_ID` (1 reads)
 - `PI_FORMAT_WORKBOOK` (1 reads)
-- `PRICING_TRAINING_MODEL` (1 reads)
+- `PRICING_TRAINING_MODEL` (2 reads)
 - `PUSH_DISPATCH_SECRET` (1 reads)
 - `QUOTATION_IMPORT_MODEL` (1 reads)
 - `REQUIRE_LIVE_DB_TESTS` (1 reads)

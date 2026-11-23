@@ -9,23 +9,26 @@ import { createPortal } from 'react-dom'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useQuery } from '@tanstack/react-query'
 import { BadgeCheck, TriangleAlert } from 'lucide-react'
-import type { createClient } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
 import type { NeedsYou } from '@/lib/quotations/needsYou'
 import { formatDateIN } from '@/lib/quotations/math'
 import { suggestPrice } from '@/lib/pricing/suggest'
 import type { ModelSuggestion } from '@/lib/pricing/model'
 import { SuggestionFeedback, type FeedbackLine } from '@/components/pricing/learning/SuggestionFeedback'
+import { stashPrefill } from '@/lib/pricing/training/prefill'
 import { istDateOf } from '@/lib/istDate'
 import {
-  fetchPriceQueue,
+  fetchPriceQueue, pictureUrl,
   type PriceHint, type PriceReason, type PriceState,
 } from '@/lib/quotations/api'
 import s from './quotations.module.css'
 
 type Supabase = ReturnType<typeof createClient>
 
-type WhyCtx = { line: FeedbackLine; clientType: string | null; quotationId: string | null; isDesk: boolean }
+type WhyCtx = { line: FeedbackLine; clientType: string | null; quotationId: string | null; isDesk: boolean
+  /** For "Teach this price": the line's photo and the price typed on it. */
+  imagePath?: string | null; price?: number | null }
 
 /**
  * The suggested price as a small card for everyone: "Suggested ₹4,790" with a Use button and, under it, "Range ₹3,800–₹6,050"; or
@@ -94,11 +97,22 @@ function PriceWhy({ ctx, hint, model, sug, onClose }: { ctx: WhyCtx; hint?: Pric
             <SuggestionFeedback source="quotation" line={ctx.line} clientType={ctx.clientType} quotationId={ctx.quotationId} isDesk={ctx.isDesk} defaultOpen
               suggestion={{ price: sug.price, low: sug.low, high: sug.high, confidence: sug.confidence, basis: sug.basis, reasons: model?.reasons ?? [] }} />
           )}
+          <div className={s.small}>
+            <button type="button" className={s.linkBtn} onClick={() => teachThisPrice(ctx)}>Teach this price in Training</button>
+            <span className={s.muted}> · opens a new tab with this product, its photo, size and price</span>
+          </div>
         </div>
       </div>
     </div>,
     document.body,
   )
+}
+
+/** "Teach this price" from a quotation line: Training opens in a new tab, so the quotation being edited is left as it is. */
+function teachThisPrice(ctx: WhyCtx) {
+  stashPrefill({ name: ctx.line.name.trim() || 'A product', size: ctx.line.size ?? null, material: ctx.line.material ?? null, qty: ctx.line.qty ?? null, price: ctx.price ?? null, note: null,
+    photoUrl: ctx.imagePath ? pictureUrl(createClient(), ctx.imagePath) : null, feedbackId: null, quoteNo: null })
+  window.open('/pricing/training/new', '_blank', 'noopener')
 }
 
 export function reasonText(r: PriceReason): string {
