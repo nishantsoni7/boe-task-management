@@ -31,22 +31,60 @@
 // Sample Tracking has its own separate notification system (sample_notifications
 // table) and is intentionally excluded here.
 
+// ─── MAJOR ACTIVITY ONLY (owner, 2026-11-23) ─────────────────────────────────
+//
+// Finance and Orders each have TWO lists: the types the inbox SHOWS, and the
+// routine types it HIDES. The shown lists keep the names every consumer already
+// imports (`FINANCE_NOTIFICATION_TYPES`, `ORDER_NOTIFICATION_TYPES`), so the
+// feed, the unread count, Mark all read, Delete all AND the phone-alert policy
+// (src/lib/push/pushPolicy.ts files a row by these lists; a type no list names
+// gets no push) all follow the same shortened list with no further change.
+//
+// THE RULE. A notice is shown only if a named person must act, is stuck until
+// they hear back, or something went wrong. Routine progress that already has a
+// home — the dashboards' counts and queues, the Order's Activity trail, the
+// "New update" mark on Confirmed Orders — is hidden.
+//
+// NOTHING IS DELETED. Rows of a hidden type stay in `notifications`; they are
+// only not selected. Move a type back to the shown list and its old rows return.
+// The rows are STILL WRITTEN: the Order-update types (status, amended,
+// production, payment) feed the "New update" mark on Confirmed Orders
+// (src/lib/orders/orderUnreadUpdates.ts reads them straight from the table, not
+// through these lists), so they must keep being written until that mark has
+// another source.
+//
+// The hidden lists exist so a test can prove every written type was decided
+// one way or the other: a new type that is in neither list fails it.
 export const FINANCE_NOTIFICATION_TYPES = [
+  // Finance asks the sender a question / a request was rejected: the sender must act.
+  'finance_clarification',
+  'finance_rejected',
+  // Cash handover with acceptance (20270410000000). entity_id is the HANDOVER;
+  // written by the database RPCs and the daily reminder sweep. Cash is with a
+  // person who must act (accept it, answer a dispute) — the HandoverBanner shows
+  // it too, this is the nudge.
+  'finance_handover_requested',
+  'finance_handover_disputed',
+  'finance_handover_reminder',
+] as const
+
+/**
+ * Finance types that are still written but not shown, and get no phone alert.
+ * `finance_payment_moved` and `finance_merged` are sent with `finance_linked`,
+ * so they are hidden with it.
+ */
+export const FINANCE_ROUTINE_NOTIFICATION_TYPES = [
+  // A request is in the Pending list of Payment Requests, where the work is done.
   'finance_submitted',
   'finance_resubmitted',
-  'finance_clarification',
+  // The request shows its own status; the Order's Activity trail records the payment.
   'finance_approved_suspense',
   'finance_approved_linked',
-  'finance_rejected',
   'finance_linked',
   'finance_status_corrected',
-  // Cash handover with acceptance (20270410000000). entity_id is the HANDOVER;
-  // written by the database RPCs and the daily reminder sweep.
-  'finance_handover_requested',
+  // Closing notices: the handover record and banner show the result.
   'finance_handover_accepted',
-  'finance_handover_disputed',
   'finance_handover_cancelled',
-  'finance_handover_reminder',
 ] as const
 
 // Assets & Access (20260731000000). Same contract as Finance/Orders: stable
@@ -85,30 +123,18 @@ export const ASSET_NOTIFICATION_TYPES = [
 ] as const
 
 export const ORDER_NOTIFICATION_TYPES = [
-  'order_submitted',
-  'order_assigned',
-  'order_clarification',
-  'order_resubmitted',
-  'order_rejected',
+  // The PI was approved and the Order confirmed: closes the loop for sales, once per Order.
   'order_converted',
-  // Confirmed Order updates (20261202000000). Listed here so they reach the
-  // Orders bell, the Orders feed, the Orders unread count and Orders' own
-  // "mark all read" — one module, one channel. The same four are the closed
-  // set src/lib/orders/orderUpdateNotifications.ts derives from its event map,
-  // and a test pins these two lists to each other.
+  // An Order's status changed (Running, On Hold, Dispatched, Cancelled...). The
+  // other three `order_update_*` types are routine and hidden below; the same
+  // four are the closed set src/lib/orders/orderUpdateNotifications.ts derives
+  // from its event map, and a test pins them to the two lists here together.
   'order_update_status',
-  'order_update_amended',
-  'order_update_production',
-  'order_update_payment',
   // The PI-to-operations handoff (20261229000000): the reviewer is told a
   // version awaits them; the approver is told what the reviewer decided. Both
-  // are Orders work and open the Order, so they ride the Orders channel.
+  // are a hand-off between teams where someone is waiting.
   'order_operations_review_requested',
   'order_operations_review_decided',
-  // WRITTEN BUT SHOWN NOWHERE until 2026-10-19 (owner audit): these rows were
-  // inserted — by the database or by /api/orders/submissions/notify — yet no
-  // category listed them, so they reached no feed, no badge and no "mark all
-  // read". They are Orders work, so they ride the Orders channel.
   //   * the below-40% exception on a PI (request + two outcomes)
   'pi_exception_requested',
   'pi_exception_approved',
@@ -122,19 +148,45 @@ export const ORDER_NOTIFICATION_TYPES = [
   'order_document_review_decided',
   // Added to the enum by 20270321000000 (which must be applied before this
   // code ships — a value the enum does not have fails the whole `type.in()`):
-  //   * a PI owner's correction request and its outcome (the route already
-  //     inserted these; every insert failed until the enum had them)
+  //   * a PI owner's correction request and its outcome
   'pi_correction_requested',
   'pi_correction_resolved',
   'pi_correction_rejected',
-  //   * a PI sent for approval / returned or rejected (database, 20270321000001)
-  'pi_review_requested',
+  //   * a PI returned or closed as lost (database, 20270321000001): the
+  //     salesperson cannot move until they act
   'pi_review_decided',
   //   * an Order change request raised / decided (database)
   'order_change_requested',
   'order_change_decided',
-  //   * a Fabric or Finish approval status recorded (database)
+] as const
+
+/**
+ * Orders types that are still written but not shown, and get no phone alert.
+ *
+ * The three `order_update_*` types amended / production / payment are STILL
+ * WRITTEN ON PURPOSE: with `order_update_status` their unread rows are the "New
+ * update" mark on Confirmed Orders and the "New since your last visit" line on
+ * the Order page (orderUnreadUpdates.ts reads the table directly, by type, not
+ * through the shown list). Stop writing them and that mark goes dark.
+ * `order_update_approval` is written too but feeds no mark.
+ */
+export const ORDER_ROUTINE_NOTIFICATION_TYPES = [
+  // Amended, aligned for production, payment verified/linked, Fabric & Finish
+  // recorded: each is in the Order's Activity trail, and the dashboards count
+  // what is still open. The payment one also repeats Finance's own notice.
+  'order_update_amended',
+  'order_update_production',
+  'order_update_payment',
   'order_update_approval',
+  // The dashboard queue "PI submitted for review" is the working list.
+  'pi_review_requested',
+  // The Order Request workflow is retired (20261007000000); nothing writes
+  // these any more. Only old rows remain, and they stay hidden.
+  'order_submitted',
+  'order_assigned',
+  'order_clarification',
+  'order_resubmitted',
+  'order_rejected',
 ] as const
 
 // Attendance & Payroll employee-raised issues (20260824000000).
@@ -278,6 +330,24 @@ export type NotificationCategory = 'task' | 'finance' | 'order' | 'asset' | 'att
 
 const VALID_CATEGORIES: readonly NotificationCategory[] =
   ['task', 'finance', 'order', 'asset', 'attendance_payroll', 'review', 'inventory', 'sales']
+
+/**
+ * The one line under the filters on a "major activity only" inbox, so a routine
+ * update that is not here never looks like a bug. Only the two inboxes whose
+ * routine types are hidden above have one. `href` is a same-origin page.
+ */
+export const MAJOR_ONLY_NOTE: Partial<Record<NotificationCategory, { text: string; href: string; linkLabel: string }>> = {
+  order: {
+    text: 'Major activity only. Routine updates show as “New update” on Confirmed Orders and in each Order’s Activity.',
+    href: '/orders/all',
+    linkLabel: 'Open Confirmed Orders',
+  },
+  finance: {
+    text: 'Major activity only. Routine payment updates are in Payment Requests.',
+    href: '/finance',
+    linkLabel: 'Open Payment Requests',
+  },
+}
 
 /**
  * Categories only an admin may read. Currently none.

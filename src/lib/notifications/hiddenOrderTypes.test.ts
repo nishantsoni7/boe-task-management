@@ -11,7 +11,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { ORDER_NOTIFICATION_TYPES } from '@/lib/notifications'
+import { ORDER_NOTIFICATION_TYPES, ORDER_ROUTINE_NOTIFICATION_TYPES } from '@/lib/notifications'
 import { getNotificationMeta } from '@/lib/notificationMeta'
 import type { Notification } from '@/lib/types'
 
@@ -29,14 +29,18 @@ describe('the once-hidden Orders notifications', () => {
     for (const t of NOW_LISTED) assert.ok((ORDER_NOTIFICATION_TYPES as readonly string[]).includes(t), t)
   })
 
-  test('the types 20270321000000 adds are listed and open the right record', () => {
+  test('the types 20270321000000 adds are decided (shown or routine) and open the right record', () => {
     // The migration that adds them to the enum must be applied before this
     // ships: an unknown value in the type.in() filter fails the whole read.
+    // MAJOR ACTIVITY ONLY (2026-11-23): `pi_review_requested` and
+    // `order_update_approval` are routine and no longer in the inbox list, but
+    // they are still written, still filed under Orders and still open the record.
     const ADDED = ['pi_correction_requested', 'pi_correction_resolved', 'pi_correction_rejected',
       'pi_review_requested', 'pi_review_decided', 'order_change_requested', 'order_change_decided', 'order_update_approval']
+    const decided = new Set<string>([...ORDER_NOTIFICATION_TYPES, ...ORDER_ROUTINE_NOTIFICATION_TYPES])
     const migration = readFileSync('supabase/migrations/20270321000000_order_submission_notification_types.sql', 'utf8')
     for (const t of ADDED) {
-      assert.ok((ORDER_NOTIFICATION_TYPES as readonly string[]).includes(t), t)
+      assert.ok(decided.has(t), `${t} is in neither the shown nor the routine list`)
       assert.ok(migration.includes(`add value if not exists '${t}'`), `${t} is added to the enum`)
       assert.equal(getNotificationMeta(note(t)).category, 'order', t)
     }
