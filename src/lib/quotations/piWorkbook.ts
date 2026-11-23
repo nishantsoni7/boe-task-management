@@ -94,6 +94,25 @@ function toBase64(bytes: Uint8Array): string {
 }
 const lineLabel = (line: QuoteLine, i: number) => line.name.trim() || `Product ${i + 1}`
 
+/** The fabric of a product in words for its Customization: its name and code, and where it comes from when it is not ours. */
+export function fabricWords(l: Pick<QuoteLine, 'choices'>): string {
+  const f = l.choices?.fabric
+  const what = [(f?.name ?? '').trim(), (f?.code ?? '').trim() && `(${(f?.code ?? '').trim()})`].filter(Boolean).join(' ')
+  if (!f || !what) return ''
+  return `Fabric: ${what}${f.source === 'client' ? ', client’s own' : f.source === 'code' ? ', client’s code, we source it' : ''}`
+}
+/** The finish: the code chosen on the Fabric, finish and packing page, else the old free-text finish of the line. */
+export const finishWords = (l: Pick<QuoteLine, 'choices' | 'finish'>): string => {
+  const t = (l.choices?.finish?.code ?? '').trim() || (l.finish ?? '').trim()
+  return t ? `Finish: ${t}` : ''
+}
+/** Every extra picture of a product for the PI: its other pictures, and the swatch photos of its fabric and finish (they are customization pictures of that row). */
+export const extraPathsOf = (l: Pick<QuoteLine, 'references' | 'choices'>): string[] =>
+  [...new Set([...(l.references ?? []).map(r => r.path), ...(['fabric', 'finish'] as const).flatMap(k => (l.choices?.[k]?.photo ? [l.choices[k]!.photo as string] : []))])]
+
+/** The side sheet Orders reads per product (src/lib/pi/fabricFinishSheets.ts: its name and headings are pinned against that reader in piWorkbook.test.ts). */
+export const PI_COST_SHEET = 'Packing cost and Fabric Cost'
+
 /** The lines that go on the PI: optional lines are offers, not orders. */
 export const piLines = (lines: readonly QuoteLine[]) => lines.filter(l => !l.is_optional)
 
@@ -123,11 +142,11 @@ export function piFigures(input: Pick<PiWorkbookInput, 'money' | 'areas' | 'line
       quantity,
       dimensions: input.dimensionUnit === 'cm' ? sizeWithUnit(l.size_text, 'cm') : l.size_text.trim(),
       material: l.material.trim(),
-      customization: [l.finish && `Finish: ${l.finish.trim()}`, l.spec.trim(), l.client_note.trim()].filter(Boolean).join(' · '),
+      customization: [fabricWords(l), finishWords(l), l.spec.trim(), l.client_note.trim()].filter(Boolean).join(' · '),
       costPerPiece,
       total: r2(quantity * costPerPiece),
       imagePath: l.image_path,
-      extraPaths: (l.references ?? []).map(r => r.path),
+      extraPaths: extraPathsOf(l),
     }
   })
   const gross = r2(lines.reduce((s, l) => s + l.total, 0))
@@ -233,6 +252,20 @@ export async function buildPiWorkbook(input: PiWorkbookInput): Promise<Uint8Arra
     : f.gst
   set(`G${row(122)}`, 'Grand Total')
   ws.getCell(`I${row(122)}`).value = { formula: `I${row(120)}+I${row(121)}`, result: f.grandTotal }
+
+  // The per-product fabric and packing costing, in the sheet Orders already reads ("Packing cost and Fabric Cost"), so the Order's
+  // Fabric and Finish card shows metres, rate and packing per piece for each product. Only when a price was typed on the costing page.
+  const source = piLines(input.lines)
+  if (source.some(l => l.costing?.fabric || l.costing?.packing)) {
+    const cs = wb.addWorksheet(PI_COST_SHEET)
+    cs.addRow(['Code', 'Product', 'Quantity', 'Fabric Per pc', 'Fabric price per meter', 'Packing cost/pc', 'Packing Type'])
+    cs.getRow(1).font = { bold: true }
+    cs.columns = [10, 40, 10, 14, 22, 16, 28].map(width => ({ width }))
+    f.lines.forEach((l, i) => {
+      const c = source[i]?.costing
+      cs.addRow([l.sequence, l.name, l.quantity, c?.fabric?.metres ?? null, c?.fabric?.rate ?? null, c?.packing?.per_piece ?? null, c?.packing?.type ?? null])
+    })
+  }
 
   const out = await wb.xlsx.writeBuffer()
   return new Uint8Array(out as ArrayBuffer)
