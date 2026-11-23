@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-23 — Quotations: the list's columns and its phone layout (branch `feat/quotation-list-columns`, PR open, not merged) · no migration
+
+- **Why.** Owner: remove the Client column (the client is in the Quotation column), rename Quotation to Client Details, add Sales person and a Pending from (how long the quotation has been pending); then "in mobile the layout is very bad". He approved mockups of the desktop columns and of a new phone layout.
+- **What.** `ListScreen.tsx` (`Row`, the header, the filter row), `HomeCards.tsx`, the list block of `quotations.module.css`, new `src/lib/quotations/pendingFrom.ts`. Columns: Client Details (the client, then project · number · lines), Sales person (the owner; replaces the Everyone's-only Owner column), Before GST, Status, Pending from, Last activity. Pending from counts only open quotations: a draft from when it was made, a sent or negotiating one from when it was sent; the Dashboard's whole-day wording and amber (2 days) / red (4 days) limits; closed ones show a dash. On a phone each row is a card with the status, the wait and the sales person under the client; all eight filters stay (one scrolling row); the value-by-candidate bars are folded until the heading is tapped. On a tablet Last activity is hidden. Dossier 29 section 27.
+- **Not changed.** No SQL; every field was already in the list. The bin's markup is untouched (a test pins it).
+- **Checked.** New `pendingFrom.test.ts` (6) and `listColumns.dom.test.tsx` (6), one new `homeCards.dom.test.tsx` test; the 488 tests of the quotation component and library folders pass; `tsc --noEmit` 0 errors; eslint clean on the changed files; the real components drawn with the real stylesheet at 1534 px (125%), 1280, 1024 and 390. Not seen: signed in with real data, a real phone, a very long client name on a phone.
+- **Rollback.** Revert the PR. No data was changed.
+
 ## 2026-11-23 — Modules launcher: four big blocks you choose, and a count on every tile (PR #985 open, not merged) · migration `20270821000000` APPLIED to production 2026-11-23 14:02 IST (before the merge)
 
 - **Why.** Owner: redesign the Modules page with four big blocks, show the notification number on every smaller tile as the big blocks do, and let the owner change which modules are big. A finished-looking mock-up (1920, 1366, phone, Edit order) was approved first; the owner chose Sales as the fourth block and "save to account".

@@ -12,6 +12,7 @@ import type { createClient } from '@/lib/supabase/client'
 import { cardsKey, errorText, fetchCards, type Cards } from '@/lib/quotations/api'
 import { formatINR } from '@/lib/currency'
 import { AppLink as Link } from '@/components/ui/AppLink'
+import { useIsPhone } from '@/components/ui/useIsPhone'
 import { quotationWait } from '@/lib/tasks/quotationWait'
 import s from './quotations.module.css'
 
@@ -48,6 +49,9 @@ export function HomeCards({ supabase, enabled, userId, onSeeTheirs }: { supabase
   const [period, setPeriod] = useState<PeriodKey>('this')
   const [person, setPerson] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
+  // On a phone the bars are folded away until the heading is tapped, so the list is not pushed a screen down (owner, 23 Nov 2026).
+  const [barsOpen, setBarsOpen] = useState(false)
+  const phone = useIsPhone()
   const [now] = useState(() => Date.now())
   const { from, to } = useMemo(() => periodDates(period, now), [period, now])
   // keepPreviousData: tapping a bar or changing the period keeps the card on screen (dimmed) while the next answer comes.
@@ -59,6 +63,7 @@ export function HomeCards({ supabase, enabled, userId, onSeeTheirs }: { supabase
   const theirs = !!c && c.me.person !== userId
   const wait = c?.desk?.oldest_at ? quotationWait(c.desk.oldest_at, now) : null
   const widest = Math.max(...people.map(p => Number(p.value_made)), 1)
+  const folded = phone && !barsOpen
 
   return (
     <section className={`${s.card} ${s.top}${c && !c.team ? ` ${s.topSolo}` : ''}${q.isPlaceholderData ? ` ${s.topBusy}` : ''}`} aria-label="Report cards" aria-busy={q.isPlaceholderData}>
@@ -72,16 +77,20 @@ export function HomeCards({ supabase, enabled, userId, onSeeTheirs }: { supabase
           {c.team && (
             <div className={s.chart}>
               <div className={s.chHead}>
-                <h2 className={s.cardsTitle}>Quotation value by candidate</h2>
+                {phone
+                  ? <h2 className={s.cardsTitle}><button type="button" className={s.chFold} aria-expanded={barsOpen} onClick={() => setBarsOpen(v => !v)}>Quotation value by candidate <ChevronDown size={16} aria-hidden className={barsOpen ? s.chevUp : undefined} /></button></h2>
+                  : <h2 className={s.cardsTitle}>Quotation value by candidate</h2>}
                 {people.length > 0 && <span className={s.chTotal}>{formatINR(Number(c.team.value_made))} · {quotations(c.team.made)}</span>}
                 <span className={s.spacer} />
                 {theirs && <button type="button" className={`${s.btn} ${s.btnSm}`} onClick={() => setPerson(null)}>Back to mine</button>}
                 {theirs && <button type="button" className={`${s.btn} ${s.btnSm}`} onClick={() => onSeeTheirs(c.me.name ?? '')}>See their quotations</button>}
-                <select className={s.input} style={{ width: 'auto', height: 30 }} value={period} onChange={e => setPeriod(e.target.value as PeriodKey)} aria-label="Period">
-                  {PERIODS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                </select>
+                {!folded && (
+                  <select className={s.input} style={{ width: 'auto', height: 30 }} value={period} onChange={e => setPeriod(e.target.value as PeriodKey)} aria-label="Period">
+                    {PERIODS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                  </select>
+                )}
               </div>
-              {people.length === 0 ? (
+              {folded ? null : people.length === 0 ? (
                 <div className={s.chEmpty}>
                   <ChartNoAxesCombined size={18} aria-hidden /> No quotations were made {WHEN[period]}.
                   {period !== 'this' && <button type="button" className={`${s.btn} ${s.btnSm}`} onClick={() => setPeriod('this')}>Show this month</button>}

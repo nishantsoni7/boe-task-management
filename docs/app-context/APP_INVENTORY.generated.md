@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `f8bca282` — Docs: record migration 20270821000000 as applied to production
+- Commit: `40259764` — Modules launcher: four big blocks you choose, and a count on every tile (#985)
 - Commits on this branch: 1544
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 501 (first `20260530_create_positions.sql`, latest `20270821000000_launcher_big_module_keys.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
-- Test files: 933   Next.js 16.2.6, React 19.2.4
+- Test files: 935   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `f8bca282` 2026-11-23 Docs: record migration 20270821000000 as applied to production
-- `72bd24b6` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile
+- `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
+- `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
 - `741a8d4e` 2026-11-23 Docs: stamp the SEO brief short version as merged and live (no SQL) (#983)
 - `586aaf2e` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL) (#979)
@@ -174,7 +174,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 30 source, 28 test
+- `src/lib/quotations` — 31 source, 29 test
 - `src/lib/salesLeads` — 17 source, 17 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
