@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-23 — Quotations: the list's columns and its phone layout (PR #988, branch `feat/quotation-list-columns`, open, not merged) · no migration
+
+- **Why.** Owner: remove the Client column (the client is in the Quotation column), rename Quotation to Client Details, add Sales person and a Pending from (how long the quotation has been pending); then "in mobile the layout is very bad". He approved mockups of the desktop columns and of a new phone layout.
+- **What.** `ListScreen.tsx` (`Row`, the header, the filter row), `HomeCards.tsx`, the list block of `quotations.module.css`, new `src/lib/quotations/pendingFrom.ts`. Columns: Client Details (the client, then project · number · lines), Sales person (the owner; replaces the Everyone's-only Owner column), Before GST, Status, Pending from, Last activity. Pending from counts only open quotations: a draft from when it was made, a sent or negotiating one from when it was sent; the Dashboard's whole-day wording and amber (2 days) / red (4 days) limits; closed ones show a dash. On a phone each row is a card with the status, the wait and the sales person under the client; all eight filters stay (one scrolling row); the value-by-candidate bars are folded until the heading is tapped. On a tablet Last activity is hidden. Dossier 29 section 28.
+- **Not changed.** No SQL; every field was already in the list. The bin's markup is untouched (a test pins it).
+- **Checked.** New `pendingFrom.test.ts` (6) and `listColumns.dom.test.tsx` (6), one new `homeCards.dom.test.tsx` test; the 488 tests of the quotation component and library folders pass; `tsc --noEmit` 0 errors; eslint clean on the changed files; the real components drawn with the real stylesheet at 1534 px (125%), 1280, 1024 and 390. Not seen: signed in with real data, a real phone, a very long client name on a phone.
+- **Rollback.** Revert the PR. No data was changed.
+
 ## 2026-11-23 — Quotations: opening a quotation answers at once and starts its reads at the click (PR #987, branch perf/quotation-open-instant, PR A of 5 of the open-speed plan, open, not merged) · no migration
 
 - **Why.** Owner: opening a quotation from a Requests row was very slow, nothing on screen said so and people pressed the row again and again; "as fast as possible", loading in parts allowed. Cause (code): the rows used a bare `router.push` (it bypasses `AppLink`, so the app's wait mark and loader never started), there was no `loading.tsx` under `src/app/quotations`, the builder's spinner fades in only after 0.8 s and took the whole frame away, and the builder asked for the quotation only after the page code had loaded AND the profile and access reads had answered.
