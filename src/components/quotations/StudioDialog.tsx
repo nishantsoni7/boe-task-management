@@ -5,13 +5,16 @@
 // shown beside the original; nothing changes on the quotation until "Use this picture" (and then the builder's Save).
 // A made picture can be changed again with comments (owner, 18 Nov 2026): "Change this result" sends the RESULT back
 // with what to change, and "Back to the previous one" steps to the one before.
+// The line's own details (name, size, material) start in a box and go with every request as a guide to proportions and
+// materials (owner, 23 Nov 2026); an optional reference picture shows as a thumbnail, can be removed, and works for a
+// next round of changes too. It is only sent for a change: Clean up redraws the same design and takes no reference.
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { RotateCw, Sparkles, Wand2, Crop } from 'lucide-react'
 import type { createClient } from '@/lib/supabase/client'
 import { shrinkPhoto } from '@/lib/exhibitionLeads/scanClient'
 import { uploadPicture } from '@/lib/quotations/api'
-import { MAX_INSTRUCTION } from '@/lib/quotations/pictureStudio'
+import { MAX_DETAILS, MAX_INSTRUCTION } from '@/lib/quotations/pictureStudio'
 import { Pic } from './Pic'
 import { CropBox, WHOLE, renderCrop, type Box } from './CropBox'
 import s from './quotations.module.css'
@@ -23,8 +26,10 @@ type Tab = 'clean' | 'change' | 'crop'
 
 const blobToDataUrl = (b: Blob) => new Promise<string>((ok, bad) => { const r = new FileReader(); r.onload = () => ok(String(r.result)); r.onerror = bad; r.readAsDataURL(b) })
 
-export function StudioDialog({ supabase, userId, path, url, wants, swatch, onClose, onUse }: {
+export function StudioDialog({ supabase, userId, path, url, details: lineDetails, wants, swatch, onClose, onUse }: {
   supabase: Supabase; userId: string; path: string; url: (p: string) => string
+  /** The product line's name, size and material, worded for the picture maker (lineDetails): the box starts with it. */
+  details?: string
   /** What the client wants different from this reference picture (read from the client's file): opens "Change it" filled in. */
   wants?: string
   /** The client's swatch for it (a stored path), used as the reference picture. */
@@ -34,6 +39,8 @@ export function StudioDialog({ supabase, userId, path, url, wants, swatch, onClo
   const [tab, setTab] = useState<Tab>(wants ? 'change' : 'clean')
   const [instruction, setInstruction] = useState(wants?.slice(0, MAX_INSTRUCTION) ?? '')
   const [reference, setReference] = useState<string | null>(null)
+  const [details, setDetails] = useState(lineDetails ?? '')
+  const fileRef = useRef<HTMLInputElement>(null)
   // `url` is a new arrow on every render: depend on the address string, never the function, or this runs forever.
   const swatchUrl = swatch ? url(swatch) : null
   useEffect(() => {
@@ -77,8 +84,8 @@ export function StudioDialog({ supabase, userId, path, url, wants, swatch, onClo
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         // Again: the made picture is the starting point, changed by what was asked; otherwise the product's own picture.
         body: JSON.stringify(again !== undefined && result
-          ? { sourcePath: result, mode: 'change', instruction: again, reference }
-          : { sourcePath: path, mode: tab, instruction, reference }),
+          ? { sourcePath: result, mode: 'change', instruction: again, reference, details }
+          : { sourcePath: path, mode: tab, instruction, reference: tab === 'change' ? reference : null, details }),
       })
       const json = await res.json().catch(() => null) as { ok: boolean; path?: string; error?: string } | null
       if (!json?.ok || !json.path) throw new Error(json?.error ?? 'The picture could not be made. Try again.')
@@ -90,6 +97,16 @@ export function StudioDialog({ supabase, userId, path, url, wants, swatch, onClo
     if (!f) return
     try { setReference(await blobToDataUrl(await shrinkPhoto(f))) } catch { setErr('That reference picture could not be read.') }
   }
+  // One box for the optional reference picture: before a result it sits under "What to change", after one under "Change this result".
+  const referenceBox = (
+    <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }} data-reference>
+      {reference && <Pic src={reference} alt="Reference picture" className={s.studioRef} />}
+      <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { void pickReference(e.target.files?.[0]); e.target.value = '' }} />
+      <button type="button" className={s.btn} onClick={() => fileRef.current?.click()} disabled={busy}>{reference ? 'Change reference picture' : 'Add a reference picture'}</button>
+      {reference && <button type="button" className={s.btn} onClick={() => setReference(null)} disabled={busy}>Remove</button>}
+      <span className={`${s.small} ${s.muted}`}>Optional. The picture maker takes inspiration from it for the parts you change; everything else stays as it is.</span>
+    </div>
+  )
   const tabBtn = (t: Tab, label: string, Icon: typeof Sparkles) => (
     <button type="button" role="tab" className={s.tab} aria-selected={tab === t} onClick={() => { setTab(t); setResult(null); setEarlier([]); setRefine(''); setErr('') }} disabled={busy}><Icon size={14} aria-hidden /> {label}</button>
   )
@@ -105,8 +122,16 @@ export function StudioDialog({ supabase, userId, path, url, wants, swatch, onClo
           {tab === 'change' && (
             <div style={{ display: 'grid', gap: 8 }}>
               <label className={s.field}><span>What to change</span><input id="studio-change" className={s.input} value={instruction} maxLength={MAX_INSTRUCTION} onChange={e => setInstruction(e.target.value)} placeholder="Walnut finish, add arms, fabric in mustard velvet…" disabled={!!result} /></label>
-              <label className={s.small} style={{ cursor: 'pointer' }}>Reference picture (optional): <input type="file" accept="image/*" onChange={e => { void pickReference(e.target.files?.[0]); e.target.value = '' }} disabled={!!result} /> {reference && 'added'}</label>
+              {!result && referenceBox}
               <div className={`${s.small} ${s.muted}`}>One paid request per press. Everything you do not mention stays the same.</div>
+            </div>
+          )}
+          {tab !== 'crop' && (
+            <div style={{ display: 'grid', gap: 4 }}>
+              <label className={s.field}><span>Details sent with the picture</span>
+                <textarea aria-label="Details sent with the picture" className={s.input} style={{ height: 'auto', padding: '8px 10px', resize: 'vertical' }} rows={2} maxLength={MAX_DETAILS} value={details}
+                  onChange={e => setDetails(e.target.value)} disabled={busy} placeholder="Product, size and material. Nothing is sent when this is empty." /></label>
+              <div className={`${s.small} ${s.muted}`}>Taken from this product line. It only keeps the size and material right; it is not drawn on the picture. Change it here for this picture only, or clear it.</div>
             </div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, alignItems: 'start' }}>
@@ -127,6 +152,7 @@ export function StudioDialog({ supabase, userId, path, url, wants, swatch, onClo
               <label className={s.field}><span>Change this result</span>
                 <input className={s.input} value={refine} maxLength={MAX_INSTRUCTION} onChange={e => setRefine(e.target.value)} disabled={busy}
                   placeholder="What should be different, e.g. remove the cushion, straight legs, lighter wood" /></label>
+              {referenceBox}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                 <button type="button" className={s.btn} disabled={busy || refine.trim().length < 3} onClick={() => void run(refine.trim())}>{busy ? 'Making the picture… (up to a minute)' : 'Make these changes'}</button>
                 {earlier.length > 0 && <button type="button" className={s.btn} disabled={busy} onClick={() => { setResult(earlier[earlier.length - 1]); setEarlier(e => e.slice(0, -1)) }}>Back to the previous one</button>}
