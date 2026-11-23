@@ -69,7 +69,8 @@ export function MyDayScreen() {
     queryFn: () => fetchMyDay(work.supabase),
     staleTime: 15_000,
     refetchInterval: 60_000,
-    enabled: ready,
+    // Not held back for the permission answer (2026-11-23): the guard builds this page hidden while the check runs, and the
+    // database function decides what this person may read. The list is still not drawn until `ready`.
   })
 
   const now = Math.max(openedAt, day.dataUpdatedAt)
