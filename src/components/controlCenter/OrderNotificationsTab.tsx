@@ -145,6 +145,16 @@ export function OrderNotificationRecipientsTab() {
         Order. Timestamps, background corrections and read-state changes are not
         events and raise nothing.
       </div>
+
+      <div className={cc.note} style={{ marginTop: 12 }}>
+        <div className={cc.noteTitle}>What reaches the Notifications page</div>
+        The Notifications page shows major activity only, so of these changes only a
+        status change appears there (and sends a phone alert). Amendments,
+        production alignment and payments still mark the Order &ldquo;New
+        update&rdquo; on Confirmed Orders for the same people, and Fabric &amp;
+        Finish approvals show only in the Order&rsquo;s Activity. These switches
+        decide who receives each of them.
+      </div>
     </CcSection>
   )
 }

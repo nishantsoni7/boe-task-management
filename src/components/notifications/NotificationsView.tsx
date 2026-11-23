@@ -6,11 +6,12 @@ import { useQueryClient } from '@tanstack/react-query'
 import { createClient } from '@/lib/supabase/client'
 import { useRefresh } from '@/contexts/RefreshContext'
 import type { Notification, UserProfile } from '@/lib/types'
-import type { NotificationCategory } from '@/lib/notifications'
+import { MAJOR_ONLY_NOTE, type NotificationCategory } from '@/lib/notifications'
+import { AppLink } from '@/components/ui/AppLink'
 import { getNotificationMeta } from '@/lib/notificationMeta'
 import { withTaskReturnTo } from '@/lib/tasks/taskReturnPath'
 import { colors, font } from '@/lib/tokens'
-import { Bell, CheckCheck, Trash2, AlertTriangle, ChevronDown } from 'lucide-react'
+import { Bell, CheckCheck, Trash2, AlertTriangle, ChevronDown, Info } from 'lucide-react'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
 import { useProfile } from '@/hooks/queries/useProfile'
 import { useNotifications } from '@/hooks/queries/useNotifications'
@@ -66,6 +67,7 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
   const [filter,   setFilter]   = useState<FilterTab>('all')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [isMobile, setIsMobile] = useState(false)
+  const majorOnlyNote = MAJOR_ONLY_NOTE[category]
 
   // Same breakpoint the rest of the app uses. Only affects layout: the group
   // summary wraps and its actions get taller touch targets; nothing is hidden
@@ -460,6 +462,30 @@ export function NotificationsView({ category, Layout, loginRedirectPath = '/logi
           </button>
         ))}
       </div>
+
+      {/* Orders and Finance show major activity only; routine updates live on the
+          module's own pages. One quiet line says so, so a missing notice never
+          looks like a bug. Always shown, also while the list loads or is empty. */}
+      {majorOnlyNote && (
+        <div
+          data-testid="major-only-note"
+          style={{
+            display: 'flex', alignItems: 'center', gap: '9px', flexWrap: 'wrap',
+            maxWidth: '900px', marginBottom: '16px', padding: '9px 12px',
+            borderRadius: '8px', background: colors.float,
+            fontSize: '12.5px', color: colors.secondary, lineHeight: 1.4,
+          }}
+        >
+          <Info size={14} strokeWidth={2} color={colors.muted} style={{ flexShrink: 0 }} />
+          <span style={{ flex: '1 1 220px', minWidth: 0 }}>{majorOnlyNote.text}</span>
+          <AppLink
+            href={majorOnlyNote.href}
+            style={{ fontWeight: 600, color: colors.brandInk, whiteSpace: 'nowrap', textDecoration: 'none' }}
+          >
+            {majorOnlyNote.linkLabel} →
+          </AppLink>
+        </div>
+      )}
 
       {/* The first page is still in flight and nothing has ever been loaded —
           show the shape of the list, never a claim about its contents. */}
