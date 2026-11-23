@@ -8,6 +8,7 @@ import { FileText, FileUp, ImageIcon, Plus, Search, Trash2 } from 'lucide-react'
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
+import { useOpenQuotation } from './useOpenQuotation'
 import { formatINR } from '@/lib/currency'
 import { istDateOf } from '@/lib/istDate'
 import {
@@ -31,6 +32,7 @@ export const StatusPill = ({ status }: { status: QuotationStatus }) => <span cla
 export default function ListScreen() {
   const { supabase, profile, loading, signOut, access, accessLoaded, notSetUp, accessError } = useQuotations()
   const router = useRouter()
+  const { open: openQuotation, opening } = useOpenQuotation(supabase)
   const params = useSearchParams()
   const [scope, setScope] = useState<'mine' | 'all'>('mine')
   const [filter, setFilter] = useState<StatusFilter>('open')
@@ -116,7 +118,7 @@ export default function ListScreen() {
               <div className={s.tableWrap}>
                 <table className={s.table}>
                   <thead><tr><th aria-label="Picture" /><th>Quotation</th><th className={s.desktopOnly}>Client</th><th className={s.right}>Before GST</th><th>Status</th><th className={s.desktopOnly}>Last activity</th>{scope === 'all' && <th className={s.desktopOnly}>Owner</th>}<th aria-label="Delete" /></tr></thead>
-                  <tbody>{visible.map(r => <Row key={r.id} r={r} scope={scope} url={p => pictureUrl(supabase, p)} onOpen={() => router.push(`/quotations/${r.id}`)} onDelete={() => setToDelete(r)} />)}</tbody>
+                  <tbody>{visible.map(r => <Row key={r.id} r={r} scope={scope} opening={opening === r.id} url={p => pictureUrl(supabase, p)} onOpen={() => openQuotation(r.id)} onDelete={() => setToDelete(r)} />)}</tbody>
                 </table>
               </div>
             )}
@@ -150,12 +152,12 @@ export default function ListScreen() {
   )
 }
 
-function Row({ r, scope, url, onOpen, onDelete }: { r: ListRow; scope: 'mine' | 'all'; url: (p: string) => string; onOpen: () => void; onDelete: () => void }) {
+function Row({ r, scope, opening, url, onOpen, onDelete }: { r: ListRow; scope: 'mine' | 'all'; opening: boolean; url: (p: string) => string; onOpen: () => void; onDelete: () => void }) {
   const day = (iso: string) => formatDateIN(istDateOf(iso))
   return (
-    <tr onClick={onOpen} onKeyDown={e => { if (e.key === 'Enter') onOpen() }} tabIndex={0}>
+    <tr onClick={onOpen} onKeyDown={e => { if (e.key === 'Enter') onOpen() }} tabIndex={0} className={opening ? s.rowOpening : undefined} aria-busy={opening || undefined}>
       <td>{r.first_image ? <Pic className={s.thumb} src={url(r.first_image)} alt="" lazy /> : <span className={s.thumbEmpty}><ImageIcon size={16} aria-hidden /></span>}</td>
-      <td><div className={s.name}>{r.project_name || r.client_name}</div><div className={`${s.sub} ${s.num}`}>{r.quote_no} · {Number(r.line_count)} lines</div></td>
+      <td><div className={s.name}>{r.project_name || r.client_name}{opening && <span className={s.chip} style={{ marginLeft: 8 }} role="status">Opening…</span>}</div><div className={`${s.sub} ${s.num}`}>{r.quote_no} · {Number(r.line_count)} lines</div></td>
       <td className={s.desktopOnly}><div>{r.client_name}</div></td>
       <td className={`${s.right} ${s.num}`}><b>{formatINR(Number(r.value_before_gst || 0))}</b></td>
       <td><StatusPill status={r.status} /></td>
