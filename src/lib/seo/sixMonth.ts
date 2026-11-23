@@ -98,11 +98,36 @@ export type BriefCase = {
   plan: Titled & { rows: { task: string; who: string; when: string }[]; risks: string[] }
   talk: Titled & { steps: { title: string; text: string; say?: string }[]; avoid: string[]; care: string[] }
   sources: string[]
+  summary: BriefSummary
   report: BriefReport
 }
 
+/** A chart in the short version. `bars` and `pie` draw the items they carry; `tally` and `categories` count the brief's own rankings rows. */
+export type SummaryChart = {
+  kind: 'bars' | 'pie' | 'tally' | 'categories'
+  title: string
+  note?: string
+  items?: { label: string; value: number; tone?: SeoTone }[]
+}
+/**
+ * The short version drawn above everything else (23 Nov 2026): a few sections (what went well, why it did not reach
+ * sales, how the searches moved), each with a one-line conclusion, figures, charts and reasons, then where the numbers
+ * come from. The counts of searches are never written here: the page works them out from `quarters.rows`.
+ */
+export type BriefSummary = Titled & {
+  sections: {
+    title: string
+    tone?: SeoTone
+    lead: string
+    figures?: { value: string; label: string; note?: string; tone?: SeoTone }[]
+    charts?: SummaryChart[]
+    points?: { title: string; text: string }[]
+  }[]
+  source: { title: string; text: string; points: string[] }
+}
+
 /** The brief's own parts a report can draw in its place, by the name the report uses. */
-export const REPORT_PARTS = { rankings: 'quarters', traffic: 'traffic', trend: 'trend', leads: 'leads', rivals: 'risers', ai: 'proof' } as const
+export const REPORT_PARTS = { summary: 'summary', rankings: 'quarters', traffic: 'traffic', trend: 'trend', leads: 'leads', rivals: 'risers', ai: 'proof' } as const
 type ReportPart = keyof typeof REPORT_PARTS
 
 /**
@@ -215,6 +240,16 @@ const BRIEF_SPEC = {
   plan: optional({ ...TITLED, rows: [{ task: 'text', who: 'text', when: 'text' }], risks: ['text'] }),
   talk: optional({ ...TITLED, steps: [{ title: 'text', text: 'text', say: 'text?' }], avoid: ['text'], care: ['text'] }),
   sources: optional(['text']),
+  summary: optional({
+    ...TITLED,
+    sections: [{
+      title: 'text', tone: 'tone?', lead: 'text',
+      figures: optional([{ value: 'text', label: 'text', note: 'text?', tone: 'tone?' }]),
+      charts: optional([{ kind: 'text', title: 'text', note: 'text?', items: optional([{ label: 'text', value: 'number', tone: 'tone?' }]) }]),
+      points: optional([{ title: 'text', text: 'text' }]),
+    }],
+    source: { title: 'text', text: 'text', points: ['text'] },
+  }),
   report: optional({
     kicker: 'text', title: 'text', intro: 'text',
     tiles: optional([{ label: 'text', value: 'text', note: 'text', tone: 'tone?' }]),
@@ -275,4 +310,20 @@ function reportProblem(body: Record<string, unknown>): string | null {
   return null
 }
 
-export const briefProblem = (body: unknown) => problem(body, BRIEF_SPEC, '') ?? (isObject(body) ? reportProblem(body) : null)
+/** A chart must be a kind the page can draw, with what that kind counts or draws. */
+function summaryProblem(body: Record<string, unknown>): string | null {
+  const summary = body.summary as BriefSummary | undefined
+  if (!summary) return null
+  const rows = (body.quarters as { rows?: unknown[] } | undefined)?.rows
+  for (const [s, section] of summary.sections.entries()) {
+    for (const [c, chart] of (section.charts ?? []).entries()) {
+      const where = `summary.sections[${s}].charts[${c}]`
+      if (chart.kind === 'bars' || chart.kind === 'pie') { if (!chart.items?.length) return `${where} needs items` }
+      else if (chart.kind === 'tally' || chart.kind === 'categories') { if (!rows?.length) return `${where} counts the rankings, which the brief does not have` }
+      else return `${where}.kind is not one the page can draw`
+    }
+  }
+  return null
+}
+
+export const briefProblem = (body: unknown) => problem(body, BRIEF_SPEC, '') ?? (isObject(body) ? summaryProblem(body) ?? reportProblem(body) : null)

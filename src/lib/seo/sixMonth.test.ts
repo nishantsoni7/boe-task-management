@@ -67,6 +67,25 @@ describe('what the door accepts as a review or a brief', () => {
     assert.equal(briefProblem(badProof), 'report.blocks[0].items[0].proofs[0].url must be an https link')
   })
 
+  test('a short version must hold charts the page can draw, and ones that count the rankings need rankings', () => {
+    type Doc = { summary: { sections: { charts: Record<string, unknown>[] }[]; source?: unknown } } & Record<string, unknown>
+    const poster = copy(SAMPLE_REPORT) as unknown as Doc
+    poster.summary.sections[0].charts[0].kind = 'poster'
+    assert.equal(briefProblem(poster), 'summary.sections[0].charts[0].kind is not one the page can draw')
+    const noItems = copy(SAMPLE_REPORT) as unknown as Doc
+    noItems.summary.sections[0].charts[0].items = []
+    assert.equal(briefProblem(noItems), 'summary.sections[0].charts[0] needs items')
+    const noRankings = copy(SAMPLE_REPORT) as unknown as Doc
+    delete noRankings.quarters
+    assert.equal(briefProblem(noRankings), 'summary.sections[1].charts[0] counts the rankings, which the brief does not have')
+    const noSource = copy(SAMPLE_REPORT) as unknown as Doc
+    delete noSource.summary.source
+    assert.equal(briefProblem(noSource), 'summary.source must be an object')
+    const noSummary = copy(SAMPLE_REPORT) as unknown as Record<string, unknown>
+    delete noSummary.summary
+    assert.equal(briefProblem(noSummary), 'report.blocks[5] draws summary, which the brief does not have')
+  })
+
   test('a quarter may be blank, but never text', () => {
     const brief = copy(SAMPLE_CASE) as unknown as { quarters: { rows: { values: unknown[] }[] } }
     brief.quarters.rows[0].values = [null, 4]

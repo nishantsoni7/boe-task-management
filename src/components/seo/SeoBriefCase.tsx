@@ -2,9 +2,13 @@
 
 import { Fragment, type ReactNode } from 'react'
 import { PhoneTableCards } from '@/components/ui/PhoneTableCards'
+import { FEW_SHOWINGS, moveOf, tally, tallyByGroup, type Tally } from '@/lib/seo/moves'
 import type { BriefCase, BriefProof, DiscussionBrief } from '@/lib/seo/sixMonth'
+import { SummaryBlock } from './SeoBriefSummary'
 import { Head, Tag } from './SeoSixMonth'
 import s from './sixMonth.module.css'
+
+export { FEW_SHOWINGS, positionChange } from '@/lib/seo/moves'
 
 type Case = DiscussionBrief & Partial<BriefCase>
 
@@ -168,33 +172,50 @@ function Trend({ trend }: { trend: BriefCase['trend'] }) {
 
 // Under 11 is page 1, because 10.9 shows as 10 in Search Console.
 const cell = (v: number | null) => (v === null ? s.qNone : v < 4 ? s.qTop : v < 11 ? s.qPage1 : v < 21 ? s.qPage2 : s.qLow)
-// A position from fewer showings than this moves by chance, so it is drawn grey and left out of the change.
-export const FEW_SHOWINGS = 20
+// A position from fewer showings than this moves by chance, so it is drawn grey and left out of the change (FEW_SHOWINGS).
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`
 
-/** How far a search moved from the first column to the last one with a reading, or null when either end is missing or too thin. */
-export function positionChange(row: BriefCase['quarters']['rows'][number]): number | null {
-  const firm = (i: number) => (row.values[i] !== null && (row.shown?.[i] ?? FEW_SHOWINGS) >= FEW_SHOWINGS ? row.values[i] : null)
-  const first = firm(0)
-  let last: number | null = null
-  for (let i = row.values.length - 1; i > 0 && last === null; i--) last = firm(i)
-  return first === null || last === null ? null : last - first
+/** One search against its first quarter: the same rule the summary and the category counts use (`moveOf`). */
+function Change({ row }: { row: BriefCase['quarters']['rows'][number] }) {
+  const { move, places } = moveOf(row)
+  if (move === 'out') return <td className={s.qWorse}>Out of view</td>
+  if (move === 'new') return <td className={s.qBetter}>Newly in view</td>
+  if (places === null) return <td className={s.muted}>—</td>
+  if (move === 'same') return <td className={s.muted}>about the same</td>
+  return places > 0
+    ? <td className={s.qWorse}>▼ {places.toFixed(1)} places</td>
+    : <td className={s.qBetter}>▲ {(-places).toFixed(1)} places</td>
 }
 
-function Change({ row }: { row: BriefCase['quarters']['rows'][number] }) {
-  const d = positionChange(row)
-  if (d === null) return <td className={s.muted}>—</td>
-  if (Math.abs(d) < 2) return <td className={s.muted}>about the same</td>
-  return d > 0
-    ? <td className={s.qWorse}>▼ {d.toFixed(1)} places</td>
-    : <td className={s.qBetter}>▲ {(-d).toFixed(1)} places</td>
+/** How many of a set of searches improved and how many lost ground, in words, so a total is always on the page. */
+const TallyLine = ({ t }: { t: Tally }) => (
+  <>
+    <b className={s.up}>▲ {t.up}</b> <b className={s.down}>▼ {t.down + t.out}</b>
+  </>
+)
+
+function TallyStrip({ rows }: { rows: BriefCase['quarters']['rows'] }) {
+  const t = tally(rows)
+  return (
+    <div className={s.tallyStrip} aria-label="How the searches moved">
+      <b>{t.total} searches:</b>
+      <span className={s.up}>▲ {t.up} improved</span>
+      <span>{t.same} about the same</span>
+      <span className={s.down}>▼ {t.down} fell{t.avgDown !== null && ` (${t.avgDown.toFixed(1)} places on average)`}</span>
+      <span className={s.down}>{t.out} dropped out of view</span>
+      <span>{t.new} newly in view</span>
+      <span className={s.muted}>{t.thin} too few showings</span>
+    </div>
+  )
 }
 
 function Quarters({ quarters }: { quarters: BriefCase['quarters'] }) {
   const grouped = quarters.rows.some(row => row.group)
   const groupClicks = (group: string) => quarters.columns.map((_, i) => quarters.rows.filter(r => r.group === group).reduce((t, r) => t + (r.clicks?.[i] ?? 0), 0))
+  const groupTally = new Map(tallyByGroup(quarters.rows).map(g => [g.group, g.tally]))
   return (
     <>
+      <TallyStrip rows={quarters.rows} />
       {quarters.falls && (
         <div className={s.falls}>
           <h3 className={s.fallsTitle}>{quarters.falls.title}</h3>
@@ -236,7 +257,7 @@ function Quarters({ quarters }: { quarters: BriefCase['quarters'] }) {
                   <tr className={s.qGroup}>
                     <td colSpan={2}>{row.group}</td>
                     {groupClicks(row.group as string).map((v, i) => <td key={quarters.columns[i]}>{plural(v, 'click')}</td>)}
-                    <td />
+                    <td><TallyLine t={groupTally.get(row.group as string) as Tally} /></td>
                   </tr>
                 )}
                 <tr>
@@ -520,6 +541,8 @@ function ReportBlockView({ block, brief }: { block: Block; brief: Case }) {
     <section className="boe-panel" aria-label={label}><Head title={block.title ?? fallback.title} note={block.note ?? fallback.note} />{body}</section>
   )
   switch (block.kind) {
+    case 'summary':
+      return brief.summary ? <SummaryBlock summary={brief.summary} quarters={brief.quarters} title={block.title} note={block.note} /> : null
     case 'cards':
       return panel({ title: '' }, (
         <>
