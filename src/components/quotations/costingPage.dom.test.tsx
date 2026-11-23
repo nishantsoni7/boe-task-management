@@ -103,6 +103,18 @@ describe('fabric: metres per piece × rate per metre, then × quantity', () => {
     assert.equal(latest[1].choices?.fabric?.source, 'code')
     assert.match(row(ui, 'p2').textContent ?? '', /Price to come/)
   })
+  test('the From box works on a row with nothing typed yet, and going back to the catalog leaves nothing behind', () => {
+    const ui = mount(createElement(Parent)); cleanup = () => ui.unmount()
+    const src = ui.one<HTMLSelectElement>('[aria-label="Where the fabric of Bar stool comes from"]')
+    assert.equal(src.disabled, false, 'open although no fabric name or code is typed')
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')!.set!
+    act(() => { setter.call(src, 'client'); src.dispatchEvent(new window.Event('change', { bubbles: true })) })
+    assert.deepEqual(latest[2].choices?.fabric, { source: 'client', status: 'to_confirm' })
+    assert.equal(input(ui, 'Fabric name for Bar stool').placeholder, 'Their fabric')
+    assert.match(row(ui, 'p3').textContent ?? '', /—/, 'no name or code, so nothing is priced')
+    act(() => { setter.call(src, 'catalog'); src.dispatchEvent(new window.Event('change', { bubbles: true })) })
+    assert.equal(latest[2].choices?.fabric, undefined)
+  })
   test('an emptied fabric leaves nothing behind', () => {
     const ui = mount(createElement(Parent)); cleanup = () => ui.unmount()
     ui.type(input(ui, 'Fabric name for Rocking chair'), 'Velvet')

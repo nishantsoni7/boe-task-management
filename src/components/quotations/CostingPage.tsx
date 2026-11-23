@@ -20,10 +20,10 @@ type Group = { area: QuoteArea | null; lines: QuoteLine[] }
 const SOURCES: ReadonlyArray<[LineChoice['source'], string]> = [['catalog', 'From our catalog'], ['client', 'Client’s own'], ['code', 'Client’s code, we source it']]
 const rupees = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 2 })
 
-/** A choice with nothing left in it goes away, so an emptied box leaves no "to confirm" behind. */
+/** A choice with nothing left in it goes away, so an emptied box leaves no "to confirm" behind. A source other than the default (catalog) is something the person picked, so it stays. */
 function tidy(c: LineChoice): LineChoice | undefined {
   const has = (v?: string) => !!(v ?? '').trim()
-  return has(c.name) || has(c.code) || has(c.supplier) || has(c.used_for) || has(c.note) || c.photo ? c : undefined
+  return c.source !== 'catalog' || has(c.name) || has(c.code) || has(c.supplier) || has(c.used_for) || has(c.note) || c.photo ? c : undefined
 }
 
 export function CostingPage({ groups, areas, lines, editable, qtyOf, url, onChange, onUploadSwatch }: {
@@ -129,7 +129,7 @@ export function CostingPage({ groups, areas, lines, editable, qtyOf, url, onChan
                       </span>
                     </th>
                     <td className={s.cpQty}>{qty.toLocaleString('en-IN')}</td>
-                    <td><select aria-label={`Where the fabric of ${label} comes from`} className={s.cpIn} value={fab?.source ?? 'catalog'} disabled={!editable || !fab} onChange={e => setChoice(l, 'fabric', { source: e.target.value as LineChoice['source'] })}>
+                    <td><select aria-label={`Where the fabric of ${label} comes from`} className={s.cpIn} value={fab?.source ?? 'catalog'} disabled={!editable} onChange={e => setChoice(l, 'fabric', { source: e.target.value as LineChoice['source'] })}>
                       {SOURCES.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
                     </select></td>
                     <td><input aria-label={`Fabric name for ${label}`} className={s.cpIn} maxLength={CHOICE_MAX.name} placeholder={fab?.source === 'client' ? 'Their fabric' : 'e.g. Berlin velvet'} value={fab?.name ?? ''} disabled={!editable} onChange={e => setChoice(l, 'fabric', { name: e.target.value })} /></td>
