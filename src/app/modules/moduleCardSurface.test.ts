@@ -95,15 +95,16 @@ describe('a card shows the module name and nothing else', () => {
   })
 })
 
-// THE COUNT IS SAID IN WORDS ON EVERY TILE (owner, 2026-11-23). The red number on
-// the icon of a small tile is gone: the chip under the name says the same thing,
-// in both sizes, at every width (see "every tile says its count in words" below).
-describe('the notification count is a chip under the name, not a badge on the icon', () => {
+// THE COUNT IS A CHIP, DRAWN ONLY WHEN IT IS ABOVE ZERO (owner, 2026-11-23, then
+// "quiet tiles" the same evening). The red number on the icon of a small tile is
+// gone: the chip says the same thing, in both sizes, at every width (see "a tile
+// says its count only when there is one" below).
+describe('the notification count is a chip, not a badge on the icon', () => {
   test('a positive count draws the chip and a zero or missing one does not', () => {
     assert.ok(CARD.includes('const hasNotif = (mod.notificationCount ?? 0) > 0'))
-    assert.ok(CARD.includes('{hasNotif ? ('))
+    assert.ok(CARD.includes('{!editing && hasNotif && ('))
     assert.ok(CARD.includes(styleClass('chip')))
-    assert.ok(CARD.includes("{count! > 99 ? '99+' : count} {label}"), '99+ cap is unchanged')
+    assert.ok(CARD.includes("{count! > 99 ? '99+' : count}"), '99+ cap is unchanged')
   })
 
   test('the old "N notifications" footer stays gone', () => {
@@ -698,14 +699,15 @@ describe('the launcher sizes itself from the width it actually has', () => {
     assert.equal(/@media \(min-width/.test(CSS), false)
   })
 
-  test('the compact grid steps 1 → 2 → 3 → 4 → 5, and never past five', () => {
+  test('the compact grid steps 1 → 2 → 3 → 4 → 5, and never past five (the plain .grid)', () => {
     for (const [width, cols] of [[480, 2], [660, 3], [880, 4], [1120, 5]] as const) {
       const at = CSS.indexOf(`@container (min-width: ${width}px)`)
       assert.notEqual(at, -1, `the ${width}px step exists`)
       assert.match(CSS.slice(at, CSS.indexOf('}', CSS.indexOf('.grid', at))),
         new RegExp(`grid-template-columns:\\s*repeat\\(${cols}, minmax\\(0, 1fr\\)\\)`))
     }
-    assert.equal(/repeat\([6-9], /.test(stripCss(CSS)), false)
+    // Only the quiet surface (.gridQuiet, normal mode) has six, from 1120px.
+    assert.equal(/\.grid\s*\{[^}]*repeat\([6-9], /.test(stripCss(CSS)), false)
   })
 
   test('THE PAGE ASKS FOR ONE 1400px CONTENT COLUMN', () => {
@@ -800,7 +802,7 @@ describe('this page has no dark variant, and adds none', () => {
 })
 
 // ── The A+ refinement: count in words, section count, Edit order, icons ──────
-describe('every tile says its count in words, at every width', () => {
+describe('a tile says its count only when there is one, at every width', () => {
   /** The status row inside ModuleCard. */
   const STATUS = (() => {
     const at = CARD.indexOf('styles.status')
@@ -814,25 +816,64 @@ describe('every tile says its count in words, at every width', () => {
     return CSS.slice(at, CSS.indexOf('\n}\n', at))
   })()
 
-  test('both sizes draw it, and never while arranging', () => {
+  test('both sizes draw it only above zero, and never while arranging', () => {
     assert.match(CARD,
-      /\{!editing && \(\s*<div className=\{styles\.status\} aria-hidden="true">/)
+      /\{!editing && hasNotif && \(\s*<div className=\{styles\.status\} aria-hidden="true">/)
   })
 
-  test('a count above zero is a chip, zero says Nothing new, a module with no feed says No alerts', () => {
-    assert.ok(STATUS.includes('{hasNotif ? ('))
-    assert.ok(STATUS.includes("{count! > 99 ? '99+' : count} {label}"), 'the same 99+ cap as before')
-    assert.ok(STATUS.includes('count === 0'), 'a count that has not arrived must not read as zero')
-    assert.ok(STATUS.includes('Nothing new'))
-    assert.ok(STATUS.includes('count === null') && STATUS.includes('No alerts'),
-      'null means no notifications at all, and is not told as zero')
-    assert.equal(STATUS.includes('count === undefined'), false, 'an unresolved count draws nothing')
-    assert.equal(STATUS.includes("'No notifications'"), false)
+  test('a count above zero is a chip; zero, no feed and not-yet-known draw NOTHING', () => {
+    assert.ok(STATUS.includes("{count! > 99 ? '99+' : count}"), 'the same 99+ cap as before')
+    assert.ok(STATUS.includes(styleClass('chipWord')) && STATUS.includes('{label}'),
+      'a big block says the word; the stylesheet hides it on a small tile and a phone')
+    assert.equal(STATUS.includes('Nothing new'), false, 'no "Nothing new" line')
+    assert.equal(STATUS.includes('No alerts'), false, 'no "No alerts" line')
+    assert.equal(STATUS.includes('count === 0'), false)
+    assert.equal(STATUS.includes('count === null'), false)
+    assert.equal(CARD.includes('count === undefined'), false, 'an unresolved count draws nothing')
+    assert.equal(CARD.includes("'No notifications'"), false)
+    assert.equal(CARD.includes('styles.calm') || CARD.includes('styles.none'), false)
+    assert.equal(/\.(calm|none)\b/.test(stripCss(CSS)), false, 'and the stylesheet keeps neither rule')
   })
 
-  test('the row is always drawn, so a count that arrives late moves nothing', () => {
-    assert.match(baseRule('.status'), /display:\s*flex[^}]*min-height:\s*22px/)
-    assert.match(baseRule('.cardEssential .status'), /min-height:\s*24px/)
+  test('what the quiet tile would have said is its hover text, and not while arranging', () => {
+    assert.ok(CARD.includes(
+      "title={editing || hasNotif ? undefined : count === 0 ? 'Nothing new' : count === null ? 'No alerts' : undefined}"),
+      'a known zero hovers "Nothing new", no feed hovers "No alerts", an unknown count hovers nothing')
+    assert.ok(CARD.includes('<span className={styles.chip} title={`${count} ${label}`}>'),
+      'the chip says its word in a tooltip, because a small tile draws the number alone')
+  })
+
+  test('the chip is OUT OF FLOW, so a count that arrives late moves nothing', () => {
+    assert.match(baseRule('.status'), /position:\s*absolute/)
+    assert.match(baseRule('.cardEssential .status'), /top:\s*22px;\s*right:\s*56px/)
+    assert.match(baseRule('.cardCompact .status'), /top:\s*50%;\s*right:\s*12px;\s*transform:\s*translateY\(-50%\)/)
+    assert.equal(/\.status\s*\{[^}]*min-height/.test(stripCss(CSS)), false, 'no row is reserved for it')
+  })
+
+  test('a small tile and a phone draw the number alone; a wide big block adds the word', () => {
+    assert.match(stripCss(CSS), /\.cardCompact \.chipDot,\s*\.cardCompact \.chipWord\s*\{\s*display:\s*none;/)
+    assert.match(PHONE_ESSENTIALS, /\.cardEssential \.chipDot,\s*\.cardEssential \.chipWord\s*\{\s*display:\s*none;/)
+    assert.match(PHONE_ESSENTIALS, /\.cardEssential \.status\s*\{\s*top:\s*8px;\s*right:\s*8px;/)
+    assert.match(PHONE_LIST, /\.cardCompact:not\(\.cardEditing\) \.status\s*\{[^}]*position:\s*static;[^}]*grid-column:\s*3;/,
+      'on a phone the number is in its own column of the row, not floated')
+  })
+
+  test('the small modules sit on ONE quiet surface in normal mode, and Edit order keeps its boxes', () => {
+    assert.equal(PAGE.split('styles.gridQuiet').length - 1, 1, 'exactly one grid is quiet')
+    assert.ok(PAGE.includes('<div className={`${styles.grid} ${styles.gridQuiet}`}>\n                  {moreModules.map('),
+      'the quiet grid is the "All modules" one')
+    assert.ok(PAGE.includes('<div className={styles.grid}>\n                  {modules.map('),
+      'Edit order still draws the plain grid, so every card there is a movable dashed box')
+    const at = CSS.indexOf('@container (min-width: 480px) {\n  .gridQuiet {')
+    assert.notEqual(at, -1, 'the quiet surface starts at 480px, where the phone list ends')
+    const surface = stripCss(CSS.slice(at, CSS.indexOf('\n}\n', at)))
+    assert.match(surface, /\.gridQuiet\s*\{[^}]*background:\s*#fff;[^}]*border:\s*1px solid #E4DED7;[^}]*border-radius:\s*16px/)
+    assert.match(surface, /\.gridQuiet > \.cardCompact\s*\{[^}]*min-height:\s*64px;[^}]*background:\s*transparent;[^}]*border-color:\s*transparent/,
+      'a tile on it has no box of its own, and is still a 64px tap target')
+    assert.match(surface, /\.gridQuiet > \.cardCompact:hover,\s*\.gridQuiet > \.cardCompact:focus-visible\s*\{[^}]*background:\s*#F7F5F1/)
+    assert.match(surface, /\.gridQuiet > \.cardCompact:has\(\.chip\) \.title\s*\{\s*padding-right:\s*34px/,
+      'room for the number only on a tile that has one')
+    assert.match(stripCss(CSS), /@container \(min-width: 1120px\)\s*\{\s*\.gridQuiet\s*\{\s*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/)
   })
 
   test('the button is named with its count once, and only while it is a button', () => {
