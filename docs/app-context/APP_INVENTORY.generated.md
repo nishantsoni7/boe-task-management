@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `40259764` — Modules launcher: four big blocks you choose, and a count on every tile (#985)
-- Commits on this branch: 1544
+- Commit: `4144b0e6` — Quotations: the Open quotations tile counts what the list counts (migration 20270822000000, NOT applied)
+- Commits on this branch: 1545
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 502 (first `20260530_create_positions.sql`, latest `20270822000000_quotation_cards_open_owned_or_made.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `4144b0e6` 2026-11-23 Quotations: the Open quotations tile counts what the list counts (migration 20270822000000, NOT applied)
 - `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
 - `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
@@ -38,7 +39,6 @@
 - `076b6668` 2026-11-20 Orders: the approver's dashboard is one "Needs your action" sheet and a "Watching" list (no SQL) (#965)
 - `0da52ac1` 2026-11-20 Docs: stamp #961 (delete a quotation) as merged and live, migration 20270817000000 applied (#964)
 - `7172f6c2` 2026-11-20 Quotations: typing in Material and Remarks no longer refits the price model for every product (#962)
-- `b5f21118` 2026-11-20 Quotations: delete an unsent draft (its maker) or any quotation but a PI-linked one (administrator) (#961)
 
 ## Pages by top-level area
 
