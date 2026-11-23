@@ -21,7 +21,7 @@ const base: ListRow = {
 const mounted: Array<{ unmount: () => void }> = []
 afterEach(() => { for (const m of mounted.splice(0)) m.unmount() })
 function show(r: Partial<ListRow>, calls: string[] = []) {
-  const m = mount(createElement('table', null, createElement('tbody', null, createElement(Row, { r: { ...base, ...r }, now: NOW, url: p => p, onOpen: () => { calls.push('open') }, onDelete: () => { calls.push('delete') } })))); mounted.push(m)
+  const m = mount(createElement('table', null, createElement('tbody', null, createElement(Row, { r: { ...base, ...r }, now: NOW, opening: false, url: p => p, onOpen: () => { calls.push('open') }, onDelete: () => { calls.push('delete') } })))); mounted.push(m)
   return m
 }
 const cells = (m: ReturnType<typeof show>) => m.all('td').map(td => (td.textContent ?? '').replace(/\s+/g, ' ').trim())

@@ -16,7 +16,8 @@ import { conversionProblems } from '@/lib/quotations/piWorkbook'
 import { extrasLeftOutText, makePiDraft, type PiStage } from '@/lib/quotations/toPiDraft'
 import { stateOfCity } from '@/lib/quotations/cities'
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
+import { OPEN_FRESH_MS } from '@/lib/quotations/openQuotation'
 import { useQuotations } from '@/hooks/useQuotations'
 import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { canAccessManagementModule } from '@/lib/permissions/moduleVisibility'
@@ -25,7 +26,7 @@ import { istDateOf } from '@/lib/istDate'
 import {
   STATUS_LABEL, errorKind, errorText, fetchQuotation, fetchPictureMark, pictureMarkKey, pictureSrc, quotationKeys, setPictureMark, saveDoc, saveQuotation,
   setStatus as setStatusRpc, shareQuotation, fetchHints, requestPriceApproval, decidePrice, type PriceHint, uploadPicture, type Header, type Quotation, type QuotationStatus,
-  fetchSuggestionSettings, fetchPaymentDetails, deleteCheckKey, fetchDeleteCheck,
+  fetchSuggestionSettings, suggestionsKey, fetchPaymentDetails, deleteCheckKey, fetchDeleteCheck,
 } from '@/lib/quotations/api'
 import { historyOnly } from '@/lib/quotations/suggestions'
 import {
@@ -75,9 +76,12 @@ export default function BuilderScreen() {
   const subject = useDisplaySubject()
   const seesWhy = subject.ready && canAccessManagementModule({ role: subject.subjectRole, moduleKey: 'pricing', isModuleActive: true, permissions: subject.subjectPermissionsByModule.get('pricing') ?? [] })
   const qc = useQueryClient()
-  const quoteQ = useQuery({ queryKey: quotationKeys.one(id), queryFn: () => fetchQuotation(supabase, id), enabled: accessLoaded, retry: false })
+  // THE FIRST READS DO NOT WAIT FOR ACCESS (23 Nov 2026): the database answers each one as the signed-in person and refuses what they may not
+  // see, so they start with the page (or at the click that opened it, openQuotation.ts) instead of after the profile and access reads. The
+  // screen below still waits for `accessLoaded` before it draws, so nothing that depends on access flickers in.
+  const quoteQ = useQuery({ queryKey: quotationKeys.one(id), queryFn: () => fetchQuotation(supabase, id), staleTime: OPEN_FRESH_MS, retry: false })
   // The logo mark on pictures (owner, 18 Nov 2026): on unless somebody who may edit this quotation turned it off.
-  const markQ = useQuery({ queryKey: pictureMarkKey(id), queryFn: () => fetchPictureMark(supabase, id), enabled: accessLoaded, retry: false })
+  const markQ = useQuery({ queryKey: pictureMarkKey(id), queryFn: () => fetchPictureMark(supabase, id), staleTime: OPEN_FRESH_MS, retry: false })
   const markOn = markQ.data !== false
   const picSrc = (p: string) => pictureSrc(supabase, p, { markOn, quotationId: id })
   // The same read (and key) as the Versions card, so it costs no extra call: the newest sent version dates the quotation.
@@ -111,14 +115,10 @@ export default function BuilderScreen() {
   // The GST rate new products start with while no product sets it (the quotation has one rate; each product still stores it).
   // Price hints for the names on screen, asked for once typing pauses.
   const [hintNames, setHintNames] = useState('')
-  useEffect(() => {
-    const t = setTimeout(() => setHintNames([...new Set(lines.map(l => l.name.trim()).filter(n => n.length >= 3))].sort().slice(0, 80).join('\n')), 600)
-    return () => clearTimeout(t)
-  }, [lines])
   // WHO SEES THE SUGGESTED PRICES (owner, 18 Nov 2026; Control Center › Sales › Quotation price approval): off for this person,
   // the suggestion, its model and the taught-price picker are left out and only the history (last ordered / quoted) shows. A
   // database without 20270731000000 answers with an error, which keeps them on, as before. Off until the answer is in.
-  const suggQ = useQuery({ queryKey: ['quotations', 'suggestions'], queryFn: () => fetchSuggestionSettings(supabase), enabled: accessLoaded && !notSetUp, staleTime: 300_000, retry: false })
+  const suggQ = useQuery({ queryKey: suggestionsKey, queryFn: () => fetchSuggestionSettings(supabase), enabled: !notSetUp, staleTime: 300_000, retry: false })
   const suggestOn = suggQ.isError ? true : !!suggQ.data?.for_me
   const hintsQ = useQuery({ queryKey: ['quotations', 'hints', id, hintNames], queryFn: () => fetchHints(supabase, hintNames.split('\n'), id), enabled: accessLoaded && !notSetUp && hintNames !== '', staleTime: 300_000, retry: false })
   const hintFor = useMemo(() => new Map<string, PriceHint>((hintsQ.data ?? []).map(h => [h.name, h])), [hintsQ.data])
@@ -140,6 +140,15 @@ export default function BuilderScreen() {
   const router = useRouter()
   const dirtyRef = useRef(false)
   useEffect(() => { dirtyRef.current = dirty }, [dirty])
+
+  // The names that ask for price hints and the price pool: when typing pauses (600 ms), EXCEPT the first fill from the saved quotation, which
+  // goes at once (23 Nov 2026): nobody is typing, so the wait only delayed the suggested prices by 0.6 s after the page had drawn.
+  const hintsAsked = useRef(false)
+  useEffect(() => {
+    const names = [...new Set(lines.map(l => l.name.trim()).filter(n => n.length >= 3))].sort().slice(0, 80).join('\n')
+    const t = setTimeout(() => { setHintNames(names); if (names) hintsAsked.current = true }, hintsAsked.current || dirtyRef.current ? 600 : 0)
+    return () => clearTimeout(t)
+  }, [lines])
 
   // Take the server's copy when it arrives, unless there are unsaved edits on screen.
   useEffect(() => {
@@ -235,13 +244,16 @@ export default function BuilderScreen() {
     } finally { setBusy(false); setPiStage(null) }
   }
 
-  if (loading) return <LoadingScreen />
   const layout = (title: string, body: React.ReactNode, subtitle?: string, actions?: React.ReactNode) => (
     <QuotationsLayout profile={profile} access={access} onSignOut={signOut} title={title} subtitle={subtitle} actions={actions} contentMaxWidth={1360}>{body}</QuotationsLayout>
   )
+  // While the quotation is on its way the Quotations frame stays and the body is a skeleton (the same one src/app/quotations/[id]/loading.tsx
+  // draws), instead of the full-page spinner that took the sidebar away and fades in only after 0.8 s.
+  const skeleton = () => layout('Quotation', <ModulePageSkeleton variant="record" label="Loading quotation" />)
+  if (loading) return skeleton()
   if (notSetUp) return layout('Quotation', <div className={`${s.notice} ${s.noticeWarn}`}><b>Quotations is being set up.</b> Its database part has not been applied yet.</div>)
   if (quoteQ.isError) return layout('Quotation', <div className={`${s.notice} ${s.noticeBad}`}>{errorText(quoteQ.error)} <Link href="/quotations">Back to quotations</Link></div>)
-  if (!base || !h || !totals) return <LoadingScreen />
+  if (!accessLoaded || !base || !h || !totals) return skeleton()
 
   const issued = istDateOf(issuedAt(versionsQ.data, base.sent_at, base.created_at))
   const link = base.share_token ? `${typeof window === 'undefined' ? '' : window.location.origin}/q/${base.share_token}` : ''

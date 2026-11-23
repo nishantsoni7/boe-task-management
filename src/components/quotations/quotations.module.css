@@ -58,6 +58,9 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .table td { padding: 10px 12px; border-bottom: 1px solid var(--boe-surface-sunken); vertical-align: middle; }
 .table tbody tr { cursor: pointer; }
 .table tbody tr:hover { background: var(--boe-surface-quiet); }
+/* The row that was just pressed: shows at once that the quotation is opening (useOpenQuotation). */
+.table tbody tr.rowOpening { cursor: progress; background: var(--boe-surface-quiet); }
+.table tbody tr.rowOpening td { opacity: .7; }
 .thumb { width: 48px; height: 40px; border-radius: 8px; border: 1px solid var(--boe-border); background: #fff; object-fit: contain; display: block; flex-shrink: 0; }
 .thumbEmpty { width: 48px; height: 40px; border-radius: 8px; border: 1px dashed var(--boe-border-strong); background: var(--boe-surface-quiet); display: flex; align-items: center; justify-content: center; color: var(--boe-text-muted); flex-shrink: 0; }
 .name { font-weight: 600; color: var(--boe-text); line-height: 1.3; }

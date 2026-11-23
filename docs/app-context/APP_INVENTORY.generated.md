@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `40259764` — Modules launcher: four big blocks you choose, and a count on every tile (#985)
-- Commits on this branch: 1544
+- Commit: `06c21898` — Docs: put the PR number (#988) on the Quotations list-columns entries
+- Commits on this branch: 1546
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 501 (first `20260530_create_positions.sql`, latest `20270821000000_launcher_big_module_keys.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
-- Test files: 935   Next.js 16.2.6, React 19.2.4
+- Test files: 937   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `06c21898` 2026-11-23 Docs: put the PR number (#988) on the Quotations list-columns entries
+- `0ee1b4e0` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL)
 - `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
 - `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
@@ -37,8 +39,6 @@
 - `a8d44009` 2026-11-21 Orders: the Operations team's dashboard in the approver's design (no SQL) (#967)
 - `076b6668` 2026-11-20 Orders: the approver's dashboard is one "Needs your action" sheet and a "Watching" list (no SQL) (#965)
 - `0da52ac1` 2026-11-20 Docs: stamp #961 (delete a quotation) as merged and live, migration 20270817000000 applied (#964)
-- `7172f6c2` 2026-11-20 Quotations: typing in Material and Remarks no longer refits the price model for every product (#962)
-- `b5f21118` 2026-11-20 Quotations: delete an unsent draft (its maker) or any quotation but a PI-linked one (administrator) (#961)
 
 ## Pages by top-level area
 
@@ -174,7 +174,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 31 source, 29 test
+- `src/lib/quotations` — 32 source, 30 test
 - `src/lib/salesLeads` — 17 source, 17 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test

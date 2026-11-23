@@ -8,6 +8,7 @@ import { FileText, FileUp, ImageIcon, Plus, Search, Trash2, User } from 'lucide-
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
+import { useOpenQuotation } from './useOpenQuotation'
 import { formatINR } from '@/lib/currency'
 import { istDateOf } from '@/lib/istDate'
 import {
@@ -32,6 +33,7 @@ export const StatusPill = ({ status }: { status: QuotationStatus }) => <span cla
 export default function ListScreen() {
   const { supabase, profile, loading, signOut, access, accessLoaded, notSetUp, accessError } = useQuotations()
   const router = useRouter()
+  const { open: openQuotation, opening } = useOpenQuotation(supabase)
   const params = useSearchParams()
   const [scope, setScope] = useState<'mine' | 'all'>('mine')
   const [filter, setFilter] = useState<StatusFilter>('open')
@@ -120,7 +122,7 @@ export default function ListScreen() {
               <div className={s.tableWrap}>
                 <table className={`${s.table} ${s.lsTable}`}>
                   <thead><tr><th aria-label="Picture" /><th>Client Details</th><th className={s.lsWho}>Sales person</th><th className={s.right}>Before GST</th><th className={s.lsStatus}>Status</th><th className={s.lsPend}>Pending from</th><th className={s.lsAct}>Last activity</th><th aria-label="Delete" /></tr></thead>
-                  <tbody>{visible.map(r => <Row key={r.id} r={r} now={now} url={p => pictureUrl(supabase, p)} onOpen={() => router.push(`/quotations/${r.id}`)} onDelete={() => setToDelete(r)} />)}</tbody>
+                  <tbody>{visible.map(r => <Row key={r.id} r={r} now={now} opening={opening === r.id} url={p => pictureUrl(supabase, p)} onOpen={() => openQuotation(r.id)} onDelete={() => setToDelete(r)} />)}</tbody>
                 </table>
               </div>
             )}
@@ -157,16 +159,16 @@ export default function ListScreen() {
 // Columns (owner, 23 Nov 2026): Client Details (the client, then the project, number and lines), Sales person, Before GST, Status, Pending from,
 // Last activity. On a phone each row is a card: the status, the wait and the sales person sit under the client (`lsMeta`) and the cells
 // that carry them on a desktop are hidden; `lsMeta` is hidden on a desktop.
-export function Row({ r, now, url, onOpen, onDelete }: { r: ListRow; now: number; url: (p: string) => string; onOpen: () => void; onDelete: () => void }) {
+export function Row({ r, now, opening, url, onOpen, onDelete }: { r: ListRow; now: number; opening: boolean; url: (p: string) => string; onOpen: () => void; onDelete: () => void }) {
   const day = (iso: string) => formatDateIN(istDateOf(iso))
   const pend = pendingFrom(r, now)
   const band = pend ? s[`pend_${pend.band}`] : s.pend_none
   const project = r.project_name && r.project_name !== r.client_name ? `${r.project_name} · ` : ''
   return (
-    <tr onClick={onOpen} onKeyDown={e => { if (e.key === 'Enter') onOpen() }} tabIndex={0}>
+    <tr onClick={onOpen} onKeyDown={e => { if (e.key === 'Enter') onOpen() }} tabIndex={0} className={opening ? s.rowOpening : undefined} aria-busy={opening || undefined}>
       <td className={s.lsPic}>{r.first_image ? <Pic className={s.thumb} src={url(r.first_image)} alt="" lazy /> : <span className={s.thumbEmpty}><ImageIcon size={16} aria-hidden /></span>}</td>
       <td className={s.lsName}>
-        <div className={s.name}>{r.client_name}</div>
+        <div className={s.name}>{r.client_name}{opening && <span className={s.chip} style={{ marginLeft: 8 }} role="status">Opening…</span>}</div>
         <div className={`${s.sub} ${s.num}`}>{project}{r.quote_no} · {Number(r.line_count)} lines</div>
         <div className={s.lsMeta}>
           <StatusPill status={r.status} />

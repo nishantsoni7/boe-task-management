@@ -318,6 +318,7 @@ export const fetchPriceQueue = (s: Supabase) => call<QueueRow[]>(() => s.rpc('qu
 export const fetchPriceSettings = (s: Supabase) => call<PriceSettings>(() => s.rpc('quotation_price_settings_get'))
 export const fetchMyCard = (s: Supabase) => call<MyCard>(() => s.rpc('quotation_my_card'))
 export const saveMyCard = (s: Supabase, card: Pick<MyCard, 'name' | 'title' | 'phone' | 'email'>) => call<MyCard>(() => s.rpc('quotation_my_card_save', { p: card }))
+export const suggestionsKey = ['quotations', 'suggestions'] as const
 export const fetchSuggestionSettings = (s: Supabase) => call<SuggestionSettings>(() => s.rpc('quotation_suggestions_get'))
 export const saveSuggestionSettings = (s: Supabase, everyone: boolean) => call<SuggestionSettings>(() => s.rpc('quotation_suggestions_set', { p_everyone: everyone }))
 /** The bank account and UPI QR printed on a quotation (20270807000000). The Customer ID is only in the administrator's own read. */

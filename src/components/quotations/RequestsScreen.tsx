@@ -12,6 +12,7 @@ import { Inbox, Plus, Search } from 'lucide-react'
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
+import { useOpenQuotation } from './useOpenQuotation'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useQuotationRequests } from '@/hooks/queries/useQuotationRequests'
 import { useUserNames } from '@/hooks/queries/useMyTasks'
@@ -35,6 +36,8 @@ export default function RequestsScreen() {
   const { supabase, profile, loading, signOut, access, accessLoaded } = useQuotations()
   const { ready, userId, role, permissionsByModule } = usePermissionContext()
   const router = useRouter()
+  // A row opens its quotation with feedback at once and its reads started at the click (useOpenQuotation).
+  const { open: openQuotation, opening } = useOpenQuotation(supabase)
   const [tab, setTab] = useState<Tab>('waiting')
   const [q, setQ] = useState('')
   const [now] = useState(() => Date.now())
@@ -56,7 +59,7 @@ export default function RequestsScreen() {
 
   if (loading) return <LoadingScreen />
   const visible = tab === 'waiting' ? waiting : done
-  const open = (r: RequestRow) => router.push(`/quotations/${r.quotation_id}`)
+  const open = (r: RequestRow) => openQuotation(r.quotation_id)
 
   return (
     <QuotationsLayout
@@ -97,9 +100,10 @@ export default function RequestsScreen() {
                       const wait = r.status === 'pending' ? quotationWait(r.created_at, now) : null
                       const mine = r.to_id === userId && r.status === 'pending'
                       return (
-                        <tr key={r.id} onClick={() => open(r)} onKeyDown={e => { if (e.key === 'Enter') open(r) }} tabIndex={0}>
+                        <tr key={r.id} onClick={() => open(r)} onKeyDown={e => { if (e.key === 'Enter') open(r) }} tabIndex={0}
+                          className={opening === r.quotation_id ? s.rowOpening : undefined} aria-busy={opening === r.quotation_id || undefined}>
                           <td>
-                            <div className={s.name}>{r.project_name || r.client_name}{mine && <span className={s.chip} style={{ marginLeft: 8 }}>Waiting for you</span>}</div>
+                            <div className={s.name}>{r.project_name || r.client_name}{opening === r.quotation_id ? <span className={s.chip} style={{ marginLeft: 8 }} role="status">Opening…</span> : mine && <span className={s.chip} style={{ marginLeft: 8 }}>Waiting for you</span>}</div>
                             <div className={`${s.sub} ${s.num}`}>{r.quote_no}{r.lead_no ? ` · Lead ${r.lead_no}` : ''}{r.project_name ? ` · ${r.client_name}` : ''}</div>
                             <div className={`${s.sub} ${s.mobileOnly}`}>{r.from_name} → {r.to_name}</div>
                             {r.note && <div className={s.sub}>“{r.note}”</div>}
