@@ -24,10 +24,11 @@
               text and a #F1DEDB edge
      #857F76  the dashed edge of a card in Edit order (3.6:1 on the canvas)
 
-   A TILE IS AN ICON, A NAME AND ITS COUNT IN WORDS (plus a decorative arrow on a
-   big block). The count is a line under the name on every tile at every width:
-   a red chip, "Nothing new", or "No alerts" for a module with no notifications.
-   On a phone's list row it moves to the right-hand end, so the numbers line up.
+   A TILE IS AN ICON AND A NAME (plus a decorative arrow on a big block), and a
+   red chip ONLY WHEN IT HAS A COUNT ABOVE ZERO: in words on a wide big block, the
+   number alone everywhere else. A tile with nothing to say says nothing (no
+   "Nothing new", no "No alerts"; their text is the tile's tooltip). On a phone's
+   list row the number is at the right-hand end, so the numbers line up.
    No description at any width — it is not in the markup. */
 
 /* ── This page's surface and typeface ─────────────────────────────────────
@@ -352,27 +353,37 @@
   letter-spacing: -0.015em;
 }
 
-/* The count in words, under the name of EVERY tile at every width (it was a big
-   block's alone, from 720px, with a red number on the small tiles' icons). The
-   row is always drawn, so a count that arrives late moves nothing. Pale red is
-   the same wash the For you panel gives an urgent card; the tile itself is never
-   tinted. */
+/* THE COUNT IS DRAWN ONLY WHEN IT IS ABOVE ZERO (owner, 2026-11-23, evening: on a
+   page of 20 tiles, 19 said "Nothing new" or "No alerts" and one said "3 unread").
+   A tile with nothing to say says nothing. The chip is OUT OF FLOW, so a count
+   that arrives late moves nothing, and it is the only thing in .status.
+   Pale red is the same wash the For you panel gives an urgent card; the tile
+   itself is never tinted. */
 .status {
+  position: absolute;
   display: flex;
   align-items: center;
-  min-height: 22px;
-  margin-top: 4px;
 }
 
+/* A big block: in its top row, beside the arrow. `top` puts the chip's centre on the
+   arrow's (the two-by-two tile; four across has its own below). */
 .cardEssential .status {
-  min-height: 24px;
-  margin-top: 8px;
+  top: 22px;
+  right: 56px;
+}
+
+/* A small tile: at the right-hand end, centred on the tile (from 480px; a phone's
+   list row places it in its own column below). */
+.cardCompact .status {
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
 }
 
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: 5px;
   height: 24px;
   padding: 0 10px 0 9px;
   border: 1px solid #F1DEDB;
@@ -391,53 +402,79 @@
   background: #B42332;
 }
 
-.calm {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  font-size: 13px;
-  color: #686D6C;
-}
-
-.calm svg {
-  color: #276247;
-}
-
-/* A module with no notifications at all. Quieter than "Nothing new" (no tick):
-   that one says "we looked and there is nothing"; this says there is nothing to
-   look at. It is hidden on a phone's list row (below), where it would only add a
-   column of grey. */
-.none {
-  font-size: 12.5px;
-  color: #6F7473;
-}
-
-/* A compact tile's count is a step smaller than a big block's. */
+/* A SMALL TILE'S COUNT IS THE NUMBER ALONE, a step smaller than a big block's: the
+   dot and the word ("unread" / "waiting") are not drawn. The word is in the
+   button's aria-label and in the chip's tooltip. */
 .cardCompact {
   min-height: 76px;
 }
 
 .cardCompact .chip {
+  min-width: 26px;
   height: 22px;
-  padding: 0 9px 0 8px;
-  gap: 6px;
+  justify-content: center;
+  padding: 0 8px;
   font-size: 12px;
 }
 
-.cardCompact .calm {
-  height: 22px;
-  font-size: 12.5px;
+.cardCompact .chipDot,
+.cardCompact .chipWord {
+  display: none;
 }
 
-.cardCompact .calm svg {
-  width: 13px;
-  height: 13px;
+/* ── "All modules", quiet (normal mode only) ─────────────────────────────────
+   ONE white surface holds every small module, instead of a bordered tile each:
+   16 boxes on the canvas read as 16 things to look at. Each tile keeps its own
+   hover, focus and press states, drawn on the surface. Six across from 1120px
+   (16 modules make 6 + 6 + 4), then the .grid steps above. Edit order keeps the
+   plain .grid, so every card there is still a movable, dashed box; below 480px
+   the phone list below is already one surface. */
+@container (min-width: 480px) {
+  .gridQuiet {
+    gap: 2px;
+    padding: 10px;
+    background: #fff;
+    border: 1px solid #E4DED7;
+    border-radius: 16px;
+  }
+
+  .gridQuiet > .cardCompact {
+    min-height: 64px;
+    padding: 8px 12px;
+    background: transparent;
+    border-color: transparent;
+    border-radius: 10px;
+    box-shadow: none;
+  }
+
+  .gridQuiet > .cardCompact:hover,
+  .gridQuiet > .cardCompact:focus-visible {
+    background: #F7F5F1;
+    border-color: transparent;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .gridQuiet > .cardCompact:active {
+    background: #F1EEE9;
+    border-color: transparent;
+  }
+
+  /* Room for the number, only on a tile that has one. */
+  .gridQuiet > .cardCompact:has(.chip) .title {
+    padding-right: 34px;
+  }
+}
+
+@container (min-width: 1120px) {
+  .gridQuiet {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
 }
 
 @container (min-width: 720px) {
   .cardEssential {
-    min-height: 100px;
+    min-height: 88px;
     padding: 18px 20px;
     border-radius: 16px;
   }
@@ -499,8 +536,14 @@
    pushed to the foot of the tile. */
 @container (min-width: 1040px) {
   .cardEssential {
-    min-height: 148px;
+    min-height: 128px;
     padding: 20px 22px;
+  }
+
+  /* The chip sits level with the arrow, which is centred on the 48px icon row. */
+  .cardEssential .status {
+    top: 32px;
+    right: 58px;
   }
 
   .cardEssential .cardBody {
@@ -553,7 +596,8 @@
 /* ── The phone: big blocks and one grouped list ─────────────────────────────
    Measured on the launcher's own width, like every column step above.
 
-   BIG BLOCKS (up to 719px): two by two, icon over name with the count under it.
+   BIG BLOCKS (up to 719px): two by two, icon over name, the count (the number
+   alone) in the tile's corner when there is one.
    A fixed two columns, so one, two, three or four blocks all keep a tile the
    same size and a lone block does not stretch across the screen.
 
@@ -562,7 +606,7 @@
    list reads on a phone. The surface is drawn by the .grid and the rows lose
    their own border, so a tap target is the full row width with no gaps between
    rows. The count sits at the right-hand end of the row, so a column of numbers
-   scans; "No alerts" is not drawn here. */
+   scans; a row with no count draws nothing there. */
 @media (max-width: 767px) {
   /* Clear of the home indicator when the list runs to the bottom edge. */
   .launcher {
@@ -577,13 +621,25 @@
   }
 
   .cardEssential {
-    min-height: 116px;
+    min-height: 104px;
     padding: 14px 8px 12px;
   }
 
+  /* Two by two, icon over name: the number alone, in the tile's corner. */
   .cardEssential .status {
+    top: 8px;
+    right: 8px;
+  }
+
+  .cardEssential .chipDot,
+  .cardEssential .chipWord {
+    display: none;
+  }
+
+  .cardEssential .chip {
+    min-width: 24px;
     justify-content: center;
-    margin-top: 6px;
+    padding: 0 8px;
   }
 
   .cardEssential .cardBody {
@@ -688,13 +744,10 @@
   }
 
   .cardCompact:not(.cardEditing) .status {
+    position: static;
     grid-column: 3;
-    margin: 0;
     justify-self: end;
-  }
-
-  .none {
-    display: none;
+    transform: none;
   }
 
   .cardCompact .iconBox {
