@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `5a60a521` — Quotations: the builder's top section tidied, and Price approval moved up into the Status card (no SQL)
-- Commits on this branch: 1547
+- Commit: `9b3c0ffc` — Docs: put the PR number (#994) on the builder top-section entries
+- Commits on this branch: 1552
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 502 (first `20260530_create_positions.sql`, latest `20270822000000_quotation_cards_open_owned_or_made.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
@@ -14,7 +14,12 @@
 
 ## Latest 25 commits
 
+- `9b3c0ffc` 2026-11-23 Docs: put the PR number (#994) on the builder top-section entries
+- `0a947072` 2026-11-23 Merge remote-tracking branch 'origin/main' into feat/quotation-builder-top-redesign
 - `5a60a521` 2026-11-23 Quotations: the builder's top section tidied, and Price approval moved up into the Status card (no SQL)
+- `0b74fdbb` 2026-11-23 Docs: stamp the merge of #990 (Improve picture: line details and reference box) on its entries (#992)
+- `43175621` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
+- `32004032` 2026-11-23 Quotations: the Open tile's migration file (already applied) and the merge stamps for #986 and #988 (#989)
 - `859bba0c` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL) (#988)
 - `dc267bab` 2026-11-23 Quotations: opening a quotation answers at once and starts its reads at the click (PR A of 5, no SQL) (#987)
 - `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
@@ -34,11 +39,6 @@
 - `744d0e68` 2026-11-21 Quotation: notes under the total, signing box removed (#973)
 - `490f7b1e` 2026-11-21 Expenses: a bill can be pasted (Ctrl+V) or dragged and dropped (no SQL) (#972)
 - `1dbb8b41` 2026-11-21 Quotation PDF: sheets fit the printed page, totals no longer drag the last product (#971)
-- `631ed075` 2026-11-21 Orders: the approver's dashboard reads in two rounds, not three (no SQL) (#969)
-- `30ab89a1` 2026-11-21 Remove the Operations Review chip from the Orders dashboard (#968)
-- `28127b1f` 2026-11-21 Docs: stamp #965 (approver dashboard: Needs your action and Watching) as merged and live (#966)
-- `a8d44009` 2026-11-21 Orders: the Operations team's dashboard in the approver's design (no SQL) (#967)
-- `076b6668` 2026-11-20 Orders: the approver's dashboard is one "Needs your action" sheet and a "Watching" list (no SQL) (#965)
 
 ## Pages by top-level area
 
