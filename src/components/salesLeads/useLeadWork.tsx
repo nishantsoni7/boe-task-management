@@ -13,6 +13,7 @@ import {
   BOARD_STAGES, DEAD_REASONS, FACT_HINTS, FACT_LABELS, NEXT_STAGE, parseValue, quickMessages, stageLabel, TYPED_FACTS, whatsAppLink, whenFrom,
   type DeadReason, type NeededFact, type Stage,
 } from '@/lib/salesLeads/board'
+import { settleWritten, type Written } from '@/lib/salesLeads/cache'
 import { dayShort } from '@/lib/salesLeads/format'
 import { istToday } from '@/lib/istDate'
 import { createClient } from '@/lib/supabase/client'
@@ -33,6 +34,9 @@ type Dialog =
   | { type: 'park'; lead: WorkLead }
   | { type: 'gate'; lead: WorkLead; to: Stage; missing: NeededFact[] }
 
+/** Tells `guarded` that the database has just answered for a lead, which was in `from` before the action (null when not known). */
+export type Note = (lead: WorkLead, from: Stage | null) => void
+
 export function useLeadWork() {
   const supabase = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
@@ -48,55 +52,67 @@ export function useLeadWork() {
   const fail = (e: unknown) => toast.show(e instanceof SalesRequestError ? e.message : 'Something went wrong. Nothing was saved.', true)
 
   /**
-   * One save at a time, and the screen is read again whatever happened: a refusal usually means it was out of date. The
-   * re-read runs in the background (every column and the totals are read again, which takes a while); a save is over when the
-   * database has answered, and the screen catches up as the answers arrive. A second action on a stale screen is refused by
-   * the database (each move says which stage it expects) and the person is told.
+   * One save at a time. When the database accepted the action, the lead it answered with is shown on every screen at once and
+   * only what could have changed is read again (src/lib/salesLeads/cache.ts); when it refused or the call failed, or the action
+   * answered with no lead, the screen is read again whatever happened: a refusal usually means it was out of date. Either way
+   * the re-read runs in the background and a save is over when the database has answered. A second action on a stale screen is
+   * refused by the database (each move says which stage it expects) and the person is told.
    */
-  async function guarded(run: () => Promise<void>) {
+  async function guarded(run: (note: Note) => Promise<void>) {
     setBusy(true)
+    const written: Written[] = []
+    let ok = false
     try {
-      await run()
+      await run((lead, from) => { written.push({ lead, from }) })
+      ok = true
     } catch (e) {
       fail(e)
     } finally {
-      void refresh()
+      if (ok && written.length > 0) settleWritten(queryClient, written, today)
+      else void refresh()
       setBusy(false)
     }
   }
 
-  const undoEntry = (id: string) => void guarded(async () => { await undoActivity(supabase, id); toast.show('Undone') })
+  const undoEntry = (id: string) => void guarded(async note => {
+    const r = await undoActivity(supabase, id)
+    note(r.lead, null)
+    toast.show('Undone')
+  })
   const said = (text: string, activityId?: string) =>
     toast.show(text, false, activityId ? { label: 'Undo', run: () => undoEntry(activityId) } : null)
 
   // The follow-up the database set (the next working day), in words.
   const comesBack = (lead: WorkLead) => (lead.next_due_on ? dayShort(lead.next_due_on) : 'soon')
 
-  const noAnswer = (lead: WorkLead) => guarded(async () => {
+  const noAnswer = (lead: WorkLead) => guarded(async note => {
     const r = await logNoAnswer(supabase, lead.id)
+    note(r.lead, lead.stage)
     if ((r.streak ?? 0) >= 3) setDialog({ type: 'three', lead: r.lead })
     // A New lead that nobody answered has had its first try, so it is now Under Process.
     else said(`No answer logged${lead.stage === 'new' ? '. Moved to Under Process' : ''}. Next try ${comesBack(r.lead)}.`, r.activity_id)
   })
 
-  const messageSent = (lead: WorkLead, label: string) => guarded(async () => {
+  const messageSent = (lead: WorkLead, label: string) => guarded(async note => {
     setDialog(null)
     const r = await logMessageSent(supabase, lead.id, label)
+    note(r.lead, lead.stage)
     said(`Message logged. This lead comes back ${comesBack(r.lead)}.`, r.activity_id)
   })
 
-  async function doMove(lead: WorkLead, to: Stage, extra: Parameters<typeof moveLead>[4] = {}) {
+  async function doMove(note: Note, lead: WorkLead, to: Stage, extra: Parameters<typeof moveLead>[4] = {}) {
     const r = await moveLead(supabase, lead.id, to, lead.stage, extra)
     if (r.status === 'needs') { setDialog({ type: 'gate', lead: r.lead, to, missing: r.missing }); return }
+    note(r.lead, lead.stage)
     setDialog(null)
     if (r.status === 'moved') {
       toast.show(`${leadTitle(lead)} moved to ${stageLabel(to)}`, false, {
         label: 'Undo',
-        run: () => void guarded(async () => {
+        run: () => void guarded(async undoNote => {
           const back = await moveLead(supabase, lead.id, lead.stage, to, { nextStep: lead.next_step ?? undefined, nextDue: lead.next_due_on ?? undefined })
           // Only say Undone when it moved back; if a fact is missing, ask for it the usual way.
           if (back.status === 'needs') setDialog({ type: 'gate', lead: back.lead, to: lead.stage, missing: back.missing })
-          else toast.show('Undone')
+          else { undoNote(back.lead, to); toast.show('Undone') }
         }),
       })
     }
@@ -107,12 +123,15 @@ export function useLeadWork() {
     if (to === lead.stage) return
     if (to === 'dead') return setDialog({ type: 'dead', lead, note })
     if (to === 'follow_up_later') return setDialog({ type: 'park', lead })
-    void guarded(() => doMove(lead, to))
+    void guarded(note => doMove(note, lead, to))
   }
 
-  const saveAndMove = (lead: WorkLead, to: Stage, facts: LeadFacts) => guarded(async () => {
-    if (Object.keys(facts).length > 0) await updateFacts(supabase, lead.id, facts)
-    await doMove({ ...lead }, to)
+  const saveAndMove = (lead: WorkLead, to: Stage, facts: LeadFacts) => guarded(async note => {
+    if (Object.keys(facts).length > 0) {
+      const r = await updateFacts(supabase, lead.id, facts)
+      note(r.lead, lead.stage)
+    }
+    await doMove(note, { ...lead }, to)
   })
 
   const sender = profile?.full_name ?? ''
@@ -130,7 +149,7 @@ export function useLeadWork() {
           lead={dialog.lead}
           onClose={() => setDialog(null)}
           onLater={() => setDialog({ type: 'park', lead: dialog.lead })}
-          onDead={() => void guarded(() => doMove(dialog.lead, 'dead', { reason: 'not_responding' }))}
+          onDead={() => void guarded(note => doMove(note, dialog.lead, 'dead', { reason: 'not_responding' }))}
         />
       )}
       {dialog?.type === 'dead' && (
@@ -139,7 +158,7 @@ export function useLeadWork() {
           busy={busy}
           note={dialog.note ?? ''}
           onClose={() => setDialog(null)}
-          onConfirm={(reason, note) => void guarded(() => doMove(dialog.lead, 'dead', { reason, note }))}
+          onConfirm={(reason, text) => void guarded(note => doMove(note, dialog.lead, 'dead', { reason, note: text }))}
         />
       )}
       {dialog?.type === 'park' && (
@@ -148,7 +167,7 @@ export function useLeadWork() {
           today={today}
           busy={busy}
           onClose={() => setDialog(null)}
-          onConfirm={(nextStep, nextDue) => void guarded(() => doMove(dialog.lead, 'follow_up_later', { nextStep, nextDue }))}
+          onConfirm={(nextStep, nextDue) => void guarded(note => doMove(note, dialog.lead, 'follow_up_later', { nextStep, nextDue }))}
         />
       )}
       {dialog?.type === 'gate' && (
@@ -166,7 +185,9 @@ export function useLeadWork() {
   )
 
   return {
-    supabase, today, busy, readOnly, node, refresh, fail, said, guarded, moveTo, saveAndMove, noAnswer: (l: WorkLead) => void noAnswer(l),
+    supabase, today, busy, readOnly, node, refresh, fail, said, guarded, moveTo, saveAndMove,
+    /** An action the database accepted outside `guarded` (the update box): show its answer and read again only what may have changed. */
+    settle: (written: Written[]) => settleWritten(queryClient, written, today), noAnswer: (l: WorkLead) => void noAnswer(l),
     /** Three tries with no answer: asks what next (a "Client not responding" comment can be the third). */
     threeTries: (lead: WorkLead) => setDialog({ type: 'three', lead }),
     openMove: (lead: WorkLead) => setDialog({ type: 'move', lead }),

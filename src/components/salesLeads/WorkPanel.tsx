@@ -332,13 +332,14 @@ function Strip({ lead, since, work, canWork, menu, setMenu }: {
     : step.kind === 'none' ? 'No follow-up date'
     : `${[lead.stage === 'dead' ? why : 'This lead is closed', canWork ? 'Pick a status to reopen it' : ''].filter(Boolean).join('. ')}.`
   const heat = (next: Temperature) => {
-    if (next !== lead.temperature) void work.guarded(async () => { await updateFacts(work.supabase, lead.id, { temperature: next }) })
+    if (next !== lead.temperature) void work.guarded(async note => { const r = await updateFacts(work.supabase, lead.id, { temperature: next }); note(r.lead, lead.stage) })
   }
   function pick(day: string) {
     setMenu(null)
     if (day === lead.next_due_on) return
-    void work.guarded(async () => {
+    void work.guarded(async note => {
       const r = await changeDue(work.supabase, lead.id, day)
+      note(r.lead, lead.stage)
       if (r.status === 'saved') work.said(`Follow-up moved to ${dayShort(day)}.`)
     })
   }
@@ -430,8 +431,11 @@ function ClientCard({ lead, work, canWork, closed }: { lead: WorkLead; work: Lea
       if (paise === null) return setProblem('Write the value as an amount, like 14,00,000 or 14 L.')
       facts.expected_value_paise = paise
     }
-    void work.guarded(async () => {
-      if (Object.keys(facts).length > 0) await updateFacts(work.supabase, lead.id, facts)
+    void work.guarded(async note => {
+      if (Object.keys(facts).length > 0) {
+        const r = await updateFacts(work.supabase, lead.id, facts)
+        note(r.lead, lead.stage)
+      }
       setEditing(false)
     })
   }
@@ -722,8 +726,8 @@ function Composer({ lead, work, focus, onPosted }: {
       const r = await addComment(work.supabase, lead.id, {
         note: text.trim() || noteForFiles(files.ready.length), tag, nextDue: due, files: files.ready,
       })
-      // The screen reads itself again in the background: nothing here waits for it.
-      void work.refresh()
+      // The answer is shown at once and only what may have changed is read again, in the background: nothing here waits for it.
+      work.settle([{ lead: r.lead, from: lead.stage }])
       work.said(`Saved. Next follow-up ${dayShort(r.lead.next_due_on ?? due)}.`, r.activity_id)
       if (notResponding && (r.streak ?? 0) >= 3) work.threeTries(r.lead)
       setText(''); setQuick(null); setTag(null)
