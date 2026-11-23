@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `92a01b49` — Merge remote-tracking branch 'origin/main' into feat/notifications-major-only
+- Commit: `8d753a96` — Merge remote-tracking branch 'origin/main' into docs/stamp-979-notifications
 - Commits on this branch: 1543
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 500 (first `20260530_create_positions.sql`, latest `20270820000000_quotation_client_costing_view.sql`)
@@ -14,16 +14,16 @@
 
 ## Latest 25 commits
 
-- `92a01b49` 2026-11-23 Merge remote-tracking branch 'origin/main' into feat/notifications-major-only
-- `f12d6e84` 2026-11-23 Test: the other-module fixture row uses a shown Finance type
+- `8d753a96` 2026-11-23 Merge remote-tracking branch 'origin/main' into docs/stamp-979-notifications
+- `741a8d4e` 2026-11-23 Docs: stamp the SEO brief short version as merged and live (no SQL) (#983)
+- `891f872b` 2026-11-23 Docs: stamp #979 (Orders and Finance notifications, major activity only) as merged and deployed (no SQL)
+- `586aaf2e` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL) (#979)
+- `97b0fdbc` 2026-11-23 SEO brief: a short version on top and a total under every part (no SQL) (#981)
 - `057443db` 2026-11-23 Sales: the Lead Board's columns start with the page; stamps and live timings for #977, #978, #980 (no SQL) (#982)
 - `27e81248` 2026-11-23 Sales: pages wait in their own shape, Lead Master filters stop asking the server, popup reads quotations beside the record (no SQL) (#980)
 - `f7e91f93` 2026-11-23 Sales: a saved action shows on every screen at once and reads only what changed (no SQL) (#978)
 - `9d2ec62e` 2026-11-23 Sales: every Sales page starts while the access check runs (no SQL) (#977)
-- `24956d7a` 2026-11-23 Docs: regenerate the app inventory after merging main
-- `3033f882` 2026-11-23 Merge remote-tracking branch 'origin/main' into feat/notifications-major-only
 - `843cb1fb` 2026-11-23 Quotations: the PI draft carries the costing (PR 3 of 3; no SQL) (#976)
-- `ac729ace` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL)
 - `5f248a5d` 2026-11-23 Quotations: the client's copy shows per-piece fabric and packing (PR 2 of 3; migration 20270820000000 NOT applied) (#975)
 - `e38573c9` 2026-11-23 Quotations: a Fabric, finish and packing page, priced per piece (PR 1 of 3; migration 20270819000000 NOT applied) (#974)
 - `4e7f1b2d` 2026-11-21 Orders: the approver's payment chips in one call (migration 20270818000000, NOT applied) (#970)

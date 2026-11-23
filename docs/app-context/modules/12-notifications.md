@@ -177,7 +177,7 @@ A second delivery of rows already in `notifications`; it creates no rows, adds n
 
 Next slices (each needs the owner's yes, one small PR each, ordered by how easily they are missed): task approval; early-departure and time-out requests with employee-record issues; customer-review verification; asset handover and requests; inventory bookings; sample approval; unallotted leads; Finance queues for non-admins. Routing gaps to re-check before acting (reported by a read-only survey, not re-verified): payment-submitted, asset-request and sample-QR notices reach admins only; a rejected review notifies nobody. Four decision-like For you items still default Off (PI waiting approval, payment sent back, Order change request, PI waiting for Operations): an administrator can switch any of them on in Control Center › For you with no code. This dossier's feed and enum lists still omit the `sales` category (six types) and `attendance_machine_stopped`.
 
-## 8f. Major activity only: Orders and Finance (2026-11-23, PR open, no SQL)
+## 8f. Major activity only: Orders and Finance (2026-11-23, PR #979 merged as `586aaf2e`, deployed 12:11 IST, no SQL)
 
 Owner decision: the Orders and Finance inboxes show a notice only when a named person must act, is stuck until they hear back, or something went wrong. Routine progress that already has a home (dashboard queues and counts, the Order's Activity trail, the "New update" mark on Confirmed Orders) is hidden. Built as "Step 1" of an owner-approved plan; "Step 2" (stop writing the hidden types) is NOT built.
 

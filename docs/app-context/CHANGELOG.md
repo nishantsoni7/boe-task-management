@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-23 — Orders and Finance notifications: major activity only (PR open, not merged) · no migration
+## 2026-11-23 — Orders and Finance notifications: major activity only (PR #979 merged as `586aaf2e` by the owner 2026-11-23 12:08 IST, production deployment succeeded 12:11 IST) · no migration
 
 - **Why.** Owner: the Orders and Finance Notifications pages were always full of routine notices. Keep a notice only when a named person must act, is stuck until they hear back, or something went wrong; routine progress already has a home (dashboard queues, the Order's Activity trail, the "New update" mark on Confirmed Orders). A plan page with the per-event table was approved first.
 - **What.** `src/lib/notifications.ts`: `FINANCE_NOTIFICATION_TYPES` (now 5) and `ORDER_NOTIFICATION_TYPES` (now 18) are the SHOWN lists, so the feed, the sidebar unread count, Mark all read, Delete all and phone alerts (`pushPolicy.ts`) all follow them. New `FINANCE_ROUTINE_NOTIFICATION_TYPES` (8) and `ORDER_ROUTINE_NOTIFICATION_TYPES` (10) hold the hidden types. New `MAJOR_ONLY_NOTE`: one line under the filters in `NotificationsView` (Orders and Finance only) saying where routine updates went. Control Center → Order notifications has a note on what its switches now decide.
