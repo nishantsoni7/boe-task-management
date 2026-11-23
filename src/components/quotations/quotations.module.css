@@ -343,6 +343,7 @@ textarea.t3 { min-height: 86px; }
 .doubt { background: var(--boe-waiting-bg) !important; border-color: var(--boe-warning-border) !important; }
 
 /* image studio */
+.studioRef { width: 56px; height: 56px; object-fit: contain; border: 1px solid var(--boe-border); border-radius: 8px; background: #fff; display: block; }
 .studioPic { width: 100%; max-height: 320px; object-fit: contain; border: 1px solid var(--boe-border); border-radius: 8px; background: #fff; display: block; }
 
 /* pricing desk */

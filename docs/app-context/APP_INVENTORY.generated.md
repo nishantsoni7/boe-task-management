@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `22fede84` — Docs: stamp #986 as merged and live; the Open-tile migration file follows it (already applied)
-- Commits on this branch: 1547
+- Commit: `06f93fa5` — Docs: put the PR number (#990) on the Improve picture entries
+- Commits on this branch: 1548
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 502 (first `20260530_create_positions.sql`, latest `20270822000000_quotation_cards_open_owned_or_made.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
@@ -14,9 +14,10 @@
 
 ## Latest 25 commits
 
-- `22fede84` 2026-11-23 Docs: stamp #986 as merged and live; the Open-tile migration file follows it (already applied)
-- `f934901b` 2026-11-23 Docs: migration 20270822000000 applied to production (23 Nov 2026, about 14:30 IST)
-- `4144b0e6` 2026-11-23 Quotations: the Open quotations tile counts what the list counts (migration 20270822000000, NOT applied)
+- `06f93fa5` 2026-11-23 Docs: put the PR number (#990) on the Improve picture entries
+- `0c1d7703` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL)
+- `859bba0c` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL) (#988)
+- `dc267bab` 2026-11-23 Quotations: opening a quotation answers at once and starts its reads at the click (PR A of 5, no SQL) (#987)
 - `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
 - `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
@@ -38,7 +39,6 @@
 - `30ab89a1` 2026-11-21 Remove the Operations Review chip from the Orders dashboard (#968)
 - `28127b1f` 2026-11-21 Docs: stamp #965 (approver dashboard: Needs your action and Watching) as merged and live (#966)
 - `a8d44009` 2026-11-21 Orders: the Operations team's dashboard in the approver's design (no SQL) (#967)
-- `076b6668` 2026-11-20 Orders: the approver's dashboard is one "Needs your action" sheet and a "Watching" list (no SQL) (#965)
 
 ## Pages by top-level area
 
