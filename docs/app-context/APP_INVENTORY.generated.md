@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `f8bca282` — Docs: record migration 20270821000000 as applied to production
+- Commit: `40259764` — Modules launcher: four big blocks you choose, and a count on every tile (#985)
 - Commits on this branch: 1544
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
-- Migrations: 501 (first `20260530_create_positions.sql`, latest `20270821000000_launcher_big_module_keys.sql`)
+- Migrations: 502 (first `20260530_create_positions.sql`, latest `20270822000000_quotation_cards_open_owned_or_made.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
 - Test files: 933   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `f8bca282` 2026-11-23 Docs: record migration 20270821000000 as applied to production
-- `72bd24b6` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile
+- `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
+- `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
 - `741a8d4e` 2026-11-23 Docs: stamp the SEO brief short version as merged and live (no SQL) (#983)
 - `586aaf2e` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL) (#979)
@@ -522,7 +522,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270730000000_for_you_bundle.sql`
 - `20270731000000_quotation_suggestions_switch.sql`
 - `20270801000000_quotation_salesperson_card.sql`
 - `20270802000000_day_close_hold_notification_type.sql`
@@ -552,6 +551,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270819000000_quotation_line_costing.sql`
 - `20270820000000_quotation_client_costing_view.sql`
 - `20270821000000_launcher_big_module_keys.sql`
+- `20270822000000_quotation_cards_open_owned_or_made.sql`
 
 ## All SQL function names
 
