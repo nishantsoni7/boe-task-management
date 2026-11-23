@@ -19,13 +19,15 @@ import type { LeadWork } from './useLeadWork'
 import s from './leadBoard.module.css'
 
 export function LeadQuotes({ lead, work, canMake, filling }: { lead: WorkLead; work: LeadWork; canMake: boolean; filling: boolean }) {
+  // Read at once, beside the record (the lead's id is known from the card), instead of after it: that was a second 0.25 s on every
+  // popup (2026-11-23). Nothing is drawn until the record has arrived, as before.
   const q = useQuery({
     queryKey: leadQuotationsKey(lead.id), queryFn: () => fetchLeadQuotations(work.supabase, lead.id),
-    enabled: !filling, retry: false, staleTime: 60_000,
+    retry: false, staleTime: 60_000,
   })
   const d = q.data
   // Not set up yet, no Quotations access, or nothing to show and nothing to offer: no band.
-  if (!d || !d.open) return null
+  if (filling || !d || !d.open) return null
   const mayMake = canMake && d.may_create
   if (d.quotations.length === 0 && !mayMake) return null
   return <Band lead={lead} work={work} data={d} mayMake={mayMake} />

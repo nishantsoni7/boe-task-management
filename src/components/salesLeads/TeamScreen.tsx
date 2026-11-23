@@ -4,7 +4,7 @@ import { AppLink as Link } from '@/components/ui/AppLink'
 import { useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { BellRing, UserRoundPen } from 'lucide-react'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
@@ -98,7 +98,7 @@ export function TeamScreen() {
 
   let body: React.ReactNode
   if (!ready || (team.isPending && canSeeAll && !data)) {
-    body = <LoadingScreen message="Loading the team..." />
+    body = <ModulePageSkeleton variant="list" label="Loading the team" />
   } else if (!canSeeAll) {
     body = <div className="boe-empty"><p className="boe-empty-title">This page is for managers</p><p>Your own leads are on My day and the Lead Board.</p></div>
   } else if (team.isError && !data) {

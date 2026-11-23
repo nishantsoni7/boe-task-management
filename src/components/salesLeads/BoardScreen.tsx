@@ -5,7 +5,6 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExterna
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import { Ban, CalendarDays, Check, ChevronDown, ChevronsLeft, SlidersHorizontal, UserPlus } from 'lucide-react'
 import { formatPhone } from '@/lib/exhibitionLeads/phone'
-import { LoadingScreen } from '@/components/ui/atoms'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useListUrlState, useUrlSearchInput } from '@/hooks/useListUrlState'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
@@ -19,6 +18,7 @@ import {
 import { LEAD_SOURCES, LEAD_SOURCE_VALUES } from '@/lib/salesLeads/constants'
 import { initialsOf } from '@/lib/salesLeads/format'
 import { Due, leadTitle, TempChip } from './LeadBits'
+import { BoardBlocks, SkeletonCards } from './SalesCheckingFrame'
 import { SalesFrame } from './SalesFrame'
 import { useLeadWork, type LeadWork } from './useLeadWork'
 import { WorkPanel, type LeadNav } from './WorkPanel'
@@ -174,7 +174,8 @@ export function BoardScreen() {
 
   let body: React.ReactNode
   if (!ready) {
-    body = <LoadingScreen message="Loading the board..." />
+    // The board's own shape in grey, the same blocks the page frame drew while the check ran, not a full-screen spinner (2026-11-23).
+    body = <BoardBlocks />
   } else if (board.isError && !data) {
     body = (
       <div className="boe-empty">
@@ -396,7 +397,7 @@ function Column({ stage, filter, data, supabase, today, enabled, current, over, 
           <Card key={lead.id} lead={lead} today={today} canWork={canWork(lead)} showHolder={showHolder} open={openId === lead.id} dragged={dragging?.id === lead.id}
             onOpen={openCard} onDrag={onLeadDrag} onDragEnd={onLeadDragEnd} />
         ))}
-        {q.isPending && enabled && <div className={s.colLoading}>Loading…</div>}
+        {q.isPending && enabled && <div role="status" aria-label={`Loading ${stageLabel(stage)}`} style={{ display: 'contents' }}><SkeletonCards count={4} /></div>}
         {q.isError && rows.length === 0 && (
           <div className={s.colEmpty}>Could not load. <button type="button" className={s.linkBtn} onClick={() => void q.refetch()}>Try again</button></div>
         )}
