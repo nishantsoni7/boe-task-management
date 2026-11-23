@@ -387,16 +387,60 @@ textarea.t3 { min-height: 86px; }
 /* Ask a senior (20 Nov 2026): one slim strip above the top row. */
 .askStrip { padding: 10px 16px; display: grid; gap: 10px; font-size: 13.5px; }
 
-/* Report cards (20 Nov 2026). */
-.cards { padding: 12px 16px; display: grid; gap: 12px; }
-.cardsTitle { margin: 0; font: 700 14px var(--boe-font-heading); color: var(--boe-text); }
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
-.stat { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); background: var(--boe-surface); color: var(--boe-text); text-decoration: none; min-width: 0; }
+/* The card on top of the list (owner, 23 Nov 2026): two tiles, then the value each candidate quoted as ranked bars. */
+.top { display: grid; grid-template-columns: 400px minmax(0, 1fr); padding: 14px 16px; }
+.topSolo { grid-template-columns: minmax(0, 1fr); }
+.topBusy { opacity: .65; }
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stats > :only-child { grid-column: 1 / -1; }
+.topSolo .stats { grid-template-columns: repeat(2, minmax(0, 260px)); }
+.topSolo .stats > :only-child { grid-column: auto; }
+.stat { display: flex; flex-direction: column; justify-content: space-between; min-height: 100px; padding: 10px 12px; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); background: var(--boe-surface); color: var(--boe-text); text-decoration: none; min-width: 0; }
 a.stat:hover { background: var(--boe-surface-hover); }
-.statLab { font-size: 12px; font-weight: 600; color: var(--boe-text-muted); }
-.statVal { font: 700 20px var(--boe-font-heading); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.statSub { font-size: 12px; color: var(--boe-text-muted); }
-.teamBlock { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--boe-border); }
+.statLab { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-size: 12px; font-weight: 600; color: var(--boe-text-muted); }
+.statVal { font: 700 32px/1.05 var(--boe-font-heading); letter-spacing: -.01em; }
+.statSub { margin-top: 3px; font-size: 12px; color: var(--boe-text-muted); }
+.statAct, a.statAct:hover { background: var(--boe-brand-tint); border-color: var(--boe-brand-tint-2); }
+.statAct .statLab, .statAct .statVal { color: var(--boe-brand-ink); }
+.chart { display: grid; grid-template-rows: auto 1fr; gap: 6px; min-width: 0; margin-left: 20px; padding-left: 20px; border-left: 1px solid var(--boe-border); }
+.chHead { display: flex; align-items: center; gap: 8px; min-height: 30px; flex-wrap: wrap; }
+.cardsTitle { margin: 0; font: 700 14px var(--boe-font-heading); color: var(--boe-text); }
+.chTotal { font-size: 12.5px; color: var(--boe-text-muted); }
+.chEmpty { align-self: center; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13.5px; color: var(--boe-text-muted); }
+/* Balanced columns: 8 candidates are 4 + 4 on a desktop, 3 + 3 + 2 on a wide screen, one column on a phone. Bars share one scale. */
+.bars { list-style: none; margin: 0; padding: 0; column-width: 330px; column-gap: 28px; }
+.bars > li { break-inside: avoid; }
+.barRow { position: relative; display: flex; align-items: center; gap: 8px; width: calc(100% + 12px); height: 24px; margin: 0 -6px; padding: 0 6px; border: 0; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.barRow:hover { background: var(--boe-surface-quiet); }
+.barPicked, .barPicked:hover { background: var(--boe-brand-tint); }
+.barName { flex: none; width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--boe-text-strong); }
+.barPicked .barName { font-weight: 600; color: var(--boe-brand-ink); }
+.barTrack { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 8px; border-left: 1px solid var(--boe-border-strong); }
+.bar { flex: none; height: 10px; width: calc((100% - 86px) * var(--p)); min-width: 3px; border-radius: 0 4px 4px 0; background: var(--boe-brand); }
+.barVal { font: 600 12.5px var(--boe-font-body); font-variant-numeric: tabular-nums; color: var(--boe-text-strong); white-space: nowrap; }
+.tip { display: none; position: absolute; z-index: 5; left: 96px; top: calc(100% + 6px); width: max-content; max-width: 260px; padding: 8px 10px; border-radius: 8px; background: var(--boe-text); color: #fff; box-shadow: var(--boe-shadow-float); font-size: 12.5px; line-height: 1.45; text-align: left; pointer-events: none; }
+.tip b { display: block; font-size: 13px; }
+.tip span { color: #D9D4CC; }
+.barRow:hover .tip, .barRow:focus-visible .tip { display: block; }
+.barsMore { display: none; }
+/* Tablet: the tiles on top, the bars under them. */
+@media (max-width: 1199px) {
+  .top { grid-template-columns: minmax(0, 1fr); }
+  .stats { grid-template-columns: repeat(2, minmax(0, 210px)); }
+  .chart { margin: 14px 0 0; padding: 12px 0 0; border-left: 0; border-top: 1px solid var(--boe-border); }
+}
+/* Phone: two tiles across, the first five candidates, "Show all" for the rest. */
+@media (max-width: 767px) {
+  .top { padding: 12px; }
+  .stats, .topSolo .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .statVal { font-size: 28px; }
+  .barRow { height: 30px; }
+  .barLate { display: none; }
+  .barsMore { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 44px; margin-top: 4px; border: 0; border-top: 1px solid var(--boe-border); background: none; color: var(--boe-brand-ink); font: 600 13.5px var(--boe-font-body); cursor: pointer; }
+  .chHead h2 { flex: 1; }
+  .chTotal { order: 3; flex-basis: 100%; }
+  .chHead .spacer { display: none; }
+}
 
 /* The Fabric, finish and packing page (21 Nov 2026): tabs above the products, and the sheet. */
 .cpTabs { display: flex; gap: 4px; align-items: flex-end; border-bottom: 1px solid var(--boe-border-strong); overflow-x: auto; }
