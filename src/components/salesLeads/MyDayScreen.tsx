@@ -5,7 +5,7 @@ import { useMemo, useState, useSyncExternalStore } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Check, MessageCircle, Pencil, Phone, PhoneMissed } from 'lucide-react'
 import { formatPhone, telHref } from '@/lib/exhibitionLeads/phone'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
 import { useSalesAccess } from '@/hooks/useSalesAccess'
 import { fetchMyDay, SALES_KEY, type WorkLead } from '@/lib/salesLeads/api'
@@ -69,7 +69,8 @@ export function MyDayScreen() {
     queryFn: () => fetchMyDay(work.supabase),
     staleTime: 15_000,
     refetchInterval: 60_000,
-    enabled: ready,
+    // Not held back for the permission answer (2026-11-23): the guard builds this page hidden while the check runs, and the
+    // database function decides what this person may read. The list is still not drawn until `ready`.
   })
 
   const now = Math.max(openedAt, day.dataUpdatedAt)
@@ -83,7 +84,8 @@ export function MyDayScreen() {
 
   let body: React.ReactNode
   if (!ready || (day.isPending && !day.data)) {
-    body = <LoadingScreen message="Loading your day..." />
+    // Grey blocks in the page's place, as the frame drew while the check ran, not a full-screen spinner inside the shell (2026-11-23).
+    body = <ModulePageSkeleton variant="list" label="Loading your day" />
   } else if (day.isError && !day.data) {
     body = (
       <div className="boe-empty">

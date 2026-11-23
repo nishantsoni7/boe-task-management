@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useMemo, useState } from 'react'
 import { keepPreviousData, useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MessageCircle, Plus, Upload, UserRoundCheck, X } from 'lucide-react'
-import { LoadingScreen } from '@/components/ui/atoms'
+import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
 import { PhoneHeaderMenu } from '@/components/layout/PhoneHeaderMenu'
 import { PhoneFilterSheet } from '@/components/ui/PhoneFilters'
 import { usePermissionContext } from '@/hooks/queries/usePermissionContext'
@@ -72,7 +72,9 @@ export function LeadMasterScreen() {
   const supabase = useMemo(() => createClient(), [])
   const queryClient = useQueryClient()
   const router = useRouter()
-  const { state, setState } = useListUrlState(LIST_PARAMS)
+  // shallow: a period card, a filter or a search changes the address with the browser's own history call, not through the router,
+  // which asks the server for the page again each time (measured on the Lead Board at 0.1 to 3.4 s before the change took effect).
+  const { state, setState } = useListUrlState(LIST_PARAMS, { shallow: true })
   const [searchInput, setSearchInput, flushSearch] = useUrlSearchInput(state.q, next => setState({ q: next }))
   const [openId, setOpenId] = useState<string | null>(null)
   const [pending, setPending] = useState<{ lead: SalesLead; toId: string } | null>(null)
@@ -92,7 +94,8 @@ export function LeadMasterScreen() {
     queryKey: [SALES_KEY, 'people'],
     queryFn: () => fetchPeople(supabase),
     staleTime: 5 * 60_000,
-    enabled: ready,
+    // The reads here are not held back for the permission answer (2026-11-23): the guard builds the page hidden while the check
+    // runs and each database function checks the caller itself. Only the held-chats count needs to know who may allot.
   })
 
   // WhatsApp chats judged not to be leads (20270613000000): only people who allot see them, and only the count here.
@@ -116,7 +119,6 @@ export function LeadMasterScreen() {
     },
     placeholderData: keepPreviousData,
     staleTime: 15_000,
-    enabled: ready,
   })
 
   const first = list.data?.pages[0]
@@ -188,7 +190,7 @@ export function LeadMasterScreen() {
 
   let body: React.ReactNode
   if (!ready || (list.isPending && !first)) {
-    body = <LoadingScreen message="Loading leads..." />
+    body = <ModulePageSkeleton variant="list" label="Loading leads" />
   } else if (list.isError && !first) {
     body = (
       <div className="boe-empty">

@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `843cb1fb` — Quotations: the PI draft carries the costing (PR 3 of 3; no SQL) (#976)
-- Commits on this branch: 1534
+- Commit: `476e11c9` — SEO brief: a short version on top and a total under every part (no SQL)
+- Commits on this branch: 1535
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 500 (first `20260530_create_positions.sql`, latest `20270820000000_quotation_client_costing_view.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
-- Test files: 927   Next.js 16.2.6, React 19.2.4
+- Test files: 930   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `476e11c9` 2026-11-23 SEO brief: a short version on top and a total under every part (no SQL)
 - `843cb1fb` 2026-11-23 Quotations: the PI draft carries the costing (PR 3 of 3; no SQL) (#976)
 - `5f248a5d` 2026-11-23 Quotations: the client's copy shows per-piece fabric and packing (PR 2 of 3; migration 20270820000000 NOT applied) (#975)
 - `e38573c9` 2026-11-23 Quotations: a Fabric, finish and packing page, priced per piece (PR 1 of 3; migration 20270819000000 NOT applied) (#974)
@@ -38,7 +39,6 @@
 - `2c57b210` 2026-11-20 Quotations: requests move into the module, lead-first creation, report cards, price brief (#955)
 - `2014e0a2` 2026-11-20 Quotations: Lost carries one of the lead's eleven reasons; the report counts reasons (#954)
 - `d0fe51aa` 2026-11-19 Lead popup: the lead's quotations in one line, and Make quotation from the lead (#952)
-- `c000801a` 2026-11-19 Docs: record 20270803000000 (held-day decision) as applied (no SQL) (#918)
 
 ## Pages by top-level area
 
@@ -175,7 +175,7 @@
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
 - `src/lib/quotations` — 30 source, 28 test
-- `src/lib/salesLeads` — 16 source, 16 test
+- `src/lib/salesLeads` — 17 source, 17 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
 - `src/lib/security` — 2 source, 7 test
