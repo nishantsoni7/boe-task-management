@@ -111,3 +111,18 @@ export const fetchRateHistory = (s: Supabase) => call<RateChange[]>(() => s.rpc(
 export const fetchLibrary = (s: Supabase) => call<import('./match').Library>(() => s.rpc('pricing_training_library'))
 /** Priced quotation lines that picked a taught product (20270729000000). Pricing people only. */
 export const fetchTaughtQuotes = (s: Supabase) => call<import('./match').TaughtQuote[]>(() => s.rpc('pricing_taught_quotes'))
+
+/** One quotation line that picked a taught case, as the server needs it to work the price out again. */
+export type ReworkAsk = { key: string; caseNo: number; size: string | null; wood: string | null }
+/** A taught price worked out for a line. `rows` and `changes` come only to people who may open Pricing. */
+export type ReworkAnswer = { key: string; caseNo: number; taught: number; price: number; sized: boolean; wood: string | null; rows?: { element: string; kind: string; amount: number; note: string }[]; changes?: string[] }
+/** Asks the server to work out each picked case for its line (POST /api/pricing/taught/rework). */
+export async function fetchRework(s: Supabase, lines: readonly ReworkAsk[]): Promise<Map<string, ReworkAnswer>> {
+  const { data: { session } } = await s.auth.getSession()
+  if (!session) throw new TrainingError('forbidden', 'Your session ended. Sign in again.')
+  let res: Response
+  try { res = await fetch('/api/pricing/taught/rework', { method: 'POST', body: JSON.stringify({ lines }), headers: { 'content-type': 'application/json', Authorization: `Bearer ${session.access_token}` } }) } catch { throw new TrainingError('network', 'No connection.') }
+  const json = await res.json().catch(() => null) as { ok: true; results: ReworkAnswer[] } | { ok: false; error: string } | null
+  if (!json || !json.ok) throw new TrainingError('unknown', json && !json.ok ? json.error : `The server answered ${res.status}.`)
+  return new Map(json.results.map(r => [r.key, r]))
+}
