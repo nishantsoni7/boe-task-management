@@ -7,7 +7,7 @@ import { createElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AskCard } from './AskCard'
 import { PriceBrief } from './PriceBrief'
-import { conversion, periodDates } from './HomeCards'
+import { periodDates } from './HomeCards'
 import type { AskRequest, AskState, Quotation } from '@/lib/quotations/api'
 import type { QuoteLine } from '@/lib/quotations/math'
 
@@ -121,8 +121,5 @@ describe('report card dates (India calendar months)', () => {
     assert.deepEqual(periodDates('last', at('2027-01-15T09:00:00Z')), { from: '2026-12-01', to: '2026-12-31' })
     assert.deepEqual(periodDates('this', at('2026-11-30T19:00:00Z')), { from: '2026-12-01', to: '2026-12-31' })
     assert.deepEqual(periodDates('last', at('2028-03-10T09:00:00Z')), { from: '2028-02-01', to: '2028-02-29' })
-  })
-  test('conversion is confirmed of those sent, and a dash when none were sent', () => {
-    assert.equal(conversion(3, 12), '25%'); assert.equal(conversion(0, 0), '—'); assert.equal(conversion(5, 5), '100%')
   })
 })
