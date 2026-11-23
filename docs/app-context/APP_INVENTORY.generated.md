@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `06f93fa5` — Docs: put the PR number (#990) on the Improve picture entries
+- Commit: `43175621` — Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
 - Commits on this branch: 1548
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 502 (first `20260530_create_positions.sql`, latest `20270822000000_quotation_cards_open_owned_or_made.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `06f93fa5` 2026-11-23 Docs: put the PR number (#990) on the Improve picture entries
-- `0c1d7703` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL)
+- `43175621` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
+- `32004032` 2026-11-23 Quotations: the Open tile's migration file (already applied) and the merge stamps for #986 and #988 (#989)
 - `859bba0c` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL) (#988)
 - `dc267bab` 2026-11-23 Quotations: opening a quotation answers at once and starts its reads at the click (PR A of 5, no SQL) (#987)
 - `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
