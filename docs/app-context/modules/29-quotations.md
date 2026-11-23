@@ -444,7 +444,7 @@ Under 1200 px the panel sits under the boxes, lined up with them, up to 420 px w
 - **Tests.** `homeCards.dom.test.tsx` (6: two tiles and bars ranked by value with none of the old cards; hover details; tap, keep the bars, Back to mine and See their quotations; no team view; empty period; Show all on a phone), `requestsAndCards.dom.test.tsx` (the `conversion` test removed). The 218 tests of the quotation component folder pass; `tsc --noEmit` 0 errors; eslint clean on the changed files; `next build` not run on this PC (CI runs it). **Drawn** (the real component and stylesheet in headless Edge) at 1534 px at 125%, 1280, 1024 and 390, with the hover, empty and no-team states. **Not seen:** signed in with real data; a real phone.
 - **Rollout.** No SQL: merge, then open Quotations as the owner and as a salesperson.
 
-## 27. Opening a quotation: feedback at once, reads at the click (owner, 23 Nov 2026: "Yes, measure then build"; PR A of 5 of the open-speed plan; open, NO SQL)
+## 27. Opening a quotation: feedback at once, reads at the click (owner, 23 Nov 2026: "Yes, measure then build"; PR #987, PR A of 5 of the open-speed plan; open, NO SQL)
 
 **Ask.** Opening a quotation from a Requests row was very slow and nothing on screen said so, so people pressed the row again and again. The owner wanted it as fast as possible for everyone, with the page allowed to load in parts.
 
