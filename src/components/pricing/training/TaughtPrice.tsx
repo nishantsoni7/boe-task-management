@@ -9,15 +9,18 @@ import { formatINR } from '@/lib/currency'
 import { useDialogFocus } from '@/components/salesLeads/useDialogFocus'
 import { KIND_LABEL, type Kind } from '@/lib/pricing/training/doc'
 import { adjustment, borrowable, byLikeness, difference, readPick, REASONS, sameElement, taughtPrice, withPick, writePick, type Library, type LineWords, type LinePick, type TaughtCase } from '@/lib/pricing/training/match'
+import type { ReworkAnswer } from '@/lib/pricing/training/api'
 import t from './training.module.css'
 
 /** What is sent when somebody says why a quoted price differs from the taught one. */
 export type DiffersReport = { caseId: string; caseNo: number; caseName: string; taught: number; quoted: number; reason: string; note: string }
 
-export function TaughtPrice({ library, photo, line, note, price, editable, onNote, onUse, onDiffers }: {
+export function TaughtPrice({ library, photo, line, note, price, editable, onNote, onUse, onDiffers, rework }: {
   library: Library; photo: (path: string) => string; line: LineWords; note: string | null | undefined
   price: number | null; editable: boolean; onNote: (note: string) => void; onUse: (p: number) => void
   onDiffers?: (r: DiffersReport) => void
+  /** Phase 2: the case worked out for this line by the server. Until it answers (or if it cannot), the price is as taught. */
+  rework?: ReworkAnswer
 }) {
   const [picking, setPicking] = useState(false)
   const [adjusting, setAdjusting] = useState(false)
@@ -27,7 +30,11 @@ export function TaughtPrice({ library, photo, line, note, price, editable, onNot
   const no = pick?.caseNo ?? null
   const c = no === null ? null : library.cases.find(x => x.case_no === no) ?? null
   if (no === null && (!editable || library.cases.length === 0)) return null
-  const base = c ? taughtPrice(c, line, library.woods) : null
+  // The server's answer is for this case only while the line still picks it; otherwise the price as taught (in the line's wood).
+  const fresh = c && rework && rework.caseNo === c.case_no ? rework : null
+  const asTaught = c ? taughtPrice(c, line, library.woods) : null
+  const base = fresh && asTaught ? { price: fresh.price, wood: fresh.wood ?? asTaught.wood, swapped: false, noRate: null } : asTaught
+  const reworked = !!fresh && fresh.price !== fresh.taught
   // Owner, 16 Nov 2026: "this one is different". Leaving out or adding an element moves the price by that element's
   // amount; the structure, overhead and margin stay as taught.
   const adj = c && pick ? adjustment(c, pick, library.cases) : null
@@ -51,9 +58,10 @@ export function TaughtPrice({ library, photo, line, note, price, editable, onNot
           {/* eslint-disable-next-line @next/next/no-img-element -- a stored product photo, shown as it is */}
           {c.image_path && <img className={t.thumb} src={photo(c.image_path)} alt="" />}
           <span className={t.taughtText}>
-            <span>{differs ? 'Taught price, adjusted' : 'Taught price'} <b>{formatINR(p.price)}</b>{p.wood ? ` in ${p.wood}` : ''}</span>
+            <span>{differs ? 'Taught price, adjusted' : reworked ? 'Taught price, for this line' : 'Taught price'} <b>{formatINR(p.price)}</b>{p.wood ? ` in ${p.wood}` : ''}</span>
             <span className={t.muted}>
               #{c.case_no} {c.name}
+              {fresh && reworked && <> · taught at {formatINR(fresh.taught)}{fresh.sized ? ', worked out for this size' : ''}{c.wood && fresh.wood && fresh.wood !== c.wood ? `, in ${fresh.wood}` : ''}, at today&apos;s rates</>}
               {adj && adj.without.length > 0 && <> · without {adj.without.map(x => x.element).join(', ')}</>}
               {adj && adj.with.length > 0 && <> · with {adj.with.map(x => `${x.part.element} (#${x.from.case_no})`).join(', ')}</>}
               {adj && adj.lost.length > 0 && <> · no longer taught, so not counted: {adj.lost.join(', ')}</>}
@@ -62,7 +70,15 @@ export function TaughtPrice({ library, photo, line, note, price, editable, onNot
             </span>
           </span>
           {editable && price !== p.price && <button type="button" className={t.taughtUse} onClick={() => onUse(p.price)}>Use</button>}
-          {c.lines && (
+          {fresh?.rows ? (
+            <details className={t.taughtWhy}>
+              <summary>How it is worked out for this line</summary>
+              {fresh.rows.map((l, i) => (
+                <div key={i} className={t.taughtRow}><span>{l.element} <span className={t.muted}>{KIND_LABEL[l.kind as Kind] ?? l.kind}{l.note ? ` · ${l.note}` : ''}</span></span><span>{formatINR(Number(l.amount))}</span></div>
+              ))}
+              {(fresh.changes ?? []).map((x, i) => <div key={`c${i}`} className={t.muted}>{x}</div>)}
+            </details>
+          ) : c.lines && (
             <details className={t.taughtWhy}>
               <summary>What it is made of</summary>
               {c.lines.map((l, i) => (

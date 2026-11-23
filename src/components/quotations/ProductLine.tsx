@@ -9,6 +9,7 @@ import type { ModelSuggestion } from '@/lib/pricing/model'
 import { PriceHintLine } from './PricingDesk'
 import { TaughtPrice, type DiffersReport } from '@/components/pricing/training/TaughtPrice'
 import type { Library } from '@/lib/pricing/training/match'
+import type { ReworkAnswer } from '@/lib/pricing/training/api'
 import { Pic } from './Pic'
 import { ChoicesPanel } from './ChoicesPanel'
 import { forgetPicture, pointAtPicture, type PictureTarget } from './pictureClipboard'
@@ -28,7 +29,9 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
   url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onUploadSwatch?: (f: File) => Promise<string>; onImprove: () => void; onView: () => void
   hint?: PriceHint; model?: ModelSuggestion | null
   /** Submitted training cases to pick from (Pricing > Training), and where their photos are. */
-  taught?: { library: Library; photo: (path: string) => string; differs?: (r: DiffersReport, line: { name: string; size: string | null; material: string | null; finish: string | null; qty: number }) => void }
+  taught?: { library: Library; photo: (path: string) => string; differs?: (r: DiffersReport, line: { name: string; size: string | null; material: string | null; finish: string | null; qty: number }) => void
+    /** Each picked case worked out for its line by the server (phase 2), by line key. */
+    reworked?: Map<string, ReworkAnswer> }
   /** Who and what the price feedback is about; given by the builder, which knows the quotation. */
   feedbackCtx?: { clientType: string | null; quotationId: string | null; isDesk: boolean }
   onRemove: () => void; onMove: (d: -1 | 1) => void; onDuplicate: () => void
@@ -113,7 +116,7 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
             <span className={s.rupeeBox}><span className={s.rs} aria-hidden>₹</span><input aria-label="Unit price (₹, before GST)" className={s.rupeeIn} type="number" min={0} placeholder="Price" value={l.unit_price ?? ''} onChange={e => onChange({ unit_price: e.target.value === '' ? null : Math.max(0, Math.round(Number(e.target.value))) })} disabled={!editable} /></span>
           </label>
         </div>
-        {taught && <TaughtPrice library={taught.library} photo={taught.photo} line={l} note={l.internal_note} price={l.unit_price} editable={editable}
+        {taught && <TaughtPrice library={taught.library} photo={taught.photo} line={l} note={l.internal_note} price={l.unit_price} editable={editable} rework={taught.reworked?.get(l.key)}
           onNote={n => onChange({ internal_note: n })} onUse={p => onChange({ unit_price: Math.round(p) })}
           onDiffers={taught.differs && (r => taught.differs!(r, { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }))} />}
         <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p) })}

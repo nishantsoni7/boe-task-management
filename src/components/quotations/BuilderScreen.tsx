@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchLibrary, photoUrl, trainingKeys } from '@/lib/pricing/training/api'
+import { fetchLibrary, fetchRework, photoUrl, trainingKeys, type ReworkAsk } from '@/lib/pricing/training/api'
+import { lineWood, pickedCaseNo } from '@/lib/pricing/training/match'
 import { sendFeedback, type FeedbackDoc } from '@/lib/pricing/learning/api'
 import type { DiffersReport } from '@/components/pricing/training/TaughtPrice'
 import { Check, ChevronRight, FileUp, Plus, Save, Trash2, X } from 'lucide-react'
@@ -129,13 +130,22 @@ export default function BuilderScreen() {
   const libraryQ = useQuery({ queryKey: trainingKeys.library, queryFn: () => fetchLibrary(supabase), enabled: accessLoaded && !notSetUp && suggestOn, staleTime: 300_000, retry: false })
   // The reason for a price that differs from the taught one also goes to the Price learning inbox. If that send fails the reason is
   // still on the line (in its note), where Pricing > Price logic reads it.
+  // Price Brain v2, phase 2: each line that picked a taught case asks the server for that case worked out for the line (its
+  // size, its wood, today's rates). Asked 0.8 s after the last change, so typing a size does not send a request per key.
+  const reworkAsk = useMemo(() => JSON.stringify(libraryQ.data ? lines.flatMap((l): ReworkAsk[] => {
+    const no = pickedCaseNo(l.internal_note)
+    return no === null ? [] : [{ key: l.key, caseNo: no, size: l.size_text || null, wood: lineWood(l, libraryQ.data!.woods) }]
+  }) : []), [lines, libraryQ.data])
+  const [settledAsk, setSettledAsk] = useState(reworkAsk)
+  useEffect(() => { const t = setTimeout(() => setSettledAsk(reworkAsk), 800); return () => clearTimeout(t) }, [reworkAsk])
+  const reworkQ = useQuery({ queryKey: ['pricing', 'rework', settledAsk], queryFn: () => fetchRework(supabase, JSON.parse(settledAsk) as ReworkAsk[]), enabled: settledAsk !== '[]', staleTime: 60_000, retry: false })
   const taught = useMemo(() => libraryQ.data && {
-    library: libraryQ.data, photo: (p: string) => photoUrl(supabase, p),
+    library: libraryQ.data, photo: (p: string) => photoUrl(supabase, p), reworked: reworkQ.data,
     differs: (r: DiffersReport, line: FeedbackDoc['line']) => {
       void sendFeedback(supabase, { source: 'quotation', kind: 'differs_taught', comment: r.note || null, expected_price: r.quoted, line, client_type: null, quotation_id: id,
         suggestion: { taught: { case_id: r.caseId, case_no: r.caseNo, case_name: r.caseName, price: r.taught, quoted: r.quoted, reason: r.reason } } }).catch(() => {})
     },
-  }, [libraryQ.data, supabase, id])
+  }, [libraryQ.data, reworkQ.data, supabase, id])
   const [importing, setImporting] = useState(false)
   const router = useRouter()
   const dirtyRef = useRef(false)
