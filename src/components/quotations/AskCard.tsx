@@ -2,7 +2,7 @@
 
 // Ask a senior (owner, 20 Nov 2026): the salesperson sends THEIR OWN quotation to the owner or Nitish, either to get the prices or to have
 // their prices checked. The senior sees it in Quotations › Requests, edits the prices in this same builder, and sends it back with a note.
-// One slim strip above the top row; it shows only what applies: nothing to do and nothing asked = a single "Ask a senior" button.
+// One half of the slim strip under the top row (beside the Lead, 23 Nov 2026); it shows only what applies: nothing to do and nothing asked = a single "Ask a senior" button.
 
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -55,9 +55,9 @@ export function AskCard({ supabase, base, dirty, onSentBack, onChanged }: {
 
   if (!o && !st.may_ask && !st.last) return null
   return (
-    <section className={`${s.card} ${s.askStrip}`} aria-label="Ask a senior">
+    <section className={s.askStrip} aria-label="Ask a senior">
       <div className={s.row}>
-        <UserCheck size={16} aria-hidden />
+        <span className={s.tileLab}><UserCheck size={15} aria-hidden /> Senior</span>
         {o ? (
           <span>
             {st.may_answer

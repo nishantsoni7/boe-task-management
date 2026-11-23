@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `5e014108` — Quotations: the Fabric From box works on a row with nothing typed yet
-- Commits on this branch: 1551
+- Commit: `c25d27c9` — Docs: the Fabric From box fix (#995) in the Quotations dossier, context map, changelog and inventory
+- Commits on this branch: 1552
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 502 (first `20260530_create_positions.sql`, latest `20270822000000_quotation_cards_open_owned_or_made.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
-- Test files: 937   Next.js 16.2.6, React 19.2.4
+- Test files: 938   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `c25d27c9` 2026-11-23 Docs: the Fabric From box fix (#995) in the Quotations dossier, context map, changelog and inventory
 - `5e014108` 2026-11-23 Quotations: the Fabric From box works on a row with nothing typed yet
 - `f904e860` 2026-11-23 Docs: stamp #989 (the Open-tile migration file) as merged and live (no SQL) (#991)
 - `0b74fdbb` 2026-11-23 Docs: stamp the merge of #990 (Improve picture: line details and reference box) on its entries (#992)
@@ -38,7 +39,6 @@
 - `744d0e68` 2026-11-21 Quotation: notes under the total, signing box removed (#973)
 - `490f7b1e` 2026-11-21 Expenses: a bill can be pasted (Ctrl+V) or dragged and dropped (no SQL) (#972)
 - `1dbb8b41` 2026-11-21 Quotation PDF: sheets fit the printed page, totals no longer drag the last product (#971)
-- `631ed075` 2026-11-21 Orders: the approver's dashboard reads in two rounds, not three (no SQL) (#969)
 
 ## Pages by top-level area
 

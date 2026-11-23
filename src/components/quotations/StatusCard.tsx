@@ -1,18 +1,22 @@
 'use client'
 
-// The builder's Status card (owner-approved layout, 18 Nov 2026): a four-step tracker (where the quotation is), one main action and
-// one other, the reason the main action waits as one calm line, and the rarer outcomes as quiet buttons. Moved out of BuilderScreen
-// with its behaviour unchanged: the same buttons under the same conditions, "Save first" while there are unsaved edits, the "Why was
-// it lost?" box, and Confirm → PI draft (it works on the SAVED quotation; nothing is sent to anyone, the PI stays a Draft).
+// The builder's Status card (owner-approved layout, 18 Nov 2026; tidied 23 Nov 2026): a four-step tracker (where the quotation is), one main
+// action and Negotiating, a More menu for the rarer outcomes (it was a labelled row of quiet buttons), the reason the main action waits
+// as one calm line, and the price approval block (it was a card at the bottom of the page, and a "Needs you" strip above the cards).
+// Behaviour unchanged: the same actions under the same conditions, "Save first" while there are unsaved edits, the "Why was it lost?" box, and
+// Confirm → PI draft (it works on the SAVED quotation; nothing is sent to anyone, the PI stays a Draft).
 
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { Check, FileCheck2, TriangleAlert } from 'lucide-react'
+import { MoreActionsMenu, type MoreActionItem } from '@/app/orders/[id]/MoreActionsMenu'
 import { draftDetailHref } from '@/lib/orders/draftsView'
 import { DEAD_REASONS } from '@/lib/salesLeads/board'
 import { STATUS_LABEL, type Quotation, type QuotationStatus } from '@/lib/quotations/api'
+import type { NeedsYou } from '@/lib/quotations/needsYou'
 import type { ConversionProblem } from '@/lib/quotations/piWorkbook'
 import { PI_STAGE_LABEL, type PiStage } from '@/lib/quotations/toPiDraft'
 import { StatusPill } from './ListScreen'
+import { PriceBlock } from './PricingDesk'
 import s from './quotations.module.css'
 
 export const LOCKED: QuotationStatus[] = ['confirmed', 'lost', 'archived']
@@ -31,17 +35,21 @@ export function waitsFor(problems: readonly ConversionProblem[]): string {
   return p.code === 'NO_LINES' ? 'Add at least one product that is not optional.' : `${p.lines.length} ${p.lines.length === 1 ? 'product needs' : 'products need'} ${NEEDS[p.code]} before this can become a PI.`
 }
 
+export type Outcome = 'no_pi' | 'lost' | 'archive' | 'delete'
+
 type Props = {
   base: Quotation; dirty: boolean; busy: boolean; isAdmin: boolean
   canConfirm: boolean; piProblems: readonly ConversionProblem[]; priceBlocked: boolean; piStage: PiStage | null
   /** The Lost box is open while `lostNote` is not null; the reason is one of the lead's eleven (20270813000000). */
   lostNote: string | null; setLostNote: (v: string | null) => void; lostReason: string; setLostReason: (v: string) => void
   onMove: (status: QuotationStatus, note?: string, reason?: string) => void; onConfirm: () => void
-  /** 20270817000000: the database says this person may delete this quotation now (an unsent draft they made, or anything for an administrator); the button opens the confirm. */
+  /** What waits on this person about the prices (needsYou.ts), and what the price approval block does. */
+  needs: readonly NeedsYou[]; onAskPrice: () => void; onDecidePrice: (approve: boolean, note: string | null) => void
+  /** 20270817000000: the database says this person may delete this quotation now (an unsent draft they made, or anything for an administrator); the item opens the confirm. */
   canDelete?: boolean; onDelete?: () => void
 }
 
-export function StatusCard({ base, dirty, busy, isAdmin, canConfirm, piProblems, priceBlocked, piStage, lostNote, setLostNote, lostReason, setLostReason, onMove, onConfirm, canDelete, onDelete }: Props) {
+export function StatusCard({ base, dirty, busy, isAdmin, canConfirm, piProblems, priceBlocked, piStage, lostNote, setLostNote, lostReason, setLostReason, onMove, onConfirm, needs, onAskPrice, onDecidePrice, canDelete, onDelete }: Props) {
   const status = base.status
   const locked = LOCKED.includes(status)
   const step = STEPS.indexOf(status)
@@ -54,6 +62,14 @@ export function StatusCard({ base, dirty, busy, isAdmin, canConfirm, piProblems,
   const noPi = may && !locked
   const lost = may && !locked
   const archive = may && status !== 'archived' && status !== 'confirmed'
+
+  // The rarer ways a quotation ends, behind the More menu (the menu draws nothing when none applies).
+  const outcomes: MoreActionItem<Outcome>[] = []
+  if (noPi) outcomes.push({ key: 'no_pi', label: 'Confirmed, no PI', disabled: off, title: 'Confirmed without making a PI from it' })
+  if (lost) outcomes.push({ key: 'lost', label: 'Mark as lost…', disabled: off, title: saveFirst })
+  if (archive) outcomes.push({ key: 'archive', label: 'Archive', disabled: off, title: saveFirst })
+  if (canDelete && onDelete) outcomes.push({ key: 'delete', label: 'Delete…', disabled: busy, danger: true })
+  const pick = (k: Outcome) => (k === 'no_pi' ? onMove('confirmed') : k === 'lost' ? setLostNote('') : k === 'archive' ? onMove('archived') : onDelete?.())
 
   return (
     <section className={`${s.card} ${s.tile}`} aria-label="Status">
@@ -80,6 +96,7 @@ export function StatusCard({ base, dirty, busy, isAdmin, canConfirm, piProblems,
         )}
         {negotiating && <button type="button" className={s.btn} disabled={off} title={saveFirst} onClick={() => onMove('negotiating')}>Negotiating</button>}
         {reopen && <button type="button" className={s.btn} disabled={busy} onClick={() => onMove('negotiating')}>Reopen</button>}
+        <MoreActionsMenu items={outcomes} onSelect={pick} label="More" ariaLabel="More outcomes" triggerClassName={`${s.btn} ${s.btnQuiet}`} />
       </div>
 
       {lostNote !== null && (
@@ -109,20 +126,10 @@ export function StatusCard({ base, dirty, busy, isAdmin, canConfirm, piProblems,
           </div>
         </details>
       )}
-      {canConfirm && piProblems.length === 0 && !dirty && <p className={s.tileText}>Confirm makes a PI draft in Orders from the saved quotation and opens it. Nothing is sent to anyone: the PI stays a Draft until you submit it there. The quotation then becomes Confirmed.</p>}
-      {canConfirm && priceBlocked && <p className={s.tileText}>Waiting for price approval (see Price approval).</p>}
+      {canConfirm && piProblems.length === 0 && !dirty && <p className={s.tileText}>Makes a PI draft in Orders from the saved quotation. Nothing is sent to anyone: the PI stays a Draft until you submit it there.</p>}
+      {canConfirm && priceBlocked && <p className={s.tileText}>Waiting for price approval.</p>}
 
-      {(noPi || lost || archive || canDelete) && (
-        <div className={s.outcomes}>
-          <span className={s.outcomesLab}>Other outcome</span>
-          <div className={s.quietRow}>
-            {noPi && <button type="button" className={`${s.btn} ${s.btnSm} ${s.btnQuiet}`} disabled={off} onClick={() => onMove('confirmed')} title="Confirmed without making a PI from it">Confirmed, no PI</button>}
-            {lost && <button type="button" className={`${s.btn} ${s.btnSm} ${s.btnQuiet} ${s.btnQuietDanger}`} disabled={off} title={saveFirst} onClick={() => setLostNote('')}>Lost…</button>}
-            {archive && <button type="button" className={`${s.btn} ${s.btnSm} ${s.btnQuiet}`} disabled={off} title={saveFirst} onClick={() => onMove('archived')}>Archive</button>}
-            {canDelete && onDelete && <button type="button" className={`${s.btn} ${s.btnSm} ${s.btnQuiet} ${s.btnQuietDanger}`} disabled={busy} onClick={onDelete}>Delete…</button>}
-          </div>
-        </div>
-      )}
+      <PriceBlock price={base.price} needs={needs} mayEdit={may} dirty={dirty} busy={busy} onAsk={onAskPrice} onDecide={onDecidePrice} />
     </section>
   )
 }
