@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `e38573c9` — Quotations: a Fabric, finish and packing page, priced per piece (PR 1 of 3; migration 20270819000000 NOT applied) (#974)
-- Commits on this branch: 1532
+- Commit: `5f248a5d` — Quotations: the client's copy shows per-piece fabric and packing (PR 2 of 3; migration 20270820000000 NOT applied) (#975)
+- Commits on this branch: 1533
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 500 (first `20260530_create_positions.sql`, latest `20270820000000_quotation_client_costing_view.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `5f248a5d` 2026-11-23 Quotations: the client's copy shows per-piece fabric and packing (PR 2 of 3; migration 20270820000000 NOT applied) (#975)
 - `e38573c9` 2026-11-23 Quotations: a Fabric, finish and packing page, priced per piece (PR 1 of 3; migration 20270819000000 NOT applied) (#974)
 - `4e7f1b2d` 2026-11-21 Orders: the approver's payment chips in one call (migration 20270818000000, NOT applied) (#970)
 - `744d0e68` 2026-11-21 Quotation: notes under the total, signing box removed (#973)
@@ -38,7 +39,6 @@
 - `d0fe51aa` 2026-11-19 Lead popup: the lead's quotations in one line, and Make quotation from the lead (#952)
 - `c000801a` 2026-11-19 Docs: record 20270803000000 (held-day decision) as applied (no SQL) (#918)
 - `60432cb7` 2026-11-19 Docs: stamp #949 (quotation linked to its Sales lead) as merged and verified live (migration already applied) (#951)
-- `1bf5169d` 2026-11-19 Quotations: link a quotation to its Sales lead; a Lead card offers one tap on the lead (#949)
 
 ## Pages by top-level area
 

@@ -5,7 +5,8 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { parseBoePiWorkbook } from '@/lib/pi/masterSheetParser'
-import { buildPiWorkbook, conversionProblems, fitExtras, piFigures, PI_PICTURE_BUDGET_BYTES, type PiWorkbookInput } from './piWorkbook'
+import { COST_SHEET_NAME } from '@/lib/pi/fabricFinishSheets'
+import { buildPiWorkbook, conversionProblems, extraPathsOf, fabricWords, finishWords, fitExtras, PI_COST_SHEET, piFigures, PI_PICTURE_BUDGET_BYTES, type PiWorkbookInput } from './piWorkbook'
 import type { QuoteArea, QuoteLine } from './math'
 
 const areas: QuoteArea[] = [
@@ -146,5 +147,46 @@ describe('quotation → PI workbook, read back by the real PI parser', () => {
       { code: 'PRICE_MISSING', lines: ['Bed'] },
       { code: 'PICTURE_MISSING', lines: ['Chair'] },
     ])
+  })
+})
+
+describe('fabric, finish and packing on the PI (the costing page, PR 3)', () => {
+  const fab = (name: string, source: 'catalog' | 'client' | 'code' = 'catalog', code = '') => ({ source, status: 'to_confirm' as const, name, code })
+  const costed = () => [
+    L({ area_key: 'a', qty_mode: 'fixed', qty: 3, unit_price: 22300, choices: { fabric: fab('Berlin velvet', 'catalog', 'F18'), finish: { source: 'catalog', status: 'to_confirm', code: 'W-04' } }, costing: { fabric: { metres: 1.6, rate: 850 }, packing: { type: 'Carton with foam corners', per_piece: 650 } } }),
+    L({ area_key: 'a', qty_mode: 'fixed', qty: 1, unit_price: 10400, costing: { packing: { type: 'Carton', per_piece: 400 } } }),
+    L({ area_key: 'a', qty_mode: 'fixed', qty: 2, unit_price: 18500 }),
+  ]
+  const money = { gst_mode: 'igst' as const, discount_pct: 0, fabric_amount: 4080, packing_amount: 2350 }
+
+  test('Orders reads the per-product fabric and packing back from the sheet beside the Master, and the two footer totals still add up', async () => {
+    const r = await parse(input(costed(), { money }))
+    assert.equal(r.data.fabricFinish!.cost.found, true)
+    const cost = r.data.fabricFinish!.cost.lines
+    assert.equal(cost.length, 3)
+    assert.deepEqual(cost.map(c => [c.quantity, c.fabricMetresPerPiece, c.fabricPricePerMetre, c.packingCostPerPiece, c.packingType]),
+      [[3, 1.6, 850, 650, 'Carton with foam corners'], [1, null, null, 400, 'Carton'], [2, null, null, null, null]])
+    assert.equal(r.data.fabricFinish!.finish.found, false, 'finish is not priced, and its sheet is not written here')
+  })
+  test('no costing, no side sheet: the workbook is as before', async () => {
+    const r = await parse(input([L({}), L({})]))
+    assert.equal(r.data.fabricFinish!.cost.found, false)
+  })
+  test('the sheet name and headings are the ones the reader looks for', () => {
+    assert.equal(PI_COST_SHEET, COST_SHEET_NAME)
+  })
+  test('the Customization names the fabric and the finish code; the finish code beats the old free-text finish', () => {
+    const [a, b] = costed()
+    assert.equal(fabricWords(a), 'Fabric: Berlin velvet (F18)')
+    assert.equal(finishWords(a), 'Finish: W-04')
+    assert.equal(finishWords(b), 'Finish: Walnut', 'the old finish text still counts when no code was chosen')
+    assert.equal(fabricWords(L({ choices: { fabric: fab('Own linen', 'client') } })), 'Fabric: Own linen, client’s own')
+    assert.equal(fabricWords(L({ choices: { fabric: fab('', 'code', 'F-2210') } })), 'Fabric: (F-2210), client’s code, we source it')
+    assert.equal(fabricWords(L({})), '')
+  })
+  test('the swatch photos of the fabric and the finish go on the PI as extra pictures of that row, once each', () => {
+    const l = L({ references: [{ path: 'u/ref.jpg', kind: 'reference' }], choices: { fabric: { source: 'catalog', status: 'to_confirm', name: 'V', photo: 'u/fab.jpg' }, finish: { source: 'catalog', status: 'to_confirm', code: 'W', photo: 'u/ref.jpg' } } })
+    assert.deepEqual(extraPathsOf(l), ['u/ref.jpg', 'u/fab.jpg'])
+    assert.deepEqual(extraPathsOf(L({})), [])
   })
 })
