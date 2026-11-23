@@ -133,6 +133,27 @@ export const SAMPLE_CASE = {
 // The same case with a report for both sides: good things first, then the detail, in the order given here.
 export const SAMPLE_REPORT = {
   ...SAMPLE_CASE,
+  summary: {
+    title: 'Sample short version',
+    note: 'Sample summary note',
+    sections: [
+      {
+        title: 'Sample good section', tone: 'good', lead: 'Sample good lead.',
+        figures: [{ value: '+23%', label: 'Sample figure', note: 'Sample figure note', tone: 'good' }],
+        charts: [{ kind: 'bars', title: 'Sample bars', note: 'Sample bars note', items: [{ label: 'Jan', value: 100 }, { label: 'Feb', value: 1300, tone: 'good' }] }],
+      },
+      {
+        title: 'Sample searches section', tone: 'bad', lead: 'Sample searches lead.',
+        charts: [
+          { kind: 'tally', title: 'Sample tally' },
+          { kind: 'categories', title: 'Sample categories' },
+          { kind: 'pie', title: 'Sample pie', items: [{ label: 'Sample slice', value: 3, tone: 'good' }, { label: 'Other slice', value: 1, tone: 'bad' }] },
+        ],
+        points: [{ title: 'Sample reason', text: 'Sample reason text.' }],
+      },
+    ],
+    source: { title: 'Sample source title', text: 'Sample source text.', points: ['Sample source point.'] },
+  },
   report: {
     kicker: 'Sample kicker',
     title: 'Sample report title',
@@ -144,6 +165,7 @@ export const SAMPLE_REPORT = {
       { kind: 'table', title: 'Sample report table', note: 'Sample table note', head: ['Measure', 'Then', 'Now'], rows: [['Sample measure', '1', '2']], takeaway: 'Sample table takeaway.' },
       { kind: 'cards', title: 'Sample went wrong', tone: 'bad', items: [{ title: 'Sample miss card', text: 'Sample miss text.', tag: { text: 'Missed', tone: 'bad' } }] },
       { kind: 'ai' },
+      { kind: 'summary' },
     ],
   },
 } satisfies DiscussionBrief
