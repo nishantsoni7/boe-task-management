@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-23 — Hosting: the app's server functions move to Mumbai together with the database (DRAFT PR, NOT TO BE MERGED before the database move; planned Sunday 29 Nov night) · no migration
+- **Why.** The production database is in Tokyo (`aws-1-ap-northeast-1`); the staff are in Jodhpur. Measured 23 Nov from the owner's PC: a database-reaching Data API read takes a median of 214 ms to Tokyo and 97 ms to a Mumbai copy; an Auth call 203 ms against 87 ms. The functions had been pinned to `hnd1` (Tokyo) so that each server-to-database round trip stayed short (PR #321); once the database is in Mumbai they must sit there too, or every server route would pay the Tokyo-Mumbai distance.
+- **What.** `vercel.json` `regions`: `hnd1` -> `bom1`. Nothing else in the code changes: the database address and keys are three Vercel environment settings (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`), which the owner changes in Vercel BEFORE this merges, so one deployment carries both. Merged alone, with the database still in Tokyo, it would only make server routes slower.
+- **Order on the night (runbook `SUNDAY-RUNBOOK.txt`).** Freeze Tokyo, copy, strict checks, owner's own sign-in on the copy, set the three Vercel values, then merge this PR (one deployment), live tour, last go / no-go.
+- **Rollback.** Vercel Instant Rollback to the last deployment before the night, put the three saved values back, revert this PR.
+- **Docs still to update after the move (not in this PR, they need the real values):** `01_APP_CONTEXT.md` (project ref, region, hosting row), `03_BACKUP_AND_RECOVERY.md`, `04_NEW_MODULE_CHECKLIST.md`, `modules/08-platform-core.md`, the backup tool's environment, every checkout's Supabase link.
 ## 2026-11-23 — Pricing: photo facts, every product photo read once into facts (branch `feat/photo-facts`, Price Brain v2 phase 3B, not merged) · `20270825000000` → NOT APPLIED (new table: backup first, apply before the merge)
 
 - **Why.** Owner (23 Nov 2026, phase 3 order approved, answer P2): the price model cannot see a photo, and "Chair" covers very different chairs. Every product photo BOE One holds is read once into facts the next engine (3C) can use; anyone who teaches in Pricing can correct a reading.
