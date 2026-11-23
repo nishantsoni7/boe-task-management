@@ -99,4 +99,19 @@ describe('the card on top of the Quotations list', () => {
     m.click(m.button('Show all 8')); assert.equal(late(), 0)
     m.click(m.button('Show fewer')); assert.equal(late(), 3)
   })
+
+  test('on a phone the bars are folded until the heading is tapped; the total stays in view', async () => {
+    const w = window as unknown as { matchMedia?: unknown }
+    w.matchMedia = () => ({ matches: true, addEventListener: () => {}, removeEventListener: () => {} })
+    try {
+      const m = await open(fake(() => owner()))
+      const head = m.button(/Quotation value by candidate/)
+      assert.equal(head.getAttribute('aria-expanded'), 'false'); assert.equal(rows(m).length, 0); assert.equal(m.all('select').length, 0)
+      assert.match(m.text(), /₹71,47,900 · 17 quotations/)
+      m.click(head); await ready(m)
+      assert.equal(head.getAttribute('aria-expanded'), 'true'); assert.equal(rows(m).length, 3); assert.equal(m.all('select').length, 1)
+      m.click(head); await ready(m)
+      assert.equal(rows(m).length, 0)
+    } finally { delete w.matchMedia }
+  })
 })

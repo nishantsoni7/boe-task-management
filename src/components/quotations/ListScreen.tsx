@@ -4,10 +4,11 @@ import { PriceQueue } from './PricingDesk'
 import { useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { FileText, FileUp, ImageIcon, Plus, Search, Trash2 } from 'lucide-react'
+import { FileText, FileUp, ImageIcon, Plus, Search, Trash2, User } from 'lucide-react'
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useQuotations } from '@/hooks/useQuotations'
+import { useOpenQuotation } from './useOpenQuotation'
 import { formatINR } from '@/lib/currency'
 import { istDateOf } from '@/lib/istDate'
 import {
@@ -15,6 +16,7 @@ import {
   type ListRow, type QuotationStatus,
 } from '@/lib/quotations/api'
 import { formatDateIN, gstModeForState } from '@/lib/quotations/math'
+import { pendingFrom } from '@/lib/quotations/pendingFrom'
 import { ImportDialog } from './ImportDialog'
 import { DeleteQuotationDialog } from './DeleteQuotationDialog'
 import { HomeCards } from './HomeCards'
@@ -31,10 +33,12 @@ export const StatusPill = ({ status }: { status: QuotationStatus }) => <span cla
 export default function ListScreen() {
   const { supabase, profile, loading, signOut, access, accessLoaded, notSetUp, accessError } = useQuotations()
   const router = useRouter()
+  const { open: openQuotation, opening } = useOpenQuotation(supabase)
   const params = useSearchParams()
   const [scope, setScope] = useState<'mine' | 'all'>('mine')
   const [filter, setFilter] = useState<StatusFilter>('open')
   const [q, setQ] = useState('')
+  const [now] = useState(() => Date.now())
   // Every quotation starts from a Sales lead (20 Nov 2026): "file" = choose the lead, then read the client's file (Excel, PDF, photo).
   const [flow, setFlow] = useState<'file' | null>(null)
   const [picked, setPicked] = useState<StartChoice | null>(null)
@@ -96,11 +100,13 @@ export default function ListScreen() {
             <div className={s.toolbar}>
               <label className={s.search} style={{ position: 'relative' }}>
                 <Search size={15} style={{ position: 'absolute', left: 10, top: 10, color: 'var(--boe-text-muted)' }} aria-hidden />
-                <input className={s.input} style={{ paddingLeft: 32 }} placeholder="Search number, client, project" value={q} onChange={e => setQ(e.target.value)} aria-label="Search quotations" />
+                <input className={s.input} style={{ paddingLeft: 32 }} placeholder="Search number, client, project, sales person" value={q} onChange={e => setQ(e.target.value)} aria-label="Search quotations" />
               </label>
-              {FILTERS.map(([k, label]) => (
-                <button key={k} className={s.fchip} aria-pressed={filter === k} onClick={() => setFilter(k)}>{label} <span className={s.muted}>{counts[k] ?? 0}</span></button>
-              ))}
+              <div className={s.chips}>
+                {FILTERS.map(([k, label]) => (
+                  <button key={k} className={s.fchip} aria-pressed={filter === k} onClick={() => setFilter(k)}>{label} <span className={s.muted}>{counts[k] ?? 0}</span></button>
+                ))}
+              </div>
             </div>
             {listQ.isLoading && <div className={s.empty}>Loading quotations…</div>}
             {listQ.isError && <div className={s.cardBody}><div className={`${s.notice} ${s.noticeBad}`}>{errorText(listQ.error)}</div></div>}
@@ -114,9 +120,9 @@ export default function ListScreen() {
             )}
             {visible.length > 0 && (
               <div className={s.tableWrap}>
-                <table className={s.table}>
-                  <thead><tr><th aria-label="Picture" /><th>Quotation</th><th className={s.desktopOnly}>Client</th><th className={s.right}>Before GST</th><th>Status</th><th className={s.desktopOnly}>Last activity</th>{scope === 'all' && <th className={s.desktopOnly}>Owner</th>}<th aria-label="Delete" /></tr></thead>
-                  <tbody>{visible.map(r => <Row key={r.id} r={r} scope={scope} url={p => pictureUrl(supabase, p)} onOpen={() => router.push(`/quotations/${r.id}`)} onDelete={() => setToDelete(r)} />)}</tbody>
+                <table className={`${s.table} ${s.lsTable}`}>
+                  <thead><tr><th aria-label="Picture" /><th>Client Details</th><th className={s.lsWho}>Sales person</th><th className={s.right}>Before GST</th><th className={s.lsStatus}>Status</th><th className={s.lsPend}>Pending from</th><th className={s.lsAct}>Last activity</th><th aria-label="Delete" /></tr></thead>
+                  <tbody>{visible.map(r => <Row key={r.id} r={r} now={now} opening={opening === r.id} url={p => pictureUrl(supabase, p)} onOpen={() => openQuotation(r.id)} onDelete={() => setToDelete(r)} />)}</tbody>
                 </table>
               </div>
             )}
@@ -150,18 +156,32 @@ export default function ListScreen() {
   )
 }
 
-function Row({ r, scope, url, onOpen, onDelete }: { r: ListRow; scope: 'mine' | 'all'; url: (p: string) => string; onOpen: () => void; onDelete: () => void }) {
+// Columns (owner, 23 Nov 2026): Client Details (the client, then the project, number and lines), Sales person, Before GST, Status, Pending from,
+// Last activity. On a phone each row is a card: the status, the wait and the sales person sit under the client (`lsMeta`) and the cells
+// that carry them on a desktop are hidden; `lsMeta` is hidden on a desktop.
+export function Row({ r, now, opening, url, onOpen, onDelete }: { r: ListRow; now: number; opening: boolean; url: (p: string) => string; onOpen: () => void; onDelete: () => void }) {
   const day = (iso: string) => formatDateIN(istDateOf(iso))
+  const pend = pendingFrom(r, now)
+  const band = pend ? s[`pend_${pend.band}`] : s.pend_none
+  const project = r.project_name && r.project_name !== r.client_name ? `${r.project_name} · ` : ''
   return (
-    <tr onClick={onOpen} onKeyDown={e => { if (e.key === 'Enter') onOpen() }} tabIndex={0}>
-      <td>{r.first_image ? <Pic className={s.thumb} src={url(r.first_image)} alt="" lazy /> : <span className={s.thumbEmpty}><ImageIcon size={16} aria-hidden /></span>}</td>
-      <td><div className={s.name}>{r.project_name || r.client_name}</div><div className={`${s.sub} ${s.num}`}>{r.quote_no} · {Number(r.line_count)} lines</div></td>
-      <td className={s.desktopOnly}><div>{r.client_name}</div></td>
-      <td className={`${s.right} ${s.num}`}><b>{formatINR(Number(r.value_before_gst || 0))}</b></td>
-      <td><StatusPill status={r.status} /></td>
-      <td className={`${s.desktopOnly} ${s.small}`}>{r.last_opened_at ? <>Opened by the client {day(r.last_opened_at)}</> : <>Changed {day(r.updated_at)}</>}</td>
-      {scope === 'all' && <td className={`${s.desktopOnly} ${s.small}`}>{r.owner_name}</td>}
-      <td className={s.right}>
+    <tr onClick={onOpen} onKeyDown={e => { if (e.key === 'Enter') onOpen() }} tabIndex={0} className={opening ? s.rowOpening : undefined} aria-busy={opening || undefined}>
+      <td className={s.lsPic}>{r.first_image ? <Pic className={s.thumb} src={url(r.first_image)} alt="" lazy /> : <span className={s.thumbEmpty}><ImageIcon size={16} aria-hidden /></span>}</td>
+      <td className={s.lsName}>
+        <div className={s.name}>{r.client_name}{opening && <span className={s.chip} style={{ marginLeft: 8 }} role="status">Opening…</span>}</div>
+        <div className={`${s.sub} ${s.num}`}>{project}{r.quote_no} · {Number(r.line_count)} lines</div>
+        <div className={s.lsMeta}>
+          <StatusPill status={r.status} />
+          {pend && <span className={`${s.lsPm} ${band}`}><b>{pend.label}</b> pending</span>}
+          <span className={s.lsWho2}><User size={14} aria-hidden /> {r.owner_name ?? '—'}</span>
+        </div>
+      </td>
+      <td className={s.lsWho}>{r.owner_name ?? '—'}</td>
+      <td className={`${s.right} ${s.num} ${s.lsVal}`}><b>{formatINR(Number(r.value_before_gst || 0))}</b></td>
+      <td className={s.lsStatus}><StatusPill status={r.status} /></td>
+      <td className={`${s.lsPend} ${band}`}>{pend ? <><b>{pend.label}</b><span>{pend.note}</span></> : <b>—</b>}</td>
+      <td className={`${s.lsAct} ${s.small}`}>{r.last_opened_at ? <>Opened by the client {day(r.last_opened_at)}</> : <>Changed {day(r.updated_at)}</>}</td>
+      <td className={`${s.right} ${s.lsBin}`}>
         {r.may_delete && (
           <button type="button" className={`${s.iconBtn} ${s.btnQuietDanger}`} aria-label={`Delete ${r.quote_no}`} title="Delete"
             onClick={e => { e.stopPropagation(); onDelete() }} onKeyDown={e => e.stopPropagation()}><Trash2 size={15} aria-hidden /></button>

@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `4144b0e6` — Quotations: the Open quotations tile counts what the list counts (migration 20270822000000, NOT applied)
-- Commits on this branch: 1545
+- Commit: `22fede84` — Docs: stamp #986 as merged and live; the Open-tile migration file follows it (already applied)
+- Commits on this branch: 1547
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 502 (first `20260530_create_positions.sql`, latest `20270822000000_quotation_cards_open_owned_or_made.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
-- Test files: 933   Next.js 16.2.6, React 19.2.4
+- Test files: 937   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `22fede84` 2026-11-23 Docs: stamp #986 as merged and live; the Open-tile migration file follows it (already applied)
+- `f934901b` 2026-11-23 Docs: migration 20270822000000 applied to production (23 Nov 2026, about 14:30 IST)
 - `4144b0e6` 2026-11-23 Quotations: the Open quotations tile counts what the list counts (migration 20270822000000, NOT applied)
 - `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
 - `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
@@ -37,8 +39,6 @@
 - `28127b1f` 2026-11-21 Docs: stamp #965 (approver dashboard: Needs your action and Watching) as merged and live (#966)
 - `a8d44009` 2026-11-21 Orders: the Operations team's dashboard in the approver's design (no SQL) (#967)
 - `076b6668` 2026-11-20 Orders: the approver's dashboard is one "Needs your action" sheet and a "Watching" list (no SQL) (#965)
-- `0da52ac1` 2026-11-20 Docs: stamp #961 (delete a quotation) as merged and live, migration 20270817000000 applied (#964)
-- `7172f6c2` 2026-11-20 Quotations: typing in Material and Remarks no longer refits the price model for every product (#962)
 
 ## Pages by top-level area
 
@@ -174,7 +174,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 30 source, 28 test
+- `src/lib/quotations` — 32 source, 30 test
 - `src/lib/salesLeads` — 17 source, 17 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
