@@ -25,8 +25,9 @@ describe('a Sales page waits in the shape of the page, not behind a full-screen 
       assert.ok(src.includes('<ModulePageSkeleton variant="list"'), `${f} draws the list skeleton`)
       assert.ok(!src.includes('LoadingScreen'), `${f} no longer uses the full-screen spinner`)
     }
+    // The board has no body of its own to wait behind (its columns start with the page and each shows card-shaped blocks, below).
     const board = code('src/components/salesLeads/BoardScreen.tsx')
-    assert.ok(board.includes('body = <BoardBlocks />') && !board.includes('LoadingScreen'))
+    assert.ok(!board.includes('LoadingScreen') && !board.includes('BoardBlocks'))
   })
 
   test('a column waits with card-shaped blocks, and they cannot be pressed or read out', () => {
