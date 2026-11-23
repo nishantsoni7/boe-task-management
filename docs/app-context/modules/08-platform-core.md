@@ -175,7 +175,9 @@ Modules launcher (`src/app/modules/page.tsx`):
 - Cards are built from the permission engine first; `canOpenModule(key)` per card. Order = canonical array, then the
   person's saved order (`src/lib/modules/moduleOrder.ts`, `user_module_order` table, migration `20261228000000`): stores
   card KEYS only; the function returns a permutation of the already-gated array, so a stored key can never grant a card.
-  Allowed cards the saved order omits are appended in canonical order. `ESSENTIAL_MODULE_KEYS = ['tasks','orders','finance']`.
+  Allowed cards the saved order omits are appended in canonical order. WHICH cards are the big "essentials" blocks is
+  the person's own choice since 2026-11-23 (see "Big blocks and a count on every tile" below); the fixed
+  `ESSENTIAL_MODULE_KEYS` list is gone (`DEFAULT_BIG_MODULE_KEYS` = tasks, orders, finance, sales).
 - Cards present: tasks (`/dashboard`), orders, samples, attendance_payroll (ONE card: admin -> `/payroll`; else
   `/my-attendance` if attendance visible, else `/my-payroll`), showroom (`/showroom-admin`), assets, members (Employee
   Records -> `/admin/control-center/people`), performance (always `/performance`), finance, meetings, customer_reviews
@@ -185,10 +187,11 @@ Modules launcher (`src/app/modules/page.tsx`):
   amber for 30 minutes after a punch, red from 10:15 until they punch or "Hide for today" (this device only). It is not
   drawn while arranging the cards or while previewing with View As, and a failed read draws nothing. Rules, silent cases
   and the route are in module 04 section 6.
-- Unread badge counts via `useUnreadCountState('task'|'finance'|'order')`, only when the person may open that module.
-- Phone layout (2026-10-27 redesign), measured on the launcher's own width with container queries in
-  `src/app/modules/modules.module.css`: up to 719 px the Essentials are ONE row of equal tiles (icon over name,
-  ~100 px, `grid-auto-flow: column` so 1-2 Essentials share the width); up to 479 px "All modules" is ONE rounded
+- Counts via `useUnreadCountState(<category>)`, only when the person may open that module (since 2026-11-23 for 9 modules,
+  not 3: see "Big blocks and a count on every tile").
+- Phone layout (2026-10-27 redesign; the big-block part was REPLACED 2026-11-23, see below), measured on the launcher's own width with container queries in
+  `src/app/modules/modules.module.css`: up to 719 px the big blocks were ONE row of equal tiles (icon over name,
+  ~100 px, `grid-auto-flow: column` so 1-2 Essentials share the width; now two by two); up to 479 px "All modules" is ONE rounded
   white surface of 52 px rows (32 px icon chip, 15 px name, chevron) split by hairlines. The chevron
   (`styles.cardChevron`, compact tiles only, not in edit mode) is `display: none` at every other size. Edit order
   uses the same list (dashed hairlines; the held card gets its own ink edge). Layout values live in the CSS
@@ -206,6 +209,43 @@ Modules launcher (`src/app/modules/page.tsx`):
   with the Control Center Access screens, so both change. The Edit order controls, the For you panel and `globals.css`
   were not touched. Decisions the owner approved: the chip reverses "the badge is the only count on a tile" for wide
   Essentials only; no pale-pink hover wash (the "no pink" pin stays).
+- **Big blocks and a count on every tile (2026-11-23, owner ask; mock-up approved first; migration `20270821000000`,
+  APPLIED to production 2026-11-23 14:02 IST; this section supersedes the Essentials/badge/phone wording above).**
+  - *Which modules are big is the person's choice, up to four.* Until they choose, the four are Task, Order, Finance and
+    Sales (`DEFAULT_BIG_MODULE_KEYS`); a key without a card (a module they cannot open) selects nothing, so somebody
+    without Sales has three. "Edit order" gains a "Make big / Big block" button on every card and an "N of 4 big
+    blocks" note; at four the other buttons are disabled; Reset to default restores the default order AND the default four.
+    The row's sequence follows the card order. While previewing somebody (View As) the default four are shown.
+  - *Storage.* One more column on the SAME row as the order: `user_module_order.big_module_keys text[]`, NULL = never
+    chosen (default applies), `{}` = chose none, at most 4 keys (check `user_module_order_big_keys_valid`, reusing the
+    shape validator of 20261228000000). `useModuleOrder` reads both lists in one request (it falls back to the order
+    alone if the new column is not there yet, so a deploy can never lose the order); the cache entry
+    `['module-order', userId]` now holds `{ order, big }` and an older saved copy (a bare list) is still read
+    (`toModulePreference`). `saveModuleOrder(userId, keys, big?)` writes `big_module_keys` ONLY when the choice changed,
+    so an order-only save keeps NULL as NULL. Pure rules: `splitBigModules`, `toggleBigModuleKey`, `sameBigModules`,
+    `normalizeStoredBigModules` and the `toggleBig` reducer action in `src/lib/modules/moduleOrder.ts`.
+  - *The count, on every tile, in words.* Both sizes draw the same line under the name: a red chip "N unread"
+    (Quotations: "N waiting", requests waiting for the person, not an inbox), a tick and "Nothing new" for a count KNOWN
+    to be zero, grey "No alerts" for a module with no notifications at all (`notificationCount: null`), nothing while
+    unknown or after a failed request (never "No alerts" for a failure; Sample Tracking maps its failure to undefined).
+    The red number on a small tile's icon is GONE (`.badge` removed). On a phone's list rows the chip sits at the
+    right-hand end of the row and "No alerts" is not drawn. `aria-label` is "Name, N unread|waiting" while it is a button.
+  - *Counts now read for 9 modules.* Task, Finance, Order (as before), Sample Tracking (own endpoint, as before) and,
+    new: Sales (`sales`), Assets & Access (`asset`), Inventory (`inventory`), Review Workflow (`review`, asked only when
+    the person resolves `verify`, as its sidebar does; anybody else is "No alerts"), Attendance & Payroll
+    (`attendance_payroll`, asked when the one card exists) and Quotations (`quotation_requests_count`, the cache entry
+    `['quotations','requests-count']` = `askKeys.count`, NOT asked while previewing because the RPC is `auth.uid()`-based).
+    All category reads go through the same batched `/api/notifications/counts` request, each only for a module the
+    person may open. Still no notifications at all: Marketing, Admin Control Center, Meetings, Showroom QR, Employee
+    Records, Image Editor, Exhibition Leads, Vendors, Pricing, SEO.
+  - *Layout (container width).* Four across from 1040 px; two by two from 480 to 1039 px (wide tile, icon beside the name,
+    from 720 px; icon over name below that); "All modules" is unchanged (5/4/3/2 columns, the phone list below 480 px).
+  - *Tests.* `src/app/modules/launcherBigBlocks.test.ts` (new: the rules executed, the count wiring and the migration read
+    as text); `moduleCardSurface.test.ts`, `moduleOrderStorage.test.ts`, `notificationCountCache.test.ts` and the two migration
+    ledgers in `participantAndOrderTotalSecurity.test.ts` updated. The migration was rehearsed in an in-memory Postgres
+    (PGlite, 23 checks) on top of the real `20261228000000`, and again on the live database inside `begin … rollback` before it was applied.
+  - *Traps.* Ship order: the migration FIRST, then the code. Do not turn the big-block choice into role inheritance: a stored
+    key is never access. The quotation count and the category counts are display only.
 - Quick Actions, phone copy (<= 767 px, `globals.css` `.boe-quick-actions-page`): a visible "Quick Actions" label
   over a grid of equal tiles (`repeat(auto-fit, minmax(140px, 1fr))`, 52 px, icon in a 32 px neutral chip); one
   action spans the row, the featured Add Exhibition Lead always takes its own row. The sidebar copy is unchanged.

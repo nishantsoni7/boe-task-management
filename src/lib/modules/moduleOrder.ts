@@ -77,6 +77,21 @@ const MODULE_KEY_RE = /^[a-z][a-z0-9_]{0,63}$/
  */
 export const MAX_STORED_MODULE_KEYS = 64
 
+/**
+ * THE BIG BLOCKS (owner, 2026-11-23). The launcher draws a row of large blocks
+ * above the rest, and each person chooses which modules are in it, up to four.
+ * The database carries the same cap as a check constraint — see
+ * supabase/migrations/20270821000000_launcher_big_module_keys.sql.
+ */
+export const MAX_BIG_MODULES = 4
+
+/**
+ * The big blocks until somebody chooses: what they have never changed. A key here
+ * selects a card only when this person may open that module, so somebody without
+ * Sales simply has three.
+ */
+export const DEFAULT_BIG_MODULE_KEYS: readonly string[] = ['tasks', 'orders', 'finance', 'sales']
+
 // ── Reading what was stored ──────────────────────────────────────────────────
 
 /**
@@ -106,6 +121,44 @@ export function normalizeStoredModuleOrder(value: unknown): string[] | null {
   }
 
   return keys.length > 0 ? keys : null
+}
+
+/**
+ * The stored big-block choice, or null when there is no usable one (the default
+ * applies). Unlike the order, an EMPTY list is a real answer — "no big blocks" —
+ * so it is kept; a non-empty list that held nothing usable is rubbish and reads as
+ * "never chosen". Capped at MAX_BIG_MODULES and de-duplicated, like the database.
+ */
+export function normalizeStoredBigModules(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null
+
+  const keys: string[] = []
+  for (const entry of value) {
+    if (typeof entry !== 'string' || !MODULE_KEY_RE.test(entry) || keys.includes(entry)) continue
+    keys.push(entry)
+    if (keys.length >= MAX_BIG_MODULES) break
+  }
+
+  return keys.length === 0 && value.length > 0 ? null : keys
+}
+
+/** What the launcher keeps for one person: their card order and their big blocks. */
+export type ModulePreference = { order: string[] | null; big: string[] | null }
+
+export const NO_MODULE_PREFERENCE: ModulePreference = { order: null, big: null }
+
+/**
+ * Whatever the cache holds, as a ModulePreference. A copy saved on the device
+ * before the big blocks existed is a bare list of keys (the order alone); it is
+ * still read, with no big-block choice, rather than thrown away.
+ */
+export function toModulePreference(raw: unknown): ModulePreference {
+  if (Array.isArray(raw)) return { order: normalizeStoredModuleOrder(raw), big: null }
+  if (raw && typeof raw === 'object') {
+    const { order, big } = raw as { order?: unknown; big?: unknown }
+    return { order: normalizeStoredModuleOrder(order), big: normalizeStoredBigModules(big) }
+  }
+  return NO_MODULE_PREFERENCE
 }
 
 // ── Applying it ──────────────────────────────────────────────────────────────
@@ -150,6 +203,44 @@ export function applyPersonalModuleOrder<T extends OrderableModule>(
   for (const mod of canonical) if (!placed.has(mod.key)) ordered.push(mod)
 
   return ordered
+}
+
+/**
+ * The cards split into the big blocks and the rest. EVERY card lands in exactly
+ * one of the two, in the order it was given: the big blocks are the first
+ * MAX_BIG_MODULES cards whose key is chosen, and any card that is not one of those
+ * stays in the rest, so a choice that somehow names more than four loses no card.
+ * Like the ordering above this can only pick from the cards it is given, so a
+ * chosen key without a card (a module this person cannot open) selects nothing.
+ */
+export function splitBigModules<T extends OrderableModule>(
+  modules: readonly T[],
+  bigKeys: readonly string[],
+): { big: T[]; rest: T[] } {
+  const chosen = new Set(bigKeys)
+  const big: T[] = []
+  const rest: T[] = []
+  for (const mod of modules) {
+    if (chosen.has(mod.key) && big.length < MAX_BIG_MODULES) big.push(mod)
+    else rest.push(mod)
+  }
+  return { big, rest }
+}
+
+/**
+ * A key switched on or off as a big block. Switching ON at the cap is refused (the
+ * list comes back unchanged), because the fifth block has to replace one the person
+ * chose, not silently push it out.
+ */
+export function toggleBigModuleKey(big: readonly string[], key: string): string[] {
+  if (big.includes(key)) return big.filter(k => k !== key)
+  if (big.length >= MAX_BIG_MODULES) return [...big]
+  return [...big, key]
+}
+
+/** Whether two big-block choices hold the same keys, whatever order they were picked in. */
+export function sameBigModules(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every(key => b.includes(key))
 }
 
 /** The keys of an arrangement, in order: exactly what gets stored. */
@@ -244,6 +335,12 @@ export type ModuleOrderEditState = {
   working: string[] | null
   /** What was on screen when edit mode opened. What Cancel restores. */
   baseline: string[] | null
+  /**
+   * The big-block choice being edited (card keys, at most MAX_BIG_MODULES), or null
+   * when not editing. It travels with the order: one Save writes both, Cancel
+   * drops both.
+   */
+  workingBig: string[] | null
   /** A save is in flight: the controls disable and drags stop. */
   saving: boolean
   /** The retryable message under the controls. Null when there is nothing wrong. */
@@ -255,20 +352,23 @@ export type ModuleOrderEditState = {
 export const IDLE_MODULE_ORDER_EDIT: ModuleOrderEditState = {
   working: null,
   baseline: null,
+  workingBig: null,
   saving: false,
   error: null,
   dragging: null,
 }
 
 export type ModuleOrderEditAction =
-  /** Enter edit mode on the arrangement currently rendered. */
-  | { type: 'open'; order: readonly string[] }
+  /** Enter edit mode on the arrangement currently rendered, and its big blocks. */
+  | { type: 'open'; order: readonly string[]; big?: readonly string[] }
+  /** Switch one card on or off as a big block (refused past the cap). */
+  | { type: 'toggleBig'; key: string }
   /** Keyboard: move one card by one or more positions. */
   | { type: 'move'; key: string; delta: number }
   /** Pointer: move one card into another's slot. */
   | { type: 'moveToSlotOf'; key: string; targetKey: string }
-  /** Restore the application's default order, still unsaved. */
-  | { type: 'reset'; canonical: readonly string[] }
+  /** Restore the application's default order (and big blocks), still unsaved. */
+  | { type: 'reset'; canonical: readonly string[]; big?: readonly string[] }
   /** Leave edit mode, writing nothing. */
   | { type: 'cancel' }
   | { type: 'saveStart' }
@@ -289,10 +389,16 @@ export function moduleOrderEditReducer(
         // `working` with a new array and never touches `baseline`, so Cancel
         // has something to go back to however many moves happened.
         baseline: [...action.order],
+        workingBig: action.big ? [...action.big] : [],
         saving: false,
         error: null,
         dragging: null,
       }
+
+    // Same rule as a rearrangement: ignored during a save, and only while editing.
+    case 'toggleBig':
+      if (!state.workingBig || state.saving) return state
+      return { ...state, workingBig: toggleBigModuleKey(state.workingBig, action.key) }
 
     // A rearrangement DURING a save is ignored rather than queued: the request
     // in flight carries the list as it was, and accepting a move now would
@@ -313,7 +419,12 @@ export function moduleOrderEditReducer(
     // about a list this is no longer offering.
     case 'reset':
       if (!state.working || state.saving) return state
-      return { ...state, working: [...action.canonical], error: null }
+      return {
+        ...state,
+        working: [...action.canonical],
+        workingBig: action.big ? [...action.big] : state.workingBig,
+        error: null,
+      }
 
     // WRITES NOTHING. Returning to idle is the restore: the grid outside edit
     // mode renders the SAVED order, which is what baseline was taken from and
