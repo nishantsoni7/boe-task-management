@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `330dc033` — Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
-- Commits on this branch: 1542
+- Commit: `a9fa01e3` — Quotations: the card on top of the list shows three things only (no SQL) (#986)
+- Commits on this branch: 1543
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 500 (first `20260530_create_positions.sql`, latest `20270820000000_quotation_client_costing_view.sql`)
 - Tables ever created: 271 (dropped at some point: 8)   SQL functions: 1100   Enums: 0
-- Test files: 932   Next.js 16.2.6, React 19.2.4
+- Test files: 934   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
 - `741a8d4e` 2026-11-23 Docs: stamp the SEO brief short version as merged and live (no SQL) (#983)
 - `586aaf2e` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL) (#979)
@@ -38,7 +39,6 @@
 - `7172f6c2` 2026-11-20 Quotations: typing in Material and Remarks no longer refits the price model for every product (#962)
 - `b5f21118` 2026-11-20 Quotations: delete an unsent draft (its maker) or any quotation but a PI-linked one (administrator) (#961)
 - `a97765c4` 2026-11-20 Quotations: a quotation started from a lead copies its contact role into the client type (#960)
-- `e31bbde9` 2026-11-20 Docs: stamp #957 (contact role, Waiting for BOQ) as merged and verified live (migration applied) (#959)
 
 ## Pages by top-level area
 
@@ -174,7 +174,7 @@
 - `src/lib/pricing` — 14 source, 9 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
-- `src/lib/quotations` — 30 source, 28 test
+- `src/lib/quotations` — 31 source, 29 test
 - `src/lib/salesLeads` — 17 source, 17 test
 - `src/lib/samples` — 1 source, 1 test
 - `src/lib/scoreboard` — 6 source, 4 test
