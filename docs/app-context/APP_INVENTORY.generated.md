@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `32004032` — Quotations: the Open tile's migration file (already applied) and the merge stamps for #986 and #988 (#989)
-- Commits on this branch: 1547
+- Commit: `0847eafd` — Pricing: work out a Training element by wood cut list, metal weight, area or percentage
+- Commits on this branch: 1548
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 223
 - Migrations: 503 (first `20260530_create_positions.sql`, latest `20270823000000_pricing_calculators.sql`)
 - Tables ever created: 273 (dropped at some point: 8)   SQL functions: 1105   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `0847eafd` 2026-11-23 Pricing: work out a Training element by wood cut list, metal weight, area or percentage
 - `32004032` 2026-11-23 Quotations: the Open tile's migration file (already applied) and the merge stamps for #986 and #988 (#989)
 - `859bba0c` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL) (#988)
 - `dc267bab` 2026-11-23 Quotations: opening a quotation answers at once and starts its reads at the click (PR A of 5, no SQL) (#987)
@@ -38,7 +39,6 @@
 - `30ab89a1` 2026-11-21 Remove the Operations Review chip from the Orders dashboard (#968)
 - `28127b1f` 2026-11-21 Docs: stamp #965 (approver dashboard: Needs your action and Watching) as merged and live (#966)
 - `a8d44009` 2026-11-21 Orders: the Operations team's dashboard in the approver's design (no SQL) (#967)
-- `076b6668` 2026-11-20 Orders: the approver's dashboard is one "Needs your action" sheet and a "Watching" list (no SQL) (#965)
 
 ## Pages by top-level area
 
