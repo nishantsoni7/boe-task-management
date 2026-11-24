@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-24 — Pricing: "Teach this?" on a quotation line, and rate reminders on For you (branch `feat/price-loop`, Price Brain v2 phase 4, not merged) · no migration
+## 2026-11-24 — Pricing: "Teach this?" on a quotation line, and rate reminders on For you (PR #1005, merged as `028eb186` 2026-11-24 08:44 IST, production deployment succeeded 08:46 IST, Price Brain v2 phase 4) · no migration
 
 - **Why.** Owner (24 Nov 2026, "Yes, build it", phase 4 of the approved plan, decision D7): close the loop, so a price somebody changes becomes something to teach, and the rates the calculators use stay current.
 - **Teach this?** For the people who see "Why?" (the Pricing module's people), on an editable line: once a typed price stays more than 10% from the suggested one for 1.2 s, a row under the suggestion says "₹6,200 is 22% above the suggestion. Teach this? Why:" with reason chips (Material or wood, Size, Finish or fabric, Work or design, Client or volume, Market rate, Other) and Not now. One tap sends a note to Price learning through the existing `pricing_feedback_add` (kind too_high or too_low, the reason, both prices, the suggestion and its engine, the quotation), where "Teach this price" makes it a Training case. Answered or not, the line remembers the price it asked about with `[Asked to teach N]` in its internal note (`src/lib/pricing/teachAsk.ts`, like the Use tag); a new price asks again; a price Use set never asks.
