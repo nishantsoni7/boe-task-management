@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-24 — Pricing: reading the product photos no longer stops at 50, and says why when it must (branch `fix/photo-read-pacing`, not merged) · no migration
+
+- **Why.** The first live run (24 Nov ~09:10 IST, owner: "read the 373 waiting") read 50 photos, then stopped: the card asked as fast as it could and hit the route's 30-a-minute limit; the limit counted refused calls too, so it stayed shut; then every photo came back "400 invalid_request_error" and the card skipped them one by one, calling each "too large, or not a picture", until it stalled at 50 skipped. The photos themselves were fine (all in storage, about 0.1 MB, JPG or PNG).
+- **Route** (`/api/pricing/photo-facts/read`): the limit counts only the photos it lets through (`photoRateLimiter`, `src/lib/pricing/photoRun.ts`), so a minute's wait always clears it; a refusal now carries the reading service's own words ("400 invalid_request_error: <its message>", also logged); the image type is read from the file's first bytes (`sniffMedia`), not its name.
+- **Card** (Price learning → Photo facts): one call of five at most every 10 s (30 a minute); "too many in a minute" waits 30 s and goes on (four times in a row at most); when every photo of a batch fails the same way it stops and shows that reason instead of skipping on (`batchOutcome`); a photo that fails alone is still skipped, now with "The last reason: …"; when every photo the queue shows (at most 50) was skipped it says so and asks for a reload instead of ending silently.
+- **Checked.** New `photoRun.test.ts` (8); `photoFacts.test.ts`; tsc, eslint. Not tried live: the reading service was refusing every call at the time (most likely the account's credit; the new message will say).
+- **Rollback.** Revert the PR.
+
 ## 2026-11-24 — Pricing: "Teach this?" on a quotation line, and rate reminders on For you (PR #1005, merged as `028eb186` 2026-11-24 08:44 IST, production deployment succeeded 08:46 IST, Price Brain v2 phase 4) · no migration
 
 - **Why.** Owner (24 Nov 2026, "Yes, build it", phase 4 of the approved plan, decision D7): close the loop, so a price somebody changes becomes something to teach, and the rates the calculators use stay current.
