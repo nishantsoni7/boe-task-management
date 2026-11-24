@@ -165,21 +165,18 @@ describe('Task Detail and Account share one validator (11)', () => {
 describe('Account Settings Back button', () => {
   const page = codeOf(read('src/app/account/page.tsx'))
 
-  // The page sits in the shared BoeOsLayout shell. The Back link rides in the
-  // shell's title-row slot and exists only when safeReturnPath accepted the
-  // ?returnTo= value — there is no fallback destination, and no second header.
-  test('reads returnTo only through safeReturnPath, with no fallback', () => {
-    assert.ok(page.includes("import { safeReturnPath } from '@/lib/safeReturnPath'"))
-    assert.ok(page.includes("const returnTo     = safeReturnPath(searchParams.get('returnTo'))\n"))
-    // Exactly one read of the parameter, so nothing bypasses the validator.
-    assert.equal(page.split("searchParams.get('returnTo')").length - 1, 1)
+  // The page sits in the shared BoeOsLayout shell. Since 2026-11-24 it draws no Back
+  // of its own: the header's one Back button (PageBackButton) follows ?returnTo= when
+  // nothing is behind the page, and reads it only through safeReturnPath.
+  test('reads returnTo only through safeReturnPath, in the one Back button', () => {
+    assert.equal(page.includes('returnTo'), false, 'the page no longer reads the parameter')
+    assert.ok(read('src/lib/navigation/recordReturn.ts').includes('safeReturnPath(params.get(RETURN_TO_PARAM))'))
+    assert.ok(read('src/lib/navigation/backTarget.ts').includes('returnPathFrom(opts.search)'))
   })
 
-  test('renders the Back link only when there is a valid destination', () => {
-    assert.ok(page.includes('headerActions={returnTo ? ('))
-    assert.ok(page.includes('<Link href={returnTo} className="boe-btn boe-btn-ghost">'))
-    assert.ok(page.includes(') : null}'))
-    // Navigation is the Link itself — no imperative push of the parameter.
+  test('draws no Back link of its own', () => {
+    assert.equal(page.includes('headerActions'), false)
+    assert.equal(page.includes('ArrowLeft'), false)
     assert.equal(page.includes('router.push(returnTo)'), false)
   })
 

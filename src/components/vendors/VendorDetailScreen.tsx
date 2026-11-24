@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowLeft, MapPin, MessageCircle, Pencil, Phone, Plus } from 'lucide-react'
+import { MapPin, MessageCircle, Pencil, Phone, Plus } from 'lucide-react'
 import { VendorsLayout } from '@/components/layout/VendorsLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useVendors } from '@/hooks/useVendors'
@@ -66,13 +66,11 @@ export default function VendorDetailScreen() {
                    subtitle={[v?.area, v?.contact_name].filter(Boolean).join(' · ') || undefined}
                    actions={v && !v.archived ? (
                      <>
-                       <Link className={`${s.secondary} ${s.hideOnPhone}`} href="/vendors"><ArrowLeft size={15} aria-hidden="true" /> All vendors</Link>
                        {canEdit && <Link className={`${s.secondary} ${s.hideOnPhone}`} href={`/vendors/${v.id}/edit`}><Pencil size={15} aria-hidden="true" /> Edit</Link>}
                        {canCreate && <Link className={`${s.primary} ${s.hideOnPhone}`} href={`/vendors/visit?vendor=${v.id}`}><Plus size={15} aria-hidden="true" /> Log a Visit</Link>}
                      </>
                    ) : undefined}>
       <div className={s.wrapWide}>
-        <Link href="/vendors" className={`${s.backLink} ${s.showOnPhone}`}><ArrowLeft size={16} aria-hidden="true" /> All vendors</Link>
         {error && <div className={`${s.banner} ${s.bannerErr}`} role="alert">This vendor is not available to you.</div>}
         {problem && <div className={`${s.banner} ${s.bannerErr}`} role="alert">{problem}</div>}
         {v && (

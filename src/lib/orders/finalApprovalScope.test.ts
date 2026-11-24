@@ -234,8 +234,6 @@ const READY_CARD_START = '{/* Ready state, and the one action this phase perform
  */
 function withoutUsabilityPass(src: string): string {
   const undo: [string, string][] = [
-    // The link import became AppLink (2026-11-12, pages load on click); still one line.
-    ["import { AppLink as Link } from '@/components/ui/AppLink'\n", ''],
     ["import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'", "import { LoadingScreen } from '@/components/ui/atoms'"],
     ['<Suspense fallback={<OrdersRouteFallback />}>', '<Suspense fallback={<LoadingScreen />}>'],
     ["if (access === 'checking') return <OrdersRouteFallback />", "if (access === 'checking') return <LoadingScreen />"],
@@ -251,18 +249,25 @@ function withoutUsabilityPass(src: string): string {
       subtitle="Upload the approved PI workbook to save it as a PI Draft for review."`, `      title="New Order"
       subtitle="Upload the approved PI to start a new order."`],
     [`      //
-      // Before a PI is read there is nothing to lose, so the header offers the
-      // way back to PI Drafts — the page used to have no exit but the sidebar.
-      // Once a preview is on screen that link is withheld: leaving discards the
-      // preview, and the one action here is replacing it.
+      // The way out is the page's one Back button, left of the title. Leaving
+      // with a preview on screen discards it (it is only read, not saved), and
+      // the one action here is replacing it.
       actions={`, '      actions={'],
-    [`        ) : (
-          <Link href="/orders/drafts" className="boe-btn boe-btn-ghost">
-            <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" /> PI Drafts
-          </Link>
-        )
-      }`, `        ) : undefined
-      }`],
+    // THE ONE BACK BUTTON (2026-11-24): the two "PI Drafts" header buttons this screen carried
+    // were removed, and the Link and ArrowLeft imports with them. Put back exactly, so the
+    // comparison with the base still sees only what the base had.
+    ["  ImageOff, Images, Lock,\n} from 'lucide-react'", "  ImageOff, Images, Lock, ArrowLeft,\n} from 'lucide-react'"],
+    [`        showRefresh={false}
+      >
+        <Card style={{ borderColor: 'rgba(196,138,26,0.35)' }}>`, `        showRefresh={false}
+        actions={
+          <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders/drafts')}>
+            <ArrowLeft size={13} strokeWidth={2} />
+            PI Drafts
+          </button>
+        }
+      >
+        <Card style={{ borderColor: 'rgba(196,138,26,0.35)' }}>`],
   ]
   let out = src
   for (const [is, was] of undo) {

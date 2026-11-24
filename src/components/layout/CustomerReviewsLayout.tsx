@@ -1,5 +1,6 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { BadgeCheck, History, Home, MessageSquareHeart, PieChart } from 'lucide-react'
@@ -231,6 +232,7 @@ export function CustomerReviewsLayout({
           >
             ☰
           </button>
+          <PageBackButton />
           <div className="boe-page-title-group">
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}

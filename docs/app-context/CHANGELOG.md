@@ -4,6 +4,16 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-24 — One Back button, left of the title, on every page (PR pending) · no migration
+
+- **Owner request.** "On all the pages of the app, there should be always an option to go back ... have it at one place all across the app", after opening a page from a quotation and finding no way back (the installed app window has no browser Back arrow). Five placements were previewed; the owner chose A, beside the title.
+- **Changed.** `PageBackButton` (44 px arrow, tooltip names the place when known) in the header of the 21 shared shells (`*Layout.tsx`, `ComingSoonModule`) and on four standalone pages (announcement, cash handover, quick-start guide, sample dispatch). `src/lib/navigation/backTarget.ts` decides where it goes: pop when this document pushed an entry of its own, else the validated `returnTo`, else one level up (`PARENT_OVERRIDES` for folders that are not pages); `/modules` shows none. `askBeforeLeaving` now also asks before Back when edits are unsaved (quotation builder); the PI editor registers the same guard in place of its own Back link.
+- **Removed.** About 25 per-page Back links (Orders, PI, Payment plan, Dispatch, Old orders, Upload PI, Account, Attendance, Payroll, Performance, All Tasks, Task Detail, Inventory, Vendors, Meetings, Customer Reviews, Showroom Admin inquiry, Control Center phone crumb), `RecordBackLink`, and Task Detail's `taskBackTarget` with its tests.
+- **Behaviour change.** Task Detail with nothing behind it and no `returnTo` goes to My Tasks (a quotation task used to go to Quotation Requests). Upload PI no longer withholds its way out once a preview is on screen (leaving discards the preview, which is only read, not saved).
+- **Not changed.** Showroom QR flow, the client's shared quotation link, sign-in pages, the quotation print page's "Back to the quotation", Pricing Training case arrow, Showroom Admin product edit, Meetings guide end-of-page buttons, step buttons and not-found/refused-state buttons; the old link classes are still in the stylesheets, unused.
+- **Proof.** `backTarget.test.ts` walks every `page.tsx` and fails on a parent that is not a page; `leaveGuard.dom.test.ts` proves Back asks when dirty. Lint 0, `tsc` clean. First whole-suite run found 7 tests that pinned the removed links (22,323 tests, 22,307 pass, 9 skipped); all 7 updated and re-run green. Not tried in a browser: the owner tests before merge.
+- **Rollback.** Revert the PR. No data, no migration.
+
 ## 2026-11-24 — Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (PR #1013) · migration `20270827000000` → APPLIED 2026-11-24 14:46 IST
 
 - **Owner report.** Task "513 Bharghav" (Working since 17 Nov, five updates since) showed "flagged the task as stale — Auto-flagged: same status for 5+ days with no progress" on 24 Nov 12:30 IST, two minutes after the assignee's latest update. Read from the live database the same day: `is_stale = true`, `stale_day_count = 0`, no status change in 6 days, 5 updates in the last 6 days.

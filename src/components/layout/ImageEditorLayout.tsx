@@ -1,5 +1,6 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { BarChart3, Home, Wand2 } from 'lucide-react'
@@ -129,6 +130,7 @@ export function ImageEditorLayout({
           >
             ☰
           </button>
+          <PageBackButton />
           <div className="boe-page-title-group">
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}

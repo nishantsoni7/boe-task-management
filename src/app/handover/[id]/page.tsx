@@ -12,6 +12,7 @@
 
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams } from 'next/navigation'
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { HandoverCard } from '@/components/finance/HandoverCard'
 import { useHandover } from '@/hooks/queries/useHandovers'
 import { useSignedInUserId } from '@/hooks/queries/usePermissionContext'
@@ -24,9 +25,10 @@ export default function HandoverPage() {
 
   return (
     <main style={{ maxWidth: 760, margin: '0 auto', padding: '24px 16px 48px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' }}>
+      {/* No module header on this page (a recipient may hold no Finance access), so it carries the app's one Back button itself. */}
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
+        <PageBackButton />
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 800, color: '#303536' }}>Cash handover</h1>
-        <Link href="/modules" className="boe-btn boe-btn-secondary" style={{ textDecoration: 'none' }}>Back to BOE One</Link>
       </div>
 
       {(idPending || query.isPending) && !query.isError && <div style={{ fontSize: 14 }}>Loading…</div>}

@@ -184,14 +184,6 @@ function ViewAllTasksContent() {
       title="View All Tasks"
       subtitle={filterContext ?? `${total} total task${total !== 1 ? 's' : ''}`}
       onSignOut={handleLogout}
-      actions={hasFilter ? (
-        // On a phone the arrow alone (owner, 2026-11-05), so the header stays one row.
-        <Link href="/tasks/team-today" aria-label="Back to Team Today" title="Back to Team Today" style={{
-          fontSize: 12, fontWeight: 600, color: '#686D6C', textDecoration: 'none',
-          border: '1px solid #F1EEE9', padding: '6px 14px', borderRadius: 8,
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-        }}>←<span className="boe-desktop-only">Team Today</span></Link>
-      ) : undefined}
     >
       {filterContext && (
         <div style={{

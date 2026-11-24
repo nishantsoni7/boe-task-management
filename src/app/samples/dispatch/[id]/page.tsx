@@ -7,8 +7,9 @@ import { colors, font } from '@/lib/tokens'
 import { LoadingScreen } from '@/components/ui/atoms'
 import {
   Package, CheckCircle2, Truck, Phone, MapPin,
-  AlertTriangle, ArrowLeft, Send,
+  AlertTriangle, Send,
 } from 'lucide-react'
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { getEffectivePermissions } from '@/lib/permissions/resolver'
 
 type SampleStatus = 'pending_approval' | 'approved' | 'qr_submitted' | 'rejected' | 'dispatched' | 'returned' | 'lost'
@@ -194,14 +195,8 @@ export default function DispatchPage() {
     <div className="smp-dispatch" style={{ minHeight: '100vh', background: colors.raised, padding: '24px 16px' }}>
       <div style={{ maxWidth: 520, margin: '0 auto' }}>
 
-        {/* Back link */}
-        <button
-          onClick={() => router.push('/samples')}
-          style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'none', border: 'none', color: colors.muted, fontSize: '13px', cursor: 'pointer', marginBottom: '20px', padding: 0 }}
-        >
-          <ArrowLeft size={14} strokeWidth={2} />
-          Sample Tracking
-        </button>
+        {/* No module header on this page: it carries the app's one Back button itself. */}
+        <div style={{ marginBottom: '16px' }}><PageBackButton /></div>
 
         {/* Page title */}
         <div style={{ marginBottom: '20px' }}>

@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import { Briefcase } from 'lucide-react'
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { colors, font } from '@/lib/tokens'
 
 // ── Shared style helpers ──────────────────────────────────────────────────────
@@ -160,6 +161,8 @@ export default function QuickStartGuidePage() {
         justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          {/* A page with no module header: it carries the app's one Back button itself. */}
+          <PageBackButton />
           <div style={{
             width: 26, height: 26, borderRadius: '8px',
             background: '#303536',
@@ -179,29 +182,6 @@ export default function QuickStartGuidePage() {
             Version 1
           </span>
         </div>
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="boe-p4-qsg-back"
-          aria-label="Back to Dashboard"
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: '6px',
-            fontSize: '12.5px', fontWeight: 600,
-            color: colors.secondary,
-            background: colors.float,
-            border: `1px solid ${colors.border}`,
-            borderRadius: '8px',
-            padding: '6px 14px',
-            cursor: 'pointer',
-            transition: 'background 0.12s',
-          }}
-          onMouseEnter={e => (e.currentTarget.style.background = colors.hover)}
-          onMouseLeave={e => (e.currentTarget.style.background = colors.float)}
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-          </svg>
-          <span className="boe-p4-qsg-backlabel">Back to Dashboard</span>
-        </button>
       </div>
 
       {/* ── Content ── */}

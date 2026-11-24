@@ -65,7 +65,6 @@ import {
   orderStoredCommercialLines,
 } from '@/lib/orders/orderCommercial'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
-import { RecordBackLink } from '@/components/layout/RecordBackLink'
 import { fetchOrderBundle, type PiReads } from '@/lib/orders/orderPageBundle'
 import {
   mergeOrderPayments,
@@ -3452,11 +3451,6 @@ export default function OrderDetailPage() {
       onRefresh={loadOrder}
     >
       <div className="order-detail-page">
-
-        {/* Back to the list this Order was opened from, with its filters —
-            or to Confirmed Orders. Named, and never out of the app, which
-            router.back() was whenever this was the tab's first page. */}
-        <RecordBackLink fallbackHref="/orders/all" className="order-back" />
 
         {/* ══ 1. THE COMMAND HEADER ══
             ORDER NUMBER AND STATUS, ON ONE LINE, FIRST — "ORDER BOE-147  IN
