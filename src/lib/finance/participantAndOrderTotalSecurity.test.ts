@@ -1364,7 +1364,7 @@ describe('the applied migrations are frozen', () => {
       '20270816000000_quotation_start_contact_role.sql',
       // Quotations: delete (one new table closed to the browser, three functions, quotation_list replaced with one more field, the price-review trigger now fires on a direct change only); no rows change.
       '20270817000000_quotation_delete.sql',
-      // Orders: pi_submissions_payment_summaries, the approver's payment chips in one call (a read-only wrapper over pi_submission_payment_summary; no table or data changes). NOT APPLIED YET: waits for the owner.
+      // Orders: pi_submissions_payment_summaries, the approver's payment chips in one call (a read-only wrapper over pi_submission_payment_summary; no table or data changes). APPLIED 2026-11-24 18:37 IST.
       '20270818000000_pi_payment_summaries_batch.sql',
       // Quotations: fabric and packing costed per product (one nullable-free column with a default and two checker functions; quotation_save and quotation_line_choices_ok re-created; no existing row changes).
       '20270819000000_quotation_line_costing.sql',
@@ -1959,7 +1959,7 @@ describe('the applied migrations are frozen', () => {
       '20270816000000_quotation_start_contact_role.sql',
       // Quotations: delete (one new table closed to the browser, three functions, quotation_list replaced with one more field, the price-review trigger now fires on a direct change only); no rows change.
       '20270817000000_quotation_delete.sql',
-      // Orders: pi_submissions_payment_summaries, the approver's payment chips in one call (a read-only wrapper over pi_submission_payment_summary; no table or data changes). NOT APPLIED YET: waits for the owner.
+      // Orders: pi_submissions_payment_summaries, the approver's payment chips in one call (a read-only wrapper over pi_submission_payment_summary; no table or data changes). APPLIED 2026-11-24 18:37 IST.
       '20270818000000_pi_payment_summaries_batch.sql',
       // Quotations: fabric and packing costed per product (one nullable-free column with a default and two checker functions; quotation_save and quotation_line_choices_ok re-created; no existing row changes).
       '20270819000000_quotation_line_costing.sql',
