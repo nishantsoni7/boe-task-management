@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-24 — Pricing: reading the product photos no longer stops at 50, and says why when it must (branch `fix/photo-read-pacing`, not merged) · no migration
+## 2026-11-24 — Pricing: reading the product photos no longer stops at 50, and says why when it must (PR #1008, merged as `4a65a657` 2026-11-24 11:06 IST, production deployment succeeded 11:08 IST, the live bundle carries "five every 10 seconds") · no migration
 
 - **Why.** The first live run (24 Nov ~09:10 IST, owner: "read the 373 waiting") read 50 photos, then stopped: the card asked as fast as it could and hit the route's 30-a-minute limit; the limit counted refused calls too, so it stayed shut; then every photo came back "400 invalid_request_error" and the card skipped them one by one, calling each "too large, or not a picture", until it stalled at 50 skipped. The photos themselves were fine (all in storage, about 0.1 MB, JPG or PNG).
 - **Route** (`/api/pricing/photo-facts/read`): the limit counts only the photos it lets through (`photoRateLimiter`, `src/lib/pricing/photoRun.ts`), so a minute's wait always clears it; a refusal now carries the reading service's own words ("400 invalid_request_error: <its message>", also logged); the image type is read from the file's first bytes (`sniffMedia`), not its name.

@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `79b2c0ab` — Merge remote-tracking branch 'origin/main' into fix/photo-read-pacing
+- Commit: `4a65a657` — Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL) (#1008)
 - Commits on this branch: 1566
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 506 (first `20260530_create_positions.sql`, latest `20270826000000_pricing_engine_v3.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `79b2c0ab` 2026-11-24 Merge remote-tracking branch 'origin/main' into fix/photo-read-pacing
-- `87d1b2ab` 2026-11-24 Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL)
+- `4a65a657` 2026-11-24 Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL) (#1008)
+- `57c51bd1` 2026-11-24 Docs: #1007 merged and live (2026-11-24 09:40 IST) (#1009)
 - `8d0ca964` 2026-11-24 Pricing: Training case page redesigned, with Overhead % and Margin % for each product (no SQL) (#1007)
 - `bb26f2d5` 2026-11-24 Docs: #1005 merged and live (2026-11-24 08:44 IST) (#1006)
 - `028eb186` 2026-11-24 Pricing: "Teach this?" on a quotation line, and rate reminders on For you (no SQL) (#1005)
