@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `876ce154` — Quotations: the builder's top is ONE panel, the lead is the status, no price-limits block
-- Commits on this branch: 1580
+- Commit: `52b12d79` — Docs: #1023 merged and live (2026-11-24 20:18 IST) (#1024)
+- Commits on this branch: 1582
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
-- `876ce154` 2026-11-24 Quotations: the builder's top is ONE panel, the lead is the status, no price-limits block
+- `52b12d79` 2026-11-24 Docs: #1023 merged and live (2026-11-24 20:18 IST) (#1024)
+- `d0b8cc70` 2026-11-24 Quotations: the builder's top is ONE panel, the lead is the status, no price-limits block (#1025)
+- `e7318db1` 2026-11-24 Quotations: no price hint at all for people outside the pricing desk (#1023)
 - `15175abf` 2026-11-24 Docs: #1020 merged and live (2026-11-24 19:11 IST) (#1022)
 - `32015bc8` 2026-11-24 Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (no SQL) (#1020)
 - `cb04085e` 2026-11-24 Docs: migration 20270818000000 (approver payment chips in one call) applied 2026-11-24 18:37 IST (#1021)
@@ -37,8 +39,6 @@
 - `9e89001a` 2026-11-23 Pricing: photo facts, every product photo read once into facts (#1002)
 - `eda0cbec` 2026-11-23 Pricing: the echo guard, and "How accurate is it" with "Teach next" on Price learning (#1001)
 - `1ee4636b` 2026-11-23 Pricing: a taught price worked out again for each quotation line (no SQL) (#1000)
-- `92d06650` 2026-11-23 Docs: stamp #998 (the Modules launcher quiet tiles) as merged and live (no SQL) (#999)
-- `6c3063dc` 2026-11-23 Modules launcher: quiet tiles, a tile with nothing to say says nothing (#998)
 
 ## Pages by top-level area
 

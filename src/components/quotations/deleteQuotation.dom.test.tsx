@@ -1,4 +1,4 @@
-// Deleting a quotation (owner, 20 Nov 2026; 20270817000000): the confirm, the top panel's Delete item and the list's bin, run for real.
+// Deleting a quotation (owner, 20 Nov 2026; 20270817000000): the confirm, the Delete item of the page header's ⋯ menu and the list's bin.
 // The database decides who may delete what (quotation_delete_blocker, proved in supabase/tests/quotations_pglite.mjs); these prove the
 // screens ask it, show its answer, and leave the page the way the owner asked.
 import { mount } from '@/lib/testing/domHarness'
@@ -9,8 +9,7 @@ import { readFileSync } from 'node:fs'
 import { createElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DeleteQuotationDialog, goneOutNote, type DeleteTarget } from './DeleteQuotationDialog'
-import { panel, quote, type PanelOver } from './topPanel.testkit'
-import type { Quotation, QuotationStatus } from '@/lib/quotations/api'
+import type { QuotationStatus } from '@/lib/quotations/api'
 
 const TARGET: DeleteTarget = { id: 'q-1', quote_no: 'QT-NS-01009', client_name: 'Hotel Aravali', project_name: 'Aravali Resort', status: 'draft' }
 
@@ -72,33 +71,6 @@ describe('the delete confirm', () => {
   })
 })
 
-const MORE = 'button[aria-label="More actions"]'
-/** What the ⋯ menu offers: open it as a person does and read the items (none when the panel has no ⋯ button at all). */
-function menuItems(base: Quotation, over: PanelOver = {}): string[] {
-  const ui = mount(panel(base, over))
-  if (ui.all(MORE).length) ui.click(ui.one(MORE))
-  const items = ui.all('[role="menuitem"]').map(b => (b.textContent ?? '').trim())
-  ui.unmount()
-  return items
-}
-
-describe('the top panel\'s Delete item (in the ⋯ menu)', () => {
-  test('is there only when the database said the person may delete, and choosing it asks to confirm', () => {
-    assert.ok(!menuItems(quote()).includes('Delete…'), 'no answer yet: no item')
-    assert.ok(!menuItems(quote(), { canDelete: false, onDelete: () => {} }).includes('Delete…'), 'not allowed: no item')
-    assert.ok(menuItems(quote(), { canDelete: true, onDelete: () => {} }).includes('Delete…'))
-    let asked = 0
-    const ui = mount(panel(quote(), { canDelete: true, onDelete: () => { asked++ } }))
-    ui.click(ui.one(MORE))
-    ui.click(ui.button('Delete…'))
-    assert.equal(asked, 1)
-    ui.unmount()
-  })
-  test('an administrator sees it on a locked quotation too (the menu has no other outcome there)', () => {
-    assert.deepEqual(menuItems(quote({ status: 'archived', may_edit: true }), { isAdmin: true, canDelete: true, onDelete: () => {} }), ['Delete…'])
-  })
-})
-
 describe('where the Delete is wired', () => {
   const read = (p: string) => readFileSync(p, 'utf8').replace(/\r/g, '')
   test('the list shows a bin only on a row the database marked may_delete, and the click does not open the row', () => {
@@ -110,7 +82,8 @@ describe('where the Delete is wired', () => {
   test('the page asks quotation_delete_check, leaves for the list after a delete, and clears its unsaved-edits guard first', () => {
     const page = read('src/components/quotations/BuilderScreen.tsx')
     assert.match(page, /queryFn: \(\) => fetchDeleteCheck\(supabase, id\)/)
-    assert.match(page, /canDelete=\{delQ\.data\?\.may === true\} onDelete=\{\(\) => setDeleting\(true\)\}/)
+    assert.match(page, /const menuItems: MoreActionItem<'delete'>\[\] = delQ\.data\?\.may === true \? \[\{ key: 'delete', label: 'Delete…', disabled: busy, danger: true \}\] : \[\]/, 'the item is there only when the database said the person may delete')
+    assert.match(page, /<MoreActionsMenu items=\{menuItems\} onSelect=\{\(\) => setDeleting\(true\)\}/, 'choosing it asks to confirm')
     assert.match(page, /onDeleted=\{\(\) => \{ dirtyRef\.current = false; router\.push\('\/quotations'\) \}\}/)
   })
   test('the api calls the two functions the migration makes, and the list row type carries may_delete', () => {
