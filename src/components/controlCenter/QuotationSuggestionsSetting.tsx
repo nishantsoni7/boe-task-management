@@ -8,8 +8,9 @@ import { errorText, fetchSuggestionSettings, saveSuggestionSettings } from '@/li
 
 // Control Center › Sales › Quotation price approval: who sees the SUGGESTED prices on a quotation (owner, 18 Nov 2026:
 // the training data is still thin, so the suggestions are vague; keep them for the owner to verify, and give them to
-// everyone once they are accurate). "Only me" keeps them for the administrator who switches it; everyone else sees only
-// the price history (last ordered / quoted). quotation_suggestions_set refuses anyone but an administrator.
+// everyone once they are accurate). "Pricing desk only" keeps them for the desk; everyone else sees NO price hint at all,
+// the history (last ordered / quoted) included (owner, 24 Nov 2026: it is matched by product name only and misled the sales
+// candidates being trained). quotation_suggestions_set refuses anyone but an administrator.
 
 const KEY = ['quotations', 'suggestions'] as const
 
@@ -31,7 +32,7 @@ export function QuotationSuggestionsSetting() {
     setSaving(true)
     try {
       await saveSuggestionSettings(supabase, everyone)
-      setSaved(everyone ? 'Everyone sees the price suggestions again.' : 'Only the pricing desk sees the price suggestions now.')
+      setSaved(everyone ? 'Everyone sees the price hints again.' : 'Only the pricing desk sees the price hints now.')
       await queryClient.invalidateQueries({ queryKey: ['quotations'] })
     } catch (e) {
       setError(errorText(e))
@@ -43,18 +44,18 @@ export function QuotationSuggestionsSetting() {
   return (
     <CcSection
       title="Price suggestions on quotations"
-      description="Who sees the suggested price under each product. Everyone else still sees the price history (last ordered and last quoted)."
+      description="Who sees a price hint under each product: the suggested price, and the last ordered and last quoted prices. Everyone else sees no hint at all."
     >
       <div className={cc.list}>
         <div className={cc.listRow}>
           <div className={cc.listMain}>
-            <div>Suggested prices</div>
+            <div>Price hints (suggested, last ordered, last quoted)</div>
             <div className={cc.listDetail}>
               {v.everyone
                 ? 'Shown to everyone who prices quotations.'
                 : v.desk
-                  ? 'Shown only to the pricing desk: administrators and anyone with Quotations edit and view all. Everyone else sees the history only.'
-                  : `Shown only to ${v.shown_to.length ? v.shown_to.join(', ') : 'nobody'}. Everyone else sees the history only.`}
+                  ? 'Shown only to the pricing desk: administrators and anyone with Quotations edit and view all. Everyone else sees no price hint.'
+                  : `Shown only to ${v.shown_to.length ? v.shown_to.join(', ') : 'nobody'}. Everyone else sees no price hint.`}
             </div>
           </div>
           <div className={cc.rowActions}>

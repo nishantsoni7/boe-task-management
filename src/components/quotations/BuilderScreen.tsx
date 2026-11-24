@@ -29,7 +29,6 @@ import {
   setStatus as setStatusRpc, shareQuotation, fetchHints, type PriceHint, uploadPicture, type Header, type Quotation, type QuotationStatus,
   fetchSuggestionSettings, suggestionsKey, fetchPaymentDetails, deleteCheckKey, fetchDeleteCheck,
 } from '@/lib/quotations/api'
-import { historyOnly } from '@/lib/quotations/suggestions'
 import {
   DIMENSION_UNITS, SUPPLY_STATES, computeTotals, costingSums, formatDateIN, gstModeForState, validUntil,
   type QuoteArea, type QuoteLine,
@@ -115,11 +114,12 @@ export default function BuilderScreen() {
   // Price hints for the names on screen, asked for once typing pauses.
   const [hintNames, setHintNames] = useState('')
   // WHO SEES THE SUGGESTED PRICES (owner, 18 Nov 2026; Control Center › Sales › Quotation price approval): off for this person,
-  // the suggestion, its model and the taught-price picker are left out and only the history (last ordered / quoted) shows. A
+  // the whole price hint is left out: no suggestion, no model, no taught-price picker, and no history either (last ordered / quoted;
+  // owner, 24 Nov 2026: the history is matched by product name only, so it misled the sales candidates being trained). A
   // database without 20270731000000 answers with an error, which keeps them on, as before. Off until the answer is in.
   const suggQ = useQuery({ queryKey: suggestionsKey, queryFn: () => fetchSuggestionSettings(supabase), enabled: !notSetUp, staleTime: 300_000, retry: false })
   const suggestOn = suggQ.isError ? true : !!suggQ.data?.for_me
-  const hintsQ = useQuery({ queryKey: ['quotations', 'hints', id, hintNames], queryFn: () => fetchHints(supabase, hintNames.split('\n'), id), enabled: accessLoaded && !notSetUp && hintNames !== '', staleTime: 300_000, retry: false })
+  const hintsQ = useQuery({ queryKey: ['quotations', 'hints', id, hintNames], queryFn: () => fetchHints(supabase, hintNames.split('\n'), id), enabled: accessLoaded && !notSetUp && suggestOn && hintNames !== '', staleTime: 300_000, retry: false })
   const hintFor = useMemo(() => new Map<string, PriceHint>((hintsQ.data ?? []).map(h => [h.name, h])), [hintsQ.data])
   // Pricing model v2: one pool for every product type on screen, then each line priced for its own parameters.
   const typeWords = useMemo(() => poolWords(hintNames.split('\n').map(productType).filter((t): t is string => !!t)).join(' '), [hintNames])
@@ -440,7 +440,7 @@ export default function BuilderScreen() {
               <LineRow key={l.key} l={l} area={g.area} unit={unit} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
                 first={li === 0} last={li === g.lines.length - 1} url={picSrc}
                 onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onUploadSwatch={f => (profile ? uploadPicture(supabase, profile.id, f) : Promise.reject(new Error("Sign in again to add a picture")))} onImprove={() => setStudioFor(l.key)} onView={() => setViewing(l.key)}
-                hint={suggestOn ? hintFor.get(l.name.trim()) : historyOnly(hintFor.get(l.name.trim()))} model={suggestOn ? modelFor.get(l.key) : null} taught={suggestOn ? taught : undefined} onRemove={() => removeLine(l.key)}
+                hint={suggestOn ? hintFor.get(l.name.trim()) : undefined} model={suggestOn ? modelFor.get(l.key) : null} taught={suggestOn ? taught : undefined} onRemove={() => removeLine(l.key)}
                 feedbackCtx={seesWhy ? { clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) } : undefined}
                 onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
             ))}

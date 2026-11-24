@@ -12,6 +12,13 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Checked.** `tsc --noEmit` 0 errors; eslint 0 on the quotation folders; 532 tests pass in `src/components/quotations` and `src/lib/quotations` plus the pricing, leave-guard and learning tests that read `BuilderScreen.tsx`; the REAL component with the REAL stylesheet was drawn to static HTML and looked at in headless Edge at desktop and phone width, against the approved mockup. **Not seen:** the real page signed in, a real phone, the Ask a senior pop-over open on a phone, a quotation with a very long lead name.
 - **Rollback.** Revert the PR.
 
+## 2026-11-24 — Quotations: no price hint at all for sales candidates, the "Last ordered · Use" history line included (PR #1023, branch `fix/hide-price-history-non-desk`, open) · no migration
+
+- **Why.** The owner (24 Nov): sales candidates are in training and the hint under a product is not recommending correct figures. The live setting was already "Pricing desk only" (`quotation_suggestion_settings.shown_to = '{}'` since 18 Nov), so the Suggested price and Range were already hidden; what they still saw was the history fallback "Last ordered ₹22,500 · Use", matched by product name only.
+- **What.** `BuilderScreen`: when the person is outside the switch (`suggestOn` false), `hint` is `undefined` and the hints are not fetched; `historyOnly()` and `src/lib/quotations/suggestions.ts` deleted. The Control Center card's wording now says everyone else sees no price hint. The pricing desk sees what it saw before.
+- **Effect.** "Show to everyone" brings suggestion and history back together; there is no history-only state any more. A display setting, not a security boundary (`quotation_price_hints` is still callable by any signed-in user). The price-approval card can still word a reason as "X% of the last ordered ₹Y" while approval is on (not changed).
+- **Rollback.** Revert the PR; nothing in the database changed.
+
 ## 2026-11-24 — Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (PR #1020, merged as `32015bc8` 2026-11-24 19:11 IST, production deployment succeeded 19:13 IST; a server route, so nothing on a page to check) · no migration
 
 - **Why.** BOE pays the frame vendor by the weighed finished kg, so the calculator's kg is only an estimate; the scale readings the owner enters (step one) should correct it where nobody weighed.
