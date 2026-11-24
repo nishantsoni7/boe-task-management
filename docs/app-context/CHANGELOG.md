@@ -13,8 +13,6 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Checked.** New tests in `rework.test.ts`; tsc, eslint, full suite, build. Not seen in a browser.
 - **Rollback.** Revert the PR.
 
-## 2026-11-24 — Migration history: nine live migrations recorded as applied (17:28 IST; production history only, no SQL, no schema change) · `20270818000000` stays unapplied
-
 ## 2026-11-24 — Orders: the approver's payment chips in one call, migration `20270818000000` applied (18:37 IST; a function only) · APPLIED
 
 - **What.** On the owner's instruction ("Apply 20270818000000 now"), the last unapplied local migration was applied on its own with `supabase db query --linked --file` and recorded with `supabase migration repair --status applied 20270818000000`. It adds `pi_submissions_payment_summaries(uuid[])` (a read-only wrapper, security invoker, stable); no table or data changed. `supabase db push --dry-run` now says "Remote database is up to date" and all 507 local migrations match the remote history.
