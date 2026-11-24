@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-24 — Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (branch `feat/weighed-ratio`, not merged) · no migration
+## 2026-11-24 — Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (PR #1020, merged as `32015bc8` 2026-11-24 19:11 IST, production deployment succeeded 19:13 IST; a server route, so nothing on a page to check) · no migration
 
 - **Why.** BOE pays the frame vendor by the weighed finished kg, so the calculator's kg is only an estimate; the scale readings the owner enters (step one) should correct it where nobody weighed.
 - **What.** on a quotation line, a taught metal frame that nobody weighed is priced at its calculated kg times the typical (median) weighed / calculated ratio of the frames that were weighed (`learnedWeight()` and `rework()` in `src/lib/pricing/training/rework.ts`). It is used only from 3 weighed frames (`MIN_WEIGHED_FRAMES`); a single ratio outside 0.5 to 2 is treated as a slip and left out; a frame that was weighed keeps its own weight. The route `/api/pricing/taught/rework` reads the weighed frames with the server credential (`pricing_training_lines`, calc type metal, `weighed_kg` set, submitted cases), only when a picked case has a metal frame; a failed read prices the frame as taught. The ratio and its working appear in `changes`, which only people with Pricing receive; a person who may only quote gets the price alone.

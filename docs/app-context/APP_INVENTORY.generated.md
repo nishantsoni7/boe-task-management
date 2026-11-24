@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `88928d3c` — Merge remote-tracking branch 'origin/main' into feat/weighed-ratio
-- Commits on this branch: 1579
+- Commit: `32015bc8` — Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (no SQL) (#1020)
+- Commits on this branch: 1578
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,10 +14,9 @@
 
 ## Latest 25 commits
 
-- `88928d3c` 2026-11-24 Merge remote-tracking branch 'origin/main' into feat/weighed-ratio
+- `32015bc8` 2026-11-24 Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (no SQL) (#1020)
+- `cb04085e` 2026-11-24 Docs: migration 20270818000000 (approver payment chips in one call) applied 2026-11-24 18:37 IST (#1021)
 - `5f53f151` 2026-11-24 Docs: nine of the ten unapplied migrations were live and are now recorded; only 20270818000000 is unapplied (#1019)
-- `b37fab71` 2026-11-24 Merge remote-tracking branch 'origin/main' into feat/weighed-ratio
-- `c191444c` 2026-11-24 Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (no SQL)
 - `d427ea3e` 2026-11-24 One Back button, left of the page title, on every page (#1016)
 - `c54b2692` 2026-11-24 Docs: #1015 merged and live (2026-11-24 17:02 IST) (#1018)
 - `cc4a1a8f` 2026-11-24 Docs: #1013 merged and live (2026-11-24 15:44 IST), stale-flag migration stamped, open items noted (#1017)
@@ -39,6 +38,7 @@
 - `92d06650` 2026-11-23 Docs: stamp #998 (the Modules launcher quiet tiles) as merged and live (no SQL) (#999)
 - `6c3063dc` 2026-11-23 Modules launcher: quiet tiles, a tile with nothing to say says nothing (#998)
 - `ab3cdddd` 2026-11-23 Pricing: "Teach this price" from a feedback card or a quotation line, and "In your words" (#997)
+- `3b7839d6` 2026-11-23 Docs: stamp #995 (the Fabric From box fix) as merged and live (no SQL) (#996)
 
 ## Pages by top-level area
 
