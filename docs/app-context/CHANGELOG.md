@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-24 — Pricing: weighed frames, step one: vendor rate per finished kg and the weighed bare frame (branch `feat/weighed-frames`, not merged) · no migration
+
+- **Why.** The owner pays the frame vendor one rate (₹120-150) per finished kg of the bare frame, and the vendor buys the steel; the store keeps no issue records. The metal calculator priced cut loss, a steel rate and fabrication separately, which is not how BOE pays.
+- **What.** a metal element of a Training case can be priced the way BOE pays for frames: a switch "Made by a vendor who buys the steel" (one rate per finished kg, so no cut loss and no fabrication; coating by area stays), and an optional "Weighed bare frame (kg)" box whose weight replaces the calculated kg. The element shows the calculator's kg against the scale's, for example "+11.0%". Both are kept inside the saved calc (`vendor`, `weighed_kg` in `MetalCalc`, `src/lib/pricing/training/calc.ts`); `weighedGap()` gives the comparison; a row saved before them reads back as not vendor and not weighed.
+- **Not in this step.** The learned weighed-to-calculated ratio applied on a quotation line (step two, needs a function-only migration and the owner's yes); store issues (no data: the store keeps none).
+- **Checked.** New tests in `calc.test.ts`; tsc, eslint, full suite, build. Not seen in a browser.
+- **Rollback.** Revert the PR; the two extra keys in saved calcs are ignored by older code.
+
 ## 2026-11-24 — Pricing: the first full photo read (373 of 373) and the new accuracy figures · data only, no code, no migration
 
 - **What ran.** The owner pressed "Read the 323 waiting" on Price learning (after adding Anthropic API credit; the credit had run out and had stopped the 24 Nov ~09:10 IST run at 50). Result: all 373 product photos read in about 20 minutes on 2026-11-24 (about 13:25-13:45 IST, run by the owner's button in his Chrome, no stop, none skipped, model claude-sonnet-5-5); typical miss (priced blind) 23.2% to 17.9%, prices within ±20% 44% to 54%; "With photos" leads Table 17% (was 21.4), Chair 13.8% (was 22.1), Sofa 39.4% (was 44.4); Bench / ottoman stays on today's model (22.8% against 26.1%). The page's own figures, read after a reload.
