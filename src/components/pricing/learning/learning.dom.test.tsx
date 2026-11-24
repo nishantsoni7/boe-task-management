@@ -136,6 +136,8 @@ describe('the suggested price on a quotation line: a small card for everyone, "W
     assert.match(out, /Last ordered[\s\S]*₹50,000[\s\S]*Use/)
     assert.doesNotMatch(out, /over 3|₹40,000|Why\?/)
     assert.equal(html({ model: null, hint: { name: 'x', ordered: null, quoted: null } }), '')
+    // What the builder passes someone outside the pricing desk (24 Nov 2026): no hint and no model draws nothing, not even Use.
+    assert.equal(html({ model: null, hint: undefined }), '')
   })
 
   test('Use fills the suggestion and goes away once the price is that figure; a locked quotation has no Use', () => {
