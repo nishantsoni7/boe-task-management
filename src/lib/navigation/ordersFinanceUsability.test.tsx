@@ -215,15 +215,16 @@ describe('a list keeps its working context across opening a record and coming Ba
     assert.ok(hook.includes('mergeSearchParams(current,'))
   })
 
-  test('the Order and PI records send their reader back by a named link, never out of the app', () => {
+  test('the Order and PI records draw no Back of their own; the header\'s one Back button never leaves the app', () => {
     for (const path of [ORDER_DETAIL, PI_DETAIL]) {
       const src = code(path)
-      assert.ok(src.includes('<RecordBackLink'), path)
+      assert.ok(!src.includes('<RecordBackLink'), path)
       assert.ok(!src.includes('router.back()'), `${path}: router.back() left the app from a fresh tab`)
     }
-    const back = code('src/components/layout/RecordBackLink.tsx')
-    assert.ok(back.includes('returnPathFrom(useSearchParams()) ?? fallbackHref'), 'validated returnTo, or the record\'s own list')
+    const back = code('src/components/layout/PageBackButton.tsx')
+    assert.ok(back.includes('hasInAppHistory()'), 'pops only when this document pushed an entry of its own')
     assert.ok(back.includes('noteListReturn()'), 'and the list restores its scroll as it does on Back')
+    assert.ok(code('src/lib/navigation/backTarget.ts').includes('returnPathFrom(opts.search)'), 'validated returnTo, else one level up')
   })
 
   test('a quiet PI refresh that fails keeps the record on screen', () => {
@@ -291,7 +292,7 @@ describe('a re-read never throws away what the reader has', () => {
 
   test('no screen touched here listens for focus or visibility, or polls', () => {
     for (const path of [ORDERS_LAYOUT, FINANCE_LAYOUT, SWITCH, FALLBACK, REQUESTS, RECEIVED, ALL_ORDERS,
-                        'src/hooks/useMirrorToUrl.ts', 'src/components/layout/RecordBackLink.tsx']) {
+                        'src/hooks/useMirrorToUrl.ts', 'src/components/layout/PageBackButton.tsx']) {
       const src = code(path)
       for (const trigger of ['visibilitychange', "addEventListener('focus'", 'setInterval(', 'refetchInterval']) {
         assert.ok(!src.includes(trigger), `${path} added ${trigger}`)

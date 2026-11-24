@@ -36,11 +36,10 @@
 // was kept.
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   FileSpreadsheet, Upload, AlertTriangle, CheckCircle2, Info, Loader2,
-  ImageOff, Images, Lock, ArrowLeft,
+  ImageOff, Images, Lock,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
@@ -753,12 +752,6 @@ function NewOrderPiImportPageInner() {
         title="Upload PI"
         onSignOut={handleSignOut}
         showRefresh={false}
-        actions={
-          <button className="boe-btn boe-btn-ghost" onClick={() => router.push('/orders/drafts')}>
-            <ArrowLeft size={13} strokeWidth={2} />
-            PI Drafts
-          </button>
-        }
       >
         <Card style={{ borderColor: 'rgba(196,138,26,0.35)' }}>
           <div style={{ padding: '24px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
@@ -1455,20 +1448,15 @@ function NewOrderPiImportPageInner() {
       // preview and no "Select another PI" anywhere: the same action in three
       // places was three things to read and one to trust.
       //
-      // Before a PI is read there is nothing to lose, so the header offers the
-      // way back to PI Drafts — the page used to have no exit but the sidebar.
-      // Once a preview is on screen that link is withheld: leaving discards the
-      // preview, and the one action here is replacing it.
+      // The way out is the page's one Back button, left of the title. Leaving
+      // with a preview on screen discards it (it is only read, not saved), and
+      // the one action here is replacing it.
       actions={
         stage.kind === 'ready' ? (
           <button className="boe-btn boe-btn-ghost" onClick={openPicker}>
             Change PI
           </button>
-        ) : (
-          <Link href="/orders/drafts" className="boe-btn boe-btn-ghost">
-            <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" /> PI Drafts
-          </Link>
-        )
+        ) : undefined
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', paddingBottom: '24px' }}>

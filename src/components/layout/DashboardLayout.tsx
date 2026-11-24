@@ -1,5 +1,6 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import {
@@ -358,6 +359,7 @@ export function DashboardLayout({
           >
             ☰
           </button>
+          <PageBackButton />
           <div className="boe-page-title-group">
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}

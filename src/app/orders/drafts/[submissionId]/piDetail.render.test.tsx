@@ -3519,8 +3519,8 @@ describe('the page is assembled in the redesigned scan order', () => {
     assert.ok(!page.includes('are all edited in one place'), 'and no description card')
     assert.ok(/actions=\{<>\s*<AmountsToggle[^>]*\/>\s*\{editPiAction\}\s*<\/>\}/.test(page),
       'top right, after the Hide amounts control')
-    assert.ok(/<div className="pi-detail-stack">\s*(\{\/\*[\s\S]*?\*\/\}\s*)?<RecordBackLink fallbackHref="\/orders\/drafts" className="order-back" \/>/.test(page),
-      'Back is the first thing in the page, top-left, in the Order page\'s style')
+    assert.ok(!/RecordBackLink|order-back/.test(page),
+      'the page draws no Back of its own: the header\'s one Back button (PageBackButton) is it')
   })
 
   test('the breakdown closes the Products card; the trail comes after it', () => {

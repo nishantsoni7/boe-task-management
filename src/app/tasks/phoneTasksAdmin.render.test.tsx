@@ -161,7 +161,6 @@ describe('phone phase 4', () => {
 
   test('the 44px targets and 16px fields are pinned', () => {
     for (const rule of [
-      '.boe-p4-qsg-back { width: 44px; height: 44px;',
       '.boe-p4-nrow-trash { width: 44px !important; height: 44px !important; }',
       '.boe-p4-nrow-check { width: 44px !important; }',
       '.boe-p4-nrow-right { width: auto !important;',
@@ -184,7 +183,7 @@ describe('phone phase 4', () => {
       const src = read(file)
       for (const n of names) assert.ok(src.includes(n), `${file}: ${n}`)
     }
-    has('src/app/quick-start-guide/page.tsx', 'boe-p4-qsg-bar', 'boe-p4-qsg-badge', 'boe-p4-qsg-back', 'boe-p4-qsg-card', 'boe-p4-qsg-h1')
+    has('src/app/quick-start-guide/page.tsx', 'boe-p4-qsg-bar', 'boe-p4-qsg-badge', 'boe-p4-qsg-card', 'boe-p4-qsg-h1')
     has('src/components/notifications/NotificationRow.tsx', 'boe-p4-nrow-check', 'boe-p4-nrow-right', 'boe-p4-nrow-open', 'boe-p4-nrow-trash')
     has('src/components/notifications/NotificationsView.tsx', 'boe-p4-load-older')
     for (const f of ['src/app/tasks/create/page.tsx', 'src/app/tasks/create-self/page.tsx']) {
@@ -194,7 +193,6 @@ describe('phone phase 4', () => {
     has('src/app/tasks/quotation-requests/page.tsx', "redirect('/quotations/requests')")
     has('src/app/tasks/quotation-requests/new/page.tsx', "redirect('/quotations?new=1')")
     has('src/app/account/page.tsx', 'boe-p4-acct-card', 'boe-p4-acct-pw', 'boe-p4-acct-eye', 'boe-p4-acct-submit')
-    has('src/app/meetings/guide/page.tsx', 'boe-btn boe-btn-ghost boe-desktop-only')
     has('src/app/meetings/guide/MeetingGuide.tsx', 'boe-p4-mg-jumps', 'boe-p4-mg-aside')
     has('src/components/controlCenter/ForYouSettings.tsx', 'What the three settings mean', 'styles.phoneLegend')
     has('src/app/admin/control-center/data-management/page.tsx', 'cc.bulletsPhone', 'cc.bulletsDesk')

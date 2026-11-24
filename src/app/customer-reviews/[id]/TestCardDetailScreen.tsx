@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { colors } from '@/lib/tokens'
 import { CustomerReviewsLayout } from '@/components/layout/CustomerReviewsLayout'
@@ -550,17 +549,8 @@ export function TestCardDetailScreen({ cardId }: { cardId: string }) {
       onSignOut={signOut}
       actions={
         <>
-          <button
-            type="button"
-            onClick={() => router.push('/customer-reviews')}
-            className="boe-btn boe-btn-ghost"
-            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px' }}
-          >
-            <ArrowLeft size={14} strokeWidth={2} />
-            Back
-          </button>
           {/*
-            THE SECONDARY ACTION AREA IS WHERE THIS BELONGS — beside Back, not
+            THE SECONDARY ACTION AREA IS WHERE THIS BELONGS — in the header, not
             among the workflow controls a candidate uses further down. It is
             rendered only for a resolved `verify` holder, so a candidate never
             sees it on a review they are holding.

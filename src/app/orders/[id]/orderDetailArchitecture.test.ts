@@ -661,10 +661,9 @@ describe('every supporting record opens over the Order, not in another module', 
     }
   })
 
-  test('the page itself keeps ONE link, and it is Back to Orders', () => {
+  test('the page itself keeps NO link: Back is the header\'s one Back button (PageBackButton)', () => {
     assert.equal(/from 'next\/link'/.test(page), false, 'no Link component is imported')
-    assert.equal((body.match(/<RecordBackLink/g) ?? []).length, 1)
-    assert.ok(body.includes('fallbackHref="/orders/all"'))
+    assert.equal(/RecordBackLink|order-back/.test(body), false, 'the page draws no Back of its own')
   })
 
   test('the Switch to Finance control is not offered from this screen', () => {

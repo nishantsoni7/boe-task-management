@@ -1,5 +1,6 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
@@ -264,6 +265,7 @@ export function AssetsLayout({
           >
             ☰
           </button>
+          <PageBackButton />
           <div className="boe-page-title-group">
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}

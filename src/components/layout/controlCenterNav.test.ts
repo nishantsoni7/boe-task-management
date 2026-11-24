@@ -100,10 +100,11 @@ describe('Control Center navigation', () => {
     assert.equal(/sectionTab/.test(read('src/components/controlCenter/controlCenter.module.css')), false)
   })
 
-  test('the page names where you are: a breadcrumb, one line on what it affects, and a way back on a phone', () => {
+  test('the page names where you are: a breadcrumb and one line on what it affects; the way back is the header\'s one Back button', () => {
     assert.ok(shell.includes('aria-label="Breadcrumb"'))
     assert.ok(shell.includes('section.affects'))
-    assert.ok(shell.includes('cc.crumbsBack'))
+    assert.ok(shell.includes('<PageBackButton />'))
+    assert.equal(shell.includes('crumbsBack'), false)
     assert.ok(shell.includes('rememberSection(id)'), 'recent screens feed the search')
   })
 

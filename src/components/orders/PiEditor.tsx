@@ -23,7 +23,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { ArrowLeft, FileSpreadsheet, ImagePlus, Paperclip, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { FileSpreadsheet, ImagePlus, Paperclip, Plus, RotateCcw, Trash2 } from 'lucide-react'
+import { askBeforeLeaving } from '@/lib/navigation/leaveGuard'
 import { colors } from '@/lib/tokens'
 import { formatInr } from '@/lib/pi/previewView'
 import { FABRIC_RESPONSIBILITY_OPTIONS, fabricResponsibilityLabel } from '@/lib/orders/piTerms'
@@ -257,9 +258,12 @@ export function PiEditor({
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [])
-  const confirmLeave = (e: React.MouseEvent) => {
-    if (dirtyRef.current && !window.confirm(EDIT_PI_UNSAVED_PROMPT)) e.preventDefault()
-  }
+  // Leaving by any in-app link, Cancel and the page's one Back button included.
+  useEffect(() => {
+    const onLeave = askBeforeLeaving(() => dirtyRef.current, () => window.confirm(EDIT_PI_UNSAVED_PROMPT))
+    document.addEventListener('click', onLeave, true)
+    return () => document.removeEventListener('click', onLeave, true)
+  }, [])
 
   const uploadPhoto = async (item: PiEditItem, file: File | undefined) => {
     if (!file) return
@@ -353,9 +357,6 @@ export function PiEditor({
   return (
     <div className="pi-edit-page">
       <div className="pi-edit-intro">
-        <Link href={backHref} className="pi-edit-back" onClick={confirmLeave}>
-          <ArrowLeft size={14} strokeWidth={2} aria-hidden="true" /> Back
-        </Link>
         <div className="pi-edit-intro-text">
           <p className="pi-edit-context">{context}</p>
           <p className={mode === 'propose' ? 'pi-edit-note pi-edit-note--propose' : 'pi-edit-note'}>{mode === 'propose' ? EDIT_PI_PROPOSE_NOTE : 'Changes are saved to this PI draft.'}</p>
@@ -665,7 +666,7 @@ export function PiEditor({
               : savedAt ? `Saved ${savedAt}`
               : changed ? 'Changes ready to review' : 'No changes'}
           </span>
-          <Link href={backHref} className="boe-btn boe-btn-ghost" onClick={confirmLeave} aria-disabled={busy === 'submit'}>Cancel</Link>
+          <Link href={backHref} className="boe-btn boe-btn-ghost" aria-disabled={busy === 'submit'}>Cancel</Link>
           {mode === 'propose' && (
             <button type="button" className="boe-btn boe-btn-ghost" onClick={() => void saveDraft()} disabled={busy !== null || !dirty}>
               {busy === 'save' ? 'Saving…' : 'Save and continue later'}

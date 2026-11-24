@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, usePathname, useSearchParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { ChevronLeft, ClipboardList, MessageCircle, Pencil, Search as ZoomIcon, ShoppingBag } from 'lucide-react'
+import { ClipboardList, MessageCircle, Pencil, Search as ZoomIcon, ShoppingBag } from 'lucide-react'
 import { InventoryLayout } from '@/components/layout/InventoryLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { Toast, useToast } from '@/components/ui/toast'
@@ -85,7 +85,6 @@ export default function ProductDetailScreen() {
     return (
       <InventoryLayout {...layoutProps} title="Product">
         <div className={s.wrapNarrow}>
-          <Link href="/inventory" className={s.back}><ChevronLeft size={18} /> Back to stock</Link>
           <div className={s.empty}>
             <div className={s.emptyTitle}>Product not found</div>
             <div className={s.emptyText}>It may have been deleted, or you do not have access to it.</div>
@@ -114,8 +113,6 @@ export default function ProductDetailScreen() {
     <InventoryLayout {...layoutProps} title={item.name} subtitle={item.product_code}
       actions={access.edit ? <Link href={`/inventory/${item.id}/edit`} className={`${s.btn} ${s.btnSm}`}><Pencil size={15} /> Edit</Link> : undefined}>
       <div className={`${s.wrap} ${s.detailPad}`}>
-        <Link href="/inventory" className={s.back}><ChevronLeft size={18} /> Back to stock</Link>
-
         <div className={s.detail}>
           <div className={s.gallery}>
             <button type="button" className={s.mainImg} onClick={() => urls.length && setZoom(true)} aria-label={`Open pictures of ${item.name}`}>

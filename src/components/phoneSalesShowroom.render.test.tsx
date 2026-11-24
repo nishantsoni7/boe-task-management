@@ -249,10 +249,11 @@ describe('Phase 4: Showroom Admin', () => {
     assert.match(phase4, /\.sra-cat-btn \{ width: 44px; height: 44px;/)
     assert.match(phase4, /\.sra-cat-icon \{ display: none !important; \}/)
   })
-  test('inquiry: 12px labels, a 44px remove and back', () => {
+  test('inquiry: 12px labels and a 44px remove; Back is the header\'s one Back button', () => {
     const src = read('src/app/showroom-admin/inquiry/[inquiryId]/page.tsx')
     assert.equal((src.match(/className="sra-inq-label"/g) ?? []).length, 2)
-    assert.ok(src.includes('className="sra-inq-remove"') && src.includes('className="sra-inq-back"'))
+    assert.ok(src.includes('className="sra-inq-remove"'))
+    assert.equal(src.includes('sra-inq-back'), false)
     assert.match(phase4, /\.sra-inq-label \{ font-size: 12px !important;/)
   })
   test('my QR: on a phone screen (not print) no kicker or heading, full-width buttons, the link behind Copy link', () => {

@@ -130,7 +130,7 @@ test('the plan has its own page, which says "no access" rather than drawing noth
   assert.match(page, /<OrderPaymentPlan\b/)
   assert.match(page, /caps\.canViewPaymentPlan/)
   assert.match(page, /canEdit=\{ready\.caps\.canEditPaymentPlan\}/)
-  assert.match(page, /Back to the Order/)
+  assert.doesNotMatch(page, /Back to the Order/, 'Back is the header\'s one Back button')
   assert.match(page, /You do not have access to the Payment plan/)
 })
 

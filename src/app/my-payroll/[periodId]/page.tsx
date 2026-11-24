@@ -293,19 +293,6 @@ export default function MyPayrollDetailPage() {
       subtitle="Your salary for this month, and how it was worked out"
       onSignOut={handleSignOut}
     >
-      <div className={styles.backRow} style={{ marginBottom: 16 }}>
-        <button
-          onClick={() => router.push('/my-payroll')}
-          className={styles.back}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: '#686D6C', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4, padding: 0,
-          }}
-        >
-          ← Back to My Payroll
-        </button>
-      </div>
-
       {(error || reviewError) && (
         <div role="alert" style={{
           marginBottom: 16, padding: '10px 16px', borderRadius: 8,

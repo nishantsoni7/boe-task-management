@@ -1,5 +1,6 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { ArrowLeftRight, CheckSquare, CreditCard, Bell, Receipt, Landmark, HandCoins, Wallet, PiggyBank } from 'lucide-react'
@@ -364,6 +365,7 @@ export function FinanceLayout({
           >
             ☰
           </button>
+          <PageBackButton />
           <div className="boe-page-title-group">
             <h1 className="boe-page-title">{title}</h1>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}

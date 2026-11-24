@@ -226,11 +226,11 @@ describe('masking a rendered tree, and restoring it', () => {
 describe('the page wires it through the header and around every figure it draws', () => {
   const page = readFileSync(join(process.cwd(), 'src/app/orders/drafts/[submissionId]/page.tsx'), 'utf8').replace(/\r/g, '')
 
-  test('a toggle sits in the header actions; Back is top-left, as on the Order page (2026-10-22)', () => {
+  test('a toggle sits in the header actions; Back is the header\'s one Back button, not drawn here', () => {
     const actions = page.slice(page.indexOf('actions={<>'), page.indexOf('</>}', page.indexOf('actions={<>')))
     assert.ok(actions.includes('<AmountsToggle hidden={amountsHidden} onChange={setAmountsHidden} />'))
-    assert.ok(!actions.includes('{backButton}'), 'Back left the header')
-    assert.ok(page.includes('<RecordBackLink fallbackHref="/orders/drafts" className="order-back" />'))
+    assert.ok(!actions.includes('{backButton}'), 'Back is not in the header actions')
+    assert.ok(!/RecordBackLink|order-back/.test(page), 'and not in the page either')
   })
 
   test('the region wraps the whole page AND its dialogs — payment details and the submit sequence included', () => {

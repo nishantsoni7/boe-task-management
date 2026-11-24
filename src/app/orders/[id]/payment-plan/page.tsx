@@ -11,7 +11,6 @@
 
 import { displayOrderNumber } from '@/lib/orderNumbering'
 import { useEffect, useMemo, useState } from 'react'
-import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useQueryClient } from '@tanstack/react-query'
@@ -71,7 +70,6 @@ export default function OrderPaymentPlanPage() {
     router.replace('/login')
   }
 
-  const orderHref = `/orders/${id}`
   const ready = access.kind === 'ready' ? access : null
   const title = ready
     ? `Payment plan · Order ${displayOrderNumber(ready.order.display_number)}`.trim()
@@ -80,7 +78,6 @@ export default function OrderPaymentPlanPage() {
   return (
     <OrdersLayout profile={profile} title={title} onSignOut={handleSignOut} showRefresh={false}>
       <div className="opp-page">
-        <Link href={orderHref} className="opp-back">← Back to the Order</Link>
         {access.kind === 'loading' && <p className="opp-note" role="status">Opening the Payment plan…</p>}
         {access.kind === 'missing' && <p className="opp-warn" role="alert">This Order could not be found.</p>}
         {access.kind === 'denied' && (
