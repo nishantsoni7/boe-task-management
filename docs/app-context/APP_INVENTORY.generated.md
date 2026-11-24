@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `1dcd4005` — Docs: #1008 merged and live (2026-11-24 11:06 IST) (#1010)
-- Commits on this branch: 1567
+- Commit: `ac410db5` — Merge remote-tracking branch 'origin/main' into docs/photo-read-run
+- Commits on this branch: 1570
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 506 (first `20260530_create_positions.sql`, latest `20270826000000_pricing_engine_v3.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,6 +14,9 @@
 
 ## Latest 25 commits
 
+- `ac410db5` 2026-11-24 Merge remote-tracking branch 'origin/main' into docs/photo-read-run
+- `f4a93245` 2026-11-24 Docs: stamp #994 and #987 (the quotation builder's top section, opening a quotation) as merged and live (no SQL) (#1011)
+- `55c00f20` 2026-11-24 Docs: the first full photo read (373 of 373) and the new accuracy figures
 - `1dcd4005` 2026-11-24 Docs: #1008 merged and live (2026-11-24 11:06 IST) (#1010)
 - `4a65a657` 2026-11-24 Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL) (#1008)
 - `57c51bd1` 2026-11-24 Docs: #1007 merged and live (2026-11-24 09:40 IST) (#1009)
@@ -36,9 +39,6 @@
 - `43175621` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
 - `32004032` 2026-11-23 Quotations: the Open tile's migration file (already applied) and the merge stamps for #986 and #988 (#989)
 - `859bba0c` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL) (#988)
-- `dc267bab` 2026-11-23 Quotations: opening a quotation answers at once and starts its reads at the click (PR A of 5, no SQL) (#987)
-- `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
-- `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
 
 ## Pages by top-level area
 
