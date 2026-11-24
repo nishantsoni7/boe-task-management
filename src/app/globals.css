@@ -15621,11 +15621,11 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
    rules by cascade order and leaves them as they are (tests read those by first occurrence).
    ══════════════════════════════════════════════════════════════════════════════ */
 
-/* ── The Order bar: one card of six cells in ONE row (ERP, Production, Order type, Due | Advance, From client), hairlines from a
-   1px gap on a ruled background. Eight cells did not fit real values at a 1514 px window; Dispatch and Fabric & Finish left the
-   bar (owner, order 549), and the grid below keeps it calm when the window is narrower. ── */
+/* ── The Order bar: one card of five cells in ONE row (ERP, Production, Order type, Due | Advance), hairlines from a 1px gap on a
+   ruled background, the cells sharing the whole row so no space is left empty. Eight cells did not fit real values at a 1514 px
+   window; Dispatch, Fabric & Finish and From client left the bar (owner, order 549). ── */
 .order-stages--bar {
-  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr) minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1.9fr) minmax(0, 1fr); gap: 1px;
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1.45fr); gap: 1px;
   background: #ECE7E0; border: 1px solid #ECE7E0; border-radius: 12px; overflow: hidden;
 }
 .order-stages--bar > .order-stage-gap { display: none; }
@@ -15663,13 +15663,15 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-bar-chip--blue { background: #EAF0F8; color: #335A86; }
 @media (max-width: 1240px) {
   .order-stages--bar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .order-stages--bar > .order-stage:last-child { grid-column: span 3; }
 }
 @media (max-width: 720px) {
   .order-stages--bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .order-stages--bar > .order-stage:last-child { grid-column: span 2; }
 }
 
 /* ── The Documents row now holds the PI and the notes only ── */
-.order-docs-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'docs' 'notes'; }
+.order-docs-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'docs'; grid-template-rows: auto; }
 .order-docs-row > .order-docs { height: auto; }
 
 /* ── The folded rows ── */
@@ -15738,4 +15740,78 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
   .order-row-summary { white-space: normal; }
   .order-row-body { padding: 4px 16px 20px; }
   .order-row-body .order-timeline { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   CONFIRMED ORDER: THE PI CARD (Nitish / Operations, 24 Nov 2026)
+   Heading row (Main PI · V1, status, dates, PI history by it) over a strip of four columns: PI (Excel, ERP, PDF),
+   Product pictures (Download ZIP, View all), Design Files, Client PO. The absence note and a footer (Sales highlight,
+   Notes) follow, and the footer takes no space at all when both are empty. Scoped to .order-pic so every older
+   .order-doc-* rule stays as it was (tests read those by first occurrence). ═══════════════════════════════════ */
+.order-docs-row > .order-docs { height: auto; }
+.order-pic-cell, .order-pic-pi { min-width: 0; }
+.order-docs .order-docs-head { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; padding: 0; border: 0; }
+.order-docs .order-pic { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 10px; padding: 12px 16px 14px; }
+.order-docs .order-pic .order-doc-section.order-pi { display: block; padding: 0; border: 0; background: transparent; }
+.order-docs .order-pic .order-pi-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 20px; margin: 0; padding: 0; }
+.order-docs .order-pic .order-doc-row-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin: 0; }
+.order-docs .order-pic .order-pic-icon { display: grid; place-items: center; flex: none; width: 30px; height: 30px; border-radius: 8px; background: #F8EAE4; color: #963B27; }
+.order-docs .order-pic .order-doc-row-title { font-family: var(--boe-font-heading); font-size: 16px; font-weight: 700; letter-spacing: 0; text-transform: none; color: #303536; }
+.order-docs .order-pic .order-doc-note { margin: 6px 0 0; }
+.order-docs .order-pic .order-pic-history { display: flex; align-items: baseline; justify-content: flex-start; flex-wrap: nowrap; gap: 8px; margin: 0; padding: 0; border: 0; font-size: 13px; }
+.order-docs .order-pic .order-pic-history .order-doc-prop-label { font-size: 13px; color: #686D6C; }
+.order-docs .order-pic .order-pic-history .order-doc-prop-link { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 600; color: #303536; }
+
+/* The strip: four columns sharing the row in proportion to what they hold, label above value, hairlines from a 1px gap */
+.order-docs .order-pic .order-pic-strip {
+  display: grid; grid-template-columns: minmax(250px, 1fr) minmax(304px, 1fr) minmax(0, 1.15fr) minmax(0, 0.8fr); gap: 1px; margin: 0; padding: 0;
+  background: #ECE7E0; border: 1px solid #ECE7E0; border-radius: 10px; overflow: hidden;
+}
+.order-docs .order-pic .order-pic-strip--short { grid-template-columns: minmax(304px, 1fr) minmax(0, 1.15fr) minmax(0, 0.8fr); }
+.order-docs .order-pic .order-pic-strip > .order-doc-prop,
+.order-docs .order-pic .order-pic-strip > .order-doc-section {
+  display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 7px;
+  min-width: 0; margin: 0; padding: 9px 14px 11px; background: #FBFAF8; border: 0; border-radius: 0;
+}
+.order-docs .order-pic .order-pic-strip .order-doc-prop-label,
+.order-docs .order-pic .order-pic-strip .order-doc-row-title,
+.order-docs .order-pic .order-pic-strip .order-doc-pictures-title {
+  margin: 0; font-family: var(--boe-font-body); font-size: 12px; font-weight: 600; letter-spacing: 0.05em; line-height: 1.2; text-transform: uppercase; color: #686D6C;
+}
+.order-docs .order-pic .order-pic-strip .order-doc-prop-value { margin: 0; font-size: 13.5px; font-weight: 500; text-align: left; color: #303536; line-height: 1.35; }
+.order-docs .order-pic .order-pic-strip .order-doc-row-main { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.order-docs .order-pic .order-pic-strip .order-doc-row-head { display: block; margin: 0; font-size: 12px; line-height: 1.2; }
+.order-docs .order-pic .order-pic-strip .order-doc-row-meta,
+.order-docs .order-pic .order-pic-strip .order-doc-row-actions { display: none; }
+.order-docs .order-pic .order-pic-strip .order-doc-empty { margin: 0; font-size: 13.5px; line-height: 32px; color: #8F9392; font-weight: 400; }
+.order-docs .order-pic .order-pic-strip .order-doc-files { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.order-docs .order-pic .order-pic-strip .order-doc-file-row { gap: 2px; min-width: 0; max-width: 100%; }
+.order-docs .order-pic .order-pic-strip .order-doc-file { min-width: 0; max-width: 100%; min-height: 30px; padding: 0 9px; border: 1px solid #E4DED7; border-radius: 8px; background: #fff; font-size: 13px; }
+.order-docs .order-pic .order-pic-strip .order-doc-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 190px; }
+.order-docs .order-pic .order-pic-strip .order-doc-count { display: none; }
+.order-docs .order-pic .order-pic-strip .order-doc-pictures { align-items: flex-start; }
+.order-docs .order-pic .order-pic-strip .order-doc-pictures-icon,
+.order-docs .order-pic .order-pic-strip .order-doc-pictures-actions { display: none; }
+.order-docs .order-pic .order-pic-strip .order-doc-note { margin: 0; font-size: 12.5px; }
+
+/* The buttons of the PI and Product pictures columns: compact, bordered, wrapping */
+.order-docs .order-pic .order-pic-btns { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0; }
+.order-docs .order-pic .order-pic-btns .order-dl-btn { min-height: 32px; padding: 0 11px; font-size: 13px; }
+.order-docs .order-pic .order-docs-absence { margin: -2px 0 0; padding: 0; font-size: 13px; color: #686D6C; }
+
+/* The footer: the Sales highlight and the Notes (two columns when both exist, one when one, nothing when neither) */
+.order-docs .order-pic .order-pic-footer { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; }
+.order-docs .order-pic .order-pic-footer:empty { display: none; }
+.order-docs .order-pic .order-pic-footer > * { margin: 0; min-width: 0; flex: 1 1 320px; }
+.order-docs .order-pic .order-pic-footer > :first-child { flex-grow: 1.7; }
+.order-docs .order-pic .order-pic-footer .order-notes { padding: 10px 14px; background: #FBFAF8; border: 1px solid #ECE7E0; border-radius: 10px; }
+.order-docs .order-pic .order-pic-footer .order-notes-head { margin-bottom: 3px; }
+
+@container (max-width: 1000px) {
+  .order-docs .order-pic .order-pic-strip, .order-docs .order-pic .order-pic-strip--short { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@container (max-width: 640px) {
+  .order-docs .order-pic { padding: 12px 14px 14px; }
+  .order-docs .order-pic .order-pic-btns .order-dl-btn { flex: 1 1 calc(50% - 8px); justify-content: center; min-height: 44px; }
+  .order-docs .order-pic .order-pic-footer > * { flex-basis: 100%; }
 }

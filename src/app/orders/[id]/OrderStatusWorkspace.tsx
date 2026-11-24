@@ -16,7 +16,7 @@
 //                    current Main PI, Design Files and Client PO as rows.
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Check, Download, ExternalLink, FileSpreadsheet, FileText, Image as ImageIcon, Layers, Upload, X } from 'lucide-react'
+import { Check, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Image as ImageIcon, Layers, Upload, X } from 'lucide-react'
 import { productPicturesLine, PRODUCT_PICTURES_TITLE, type ProductPicturesState } from '@/lib/orders/productPictures'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -299,8 +299,14 @@ export function OrderDocumentsPanel({
   mainPiOperations,
   supporting, changes = [], onReviewChange, onResubmitChange, onOpenFile, fileError = null,
   onReviewRevision, onApproveRevision, onRejectRevision, onOpenProposal, revisionApproverInactive = false, reapprove,
-  onOpenPdf, piVersions, pictures, onDownloadFile,
+  onOpenPdf, piVersions, pictures, onDownloadFile, footer,
 }: {
+  /**
+   * What sits under the strip inside the card: the Sales highlight and the Order's
+   * notes (Nitish / Operations, 24 Nov 2026: they used to be two more cards above and
+   * below it). Nothing is drawn when both are empty.
+   */
+  footer?: React.ReactNode
   /** The approved PI's product pictures: count, view and one-file download. */
   pictures?: ProductPicturesBlockProps
   /** Saves a Design Files / Client PO file under its own name. */
@@ -402,7 +408,6 @@ export function OrderDocumentsPanel({
     ? [supporting.design, supporting.clientPo].flatMap(r => (r.kind === 'none' && r.note ? [r.note] : []))
     : []
   const mergedAbsence = absenceNotes.length === 2 ? mergeAbsenceNotes(absenceNotes[0], absenceNotes[1]) : null
-  const zipCount = pictures && pictures.state.kind === 'ready' ? pictures.state.available : 0
 
   // THE ONE STATUS ON THE MAIN PI ROW. Accepted by Operations (or an Order with
   // no handoff at all) is simply Current; anything short of that says so.
@@ -547,12 +552,21 @@ export function OrderDocumentsPanel({
         </div>
       )}
 
-      {/* ── WHAT IS CURRENT ──
-          The Main PI across the full width — what it is on the left, how to
-          open it on the right, its product pictures underneath. Then Design
-          Files beside Client PO once the card is wide enough; stacked below. */}
-      <div>
-        <div className="order-docs-main">
+      {/* ── WHAT IS CURRENT, AS ONE CARD (Nitish / Operations, 24 Nov 2026) ──
+          Row one: the Main PI, its status and dates, and the real downloads on the same line.
+          Row two: a four-cell strip, label above value: PI history, Product pictures, Design
+          Files, Client PO (an empty one is one muted word, not a box). Under it: the absence
+          note, then the footer (Sales highlight, Notes). Every control is the one that was
+          here; only the arrangement changed. */}
+      <div className="order-docs-main">
+      <div className="order-pic">
+        {/* ── THE PI CARD, SECOND PASS (owner, 24 Nov 2026) ──
+            Heading row: Main PI · V1, its status and dates, and the PI history by it.
+            Under it a strip of four columns: PI (the current PI as Excel, ERP and PDF),
+            Product pictures (Download ZIP, View all in a popup), Design Files, Client PO.
+            The absence note, then the footer (Sales highlight, Notes): the footer is not
+            drawn at all, not even its space, when both are empty. Every control is the
+            one that was here; only the arrangement changed. */}
         {mainPi.kind !== 'ready' ? (
           <DocRow title={DOC_MAIN_PI_TITLE} status={piHistoryLink}>
             {mainPi.kind === 'loading' ? (
@@ -566,101 +580,77 @@ export function OrderDocumentsPanel({
             {piVersionNotes}
           </DocRow>
         ) : (
-          /* THE MAIN PI, LAID OUT LIKE A NOTION RECORD (owner, 2026-10-19):
-             the title and its one status, with the quiet links on the right;
-             then the two dates as properties (muted label, value); then the
-             actions in one line underneath — one primary, the rest secondary.
-             The reviewer and the file name are not repeated here (owner), and
-             Edit PI is in the page header. The product pictures sit BESIDE
-             this column, not under it (.order-docs-main is the row). */
           <section className="order-doc-section order-doc-section--primary order-pi" aria-label={DOC_MAIN_PI_TITLE}>
             <div className="order-pi-head">
               <div className="order-doc-row-head">
+                <span className="order-pic-icon" aria-hidden="true"><FileText size={16} strokeWidth={2} /></span>
                 <span className="order-doc-row-title">{`${DOC_MAIN_PI_TITLE} · V${mainPi.version.versionNumber}`}</span>
                 {piStatus}
                 <PiDetails uploadedAt={mainPi.uploadedAt} approvedAt={mainPi.approvedAt} />
               </div>
-              <div className="order-pi-links" />
+              {/* PI HISTORY, by the heading (it was a property row under the downloads, owner 2026-10-26). */}
+              {piVersions && (
+                <div className="order-doc-prop order-pic-history">
+                  <span className="order-doc-prop-label">{PI_VERSIONS_HISTORY_LABEL}</span>
+                  <button type="button" className="order-doc-prop-link" onClick={piVersions.onOpen} aria-haspopup="dialog">
+                    {`V${mainPi.version.versionNumber}`} · View history <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
+                  </button>
+                </div>
+              )}
             </div>
             {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
             {piVersionNotes}
-            {/* DOWNLOADS, IN THE ORDER PEOPLE USE THEM (owner, 2026-10-20):
-                the original Excel and the ERP sheet are the two that matter, so
-                they carry the colour; the pictures ZIP is next; the PDF, which
-                is rarely wanted, is last and quiet. */}
-            <div className="order-dl" role="group" aria-label={DL_GROUP_LABEL}>
-              <span className="order-dl-label">{DL_GROUP_LABEL}</span>
-              <div className="order-dl-row">
-                {/* THE ORIGINAL EXCEL: the workbook Sales uploaded for THIS
-                    version, byte for byte, under its own name. An edited
-                    version has none of its own, and never borrows V1's. */}
-                {!mainPi.version.editedInApp && (
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-secondary order-dl-btn order-dl-btn--key"
-                    onClick={() => onDownload(mainPi.version)}
-                    disabled={!mainPi.hasFile || downloading}
-                    title={`${MAIN_PI_ORIGINAL_EXCEL_LABEL}: ${mainPi.fileName ?? mainPi.reference}`}
-                  >
-                    <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
-                    {downloading ? 'Preparing…' : DL_EXCEL_LABEL}
-                  </button>
-                )}
-                {pictures?.onDownloadErp && (
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-secondary order-dl-btn order-dl-btn--key"
-                    onClick={pictures.onDownloadErp}
-                    disabled={pictures.erpBusy}
-                    title="Line-items sheet for the production ERP"
-                  >
-                    <Download size={13} strokeWidth={2} aria-hidden="true" />
-                    {pictures.erpBusy ? 'Preparing…' : DL_ERP_LABEL}
-                  </button>
-                )}
-                {zipCount > 0 && pictures && (
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-secondary order-dl-btn"
-                    onClick={pictures.onDownloadAll}
-                    disabled={pictures.downloading}
-                    title="All product pictures, named by product code"
-                  >
-                    <ImageIcon size={13} strokeWidth={2} aria-hidden="true" />
-                    {pictures.downloading ? 'Preparing ZIP…' : `Pictures (${zipCount}) · ZIP`}
-                  </button>
-                )}
-                <span className="order-dl-spacer" />
-                {/* THE PI AS A DOCUMENT: this version's PDF, generated from its
-                    own details — for a workbook version and an edited one alike. */}
-                {onOpenPdf && (
-                  <button
-                    type="button"
-                    className="boe-btn boe-btn-ghost order-dl-btn order-dl-btn--quiet"
-                    onClick={() => onOpenPdf(mainPi.version.id, true)}
-                    title="Generated from this version's details"
-                  >
-                    <FileText size={13} strokeWidth={2} aria-hidden="true" />
-                    {DL_PDF_LABEL}
-                  </button>
-                )}
-              </div>
-            </div>
-            {/* PI HISTORY, AS A PROPERTY ROW under the downloads (owner, 2026-10-26). */}
-            {piVersions && (
-              <div className="order-doc-prop">
-                <span className="order-doc-prop-label">{PI_VERSIONS_HISTORY_LABEL}</span>
-                <button type="button" className="order-doc-prop-link" onClick={piVersions.onOpen} aria-haspopup="dialog">
-                  {`V${mainPi.version.versionNumber}`} · View history <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
-                </button>
-              </div>
-            )}
           </section>
         )}
-        {picturesBlock}
-        </div>
 
-        <div className="order-docs-side">
+        <div className={mainPi.kind === 'ready' ? 'order-docs-side order-pic-strip' : 'order-docs-side order-pic-strip order-pic-strip--short'}>
+          {/* PI: the current PI in the three formats people use, in the owner's order (Excel and ERP carry
+              the colour, 2026-10-20). */}
+          {mainPi.kind === 'ready' && (
+            <div className="order-doc-prop order-pic-cell order-pic-pi" role="group" aria-label={DL_GROUP_LABEL}>
+              <span className="order-doc-prop-label">PI</span>
+              <div className="order-pic-btns">
+                  {!mainPi.version.editedInApp && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-secondary order-dl-btn order-dl-btn--key"
+                      onClick={() => onDownload(mainPi.version)}
+                      disabled={!mainPi.hasFile || downloading}
+                      title={`${MAIN_PI_ORIGINAL_EXCEL_LABEL}: ${mainPi.fileName ?? mainPi.reference}`}
+                    >
+                      <FileSpreadsheet size={13} strokeWidth={2} aria-hidden="true" />
+                      {downloading ? 'Preparing…' : DL_EXCEL_LABEL}
+                    </button>
+                  )}
+                  {pictures?.onDownloadErp && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-secondary order-dl-btn order-dl-btn--key"
+                      onClick={pictures.onDownloadErp}
+                      disabled={pictures.erpBusy}
+                      title="Line-items sheet for the production ERP"
+                    >
+                      <Download size={13} strokeWidth={2} aria-hidden="true" />
+                      {pictures.erpBusy ? 'Preparing…' : DL_ERP_LABEL}
+                    </button>
+                  )}
+                  {/* THE PI AS A DOCUMENT: this version's PDF, generated from its
+                      own details — for a workbook version and an edited one alike. */}
+                  {onOpenPdf && (
+                    <button
+                      type="button"
+                      className="boe-btn boe-btn-secondary order-dl-btn"
+                      onClick={() => onOpenPdf(mainPi.version.id, true)}
+                      title="Generated from this version's details"
+                    >
+                      <FileText size={13} strokeWidth={2} aria-hidden="true" />
+                      {DL_PDF_LABEL}
+                    </button>
+                  )}
+              </div>
+            </div>
+          )}
+          {picturesBlock}
 
         {/* ── Design Files: production references only (drawings, plans,
             site files). The PI's product pictures live with the Main PI. ── */}
@@ -700,8 +690,10 @@ export function OrderDocumentsPanel({
             )}
           </DocRow>
         )}
-        {mergedAbsence && <p className="order-doc-note order-docs-absence">{mergedAbsence}</p>}
         </div>
+        {mergedAbsence && <p className="order-doc-note order-docs-absence">{mergedAbsence}</p>}
+        {footer && <div className="order-pic-footer">{footer}</div>}
+      </div>
       </div>
       {fileError &&<p className="order-doc-unavailable order-docs-error" role="alert">{fileError}</p>}
     </section>
@@ -751,21 +743,36 @@ export type ProductPicturesBlockProps = {
  * the pictures this reader can actually retrieve, and is not offered when
  * there are none.
  */
-function ProductPicturesBlock({ state, onView, message }: ProductPicturesBlockProps) {
-  const usable = state.kind === 'ready'
+function ProductPicturesBlock({ state, onView, onDownloadAll, downloading, message }: ProductPicturesBlockProps) {
+  const ready = state.kind === 'ready'
   const warn = state.kind === 'missing' || state.kind === 'unreadable'
   return (
     <div className="order-doc-pictures order-doc-prop" role="group" aria-label={PRODUCT_PICTURES_TITLE}>
       <span className="order-doc-prop-label">{PRODUCT_PICTURES_TITLE}</span>
-      <span className={warn ? 'order-doc-prop-value order-doc-pictures-line--warn' : 'order-doc-prop-value'}>
-        {productPicturesLine(state)}
-        {usable && (
-          <>
-            {' · '}
-            <button type="button" className="order-doc-prop-link" onClick={onView} aria-haspopup="dialog">View</button>
-          </>
-        )}
-      </span>
+      {ready ? (
+        <div className="order-pic-btns">
+          <button
+            type="button"
+            className="boe-btn boe-btn-secondary order-dl-btn"
+            onClick={onDownloadAll}
+            disabled={downloading}
+            title="All product pictures, named by product code"
+          >
+            <ImageIcon size={13} strokeWidth={2} aria-hidden="true" />
+            {downloading ? 'Preparing ZIP…' : 'Download ZIP'}
+          </button>
+          <button type="button" className="boe-btn boe-btn-secondary order-dl-btn" onClick={onView} aria-haspopup="dialog">
+            <Eye size={13} strokeWidth={2} aria-hidden="true" />
+            {`View all (${state.available})`}
+          </button>
+        </div>
+      ) : (
+        <span className={warn ? 'order-doc-prop-value order-doc-pictures-line--warn' : 'order-doc-prop-value'}>
+          {productPicturesLine(state)}
+        </span>
+      )}
+      {/* Some pictures gone from storage: said plainly, beside the buttons that work on the rest. */}
+      {ready && state.unavailable > 0 && <span className="order-doc-note order-doc-pictures-line--warn">{productPicturesLine(state)}</span>}
       {message && <p className="order-doc-note order-doc-prop-note" role="status">{message}</p>}
     </div>
   )

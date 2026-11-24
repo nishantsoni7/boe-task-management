@@ -15,7 +15,6 @@ import {
   DETAIL_ROW_ORDER,
   advanceGate,
   detailRows,
-  fromClientGate,
   orderBarGates,
   type DetailRowsInput,
 } from './orderDetailRows'
@@ -103,25 +102,15 @@ describe('the advance gate', () => {
   })
 })
 
-describe('the From client gate', () => {
-  test('unknown until its read lands, None at zero, an amber count above', () => {
-    assert.equal(fromClientGate(null).value, '—')
-    assert.equal(fromClientGate(0).value, 'None')
-    assert.equal(fromClientGate(0).chip, null)
-    assert.deepEqual(fromClientGate(2).chip, { text: '2 pending', tone: 'amber' })
-    assert.match(fromClientGate(1).label, /1 item pending/)
-  })
-})
-
 describe('the due date on the bar', () => {
   test('counts down, and turns late once it has passed', () => {
-    const ok = orderBarGates({ advance: advance(), pendingFromClient: 0, dueDate: '20 Dec', daysToDue: 26 })
+    const ok = orderBarGates({ advance: advance(), dueDate: '20 Dec', daysToDue: 26 })
     assert.equal(ok.due.countdown, '26 days left')
     assert.equal(ok.due.late, false)
-    const late = orderBarGates({ advance: advance(), pendingFromClient: 0, dueDate: '1 Nov', daysToDue: -3 })
+    const late = orderBarGates({ advance: advance(), dueDate: '1 Nov', daysToDue: -3 })
     assert.equal(late.due.countdown, '3 days overdue')
     assert.equal(late.due.late, true)
-    const none = orderBarGates({ advance: null, pendingFromClient: null, dueDate: null, daysToDue: null })
+    const none = orderBarGates({ advance: null, dueDate: null, daysToDue: null })
     assert.equal(none.due.countdown, null)
   })
 })

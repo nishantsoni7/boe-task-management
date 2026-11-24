@@ -62,11 +62,11 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
   dispatch?: { text: string; percent: number; onOpen: () => void } | null
   /**
    * THE ORDER BAR (Nitish / Operations, 24 Nov 2026): the same strip with the due
-   * date and the two gates that decide whether production can start (Advance,
-   * From client), as ONE row of six cells. Each gate is a button that opens its
-   * folded row below the products. Dispatch and Fabric & Finish are not on the bar
-   * (owner, on the real order 549: not required on top). Absent, the strip is
-   * exactly the four separate cells it always was.
+   * date and the advance gate that decides whether production can start, as ONE row
+   * of five cells. The Advance cell is a button that opens its folded row below the
+   * products. Dispatch, Fabric & Finish and From client are not on the bar (owner, on
+   * the real order 549: not required on top). Absent, the strip is exactly the four
+   * separate cells it always was.
    */
   bar?: (OrderBarGates & { onOpen: (row: DetailRowKey) => void }) | null
 }) {
@@ -105,7 +105,6 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
       {bar && (
         <>
           <OrderBarGateButton label="Advance" gate={bar.advance} row="pay" onOpen={bar.onOpen} />
-          <OrderBarGateButton label="From client" gate={bar.fromClient} row="pend" onOpen={bar.onOpen} />
         </>
       )}
     </section>

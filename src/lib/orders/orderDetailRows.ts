@@ -60,7 +60,7 @@ export type DetailRowView = {
   openByDefault: boolean
 }
 
-// ── The Order bar's two gates and the due date ───────────────────────────────
+// ── The Order bar's advance gate and the due date ────────────────────────────
 
 export type BarGate = {
   /** What is drawn in the cell. */
@@ -73,7 +73,6 @@ export type BarGate = {
 export type OrderBarGates = {
   due: { date: string | null; countdown: string | null; late: boolean }
   advance: BarGate
-  fromClient: BarGate
 }
 
 const DASH = '—'
@@ -114,20 +113,8 @@ export function advanceGate(advance: AdvanceReadiness | null): BarGate {
   return { value, chip: { text: `Below ${threshold}`, tone: 'red' }, label: `${value} ${base}; below the ${threshold} requirement` }
 }
 
-/** "From client": the open Pending-from-client items, once their own read has landed. */
-export function fromClientGate(openCount: number | null): BarGate {
-  if (openCount === null) return { value: DASH, chip: null, label: 'Pending from client not read yet' }
-  if (openCount === 0) return { value: 'None', chip: null, label: 'Nothing is pending from the client' }
-  return {
-    value: '',
-    chip: { text: `${openCount} pending`, tone: 'amber' },
-    label: `${openCount} item${openCount === 1 ? '' : 's'} pending from the client`,
-  }
-}
-
 export function orderBarGates(input: {
   advance: AdvanceReadiness | null
-  pendingFromClient: number | null
   dueDate: string | null
   daysToDue: number | null
 }): OrderBarGates {
@@ -138,7 +125,6 @@ export function orderBarGates(input: {
       late: input.daysToDue !== null && input.daysToDue < 0,
     },
     advance: advanceGate(input.advance),
-    fromClient: fromClientGate(input.pendingFromClient),
   }
 }
 

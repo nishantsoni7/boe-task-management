@@ -76,6 +76,8 @@ const card = (rows: PersistedDocumentSubmission[], v = viewer(), over: { absence
       }}
     />,
   )
+/** The strip under the Main PI row: PI history, Product pictures, Design Files, Client PO. */
+const STRIP = 'class="order-docs-side order-pic-strip"'
 /** Only the rows of CURRENT documents, below the changes panel. */
 const rowsOf = (html: string) => text(html.slice(html.indexOf('class="order-docs-main"')))
 /** Only the changes panel. */
@@ -94,11 +96,16 @@ describe('the Documents card', () => {
     assert.ok(t.indexOf('Main PI · V1') < t.indexOf('Design Files'))
     assert.ok(t.indexOf('Design Files') < t.indexOf('Client PO'))
     assert.equal((html.match(/class="order-doc-section[ "]/g) ?? []).length, 3)
-    // The Main PI alone in the main column; the two supporting rows in the side one.
-    const main = html.slice(html.indexOf('class="order-docs-main"'), html.indexOf('class="order-docs-side"'))
-    const side = html.slice(html.indexOf('class="order-docs-side"'))
-    assert.ok(text(main).includes('Main PI · V1') && !text(main).includes('Design Files'))
+    // REVISED (Nitish / Operations, 24 Nov 2026): the Main PI and its downloads are one row; under it a
+    // four-cell strip: PI history, Product pictures, Design Files, Client PO (an empty one is one muted word).
+    const main = html.slice(html.indexOf('class="order-docs-main"'), html.indexOf(STRIP))
+    const side = html.slice(html.indexOf(STRIP))
+    assert.ok(text(main).includes('Main PI · V1') && !text(main).includes('Design Files') && !text(main).includes('Client PO'))
+    assert.ok(text(side.slice(side.indexOf('>') + 1)).trimStart().startsWith('PI '), 'the first cell is PI')
     assert.ok(text(side).includes('Design Files') && text(side).includes('Client PO'))
+    const cells = text(side)
+    assert.ok(cells.indexOf('PI Excel') >= 0 || cells.indexOf('PI ') >= 0)
+    assert.ok(cells.indexOf('Product pictures') < cells.indexOf('Design Files') && cells.indexOf('Design Files') < cells.indexOf('Client PO'))
     assert.equal(/order-docs-grid/.test(html), false)
   })
 
@@ -114,9 +121,12 @@ describe('the Documents card', () => {
         />,
       )
     const html = withVersions()
-    const main = text(html.slice(html.indexOf('class="order-docs-main"'), html.indexOf('class="order-docs-side"')))
-    // A property row under the downloads (owner, 2026-10-26): label, then the version and the link.
+    const main = text(html.slice(html.indexOf('class="order-docs-main"'), html.indexOf(STRIP)))
+    // BY THE HEADING (owner, 24 Nov 2026; it was a property row under the downloads, 2026-10-26): label, then
+    // the version and the link, on the Main PI row itself and not in a cell of the strip.
+    const cell = text(html.slice(html.indexOf(STRIP)))
     assert.ok(main.includes('PI history') && main.includes('V1 · View history'))
+    assert.equal(cell.includes('PI history'), false, 'not a cell of the strip')
     assert.equal(/Edit PI/.test(text(html)), false, 'no Edit PI anywhere in the Documents card')
     const head = text(html.slice(0, html.indexOf('class="order-docs-main"')))
     assert.ok(!head.includes('Document history') && !head.includes('PI history'),
@@ -176,19 +186,21 @@ describe('the Documents card', () => {
 
   test('the PI\'s product pictures sit with the Main PI — never among Design Files', () => {
     const html = card([accepted])
-    const main = text(html.slice(html.indexOf('class="order-docs-main"'), html.indexOf('class="order-docs-side"')))
-    const side = text(html.slice(html.indexOf('class="order-docs-side"')))
-    assert.ok(main.includes('Product pictures') && main.includes('2 pictures'))
-    assert.ok(main.includes('View') && main.includes('Pictures (2) · ZIP'))
-    assert.equal(/picture/i.test(side), false, 'Design Files holds production references only')
+    // The pictures cell of the strip: Download ZIP and View all (the popup). Design Files (and Client PO)
+    // hold production references only: no picture is ever among them.
+    const strip = html.slice(html.indexOf(STRIP))
+    const cells = text(strip)
+    assert.ok(cells.includes('Product pictures') && cells.includes('Download ZIP') && cells.includes('View all (2)'))
+    const designCell = text(strip.slice(strip.indexOf('aria-label="Design Files"')))
+    assert.equal(/picture/i.test(designCell), false, 'Design Files holds production references only')
   })
 
   test('pictures whose files are gone are said plainly, with nothing to download', () => {
     const html = card([accepted], viewer(), { pictures: { kind: 'missing', recorded: 16 } })
     const t = rowsOf(html)
     assert.ok(t.includes('16 pictures recorded, but the files are no longer in storage.'))
-    assert.equal(t.includes('· ZIP'), false, 'no download that would produce an empty archive')
-    assert.equal(rowsOf(card([accepted], viewer(), { pictures: { kind: 'none' } })).includes('· ZIP'), false)
+    assert.equal(t.includes('Download ZIP'), false, 'no download that would produce an empty archive')
+    assert.equal(rowsOf(card([accepted], viewer(), { pictures: { kind: 'none' } })).includes('Download ZIP'), false)
   })
 
   test('no Update documents control on the card (owner, 2026-10-27), even when a page supplies one', () => {

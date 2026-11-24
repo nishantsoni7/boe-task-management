@@ -3329,7 +3329,6 @@ export default function OrderDetailPage() {
   const openDetailRow = (key: DetailRowKey) => setRowRequest(r => ({ key, nonce: (r?.nonce ?? 0) + 1 }))
   const barGates = orderBarGates({
     advance,
-    pendingFromClient: pendencyOpen,
     dueDate: order.due_date ? fmtDate(order.due_date) : null,
     daysToDue: datesTimeline.daysToDue,
   })
@@ -3669,17 +3668,6 @@ export default function OrderDetailPage() {
           bar={{ ...barGates, onOpen: openDetailRow }}
         />
 
-        {/* ══ 1b. THE ORDER HIGHLIGHT (20270210000000) ══
-            The internal remark Sales wrote on the PI before approval, read from
-            that PI row under this viewer's own RLS, in its own failure-tolerant
-            query. Labelled internal; never on a client document. Nothing is
-            drawn when there is none. */}
-        <OrderHighlightRemark
-          supabase={supabase}
-          submissionId={order.source_order_submission_id ?? null}
-          refreshKey={order.updated_at}
-        />
-
         {/* ══ 2. THE CLIENT, THE DATES AND PENDENCIES have rows of their own below the products
             (Nitish, 24 Nov 2026); the Order bar above carries what Operations needs of them. ══ */}
 
@@ -3704,19 +3692,27 @@ export default function OrderDetailPage() {
             ADVANCE RECEIVED IS STILL GONE, and did not move: every figure it drew
             is in the Payment section below the products. */}
         <OrderDocumentsRow>
-          {/* ── Notes ──
-              OPERATIONAL CONTENT, and the one thing on Record Information that
-              was never metadata: somebody typed it about this Order for somebody
-              else to read. It keeps its own quiet block rather than following
-              that section out. */}
-          {order.notes && (
-            <section className="order-notes" aria-label="Order notes">
-              <div className="order-notes-head">Notes</div>
-              <div className="order-notes-body">{order.notes}</div>
-            </section>
-          )}
-
           <OrderDocumentsPanel
+            /* THE FOOTER OF THE PI CARD (Nitish / Operations, 24 Nov 2026): the internal remark Sales
+               wrote on the PI (read from that PI row under this viewer's own RLS, in its own
+               failure-tolerant query; labelled internal, never on a client document; nothing is drawn
+               when there is none) and the Order's notes (operational content: somebody typed it about
+               this Order for somebody else to read). They were two more cards above and below it. */
+            footer={(
+              <>
+                <OrderHighlightRemark
+                  supabase={supabase}
+                  submissionId={order.source_order_submission_id ?? null}
+                  refreshKey={order.updated_at}
+                />
+                {order.notes && (
+                  <section className="order-notes" aria-label="Order notes">
+                    <div className="order-notes-head">Notes</div>
+                    <div className="order-notes-body">{order.notes}</div>
+                  </section>
+                )}
+              </>
+            )}
             mainPi={mainPi}
             clientPo={clientPo}
             onDownload={v => { void openVersionFile(v, 'download') }}

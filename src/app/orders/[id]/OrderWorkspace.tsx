@@ -1185,7 +1185,7 @@ export function OrderDetailSkeleton() {
 
       {/* THE ORDER BAR: one card of ruled cells, as the page draws it, so nothing jumps. */}
       <section className="order-stages order-stages--bar">
-        {[104, 72, 96, 120, 150, 88].map((w, i) => (
+        {[104, 72, 96, 120, 150].map((w, i) => (
           <div key={i} className="order-stage">
             <SkeletonBlock w={56} h={11} />
             <SkeletonBlock w={w} h={22} radius={6} />

@@ -304,7 +304,7 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     assert.equal(/Manage|Upload|Replace|Delete/i.test(design), false,
       'the row must not promise an action the Order cannot perform')
     const main = text(html.slice(0, html.indexOf('aria-label="' + DOC_DESIGN_FILES_TITLE + '"')))
-    assert.ok(main.includes('Product pictures') && main.includes('9 pictures'))
+    assert.ok(main.includes('Product pictures') && main.includes('View all (9)') && main.includes('Download ZIP'))
   })
 
   test('Design Files with no supporting-document read says only that nothing is attached', () => {
@@ -334,11 +334,13 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     assert.ok(state({ kind: 'none' }).includes('No product pictures on this PI.'))
     assert.ok(state({ kind: 'missing', recorded: 16 }).includes('16 pictures recorded, but the files are no longer in storage.'))
     assert.ok(state({ kind: 'ready', available: 12, unavailable: 4 }).includes('12 of 16 pictures available'))
-    // Only a usable set offers View and the ZIP.
+    // Only a usable set offers View all and the ZIP.
     for (const p of [{ kind: 'loading' }, { kind: 'unreadable' }, { kind: 'none' }, { kind: 'missing', recorded: 3 }] as ProductPicturesState[]) {
-      assert.equal(state(p).includes('· ZIP'), false, p.kind)
+      assert.equal(state(p).includes('Download ZIP'), false, p.kind)
+      assert.equal(state(p).includes('View all'), false, p.kind)
     }
-    assert.ok(state({ kind: 'ready', available: 2, unavailable: 0 }).includes('Pictures (2) · ZIP'))
+    assert.ok(state({ kind: 'ready', available: 2, unavailable: 0 }).includes('Download ZIP'))
+    assert.ok(state({ kind: 'ready', available: 2, unavailable: 0 }).includes('View all (2)'))
     // Only the problems are drawn as problems.
     assert.ok(docs({ pictures: { kind: 'missing', recorded: 3 } }).includes('order-doc-pictures-line--warn'))
     assert.equal(docs({ pictures: { kind: 'none' } }).includes('order-doc-pictures-line--warn'), false)
