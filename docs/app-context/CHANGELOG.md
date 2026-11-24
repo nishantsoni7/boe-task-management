@@ -4,6 +4,15 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-24 — Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (branch `feat/weighed-ratio`, not merged) · no migration
+
+- **Why.** BOE pays the frame vendor by the weighed finished kg, so the calculator's kg is only an estimate; the scale readings the owner enters (step one) should correct it where nobody weighed.
+- **What.** on a quotation line, a taught metal frame that nobody weighed is priced at its calculated kg times the typical (median) weighed / calculated ratio of the frames that were weighed (`learnedWeight()` and `rework()` in `src/lib/pricing/training/rework.ts`). It is used only from 3 weighed frames (`MIN_WEIGHED_FRAMES`); a single ratio outside 0.5 to 2 is treated as a slip and left out; a frame that was weighed keeps its own weight. The route `/api/pricing/taught/rework` reads the weighed frames with the server credential (`pricing_training_lines`, calc type metal, `weighed_kg` set, submitted cases), only when a picked case has a metal frame; a failed read prices the frame as taught. The ratio and its working appear in `changes`, which only people with Pricing receive; a person who may only quote gets the price alone.
+- **Effect today.** None until the owner has weighed at least 3 frames in Training cases.
+- **No migration:** the route already reads the Training tables with the server credential, so no database function was needed (the plan had expected one).
+- **Checked.** New tests in `rework.test.ts`; tsc, eslint, full suite, build. Not seen in a browser.
+- **Rollback.** Revert the PR.
+
 ## 2026-11-24 — Orders: the approver's payment chips in one call, migration `20270818000000` applied (18:37 IST; a function only) · APPLIED
 
 - **What.** On the owner's instruction ("Apply 20270818000000 now"), the last unapplied local migration was applied on its own with `supabase db query --linked --file` and recorded with `supabase migration repair --status applied 20270818000000`. It adds `pi_submissions_payment_summaries(uuid[])` (a read-only wrapper, security invoker, stable); no table or data changed. `supabase db push --dry-run` now says "Remote database is up to date" and all 507 local migrations match the remote history.

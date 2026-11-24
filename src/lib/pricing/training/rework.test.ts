@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { rateBook, rework, type ReworkCase, type SavedRow } from './rework'
+import { learnedWeight, rateBook, rework, type ReworkCase, type SavedRow } from './rework'
 
 // Made-up rupees (this repository is public).
 const row = (p: Partial<SavedRow>): SavedRow => ({ element: 'x', kind: 'material', material: null, quantity: null, unit: null, rate: null, amount: 0, wood_amount: null, calc: null, ...p })
@@ -84,5 +84,50 @@ describe('who gets what', () => {
     assert.match(screen, /fetchRework\(supabase, JSON\.parse\(settledAsk\) as ReworkAsk\[\]\)/)
     const card = readFileSync('src/components/pricing/training/TaughtPrice.tsx', 'utf8')
     assert.match(card, /const fresh = c && rework && rework\.caseNo === c\.case_no \? rework : null/)
+  })
+})
+
+// Weighed frames, step two: a frame nobody weighed is priced at its calculated kg x what the scale usually says against the calculator.
+describe('the typical weighed / calculated ratio of the frames that were weighed', () => {
+  // 4 legs of 25 mm square tube, 1.6 mm wall, 0.75 m: 3.423 kg calculated.
+  const frame = (patch: Record<string, unknown>) => ({ type: 'metal', metal: 'MS tube and pipe', density: 7850, rate: 135, loss_pct: 0, fab_per_kg: 0, coat_per_sqft: 0, vendor: true,
+    parts: [{ name: 'Legs', profile: 'sqtube', a: 25, b: null, t: 1.6, unit: 'mm', gauge: null, corners: 'round', length: 0.75, length_unit: 'm', qty: 4 }], ...patch })
+  const calcKg = 1.6 * (0.0314 * 25 - 0.044877 * 1.6) * 3
+  const weighedOf = (r: number) => frame({ weighed_kg: Math.round(calcKg * r * 1000) / 1000 })
+
+  test('needs three weighed frames, takes the median, and ignores a slip', () => {
+    assert.equal(learnedWeight([]), null)
+    assert.equal(learnedWeight([weighedOf(1.1), weighedOf(1.2)]), null)
+    const three = learnedWeight([weighedOf(1.3), weighedOf(1.1), weighedOf(1.2)])!
+    assert.ok(Math.abs(three.ratio - 1.2) < 0.002); assert.equal(three.frames, 3)
+    const four = learnedWeight([weighedOf(1.0), weighedOf(1.1), weighedOf(1.3), weighedOf(1.5)])!
+    assert.ok(Math.abs(four.ratio - 1.2) < 0.002)                                   // the middle two, averaged
+    const slip = learnedWeight([weighedOf(1.1), weighedOf(1.1), weighedOf(1.1), frame({ weighed_kg: 38 })])!
+    assert.equal(slip.frames, 3)                                                    // 38 kg for 3.4 kg calculated is not believed
+    assert.equal(learnedWeight([frame({}), frame({}), frame({}), 'junk', null, { type: 'wood' }]), null)   // not weighed, or not metal
+  })
+
+  const learned = { ratio: 1.12, frames: 5 }
+  const sled: ReworkCase = { case_no: 5, name: 'Frame', width_in: null, depth_in: null, height_in: null, per_set: null,
+    rows: [row({ element: 'Frame', kind: 'metal', amount: 0, calc: frame({}) })] }
+  test('an unweighed frame is priced at the calculated kg x the ratio, and says so', () => {
+    const plain = rework(sled, { size: null, wood: null }, book)
+    const w = rework(sled, { size: null, wood: null }, book, learned)
+    assert.equal(plain.price, Math.round(calcKg * 80))                                  // today's rate Rs 80, no ratio
+    assert.equal(w.price, Math.round(Math.round(calcKg * 1.12 * 100) / 100 * 80))   // the working weight is kept to 2 decimals, as shown
+    assert.ok(w.changes.some(x => x.includes('weighed frames') && x.includes('1.12') && x.includes('5')))
+  })
+  test('a frame that was weighed keeps its own weight; no ratio means as taught', () => {
+    const own: ReworkCase = { ...sled, rows: [row({ element: 'Frame', kind: 'metal', amount: 0, calc: frame({ weighed_kg: 4 }) })] }
+    assert.equal(rework(own, { size: null, wood: null }, book, learned).price, 4 * 80)
+    assert.equal(rework(sled, { size: null, wood: null }, book, null).changes.some(x => x.includes('weighed frames')), false)
+  })
+  test('the route asks only when a picked case has a metal frame, tells nobody the ratio, and survives a failed read', () => {
+    const route = readFileSync('src/app/api/pricing/taught/rework/route.ts', 'utf8')
+    assert.match(route, /\.eq\('pricing_training_cases\.status', 'submitted'\)\.eq\('calc->>type', 'metal'\)\.not\('calc->>weighed_kg', 'is', null\)/)
+    assert.match(route, /\.type === 'metal'\)\) \{/)
+    assert.match(route, /if \(weighed\.error\) console\.error\('taught rework: weighed frames', weighed\.error\.code\)/)
+    assert.match(route, /rework\(c, \{ size: a\.size, wood: a\.wood \}, book, learned\)/)
+    assert.match(route, /return \[sees \? \{ \.\.\.base, rows: w\.rows, changes: w\.changes \} : base\]/)   // the ratio is in `changes`, which only Pricing people get
   })
 })
