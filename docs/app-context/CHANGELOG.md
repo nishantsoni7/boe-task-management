@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-24 — Order page: the Order bar and folded rows, Operations reads the products first (branch `feat/order-quiet-rows`, PR 1 of 2; no SQL, nothing to apply, no backup)
+
+- **Why.** Nitish (Operations): client, dates, approvals and payment are not read often, products and the PI are. The product list started 1,345 px down at 1516 wide.
+- **What.** The status strip becomes one **Order bar** (adds the due date with days left, and three buttons: Advance, Fabric & Finish, From client). The client, dates, payment, pendencies, internal details and terms, commercial breakdown and activity are **seven folded rows below the products**, each with a one-line summary; a row opens by itself only when the advance is holding up Accept for production, or when the bar or a #order-pendencies link asks. Rows start closed for everyone and are not remembered.
+- **Behaviour changes, say them.** (1) Four facts (advance %, due date, Fabric & Finish status, pending-from-client count) are now stated on the bar AND in their row: the October "every fact once" pins are rewritten on purpose, both are views of the same builder values. (2) Opening the page with #order-pendencies now opens and scrolls to the Pendencies row. (3) The tall Documents card is unchanged until PR 2.
+- **Measured.** Products start 970 px down at 1516 (was 1,345), 1,077 at 1280 (was 1,407), with the real components and stylesheet and made-up data; not seen signed in.
+- **Rollback.** Revert the PR.
+
 ## 2026-11-24 — Quotations: the builder's top is ONE panel, the lead is the status, and the prices-outside-the-limits block is not drawn (branch `feat/quotation-top-v2` (from main `15175abf`), owner's "Yes, build it" on a mockup; PR #1025, open, not merged yet) · no migration
 
 - **Why.** Owner (24 Nov 2026, screenshot of QT-S-01018): the top section wasted vertical space (the Client form began about 526 px down); a separate status tracker with Mark sent and Negotiating "does not make sense", because the status of the lead can be taken from the lead; and "Prices are outside the usual limits" is "not required because the system is not trained yet", to be implemented later.
