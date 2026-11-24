@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `87d1b2ab` — Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL)
-- Commits on this branch: 1564
+- Commit: `79b2c0ab` — Merge remote-tracking branch 'origin/main' into fix/photo-read-pacing
+- Commits on this branch: 1566
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 506 (first `20260530_create_positions.sql`, latest `20270826000000_pricing_engine_v3.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
+- `79b2c0ab` 2026-11-24 Merge remote-tracking branch 'origin/main' into fix/photo-read-pacing
 - `87d1b2ab` 2026-11-24 Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL)
+- `8d0ca964` 2026-11-24 Pricing: Training case page redesigned, with Overhead % and Margin % for each product (no SQL) (#1007)
 - `bb26f2d5` 2026-11-24 Docs: #1005 merged and live (2026-11-24 08:44 IST) (#1006)
 - `028eb186` 2026-11-24 Pricing: "Teach this?" on a quotation line, and rate reminders on For you (no SQL) (#1005)
 - `09a96c3f` 2026-11-24 Pricing: engine v3, photo facts and taught cases, leading only where it wins the blind test (20270826000000 APPLIED) (#1004)
@@ -37,8 +39,6 @@
 - `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
 - `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
-- `741a8d4e` 2026-11-23 Docs: stamp the SEO brief short version as merged and live (no SQL) (#983)
-- `586aaf2e` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL) (#979)
 
 ## Pages by top-level area
 

@@ -12,7 +12,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Checked.** New `photoRun.test.ts` (8); `photoFacts.test.ts`; tsc, eslint. Not tried live: the reading service was refusing every call at the time (most likely the account's credit; the new message will say).
 - **Rollback.** Revert the PR.
 
-## 2026-11-24 — Pricing: the Training case page redesigned, with Overhead % and Margin % for each product (branch `feat/pricing-case-redesign`, not merged) · no migration
+## 2026-11-24 — Pricing: the Training case page redesigned, with Overhead % and Margin % for each product (PR #1007, merged as `8d0ca964` 2026-11-24 09:40 IST, production deployment succeeded 09:42 IST, the live bundle carries "Margin is worked out on") · no migration
 
 - **Why.** Owner (24 Nov 2026): the case page looked messy, and he wanted Overhead and Margin as a percentage for each product. A mockup was shared first; he chose the margin on the cost only, and "Yes, build it". New cases start with both boxes blank.
 - **The sheet.** Each element is one line (name, kind, quantity and unit, rate, amount) with the headings shown once; how it was worked out, the wood, the calculators and the reasoning open on an arrow. "In your words" is one button; "Changes not saved" shows once; Questions and History share one tabbed card; the photo's reading folds into one line. Under 640 px each element is a card.
