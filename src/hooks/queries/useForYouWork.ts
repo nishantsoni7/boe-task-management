@@ -10,6 +10,7 @@ import { itemApplies } from '@/lib/modules/forYouCatalogue'
 import { readFlaggedPis, type FlaggedPi } from '@/lib/orders/flaggedPis'
 import { bundledRead } from '@/lib/modules/forYouBundle'
 import { isDashboardFunctionMissing } from '@/lib/orders/salespersonDashboard'
+import { dueRates, type DueRate, type RateRow } from '@/lib/pricing/rateReview'
 import {
   FOR_YOU_PAYMENT_SCAN_LIMIT,
   FOR_YOU_READ_LIMIT,
@@ -19,6 +20,7 @@ import {
   operationsCard,
   paymentRequestCard,
   piApprovalCard,
+  ratesDueCard,
   sentBackCard,
   verifyCardApplies,
   type ChangeRequestRow,
@@ -147,6 +149,23 @@ export function useForYouWork(on: (key: ForYouItemKey) => boolean, access: ForYo
       ? { data: [], count: 0, error: null }
       : { data: error ? null : readFlaggedPis(data), count: null, error })) as unknown as PromiseLike<Answer>)
 
+  // Rates to review (phase 4): the two lists the rates page reads (Pricing view), judged here by rateReview.ts. Slow to change,
+  // so read every 10 minutes, not every minute. A failed read shows as one, like the others.
+  const rates = useQuery<WorkRead<DueRate>>({
+    queryKey: ['for-you', 'work', 'pricing_rates_due', userId ?? null],
+    enabled: wanted('pricing_rates_due'),
+    queryFn: async () => {
+      const s = createClient()
+      const [woods, metals] = await Promise.all([s.rpc('pricing_woods_list'), s.rpc('pricing_metals_list')])
+      const error = woods.error ?? metals.error
+      if (error) throw new Error(error.message || 'Could not load the rates.')
+      const rows = dueRates((woods.data ?? []) as RateRow[], (metals.data ?? []) as RateRow[])
+      return { rows, total: rows.length }
+    },
+    staleTime: 5 * 60_000,
+    refetchInterval: 10 * 60_000,
+  })
+
   const unread = (read: WorkRead<unknown> | undefined) => Math.max(0, (read?.total ?? 0) - (read?.rows.length ?? 0))
 
   const groups: WorkGroup[] = [
@@ -205,6 +224,15 @@ export function useForYouWork(on: (key: ForYouItemKey) => boolean, access: ForYo
       moreLabel: n => `${n} more waiting →`,
       failed: operations.isError,
       failedLabel: 'PIs waiting for Operations',
+    },
+    {
+      item: 'pricing_rates_due',
+      cards: ratesDueCard(rates.data?.rows ?? []),
+      unread: 0,
+      moreHref: '/pricing/woods',
+      moreLabel: () => 'Review rates →',
+      failed: rates.isError,
+      failedLabel: 'Rates to review',
     },
   ]
 

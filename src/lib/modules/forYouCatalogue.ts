@@ -44,6 +44,8 @@ export type ForYouAccess = {
   approvesPis: boolean
   /** Reads everyone's cash: admin, cash custodian or finance.view_all. */
   seesAllCash: boolean
+  /** May teach prices in Pricing (admin, or Pricing view + create): the rates are theirs to keep current. */
+  teachesPrices: boolean
 }
 
 export const NO_FOR_YOU_ACCESS: ForYouAccess = {
@@ -54,6 +56,7 @@ export const NO_FOR_YOU_ACCESS: ForYouAccess = {
   decidesOwnPayments: false,
   approvesPis: false,
   seesAllCash: false,
+  teachesPrices: false,
 }
 
 /** The panel's button: Account Settings, because the panel is gone when empty. */
@@ -204,6 +207,16 @@ export const FOR_YOU_ITEMS = [
     forWhom: 'for the assigned reviewer',
     defaultMode: 'off',
     applies: a => a.orders,
+  },
+  {
+    // Price Brain v2 phase 4 (owner decision D7, 23 Nov 2026): steel every 30 days, wood every 90 (src/lib/pricing/rateReview.ts).
+    key: 'pricing_rates_due',
+    label: 'Rates to review',
+    meaning: 'A wood or metal rate is due for review.',
+    audience: 'People who teach prices in Pricing',
+    forWhom: 'for people who teach prices in Pricing',
+    defaultMode: 'optional',
+    applies: a => a.teachesPrices,
   },
 ] as const satisfies readonly ForYouItem[]
 
