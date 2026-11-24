@@ -1204,12 +1204,12 @@ describe('the loading shell', () => {
     const html = renderToStaticMarkup(<OrderDetailSkeleton />)
     assert.match(html, /role="status"/)
     assert.match(html, /aria-busy="true"/)
-    // Every section of the page it stands in for, in the page's own classes.
-    for (const cls of ['order-command-header', 'order-facts', 'order-sum-groups',
-                       'order-sum-group', 'order-sum-row', 'order-docs-row',
-                       'order-docs', 'order-doc-section', 'order-products',
-                       'order-lower', 'order-lower-main', 'order-lower-aside',
-                       'order-pay-metrics', 'order-commercial']) {
+    // Every section of the page it stands in for, in the page's own classes: the
+    // Order bar, the PI (Documents), the products and the seven folded rows
+    // (Nitish / Operations, 24 Nov 2026).
+    for (const cls of ['order-command-header', 'order-stages--bar', 'order-stage-gap',
+                       'order-docs-row', 'order-docs', 'order-doc-section', 'order-products',
+                       'order-rows', 'order-rows-card', 'order-row', 'order-row-head']) {
       assert.ok(html.includes(cls), cls + ' is missing from the loading shell')
     }
     assert.ok(!/\d/.test(text(html)), 'no figure is invented while loading')
@@ -1227,9 +1227,8 @@ describe('the loading shell', () => {
     // And the classes it DOES use are all ones the stylesheet still defines, so
     // the shell cannot silently become unstyled again.
     const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
-    for (const cls of ['order-facts', 'order-sum-group', 'order-sum-row', 'order-docs-row',
-                       'order-docs', 'order-doc-section', 'order-lower', 'order-commercial',
-                       'order-pay-metrics', 'order-status-card']) {
+    for (const cls of ['order-stages--bar', 'order-stage-gap', 'order-rows-card', 'order-row-head',
+                       'order-docs-row', 'order-docs', 'order-doc-section']) {
       assert.ok(css.includes('.' + cls + ' {'), cls + ' has no rule in globals.css')
     }
   })

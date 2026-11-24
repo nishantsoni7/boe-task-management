@@ -791,7 +791,7 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
   standing: ApprovalStanding
   canUpdate: boolean
   /** The Order's "Pending from client" list; omitted = not drawn. */
-  pendencies?: { orderId: string; canManage: boolean }
+  pendencies?: { orderId: string; canManage: boolean; onCount?: (open: number | null) => void }
   onUpdate: () => void
   onViewEvidence: (path: string) => void
   /** Which proof is being signed, if any. */
@@ -855,7 +855,7 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
           </div>
         ))}
       </dl>
-      {pendencies && <OrderPendencies orderId={pendencies.orderId} canManage={pendencies.canManage} />}
+      {pendencies && <OrderPendencies orderId={pendencies.orderId} canManage={pendencies.canManage} onCount={pendencies.onCount} />}
       <div className="order-ff-end">
         {canUpdate ? (
           <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onUpdate}>

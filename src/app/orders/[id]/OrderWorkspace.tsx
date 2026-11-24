@@ -289,8 +289,14 @@ export function OrderAddressesDialog({ client, onClose }: {
   )
 }
 
-export function OrderSummaryPanel({ view, client = null, datesSlot = null, pendenciesSlot = null }: {
+export function OrderSummaryPanel({ view, client = null, datesSlot = null, pendenciesSlot = null, groups = 'all' }: {
   view: OrderSummaryView
+  /**
+   * Which groups to draw. The Order page now draws only the client-and-sale group,
+   * inside its folded "Client and sale" row (the dates and Pendencies have rows of
+   * their own); every other caller keeps all three.
+   */
+  groups?: 'all' | 'client'
   /** The approved PI's client, or null while it has not been read. */
   client?: ClientDetails | null
   /** The dates group drawn as a timeline; the plain rows are the fallback. */
@@ -326,16 +332,16 @@ export function OrderSummaryPanel({ view, client = null, datesSlot = null, pende
         </section>
 
         {/* ── 3. Important dates ── */}
-        {datesSlot ?? (
+        {groups === 'all' && (datesSlot ?? (
           <section className="order-sum-group" aria-label={SUMMARY_GROUP_TITLE.dates}>
             <h3 className="order-sum-group-head">{SUMMARY_GROUP_TITLE.dates}</h3>
             <dl className="order-sum-rows">
               {view.dates.map(row => <SummaryRow key={row.key} row={row} />)}
             </dl>
           </section>
-        )}
+        ))}
 
-        {pendenciesSlot}
+        {groups === 'all' && pendenciesSlot}
 
       </div>
     </section>
@@ -1177,31 +1183,25 @@ export function OrderDetailSkeleton() {
         </div>
       </div>
 
-      {/* THE COMPACT OVERVIEW: three groups of label/value rows — four, three
-          and three — in the panel's own grid. */}
-      <section className="order-facts">
-        <div className="order-sum-groups">
-          {[4, 3, 3].map((rows, group) => (
-            <section key={group} className="order-sum-group">
-              <div style={{ marginBottom: 9 }}><SkeletonBlock w={104} h={12} /></div>
-              {Array.from({ length: rows }, (_, rowIndex) => (
-                <div key={rowIndex} className="order-sum-row">
-                  <SkeletonBlock w={70} h={11} />
-                  <div style={{ justifySelf: 'end' }}><SkeletonBlock w={112} h={12} /></div>
-                </div>
-              ))}
-            </section>
-          ))}
-        </div>
+      {/* THE ORDER BAR: one card of ruled cells, as the page draws it, so nothing jumps. */}
+      <section className="order-stages order-stages--bar">
+        {[88, 72, 96, 110, 96].map((w, i) => (
+          <div key={i} className="order-stage">
+            <SkeletonBlock w={56} h={11} />
+            <SkeletonBlock w={w} h={22} radius={6} />
+          </div>
+        ))}
+        <span className="order-stage-gap" aria-hidden="true" />
+        {[104, 150, 88].map((w, i) => (
+          <div key={i} className="order-stage">
+            <SkeletonBlock w={64} h={11} />
+            <SkeletonBlock w={w} h={22} radius={6} />
+          </div>
+        ))}
       </section>
 
-      {/* Fabric & Finish as a strip, then the Documents card's three rows. */}
+      {/* The Documents card's three rows. */}
       <div className="order-docs-row">
-        <div className="order-ff">
-          <SkeletonBlock w={104} h={11} />
-          <SkeletonBlock w={150} h={14} />
-          <SkeletonBlock w={150} h={14} />
-        </div>
         <section className="order-docs">
           <div className="order-docs-head">
             <SkeletonBlock w={88} h={11} />
@@ -1225,35 +1225,19 @@ export function OrderDetailSkeleton() {
         <SectionSkeleton rows={4} label="Loading products" />
       </div>
 
-      {/* Payment and the commercial breakdown, in the lower workspace's grid. */}
-      <div className="order-lower">
-        <div className="order-lower-main">
-          <div className="order-status-card">
-            <div className="order-status-card-head"><SkeletonBlock w={70} h={11} /></div>
-            <div className="order-status-card-body">
-              <SkeletonBlock w={152} h={28} />
-              <SkeletonBlock w={248} h={12} />
-              <div className="order-pay-metrics">
-                {[0, 1].map(i => (
-                  <div key={i} className="order-pay-metric">
-                    <SkeletonBlock w={92} h={10} />
-                    <div style={{ marginTop: 7 }}><SkeletonBlock w={112} h={16} /></div>
-                  </div>
-                ))}
+      {/* The seven folded rows below the products. */}
+      <section className="order-rows">
+        <div className="order-rows-card">
+          {[0, 1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="order-row">
+              <div className="order-row-head">
+                <SkeletonBlock w={36} h={36} radius={10} />
+                <SkeletonBlock w={`${34 + (i % 3) * 8}%`} h={13} />
               </div>
-              <SkeletonBlock w="100%" h={10} radius={999} />
             </div>
-          </div>
+          ))}
         </div>
-        <aside className="order-lower-aside">
-          <div className="order-commercial">
-            <SkeletonBlock w={132} h={11} />
-            <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {[0, 1, 2, 3, 4].map(i => <SkeletonBlock key={i} w="100%" h={12} />)}
-            </div>
-          </div>
-        </aside>
-      </div>
+      </section>
     </div>
   )
 }
