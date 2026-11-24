@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `c191444c` — Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (no SQL)
-- Commits on this branch: 1575
+- Commit: `b37fab71` — Merge remote-tracking branch 'origin/main' into feat/weighed-ratio
+- Commits on this branch: 1577
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,7 +14,9 @@
 
 ## Latest 25 commits
 
+- `b37fab71` 2026-11-24 Merge remote-tracking branch 'origin/main' into feat/weighed-ratio
 - `c191444c` 2026-11-24 Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (no SQL)
+- `d427ea3e` 2026-11-24 One Back button, left of the page title, on every page (#1016)
 - `c54b2692` 2026-11-24 Docs: #1015 merged and live (2026-11-24 17:02 IST) (#1018)
 - `cc4a1a8f` 2026-11-24 Docs: #1013 merged and live (2026-11-24 15:44 IST), stale-flag migration stamped, open items noted (#1017)
 - `345f1b58` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL) (#1015)
@@ -37,8 +39,6 @@
 - `ab3cdddd` 2026-11-23 Pricing: "Teach this price" from a feedback card or a quotation line, and "In your words" (#997)
 - `3b7839d6` 2026-11-23 Docs: stamp #995 (the Fabric From box fix) as merged and live (no SQL) (#996)
 - `47f146a3` 2026-11-23 Pricing: work out a Training element by wood cut list, metal weight, area or percentage (migration 20270823000000 APPLIED) (#993)
-- `db33183d` 2026-11-23 Quotations: the Fabric From box works on a row with nothing typed yet (no SQL) (#995)
-- `42e9edf6` 2026-11-23 Quotations: the builder's top section tidied, and Price approval moved up into the Status card (no SQL) (#994)
 
 ## Pages by top-level area
 
