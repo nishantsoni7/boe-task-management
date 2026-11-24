@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `4a65a657` — Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL) (#1008)
-- Commits on this branch: 1566
+- Commit: `1dcd4005` — Docs: #1008 merged and live (2026-11-24 11:06 IST) (#1010)
+- Commits on this branch: 1567
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 506 (first `20260530_create_positions.sql`, latest `20270826000000_pricing_engine_v3.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `1dcd4005` 2026-11-24 Docs: #1008 merged and live (2026-11-24 11:06 IST) (#1010)
 - `4a65a657` 2026-11-24 Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL) (#1008)
 - `57c51bd1` 2026-11-24 Docs: #1007 merged and live (2026-11-24 09:40 IST) (#1009)
 - `8d0ca964` 2026-11-24 Pricing: Training case page redesigned, with Overhead % and Margin % for each product (no SQL) (#1007)
@@ -38,7 +39,6 @@
 - `dc267bab` 2026-11-23 Quotations: opening a quotation answers at once and starts its reads at the click (PR A of 5, no SQL) (#987)
 - `40259764` 2026-11-23 Modules launcher: four big blocks you choose, and a count on every tile (#985)
 - `a9fa01e3` 2026-11-23 Quotations: the card on top of the list shows three things only (no SQL) (#986)
-- `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
 
 ## Pages by top-level area
 
