@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, Loader2, Trash2 } from 'lucide-react'
+import { Loader2, Trash2 } from 'lucide-react'
 import { InventoryLayout } from '@/components/layout/InventoryLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { useInventory } from '@/hooks/useInventory'
@@ -233,8 +233,6 @@ function ProductForm({
     <InventoryLayout profile={profile} access={access} pending={pending} onSignOut={signOut} title={title}
       subtitle={mode === 'edit' ? draft.code : 'Everything a salesperson needs to sell it'}>
       <form className={s.wrapNarrow} onSubmit={e => { e.preventDefault(); void save() }} noValidate>
-        <Link href={back} className={s.back}><ChevronLeft size={18} /> {mode === 'edit' ? 'Back to product' : 'Back to stock'}</Link>
-
         <section className={s.formCard} aria-labelledby="f-photos">
           <h2 className={s.formTitle} id="f-photos"><span className={s.stepNo}>1</span> Pictures <span className={s.req}>*</span></h2>
           <div data-invalid={!!show('photos')}>

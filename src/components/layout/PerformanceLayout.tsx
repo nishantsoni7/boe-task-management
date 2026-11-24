@@ -1,5 +1,6 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Home, UserRound, Users } from 'lucide-react'
@@ -192,6 +193,7 @@ export function PerformanceLayout({
           >
             ☰
           </button>
+          <PageBackButton />
           <div className="boe-page-title-group">
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}

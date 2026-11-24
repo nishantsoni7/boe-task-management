@@ -1,5 +1,6 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Home, LayoutDashboard, Megaphone, SlidersHorizontal } from 'lucide-react'
@@ -92,6 +93,7 @@ export function MarketingLayout({ profile, title, subtitle, onSignOut, children 
       <div className="boe-main-content">
         <div className="boe-page-header">
           <button className="boe-menu-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open menu">☰</button>
+          <PageBackButton />
           <div className="boe-page-title-group">
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}

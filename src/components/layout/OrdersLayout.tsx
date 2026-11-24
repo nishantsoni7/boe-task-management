@@ -1,5 +1,6 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useState, useCallback } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { ArrowLeftRight, LayoutDashboard, List, FileText, Bell, GraduationCap, Archive, ClipboardList } from 'lucide-react'
@@ -290,6 +291,7 @@ export function OrdersLayout({
           >
             ☰
           </button>
+          <PageBackButton />
           <div className="boe-page-title-group">
             <h1 className="boe-page-title">{title}</h1>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}

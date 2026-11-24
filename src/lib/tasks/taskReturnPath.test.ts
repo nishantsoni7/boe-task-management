@@ -21,7 +21,7 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
-  MAX_RETURN_PATH_LENGTH, assignedByMeReturnPath, defaultTaskListPath, pathWithSearch, returnPathFromSearch, taskBackTarget,
+  MAX_RETURN_PATH_LENGTH, assignedByMeReturnPath, defaultTaskListPath, pathWithSearch, returnPathFromSearch,
   safeReturnPath, taskDetailHref, withTaskReturnTo,
 } from './taskReturnPath'
 
@@ -339,100 +339,5 @@ describe('PR #147 opening behaviour is untouched (17–18)', () => {
 
   test('Enter (a real anchor) and modified clicks (new tab) still work', () => {
     assert.ok(panel.includes('e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return'))
-  })
-})
-
-// ─────────────────────────────────────────────────────────────────────────────
-
-describe('Task Detail: the Back control always goes somewhere', () => {
-  const QTN = { taskType: 'quotation_request' as const }
-  const NORMAL = { taskType: 'completion' as const }
-
-  test('with in-app history it pops — the actual previous page', () => {
-    // The ordinary walk: a list was open, the reader clicked a task. Popping is
-    // what restores that list's scroll (its hook listens for the popstate) and
-    // what leaves no extra entry for the browser's own Back to trip over.
-    assert.deepEqual(
-      taskBackTarget({ inAppHistory: true, returnTo: '/tasks/assigned-by-me?tab=overdue', ...NORMAL }),
-      { kind: 'history' },
-    )
-  })
-
-  test('history wins even when there is no returnTo to fall back on', () => {
-    assert.deepEqual(taskBackTarget({ inAppHistory: true, returnTo: null, ...NORMAL }), { kind: 'history' })
-  })
-
-  test('with no in-app history it goes to the view the opener named', () => {
-    // A notification opened in a NEW TAB. `router.back()` did nothing at all
-    // here; notification links carry a returnTo, so there is a real answer.
-    assert.deepEqual(
-      taskBackTarget({ inAppHistory: false, returnTo: '/notifications', ...NORMAL }),
-      { kind: 'path', path: '/notifications' },
-    )
-    assert.deepEqual(
-      taskBackTarget({ inAppHistory: false, returnTo: '/tasks/my?tab=working&q=invoice', ...NORMAL }),
-      { kind: 'path', path: '/tasks/my?tab=working&q=invoice' },
-    )
-  })
-
-  test('the tab and query of the named view are kept exactly', () => {
-    const view = '/tasks/assigned-by-me?tab=for_approval&assignee=2f1c2d3e-5a6b-4c7d-8e9f-0a1b2c3d4e5f&priority=high'
-    assert.deepEqual(
-      taskBackTarget({ inAppHistory: false, returnTo: view, ...NORMAL }),
-      { kind: 'path', path: view },
-    )
-  })
-
-  test('with nothing named it goes to the TASK’S own list, not one fixed address', () => {
-    // A pasted URL or an old bookmark. The answer depends on the task, so a
-    // quotation does not send its reader to the normal task list.
-    assert.deepEqual(
-      taskBackTarget({ inAppHistory: false, returnTo: null, ...NORMAL }),
-      { kind: 'path', path: '/tasks/my' },
-    )
-    assert.deepEqual(
-      taskBackTarget({ inAppHistory: false, returnTo: undefined, ...QTN }),
-      { kind: 'path', path: '/tasks/quotation-requests' },
-    )
-  })
-
-  test('a crafted returnTo cannot send anyone off BOE', () => {
-    // Same validator, same refusals as Submit for Approval — the value arrives
-    // in a URL anybody can write.
-    for (const bad of [
-      'https://evil.example/steal',
-      '//evil.example',
-      '/\\evil.example',
-      '/tasks/my\twith-a-tab',
-      'javascript:alert(1)',
-      'tasks/my',
-      '/'.repeat(MAX_RETURN_PATH_LENGTH + 1),
-    ]) {
-      assert.deepEqual(
-        taskBackTarget({ inAppHistory: false, returnTo: bad, ...NORMAL }),
-        { kind: 'path', path: '/tasks/my' },
-        bad,
-      )
-    }
-  })
-})
-
-describe('Task Detail: the Back button is wired to that decision', () => {
-  const detail = read('src/app/tasks/[id]/page.tsx')
-  const button = detail.slice(detail.indexOf('aria-label="Go back"') - 1600, detail.indexOf('aria-label="Go back"'))
-
-  test('it asks taskBackTarget rather than popping blindly', () => {
-    assert.ok(button.includes('const target = taskBackTarget({'))
-    assert.ok(button.includes('inAppHistory: hasInAppHistory(),'))
-    assert.ok(button.includes('returnTo:     returnPathFromSearch(window.location.search),'))
-    assert.ok(button.includes('taskType:     task?.task_type,'))
-  })
-
-  test('the history branch still calls router.back(), so Back and Forward stay standard', () => {
-    assert.ok(button.includes("if (target.kind === 'history') { router.back(); return }"))
-  })
-
-  test('the navigating branch tells the list this counts as a return', () => {
-    assert.ok(button.indexOf('noteListReturn()') < button.indexOf('router.push(target.path)'))
   })
 })

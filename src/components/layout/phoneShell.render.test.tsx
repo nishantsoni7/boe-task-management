@@ -134,10 +134,10 @@ describe('Phase 2: the pages that were broken on a phone', () => {
     assert.ok(read('src/components/layout/SalesLayout.tsx').includes('{actions && <div className="boe-header-actions">{actions}</div>}'))
   })
 
-  test('Manager and All Tasks keep the header one row', () => {
+  test('Manager keeps the header one row, and All Tasks has no Back of its own', () => {
     const m = read('src/app/manager/page.tsx')
     assert.equal((m.match(/boe-desktop-only/g) ?? []).length, 2)
-    // Performance is retired (2026-11-13): the back link goes to Team Today.
-    assert.ok(read('src/app/tasks/all/page.tsx').includes('<span className="boe-desktop-only">Team Today</span>'))
+    // The header's one Back button (PageBackButton) replaced the "Team Today" link (2026-11-24).
+    assert.equal(read('src/app/tasks/all/page.tsx').includes('Team Today'), false)
   })
 })

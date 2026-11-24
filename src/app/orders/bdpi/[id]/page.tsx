@@ -6,7 +6,6 @@
 // BDPI uploaded by mistake while nothing of it has been marked dispatched.
 
 import { useEffect, useMemo, useState } from 'react'
-import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useQueryClient } from '@tanstack/react-query'
@@ -75,7 +74,6 @@ export default function BdpiPage() {
   return (
     <OrdersLayout profile={profile} title={title} onSignOut={handleSignOut} showRefresh={false}>
       <div className="opp-page">
-        <Link href="/orders/bdpi" className="opp-back">← Back to Old orders</Link>
         {caps && !caps.canViewPaymentPlan && (
           <p className="opp-warn" role="alert">You do not have access to the Payment plan. An Admin can grant it in Control Center.</p>
         )}

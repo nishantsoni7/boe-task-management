@@ -1,9 +1,9 @@
 'use client'
 
-import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, CheckCircle2, FileText, ExternalLink } from 'lucide-react'
+import { CheckCircle2, FileText, ExternalLink } from 'lucide-react'
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { createClient } from '@/lib/supabase/client'
 import { AnnouncementsShell } from '../AnnouncementsShell'
 import {
@@ -152,10 +152,7 @@ function AnnouncementDetail({ id, userId, isAdmin }: { id: string; userId: strin
   )
 }
 
+// This page has no module header of its own, so it carries the app's one Back button itself.
 function BackLink() {
-  return (
-    <Link href="/announcements" className="boe-announce-back">
-      <ArrowLeft size={14} aria-hidden="true" /> All announcements
-    </Link>
-  )
+  return <div style={{ marginBottom: 12 }}><PageBackButton /></div>
 }

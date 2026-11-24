@@ -6,7 +6,6 @@
 // order_dispatch_record / _update ask again. The capabilities are not read here.
 
 import { useEffect, useMemo, useState } from 'react'
-import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useQueryClient } from '@tanstack/react-query'
@@ -67,7 +66,6 @@ export default function OrderDispatchRecordPage() {
   return (
     <OrdersLayout profile={profile} title="Record dispatch" onSignOut={handleSignOut} showRefresh={false}>
       <div className="opp-page">
-        <Link href={orderHref} className="opp-back">← Back to the Order</Link>
         {access.kind === 'loading' && <p className="opp-note" role="status">Opening the dispatch…</p>}
         {access.kind === 'missing' && <p className="opp-warn" role="alert">This Order could not be found.</p>}
         {access.kind === 'denied' && (

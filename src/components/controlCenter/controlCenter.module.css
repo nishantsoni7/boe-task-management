@@ -290,7 +290,6 @@
 .crumbs a:hover { color: #963B27; text-decoration: underline; text-underline-offset: 2px; }
 .crumbs svg { flex-shrink: 0; }
 .crumbsFull { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.crumbsBack { display: none !important; align-items: center; gap: 3px; min-height: 28px; }
 .headFind {
   display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; background: #fff;
   border: 1px solid #CFC8BF; border-radius: 8px; color: #4C5352; font-size: 13px; cursor: pointer;
@@ -433,8 +432,7 @@
    title goes; the sidebar already names where you are. */
 @media (max-width: 767px) {
   .eyebrow { display: none; }
-  .crumbsFull { display: none; }
-  .crumbsBack { display: inline-flex !important; color: #686D6C; text-decoration: none; }
+  .crumbs { display: none; }
   .headFind { height: 44px; min-width: 44px; justify-content: center; padding: 0 12px; }
   .headFindText, .headFind .kbd { display: none; }
   .context { margin-bottom: 12px; }

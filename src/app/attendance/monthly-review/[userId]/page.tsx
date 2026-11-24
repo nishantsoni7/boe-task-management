@@ -9,7 +9,6 @@ import type { UserProfile } from '@/lib/types'
 import { colors } from '@/lib/tokens'
 import { AttendancePayrollLayout } from '@/components/layout/AttendancePayrollLayout'
 import { LoadingScreen } from '@/components/ui/atoms'
-import { AppLink as Link } from '@/components/ui/AppLink'
 import { MonthRequestsPanel, DayRequestChips, requestsByDate, type MonthRequest } from '@/components/attendanceRequests/MonthRequests'
 import type { ScoreDayKind } from '@/lib/attendance/attendanceScore'
 import { ui } from '@/components/attendancePayroll/ui'
@@ -157,9 +156,6 @@ export default function EmployeeMonthlyDetailPage() {
 
   const requestsOnDate = requestsByDate(monthRequests)
   const monthLabel = year && month ? `${MONTH_NAMES[month - 1]} ${year}` : ''
-  const backHref   = year && month
-    ? `/attendance/monthly-review?year=${year}&month=${month}`
-    : '/attendance/monthly-review'
 
   return (
     <AttendancePayrollLayout
@@ -169,19 +165,6 @@ export default function EmployeeMonthlyDetailPage() {
       onSignOut={handleSignOut}
     >
       <div className={styles.page} style={{ maxWidth: 960, padding: '24px 0' }}>
-
-        <Link
-          href={backHref}
-          className={styles.back}
-          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, color: colors.tertiary, textDecoration: 'none', marginBottom: 24 }}
-          onMouseEnter={e => (e.currentTarget.style.color = colors.primary)}
-          onMouseLeave={e => (e.currentTarget.style.color = colors.tertiary)}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" />
-          </svg>
-          Back to Monthly Review
-        </Link>
 
         {/* ── Employee info header ── */}
         {employee && (

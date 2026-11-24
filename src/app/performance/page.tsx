@@ -1220,12 +1220,7 @@ export default function PerformancePage() {
       title="My Performance"
       subtitle={todayLabel}
       onSignOut={async () => { await supabase.auth.signOut(); router.push('/login') }}
-      actions={viewAsUserId ? (
-        <a href="/performance/team" style={{
-          fontSize: 12, fontWeight: 600, color: '#686D6C', textDecoration: 'none',
-          border: '1px solid #F1EEE9', padding: '6px 14px', borderRadius: 8,
-        }}>← Back to Team Performance</a>
-      ) : canOpenTeamView ? (
+      actions={!viewAsUserId && canOpenTeamView ? (
         <a href="/performance/team" style={{
           fontSize: 12, fontWeight: 600, color: '#963B27', textDecoration: 'none',
           border: '1px solid #335A8615', background: '#335A8608',

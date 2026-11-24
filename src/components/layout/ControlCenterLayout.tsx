@@ -1,9 +1,10 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { Suspense, useEffect, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, usePathname, useSearchParams } from 'next/navigation'
-import { ArrowLeft, ChevronRight, Home, LayoutGrid, Search, X } from 'lucide-react'
+import { ChevronRight, Home, LayoutGrid, Search, X } from 'lucide-react'
 import { BoeBrandIcon } from './BoeBrandIcon'
 import type { UserProfile } from '@/lib/types'
 import { ViewModeBanner, ViewModeSidebarSection } from '@/components/layout/AdminViewModeControls'
@@ -178,9 +179,10 @@ function ControlCenterHeader({ pathname, tab, sidebarOpen, onToggle, onHome, onF
       <button className="boe-menu-toggle" onClick={onToggle} aria-label="Open menu">
         {sidebarOpen ? <X size={18} /> : '☰'}
       </button>
+      <PageBackButton />
       <div className="boe-page-title-group">
         {section && (
-          // Where you are, and the way back. On a phone it is one back link: the drawer names the rest.
+          // Where you are. The way back is the header's one Back button; a phone drops the trail, the drawer names the rest.
           <nav className={cc.crumbs} aria-label="Breadcrumb">
             <span className={cc.crumbsFull}>
               <Link href={MAIN_PATH}>Control Center</Link>
@@ -189,7 +191,6 @@ function ControlCenterHeader({ pathname, tab, sidebarOpen, onToggle, onHome, onF
               <ChevronRight size={13} aria-hidden="true" />
               <span aria-current="page">{section.label}</span>
             </span>
-            <Link className={cc.crumbsBack} href={MAIN_PATH}><ArrowLeft size={14} aria-hidden="true" /> Control Center</Link>
           </nav>
         )}
         <div className="boe-page-title">{title}</div>

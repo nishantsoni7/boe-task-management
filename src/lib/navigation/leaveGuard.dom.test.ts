@@ -47,6 +47,39 @@ describe('askBeforeLeaving', () => {
     assert.equal(click({ href: '/file.xlsx', download: '' }).asked.length, 0)
     assert.equal(click({ href: '/orders' }, { init: { ctrlKey: true } }).asked.length, 0)
   })
+  test("the page's Back button is a button, not a link, and asks just the same", () => {
+    const press = (dirty: boolean, answer: boolean) => {
+      const asked: string[] = []
+      const b = document.createElement('button')
+      b.className = 'boe-back-btn'
+      b.appendChild(document.createElement('span'))
+      document.body.appendChild(b)
+      const guard = askBeforeLeaving(() => dirty, t => { asked.push(t); return answer })
+      let stopped = true
+      const after = (ev: MouseEvent) => { stopped = ev.defaultPrevented; ev.preventDefault() }
+      document.addEventListener('click', guard, true)
+      document.addEventListener('click', after)
+      b.firstElementChild!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
+      document.removeEventListener('click', guard, true)
+      document.removeEventListener('click', after)
+      b.remove()
+      return { asked, stopped }
+    }
+    assert.deepEqual(press(true, false), { asked: [UNSAVED_LEAVE_PROMPT], stopped: true })
+    assert.deepEqual(press(true, true), { asked: [UNSAVED_LEAVE_PROMPT], stopped: false })
+    assert.deepEqual(press(false, false), { asked: [], stopped: false })
+  })
+  test('an ordinary button that is not Back is never asked about', () => {
+    const asked: string[] = []
+    const b = document.createElement('button')
+    document.body.appendChild(b)
+    const guard = askBeforeLeaving(() => true, t => { asked.push(t); return false })
+    document.addEventListener('click', guard, true)
+    b.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }))
+    document.removeEventListener('click', guard, true)
+    b.remove()
+    assert.deepEqual(asked, [])
+  })
   test('next/link does not navigate a click whose default was prevented', () => {
     const link = readFileSync('node_modules/next/dist/client/app-dir/link.js', 'utf8')
     assert.match(link, /if \(e\.defaultPrevented\)/)

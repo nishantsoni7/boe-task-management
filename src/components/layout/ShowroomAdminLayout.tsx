@@ -1,5 +1,6 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useMemo, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { ClipboardList, QrCode, Tag, Home, X } from 'lucide-react'
@@ -190,6 +191,7 @@ export function ShowroomAdminLayout({
           >
             {sidebarOpen ? <X size={18} /> : '☰'}
           </button>
+          <PageBackButton />
           <div className="boe-page-title-group">
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}

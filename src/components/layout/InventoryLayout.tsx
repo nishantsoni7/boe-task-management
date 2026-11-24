@@ -1,5 +1,6 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { usePathname, useRouter } from 'next/navigation'
@@ -110,6 +111,7 @@ export function InventoryLayout({ profile, access, pending, title, subtitle, act
       <div className="boe-main-content">
         <div className="boe-page-header">
           <button className="boe-menu-toggle" onClick={() => setSidebarOpen(true)} aria-label="Open menu">☰</button>
+          <PageBackButton />
           <div className="boe-page-title-group">
             <div className="boe-page-title">{title}</div>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}
