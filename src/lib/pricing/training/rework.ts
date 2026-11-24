@@ -3,9 +3,11 @@
 // wood and metal rates; percentages follow the new cost. Rows with a plain amount stay as taught, and so does a cut list's
 // or a metal frame's quantity (they are exact, not scaled). Pure: the server route feeds it the case, the line and the rates,
 // so the rows, rates and margins never reach a person who may only quote.
+// A metal frame nobody has weighed is priced at its calculated kg x the typical weighed / calculated ratio of the frames that were
+// weighed (weighed frames, step two, 24 Nov 2026): the scale, not the calculator, is what the vendor bills.
 
 import { num, toLine, totals, workCase, type Line } from './doc'
-import type { Calc, Size } from './calc'
+import { metalParts, unpackCalc, weighedGap, type Calc, type Size } from './calc'
 import { sizeFields } from './prefill'
 
 export type SavedRow = { element: string; kind: string; material: string | null; quantity: number | null; unit: string | null; rate: number | null; amount: number; wood_amount: number | null; calc: unknown }
@@ -38,7 +40,26 @@ export function rateBook(woods: readonly { name: string; rate: number | string |
   return { woods: map(woods), metals: map(metals) }
 }
 
-export function rework(c: ReworkCase, line: ForLine, rates: RateBook): Reworked {
+/** How many weighed frames the ratio needs before it is used, and the ratios believed (a slip such as 38 for 3.8 is left out). */
+export const MIN_WEIGHED_FRAMES = 3
+const RATIO_RANGE = [0.5, 2] as const
+export type LearnedWeight = { ratio: number; frames: number }
+
+/** The typical (median) weighed kg over calculated kg of the saved metal calcs that were weighed; null below MIN_WEIGHED_FRAMES. */
+export function learnedWeight(calcs: readonly unknown[]): LearnedWeight | null {
+  const ratios = calcs.flatMap((v): number[] => {
+    const c = unpackCalc(v)
+    const gap = c?.type === 'metal' ? weighedGap(c) : null
+    const r = gap ? gap.weighed / gap.calculated : NaN
+    return r >= RATIO_RANGE[0] && r <= RATIO_RANGE[1] ? [r] : []
+  }).sort((a, b) => a - b)
+  if (ratios.length < MIN_WEIGHED_FRAMES) return null
+  const mid = ratios.length >> 1
+  const median = ratios.length % 2 ? ratios[mid] : (ratios[mid - 1] + ratios[mid]) / 2
+  return { ratio: Math.round(median * 1000) / 1000, frames: ratios.length }
+}
+
+export function rework(c: ReworkCase, line: ForLine, rates: RateBook, learned: LearnedWeight | null = null): Reworked {
   const lines: Line[] = c.rows.map(r => toLine({ ...r, reasoning: null, from_ai: false }))
   const taught = r2(c.rows.reduce((s, r) => s + Number(r.amount), 0))
   const changes: string[] = []
@@ -88,10 +109,20 @@ export function rework(c: ReworkCase, line: ForLine, rates: RateBook): Reworked 
     } else if (calc?.type === 'metal') {
       const today = rates.metals.get(low(calc.metal))?.rate ?? null
       const was = num(calc.rate)
+      let next: Calc = calc
       if (today !== null && today !== was) {
-        lines[i] = { ...l, calc: { ...calc, rate: String(today) } }
+        next = { ...next, rate: String(today) }
         changes.push(`${l.element}: ${calc.metal} at ${inr(today)} per kg today (taught at ${was === null ? 'no rate' : inr(was)})`)
       }
+      // A frame that was not weighed: the calculator's kg x what the scale usually says compared with it.
+      if (learned && next.type === 'metal' && !num(next.weighed_kg)) {
+        const kg = metalParts(next).reduce((sum, p) => sum + ('error' in p ? 0 : p.kg), 0)
+        if (kg > 0) {
+          next = { ...next, weighed_kg: String(r2(kg * learned.ratio)) }
+          changes.push(`${l.element}: ${r2(kg)} kg calculated x ${learned.ratio} (the scale against the calculator on ${learned.frames} weighed frames) = ${r2(kg * learned.ratio)} kg`)
+        }
+      }
+      if (next !== calc) lines[i] = { ...l, calc: next }
     }
   })
 

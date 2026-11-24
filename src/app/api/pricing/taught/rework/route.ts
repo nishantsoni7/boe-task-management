@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { adminClient } from '@/lib/supabase/admin'
-import { rateBook, rework, type ReworkCase, type Reworked, type SavedRow } from '@/lib/pricing/training/rework'
+import { learnedWeight, rateBook, rework, type LearnedWeight, type ReworkCase, type Reworked, type SavedRow } from '@/lib/pricing/training/rework'
 
 // Price Brain v2, phase 2: the taught price of a picked case, worked out again for each quotation line (its size, its
 // wood, today's rates). It runs here, on the server, because working it out needs the case's rows, rates and margins,
@@ -60,6 +60,15 @@ export async function POST(req: NextRequest) {
   if (rows.error || woods.error || metals.error) { console.error('taught rework: rows or rates'); return reply({ ok: false, error: 'The taught cases could not be read. Try again.' }, 502) }
 
   const book = rateBook(woods.data ?? [], metals.data ?? [])
+  // Weighed frames, step two: what the scale usually says against the calculator, from the metal frames that were weighed.
+  // Asked only when a picked case has a metal frame, and best effort: a failed read prices the frame as taught.
+  let learned: LearnedWeight | null = null
+  if ((rows.data ?? []).some(r => (r.calc as { type?: string } | null)?.type === 'metal')) {
+    const weighed = await db.from('pricing_training_lines').select('calc, pricing_training_cases!inner(status)')
+      .eq('pricing_training_cases.status', 'submitted').eq('calc->>type', 'metal').not('calc->>weighed_kg', 'is', null).limit(500)
+    if (weighed.error) console.error('taught rework: weighed frames', weighed.error.code)
+    else learned = learnedWeight((weighed.data ?? []).map(r => r.calc))
+  }
   const byNo = new Map<number, ReworkCase>((cases.data ?? []).map(c => [Number(c.case_no), {
     case_no: Number(c.case_no), name: String(c.name), per_set: c.per_set === null ? null : Number(c.per_set),
     width_in: c.width_in === null ? null : Number(c.width_in), depth_in: c.depth_in === null ? null : Number(c.depth_in), height_in: c.height_in === null ? null : Number(c.height_in),
@@ -69,7 +78,7 @@ export async function POST(req: NextRequest) {
   const results = asks.flatMap((a): ReworkAnswer[] => {
     const c = byNo.get(a.caseNo)
     if (!c) return []
-    const w = rework(c, { size: a.size, wood: a.wood }, book)
+    const w = rework(c, { size: a.size, wood: a.wood }, book, learned)
     const base = { key: a.key, caseNo: w.caseNo, taught: w.taught, price: w.price, sized: w.sized, wood: w.wood }
     return [sees ? { ...base, rows: w.rows, changes: w.changes } : base]
   })
