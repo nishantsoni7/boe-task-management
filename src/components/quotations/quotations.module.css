@@ -80,15 +80,14 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 
 /* builder: one column, full width (owner, 13 Nov 2026): client and status on top, products, totals and terms, then the cards */
 
-/* THE BUILDER'S TOP AREA (owner-approved preview, 18 Nov 2026): one row of three compact cards (Request | Status | Share), then the Client card
+/* THE BUILDER'S TOP AREA (owner-approved preview, 18 Nov 2026): one panel (Lead | Senior | Share, 24 Nov 2026), then the Client card
    as a grid of fields. QuotationsLayout caps the page at 1360 px (contentMaxWidth), so nothing stretches on a wide screen.
    Spacing: 24 px between rows, 16 px between cards, 20 px inside a card. */
 .builder { gap: 24px; }
 .builder .cardHead { padding: 14px 20px; }
 .builder .cardHead h2 { font-size: 16px; }
 .builder .cardBody { padding: 20px; }
-.band { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.5fr) minmax(0, 1.1fr); gap: 16px; align-items: stretch; }
-.bandTwo { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.1fr); }
+.topStack { display: grid; gap: 12px; min-width: 0; }
 .tile { display: flex; flex-direction: column; gap: 14px; padding: 18px 20px; }
 .tileLab { display: flex; align-items: center; gap: 8px; margin: 0; font: 600 12px var(--boe-font-body); letter-spacing: .05em; text-transform: uppercase; color: var(--boe-text-muted); }
 .tileTitle { font: 600 15px/1.35 var(--boe-font-body); color: var(--boe-text); }
@@ -101,53 +100,65 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .btnQuiet { border-color: transparent; background: transparent; color: var(--boe-text-strong); }
 .btnQuiet:hover { background: var(--boe-surface-sunken); }
 .btnQuietDanger:hover { color: var(--boe-error); }
-/* the Lead card (20270811000000): one slim strip under the top row, so the owner-approved three-card row is untouched */
-.leadStrip { display: grid; gap: 10px; padding: 12px 18px; }
-.leadHead { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; min-width: 0; }
-.leadHead .tileTitle { overflow-wrap: anywhere; }
+
+/* THE TOP PANEL (owner, 24 Nov 2026, from an approved mockup): one card of slim rows. Lead (its stage IS the status), the senior's note (only when
+   there is one), Share and the next step; the Lost box and the amber "what is missing" row show only while they apply. It replaces the Status,
+   Share, Lead and Ask a senior cards. A row's label is the first column; every row draws nothing when it has nothing to say. */
+.panel { background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); box-shadow: var(--boe-shadow-panel); min-width: 0; }
+.prow { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 0 14px; padding: 12px 20px; min-height: 56px; }
+.prow + .prow { border-top: 1px solid var(--boe-border); }
+.prow:first-child { border-radius: var(--boe-radius-panel) var(--boe-radius-panel) 0 0; }
+.prow:last-child { border-radius: 0 0 var(--boe-radius-panel) var(--boe-radius-panel); }
+.pcol { display: grid; gap: 8px; min-width: 0; }
+.prc { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-width: 0; }
+.prc .tileTitle { overflow-wrap: anywhere; }
+.prc .field { flex: 1 1 200px; max-width: 320px; }
+.stage { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border-radius: var(--boe-radius-badge); background: var(--boe-working-bg); color: var(--boe-working-fg); font: 600 12.5px var(--boe-font-body); white-space: nowrap; }
+.stage::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.stageDone { background: var(--boe-completed-bg); color: var(--boe-completed-fg); }
+.stageLater { background: var(--boe-waiting-bg); color: var(--boe-waiting-fg); }
+.stageDead { background: var(--boe-surface-sunken); color: var(--boe-text-muted); }
+.meter { display: inline-flex; align-items: center; gap: 3px; }
+.meter i { width: 16px; height: 4px; border-radius: 2px; background: var(--boe-border-strong); }
+.meter i.meterOn { background: var(--boe-working-fg); }
+.pnote { background: #F5F8FC; }
+.pnoteText { font-size: 13.5px; color: var(--boe-text-muted); }
+.pnoteText b { color: var(--boe-text); font-weight: 600; }
+.pbar { background: var(--boe-surface-quiet); align-items: start; }
+.pbar .tileLab { padding-top: 9px; }
+.pgrp { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.psw { display: inline-flex; align-items: center; gap: 9px; min-height: 36px; font-size: 13.5px; font-weight: 500; color: var(--boe-text-strong); cursor: pointer; }
+.psw input { appearance: none; margin: 0; width: 34px; height: 20px; border-radius: 10px; background: var(--boe-border-strong); position: relative; cursor: pointer; transition: background-color .18s; flex: none; }
+.psw input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transition: transform .18s; }
+.psw input:checked { background: var(--boe-brand); }
+.psw input:checked::after { transform: translateX(14px); }
+.psw input:disabled { opacity: .55; cursor: not-allowed; }
+.psw input:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: 2px; }
+.pright { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.iconBox { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: var(--boe-radius-control); border: 1px solid var(--boe-border-strong); background: var(--boe-surface); color: var(--boe-text-strong); cursor: pointer; }
+.iconBox:hover { background: var(--boe-surface-hover); }
+.askw { position: relative; display: inline-flex; }
+.pmore { display: inline-flex; }
+.pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; display: grid; gap: 10px; width: 356px; max-width: calc(100vw - 32px); padding: 16px; background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); box-shadow: 0 12px 32px rgba(48, 53, 54, .16); text-align: left; }
+.pop h3 { margin: 0; font: 700 15px var(--boe-font-heading); color: var(--boe-text); }
+.pfix { grid-template-columns: minmax(0, 1fr); min-height: 0; padding: 0; background: var(--boe-waiting-bg); border-top-color: var(--boe-warning-border); color: #5E440A; font-size: 13px; line-height: 1.45; }
+.pfix summary { display: flex; align-items: flex-start; gap: 8px; padding: 10px 20px; cursor: pointer; list-style: none; }
+.pfix summary::-webkit-details-marker { display: none; }
+.pfix summary svg { flex: none; margin-top: 2px; }
+.hintMore { margin-left: auto; padding-left: 12px; white-space: nowrap; font-weight: 600; color: var(--boe-brand-ink); }
+.pfix details[open] .hintMore { display: none; }
+.hintBody { display: grid; gap: 8px; padding: 0 20px 12px 48px; }
+.hintRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.hintRow .chip { background: rgba(255, 255, 255, .7); }
 .leadMeta { font-size: 13px; color: var(--boe-text-muted); }
-.leadAct { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .leadForm { display: grid; gap: 8px; max-width: 520px; }
 .leadList { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-width: 520px; }
 .leadList button { width: 100%; justify-content: flex-start; text-align: left; height: auto; padding: 8px 10px; }
 
-/* where the quotation is in its life: done steps are ticked, the current one wears its status colour */
-.steps { list-style: none; margin: 2px 0 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.steps[data-s='draft'] { --cur-fg: var(--boe-pending-fg); --cur-bg: var(--boe-pending-bg); }
-.steps[data-s='sent'] { --cur-fg: var(--boe-working-fg); --cur-bg: var(--boe-working-bg); }
-.steps[data-s='negotiating'] { --cur-fg: var(--boe-waiting-fg); --cur-bg: var(--boe-waiting-bg); }
-.steps[data-s='confirmed'] { --cur-fg: var(--boe-completed-fg); --cur-bg: var(--boe-completed-bg); }
-.step { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; font-size: 12.5px; color: var(--boe-text-muted); }
-.step::before { content: ''; position: absolute; top: 10px; right: 50%; width: 100%; height: 2px; background: var(--boe-border); }
-.step:first-child::before { display: none; }
-.dot { position: relative; z-index: 1; width: 22px; height: 22px; box-sizing: border-box; border-radius: 50%; background: var(--boe-surface); border: 2px solid var(--boe-border-strong); display: flex; align-items: center; justify-content: center; }
-.stepDone { color: var(--boe-text-strong); }
-.stepDone .dot { background: var(--boe-completed-bg); border-color: var(--boe-completed-fg); color: var(--boe-completed-fg); }
-.stepDone::before, .stepCur::before { background: var(--boe-completed-fg); opacity: .45; }
-.stepCur { color: var(--boe-text); font-weight: 600; }
-.stepCur .dot { background: var(--cur-fg); border-color: var(--cur-fg); box-shadow: 0 0 0 4px var(--cur-bg); }
-.stepCur .dot::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--boe-surface); }
-
-/* why the main action waits: one calm line, the list is one click away; the rarer outcomes are quiet text buttons */
-.hint { border: 1px solid var(--boe-warning-border); background: var(--boe-waiting-bg); color: #5E440A; border-radius: var(--boe-radius-control); font-size: 12.5px; line-height: 1.45; }
-.hint summary { display: flex; align-items: flex-start; gap: 8px; padding: 8px 12px; cursor: pointer; list-style: none; }
-.hint summary::-webkit-details-marker { display: none; }
-.hint summary svg { flex: none; margin-top: 1px; }
-.hintMore { margin-left: auto; padding-left: 12px; white-space: nowrap; font-weight: 600; color: var(--boe-brand-ink); }
-.hint[open] .hintMore { display: none; }
-.hintBody { display: grid; gap: 8px; padding: 0 12px 10px 36px; }
-.hintRow { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
-.hintRow .chip { background: rgba(255, 255, 255, .7); }
 /* the price approval block inside the Status card (23 Nov 2026; it was a card at the bottom of the page) */
 .priceBlock { display: grid; gap: 8px; padding: 12px 14px; }
 .priceHead { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .priceChip { margin-left: auto; background: rgba(255, 255, 255, .6); }
-/* the Share card: the link and its buttons sit at the foot, under a rule */
-.shareFoot { margin-top: auto; display: grid; gap: 10px; padding-top: 14px; border-top: 1px solid var(--boe-border); }
-/* Lead | Ask a senior (23 Nov 2026): one strip of two halves under the top row; a half with nothing to say draws nothing, and an empty strip is hidden */
-.strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); box-shadow: var(--boe-shadow-panel); min-width: 0; }
-.strip:empty { display: none; }
-.strip > * + * { border-left: 1px solid var(--boe-border); }
 
 /* the Client card: a plain grid of fields; Advanced is a slim bar at the foot of the card */
 .fgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 20px; align-items: start; }
@@ -266,10 +277,6 @@ textarea.t3 { min-height: 86px; }
 .bottom { display: flex; gap: 16px; align-items: flex-start; }
 .bottom > * { flex: 1 1 0; min-width: 0; }
 .pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
-.linkBox { display: flex; gap: 6px; }
-.markRow { display: flex; gap: 10px; align-items: center; cursor: pointer; font-size: 13.5px; }
-.markRow > span { min-width: 0; }
-.markRow input { width: 18px; height: 18px; accent-color: var(--boe-brand); flex: none; }
 .event { display: flex; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--boe-surface-sunken); font-size: 12.5px; }
 .event:last-child { border-bottom: 0; }
 .dirty { color: var(--boe-waiting-fg); font-weight: 600; font-size: 12.5px; }
@@ -295,7 +302,6 @@ textarea.t3 { min-height: 86px; }
 
 /* narrower screens: the product's numbers panel goes under its boxes, lined up with them */
 @media (max-width: 1199px) {
-  .band, .bandTwo { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pl { grid-template-columns: 180px minmax(0, 1fr); }
   .plRight { grid-column: 2; justify-self: start; width: 100%; max-width: 420px; }
@@ -309,7 +315,7 @@ textarea.t3 { min-height: 86px; }
 }
 /* phone */
 @media (max-width: 767px) {
-  .grid2, .grid3, .grid4, .band, .bandTwo, .fgrid, .leadEdit { grid-template-columns: minmax(0, 1fr); }
+  .grid2, .grid3, .grid4, .fgrid, .leadEdit { grid-template-columns: minmax(0, 1fr); }
   .bottom { flex-direction: column; align-items: stretch; }
   .tile { padding: 16px; }
   .builder { gap: 16px; }
@@ -318,8 +324,21 @@ textarea.t3 { min-height: 86px; }
   .builder .cardHead .spacer { flex-basis: 100%; height: 0; }
   .cardFoot { padding: 4px 16px; }
   .advToggle .hintTxt { display: none; }
-  .strip { grid-auto-flow: row; }
-  .strip > * + * { border-left: 0; border-top: 1px solid var(--boe-border); }
+  .prow { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 14px 16px; }
+  .pfix { padding: 0; }
+  .pmore { margin-left: auto; }
+  .pbar .tileLab { padding-top: 0; }
+  .pgrp { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
+  .pgrp > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .psw { width: 100%; min-height: 44px; }
+  .pright { margin-left: 0; width: 100%; }
+  .pnext { order: -1; flex: 1 1 100%; }
+  .askw { display: block; flex: 1; }
+  .askw > .btn { width: 100%; }
+  .pop { position: static; width: auto; max-width: none; margin-top: 8px; box-shadow: none; }
+  .iconBox { width: 44px; height: 44px; }
+  .pfix summary { padding: 12px 16px; }
+  .prc > .btnQuiet:last-child { margin-left: -10px; }
   .pl { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 12px; }
   .plPic { flex-direction: row; align-items: center; gap: 14px; }
   .plPicBtn, .plPicEmpty { width: 140px; height: 118px; flex-shrink: 0; }
@@ -398,8 +417,6 @@ textarea.t3 { min-height: 86px; }
 .fromLeadList dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 
-/* Ask a senior (20 Nov 2026): one slim strip above the top row. */
-.askStrip { padding: 12px 18px; display: grid; gap: 10px; align-content: center; min-width: 0; font-size: 13.5px; }
 
 /* The card on top of the list (owner, 23 Nov 2026): two tiles, then the value each candidate quoted as ranked bars. */
 .top { display: grid; grid-template-columns: 400px minmax(0, 1fr); padding: 14px 16px; }
