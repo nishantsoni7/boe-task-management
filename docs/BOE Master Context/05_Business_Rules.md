@@ -1562,4 +1562,4 @@ recorded event.
 newest `status_changed` or `note_added` row (anyone's) as progress, measures the
 day count from it, and takes the flag down when a started or working task shows
 progress again. The thresholds (6 days without progress on a task at least 5 days
-old) are unchanged. Not applied at the time of writing. (PR number added when opened.)
+old) are unchanged. Not applied at the time of writing. (PR #1013.)
