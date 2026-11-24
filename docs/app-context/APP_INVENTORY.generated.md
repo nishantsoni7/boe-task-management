@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `bb26f2d5` — Docs: #1005 merged and live (2026-11-24 08:44 IST) (#1006)
-- Commits on this branch: 1563
+- Commit: `87d1b2ab` — Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL)
+- Commits on this branch: 1564
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 506 (first `20260530_create_positions.sql`, latest `20270826000000_pricing_engine_v3.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
-- Test files: 947   Next.js 16.2.6, React 19.2.4
+- Test files: 949   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `87d1b2ab` 2026-11-24 Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL)
 - `bb26f2d5` 2026-11-24 Docs: #1005 merged and live (2026-11-24 08:44 IST) (#1006)
 - `028eb186` 2026-11-24 Pricing: "Teach this?" on a quotation line, and rate reminders on For you (no SQL) (#1005)
 - `09a96c3f` 2026-11-24 Pricing: engine v3, photo facts and taught cases, leading only where it wins the blind test (20270826000000 APPLIED) (#1004)
@@ -38,7 +39,6 @@
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
 - `741a8d4e` 2026-11-23 Docs: stamp the SEO brief short version as merged and live (no SQL) (#983)
 - `586aaf2e` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL) (#979)
-- `97b0fdbc` 2026-11-23 SEO brief: a short version on top and a total under every part (no SQL) (#981)
 
 ## Pages by top-level area
 
@@ -171,7 +171,7 @@
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 10 source, 7 test
-- `src/lib/pricing` — 28 source, 18 test
+- `src/lib/pricing` — 29 source, 19 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
 - `src/lib/quotations` — 32 source, 30 test

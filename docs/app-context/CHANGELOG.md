@@ -12,6 +12,15 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Checked.** New `photoRun.test.ts` (8); `photoFacts.test.ts`; tsc, eslint. Not tried live: the reading service was refusing every call at the time (most likely the account's credit; the new message will say).
 - **Rollback.** Revert the PR.
 
+## 2026-11-24 — Pricing: the Training case page redesigned, with Overhead % and Margin % for each product (branch `feat/pricing-case-redesign`, not merged) · no migration
+
+- **Why.** Owner (24 Nov 2026): the case page looked messy, and he wanted Overhead and Margin as a percentage for each product. A mockup was shared first; he chose the margin on the cost only, and "Yes, build it". New cases start with both boxes blank.
+- **The sheet.** Each element is one line (name, kind, quantity and unit, rate, amount) with the headings shown once; how it was worked out, the wood, the calculators and the reasoning open on an arrow. "In your words" is one button; "Changes not saved" shows once; Questions and History share one tabbed card; the photo's reading folds into one line. Under 640 px each element is a card.
+- **The price build-up.** A card beside the elements (under them on a narrow page): cost by kind, **Overhead %**, **Margin %**, a switch for the margin's base (the cost, or the cost plus overhead), the selling price and its comparison with the case's price.
+- **No new data.** The two boxes are the percentage rows a case could already hold (kind overhead / margin, calc percent), kept out of the list and put back as the last rows when the case is worked out and saved. An old case's rows move into the boxes only when its total and every kind's total stay the same, so opening one never changes a price. Nothing reads or writes anything new, so the estimator, Price logic and the taught-price library are untouched.
+- **No migration.** Rollback: revert the PR.
+- **Checked.** `tsc`, `eslint`, the full test suite, a static render of the real components and stylesheet at desktop and phone width. **Not seen signed in or with live data.**
+
 ## 2026-11-24 — Pricing: "Teach this?" on a quotation line, and rate reminders on For you (PR #1005, merged as `028eb186` 2026-11-24 08:44 IST, production deployment succeeded 08:46 IST, Price Brain v2 phase 4) · no migration
 
 - **Why.** Owner (24 Nov 2026, "Yes, build it", phase 4 of the approved plan, decision D7): close the loop, so a price somebody changes becomes something to teach, and the rates the calculators use stay current.

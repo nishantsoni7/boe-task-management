@@ -25,21 +25,15 @@
 .conf { font: 600 12px var(--boe-font-body); padding: 2px 8px; border-radius: 6px; white-space: nowrap; align-self: start; }
 .confHi { background: #E8F2EC; color: #276247; }
 .confLo { background: #FAF0DA; color: #805B0D; }
-.fields { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.span3 { grid-column: 1 / -1; }
+.fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.span2 { grid-column: span 2; }
+.span4 { grid-column: 1 / -1; }
 .field { display: grid; gap: 4px; min-width: 0; }
-.el { border-top: 1px solid #E4DED7; padding: 14px 16px; display: grid; gap: 10px; }
-.elGrid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1.1fr) minmax(0, 2fr) minmax(0, 1fr) minmax(0, .9fr) minmax(0, 1fr) minmax(0, 1.1fr) auto; gap: 10px; align-items: end; }
 .wood { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 200px) minmax(0, 1.6fr) auto; gap: 12px; align-items: end; padding: 12px 16px; border-top: 1px solid #E4DED7; }
-.split { display: grid; grid-template-columns: minmax(0, 220px) minmax(0, 1fr); gap: 12px; align-items: end; }
-.split p { margin: 0 0 10px; }
 .amount { font: 700 15px var(--boe-font-heading); font-variant-numeric: tabular-nums; text-align: right; min-height: 40px; display: flex; align-items: center; justify-content: flex-end; }
 .fromAi { font: 600 11px var(--boe-font-body); padding: 1px 7px; border-radius: 6px; background: #EAF0F8; color: #335A86; }
 .iconBtn { width: 40px; height: 40px; border-radius: 8px; border: 1px solid #CFC8BF; background: #fff; color: #686D6C; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
 .iconBtn:hover { color: #B42332; border-color: #B42332; }
-.totals { display: flex; gap: 8px 20px; flex-wrap: wrap; align-items: baseline; padding: 14px 16px; border-top: 1px solid #E4DED7; background: #FBFAF8; border-radius: 0 0 12px 12px; font-size: 13.5px; }
-.totals b { font-variant-numeric: tabular-nums; }
-.grand { margin-left: auto; font: 800 22px var(--boe-font-heading); font-variant-numeric: tabular-nums; }
 .foot { position: sticky; bottom: 0; z-index: 5; background: #fff; border: 1px solid #CFC8BF; border-radius: 12px; box-shadow: 0 -4px 16px rgba(48, 53, 54, .08); padding: 12px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
 .spacer { flex: 1; }
 .msg { display: grid; gap: 2px; padding: 8px 0; border-top: 1px solid #F1EEE9; font-size: 13.5px; }
@@ -49,11 +43,8 @@
 .read small { grid-column: 1 / -1; color: #4C5352; }
 @media (max-width: 900px) {
   .two { grid-template-columns: minmax(0, 1fr); }
-  .elGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .elGrid > :first-child { grid-column: 1 / -1; }
   .fields { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .read { grid-template-columns: minmax(0, 1fr) auto; }
-  .grand { margin-left: 0; width: 100%; }
   .wrap { padding: 12px; }
 }
 
@@ -73,8 +64,6 @@
 .calcSizes { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .calcNote { margin: 0; font-size: 13px; color: #4C5352; font-variant-numeric: tabular-nums; }
 .calcBad { margin: 0; font-size: 13px; color: #805B0D; }
-.calcSpan { grid-column: span 3; align-self: center; }
-@media (max-width: 900px) { .calcSpan { grid-column: 1 / -1; } }
 .terms { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 13.5px; }
 .terms label { display: inline-flex; gap: 6px; align-items: center; min-height: 32px; }
 
@@ -110,3 +99,99 @@
 .logicVaries { margin-left: 6px; }
 .taughtAsk { flex-basis: 100%; display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; padding-top: 6px; border-top: 1px solid #E4DED7; }
 .taughtAsk select, .taughtAsk input { height: 32px; padding: 0 8px; font-size: 12.5px; width: auto; max-width: 100%; }
+
+/* The case page, 24 Nov 2026: the elements as a sheet, the price build-up beside them, one tabbed card for the talk.
+   .casePage is the container the sheet's layout answers to, so a pinned sidebar narrows it the right way. */
+.casePage { container-type: inline-size; container-name: tcase; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr) 304px; gap: 16px; align-items: start; }
+.build { position: sticky; top: 12px; }
+.sheetHead { display: grid; grid-template-columns: var(--cols); gap: 8px; align-items: center; padding: 8px 16px; background: var(--boe-surface-quiet); border-bottom: 1px solid var(--boe-border); font: 600 12px var(--boe-font-body); color: var(--boe-text-muted); }
+.sheetHead .right { text-align: right; }
+.sheet { --cols: 18px minmax(0, 1fr) 158px 112px 80px 92px 60px; }
+.el { display: grid; grid-template-columns: var(--cols); grid-template-areas: 'n name kind qty rate amt act' '. sub sub sub sub sub .' '. more more more more more more'; column-gap: 8px; row-gap: 6px; align-items: center; padding: 12px 16px; border-top: 1px solid var(--boe-border); }
+.elCalc { grid-template-areas: 'n name kind calc calc amt act' '. sub sub sub sub sub .' '. more more more more more more'; }
+.n { grid-area: n; color: var(--boe-text-muted); font-size: 12.5px; text-align: center; }
+.cName { grid-area: name; min-width: 0; }
+.cKind { grid-area: kind; }
+.cQty { grid-area: qty; }
+.cRate { grid-area: rate; }
+.cCalc { grid-area: calc; }
+.cAmt { grid-area: amt; }
+.cAct { grid-area: act; display: flex; gap: 2px; justify-content: flex-end; }
+.cKind select { padding: 6px 4px 6px 10px; font-size: 13.5px; }
+.lbl { display: none; font: 600 12px var(--boe-font-body); color: var(--boe-text-strong); margin-bottom: 3px; }
+.grp, .fx { display: flex; align-items: center; min-height: var(--boe-control-h); min-width: 0; border: 1px solid var(--boe-border-input); border-radius: var(--boe-radius-control); background: var(--boe-surface); }
+.grp:focus-within, .fx:focus-within { border-color: var(--boe-brand); box-shadow: 0 0 0 3px rgba(185, 71, 46, .22); }
+.grp input, .fx input { border: 0; background: transparent; color: var(--boe-text); font: 400 14px var(--boe-font-body); min-width: 0; align-self: stretch; padding: 0 8px; outline: none !important; }
+.grp input:first-child { width: 50%; text-align: right; border-right: 1px solid var(--boe-border); border-radius: 8px 0 0 8px; }
+.grp input:last-child { width: 50%; }
+.fx input { flex: 1; text-align: right; }
+.pf, .sf { color: var(--boe-text-muted); font-size: 14px; }
+.pf { padding-left: 10px; }
+.sf { padding-right: 10px; }
+.out { display: flex; align-items: center; justify-content: flex-end; min-height: var(--boe-control-h); font: 700 15px var(--boe-font-heading); font-variant-numeric: tabular-nums; }
+.cAct .iconBtn { width: 32px; height: 32px; border: 0; background: none; }
+.cAct .iconBtn:hover { background: var(--boe-surface-sunken); color: var(--boe-text); border: 0; }
+.cAct .iconDel:hover { color: var(--boe-error); }
+.flip { transform: rotate(180deg); }
+.subline { grid-area: sub; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--boe-text-muted); }
+.subline .fromAi { white-space: nowrap; flex-shrink: 0; }
+.tx { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.more { grid-area: more; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; padding: 12px; background: var(--boe-surface-quiet); border: 1px solid var(--boe-border); border-radius: 10px; align-items: end; }
+.wide { grid-column: 1 / -1; }
+.hint { margin: 0; align-self: center; }
+.addRow { display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - 32px); margin: 4px 16px 16px; min-height: 40px; border: 1px dashed var(--boe-border-strong); border-radius: 8px; background: none; color: var(--boe-text-strong); font: 600 13.5px var(--boe-font-body); cursor: pointer; }
+.addRow:hover { background: var(--boe-surface-quiet); }
+.words { padding: 14px 16px; border-bottom: 1px solid var(--boe-border); display: grid; gap: 10px; background: var(--boe-surface-quiet); }
+
+/* The price build-up. */
+.brow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 5px 0; }
+.dim { color: var(--boe-text-strong); }
+.costRow { border-top: 1px solid var(--boe-border); margin-top: 6px; padding-top: 10px; font-weight: 600; }
+.pcts { display: grid; gap: 8px; margin-top: 6px; }
+.pct { display: grid; grid-template-columns: minmax(0, 1fr) 92px 84px; gap: 8px; align-items: center; }
+.pct label { font-weight: 500; }
+.pct .fx { min-height: 36px; }
+.base { border: 1px solid var(--boe-border); border-radius: 10px; padding: 6px 12px 8px; margin: 0; display: grid; gap: 2px; background: var(--boe-surface-quiet); }
+.base legend { padding: 0 4px; font: 600 12.5px var(--boe-font-body); color: var(--boe-text-strong); }
+.base label { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13.5px; cursor: pointer; }
+.base label span { margin-left: auto; color: var(--boe-text-muted); }
+.base input { accent-color: var(--boe-brand); margin: 0; }
+.price { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding-top: 12px; border-top: 2px solid var(--boe-text); }
+.price span { font: 600 14px var(--boe-font-body); }
+.price b { font: 800 28px/1.1 var(--boe-font-heading); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.bar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: var(--boe-surface-sunken); }
+.bar i { display: block; height: 100%; }
+.legend { display: flex; gap: 6px 14px; flex-wrap: wrap; font-size: 12.5px; color: var(--boe-text-muted); }
+.legend b { font-weight: 600; color: var(--boe-text-strong); font-variant-numeric: tabular-nums; }
+.legend em { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; }
+
+/* The photo's reading folded into one line, and the talk about a case in one card. */
+.seenBox { border: 1px solid var(--boe-border); border-radius: 10px; background: var(--boe-surface-quiet); padding: 0 12px; }
+.seenBox summary { cursor: pointer; display: flex; align-items: center; gap: 8px; min-height: 40px; font-size: 13.5px; list-style: none; }
+.seenBox summary::-webkit-details-marker { display: none; }
+.seenBox summary svg { margin-left: auto; transition: transform .15s; }
+.seenBox[open] summary svg { transform: rotate(180deg); }
+.seenBox[open] { padding-bottom: 8px; }
+.tabs { display: flex; gap: 4px; padding: 8px 12px 0; border-bottom: 1px solid var(--boe-border); }
+.tab { border: 0; border-bottom: 2px solid transparent; background: none; color: var(--boe-text-muted); padding: 8px 10px 10px; font: 600 14px var(--boe-font-body); cursor: pointer; }
+.tab[aria-selected='true'] { color: var(--boe-text); border-bottom-color: var(--boe-brand); }
+.footTotal { display: flex; align-items: baseline; gap: 8px; }
+.footTotal b { font: 800 20px var(--boe-font-heading); font-variant-numeric: tabular-nums; }
+
+@container tcase (max-width: 1080px) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .build { position: static; }
+}
+@container tcase (max-width: 640px) {
+  .sheetHead { display: none; }
+  .el, .elCalc { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: 'name name act' 'sub sub sub' 'kind kind kind' 'qty rate amt' 'more more more'; row-gap: 8px; border: 1px solid var(--boe-border); border-radius: 10px; margin: 12px 12px 0; padding: 12px; }
+  .elCalc { grid-template-areas: 'name name act' 'sub sub sub' 'kind kind kind' 'calc calc amt' 'more more more'; }
+  .n { display: none; }
+  .lbl { display: block; }
+  .out { justify-content: flex-start; }
+  .more { grid-template-columns: minmax(0, 1fr); }
+  .addRow { margin-top: 12px; }
+  .pct { grid-template-columns: minmax(0, 1fr) 88px 80px; }
+  .foot > .spacer { display: none; }
+}

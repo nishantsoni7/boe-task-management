@@ -163,7 +163,7 @@ describe('the photo reading', () => {
 describe('the Training screens follow the house rules', () => {
   test('AppLink only, every CSS class exists, and nothing reads the closed tables directly', () => {
     const css = readFileSync('src/components/pricing/training/training.module.css', 'utf8')
-    for (const f of ['TrainingList.tsx', 'TrainingCase.tsx', 'WoodRates.tsx', 'CalcEditors.tsx']) {
+    for (const f of ['TrainingList.tsx', 'TrainingCase.tsx', 'ElementRow.tsx', 'PriceBuildUp.tsx', 'WoodRates.tsx', 'CalcEditors.tsx']) {
       const src = readFileSync(`src/components/pricing/training/${f}`, 'utf8')
       assert.doesNotMatch(src, /from 'next\/link'|router\.prefetch|prefetch=\{true\}/, f)
       assert.doesNotMatch(src, /\.from\('pricing_training/, f)
