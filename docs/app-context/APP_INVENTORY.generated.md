@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `b856b0b4` — Pricing: Training case page redesigned, with Overhead % and Margin % for each product (no SQL)
-- Commits on this branch: 1563
+- Commit: `8d0ca964` — Pricing: Training case page redesigned, with Overhead % and Margin % for each product (no SQL) (#1007)
+- Commits on this branch: 1564
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 506 (first `20260530_create_positions.sql`, latest `20270826000000_pricing_engine_v3.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,7 +14,8 @@
 
 ## Latest 25 commits
 
-- `b856b0b4` 2026-11-24 Pricing: Training case page redesigned, with Overhead % and Margin % for each product (no SQL)
+- `8d0ca964` 2026-11-24 Pricing: Training case page redesigned, with Overhead % and Margin % for each product (no SQL) (#1007)
+- `bb26f2d5` 2026-11-24 Docs: #1005 merged and live (2026-11-24 08:44 IST) (#1006)
 - `028eb186` 2026-11-24 Pricing: "Teach this?" on a quotation line, and rate reminders on For you (no SQL) (#1005)
 - `09a96c3f` 2026-11-24 Pricing: engine v3, photo facts and taught cases, leading only where it wins the blind test (20270826000000 APPLIED) (#1004)
 - `9e89001a` 2026-11-23 Pricing: photo facts, every product photo read once into facts (#1002)
@@ -38,7 +39,6 @@
 - `330dc033` 2026-11-23 Docs: stamp #979 (notifications, major activity only) as merged and deployed (no SQL) (#984)
 - `741a8d4e` 2026-11-23 Docs: stamp the SEO brief short version as merged and live (no SQL) (#983)
 - `586aaf2e` 2026-11-23 Notifications: Orders and Finance show major activity only (no SQL) (#979)
-- `97b0fdbc` 2026-11-23 SEO brief: a short version on top and a total under every part (no SQL) (#981)
 
 ## Pages by top-level area
 
