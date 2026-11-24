@@ -463,21 +463,6 @@ export default function PayrollResultDetailPage() {
       title="Payroll Result Detail"
       onSignOut={handleSignOut}
     >
-      {/* Back link — secondary, and kept to a single tight line. */}
-      <div className={phone.backRow} style={{ marginBottom: 16 }}>
-        <button
-          onClick={() => router.push(`/payroll/results/${periodId}`)}
-          className={phone.back}
-          style={{
-            background: 'none', border: 'none', cursor: 'pointer',
-            color: '#686D6C', fontSize: 12.5, display: 'flex', alignItems: 'center', gap: 4,
-            padding: 0,
-          }}
-        >
-          ← Back to Results
-        </button>
-      </div>
-
       {error && (
         <div style={{
           marginBottom: 16, padding: '10px 16px', borderRadius: 8,

@@ -24,6 +24,7 @@
 // convenience, never an authorisation — see resolveManagementAccess in
 // src/lib/moduleAccess.ts.
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useState, useEffect, useCallback } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useRouter, usePathname } from 'next/navigation'
@@ -217,6 +218,7 @@ export function AttendancePayrollLayout({
           >
             ☰
           </button>
+          <PageBackButton />
           <div className={`boe-page-title-group ${styles.titleGroup}`}>
             <h1 className="boe-page-title">{title}</h1>
             {subtitle && <div className="boe-page-subtitle">{subtitle}</div>}

@@ -58,6 +58,15 @@ export function returnLabelFor(path: string): string {
     '/finance':               'Payment Requests',
     '/finance/received':      'Confirmed Payments',
     '/finance/notifications': 'Notifications',
+    // Where the one Back control lands when nothing is behind it (backTarget.ts).
+    '/modules':               'Modules',
+    '/quotations':            'Quotations',
+    '/sales':                 'Sales',
+    '/meetings':              'Meetings',
+    '/vendors':               'Vendors',
+    '/inventory':             'Inventory',
+    '/marketing':             'Marketing',
+    '/seo':                   'SEO',
   }
   if (known[bare]) return `Back to ${known[bare]}`
   if (/^\/orders\/drafts\/[^/]+$/.test(bare)) return 'Back to PI Draft'

@@ -308,7 +308,8 @@ describe('Quotation Requests navigation is untouched', () => {
     // taskReturnPath.test.ts for the value, here for the two call sites.
     assert.ok(DETAIL.includes('defaultTaskListPath(task.task_type)'), 'Mark Complete')
     assert.ok(DETAIL.includes('defaultTaskListPath(task?.task_type)'), 'Submit for Approval')
-    assert.ok(DETAIL.includes('taskType:     task?.task_type,'), 'the Back control')
+    // The Back control is no longer here: the header's one Back button (backTarget.ts) goes to My Tasks.
+    assert.equal(DETAIL.includes('taskBackTarget'), false)
   })
 })
 

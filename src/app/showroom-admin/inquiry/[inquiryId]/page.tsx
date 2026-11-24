@@ -10,7 +10,7 @@ import type { UserProfile, InquiryStatus, QuotationStatus } from '@/lib/types'
 import { LoadingScreen, AlertBanner } from '@/components/ui/atoms'
 import { ShowroomAdminLayout } from '@/components/layout/ShowroomAdminLayout'
 import { colors, font } from '@/lib/tokens'
-import { ArrowLeft, Trash2, Search, Plus, FileDown, Link2, Check, Package, Box, User, UserCheck, Phone, CalendarDays, Save, Eye } from 'lucide-react'
+import { Trash2, Search, Plus, FileDown, Link2, Check, Package, Box, User, UserCheck, Phone, CalendarDays, Save, Eye } from 'lucide-react'
 import { useViewAs } from '@/hooks/useViewAs'
 import { resolveModuleAccess } from '@/lib/moduleAccess'
 import { SALES_CANDIDATE_LABEL, salesCandidateLabel } from '@/lib/showroom/salesCandidate'
@@ -612,20 +612,6 @@ export default function InquiryDetailPage() {
 
   return (
     <ShowroomAdminLayout profile={profile} title="Inquiry Detail" onSignOut={handleSignOut}>
-
-      {/* Back */}
-      <button
-        className="sra-inq-back"
-        onClick={() => router.push('/showroom-admin')}
-        style={{
-          display: 'inline-flex', alignItems: 'center', gap: '6px',
-          fontSize: '13px', color: '#686D6C',
-          background: 'none', border: 'none', cursor: 'pointer',
-          padding: '0 0 22px', fontFamily: font.body, fontWeight: 500,
-        }}
-      >
-        <ArrowLeft size={14} strokeWidth={2} /> Back to Inquiries
-      </button>
 
       {/* Two-column layout; one column on a phone (sra-inq-grid, owner 2026-11-05) */}
       <div className="sra-inq-grid" style={{

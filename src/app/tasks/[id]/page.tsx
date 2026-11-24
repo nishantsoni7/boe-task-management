@@ -44,8 +44,7 @@ import { QUOTATION_REQUESTS_KEY } from '@/hooks/queries/useQuotationRequests'
 import { noteListReturn } from '@/hooks/useListScrollRestore'
 import { useActiveUsers, useAllUserNames } from '@/hooks/queries/useMyTasks'
 import { ASSIGNED_BY_ME_KEY } from '@/hooks/queries/useAssignedByMe'
-import { hasInAppHistory } from '@/lib/navigation/appHistory'
-import { assignedByMeReturnPath, defaultTaskListPath, returnPathFromSearch, taskBackTarget } from '@/lib/tasks/taskReturnPath'
+import { assignedByMeReturnPath, defaultTaskListPath, returnPathFromSearch } from '@/lib/tasks/taskReturnPath'
 import { resolveAttachmentPath, signAttachmentUrl, canonicalAttachmentRef, SIGNED_URL_TTL_SECONDS } from '@/lib/tasks/attachmentStorage'
 import { commentHeadingRest, type ActivityAttachmentInfo } from '@/lib/tasks/activityHeadings'
 import { buildGalleryEntries } from '@/lib/tasks/taskGallery'
@@ -1899,39 +1898,6 @@ export default function TaskDetailPage() {
       profile={profile}
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-          <button
-            onClick={() => {
-              // Pop when this document has an entry of its own to pop, which is
-              // every ordinary walk in from a list — same page, same scroll,
-              // no extra history entry. Otherwise navigate: a task opened from
-              // a notification in a NEW TAB has nothing behind it, and this
-              // button simply did nothing there.
-              const target = taskBackTarget({
-                inAppHistory: hasInAppHistory(),
-                returnTo:     returnPathFromSearch(window.location.search),
-                taskType:     task?.task_type,
-              })
-              if (target.kind === 'history') { router.back(); return }
-              noteListReturn()
-              router.push(target.path)
-            }}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '4px',
-              fontSize: '13px', fontWeight: 600,
-              color: colors.muted,
-              background: 'none', border: 'none',
-              cursor: 'pointer', padding: '3px 8px',
-              borderRadius: '6px',
-              transition: 'background 0.15s',
-              fontFamily: 'inherit',
-            }}
-            onMouseEnter={e => (e.currentTarget.style.background = colors.float)}
-            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
-            aria-label="Go back"
-            className="boe-p3-back"
-          >
-            ← Back
-          </button>
           <span>{isQuotation ? 'Quotation Details' : 'Task Details'}</span>
           <span style={{
             fontSize: '12px', fontWeight: 700,

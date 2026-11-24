@@ -1,5 +1,6 @@
 'use client'
 
+import { PageBackButton } from '@/components/layout/PageBackButton'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { Home, Megaphone, X } from 'lucide-react'
@@ -232,6 +233,7 @@ export function BoeOsLayout({
           >
             {sidebarOpen ? <X size={18} /> : '☰'}
           </button>
+          <PageBackButton />
           <div className="boe-page-title-group">
             {/* THE PAGE'S ONE HEADING. An <h1> rather than a styled div,
                 because this line is now the page's title and not a strip of

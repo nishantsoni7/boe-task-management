@@ -6,7 +6,7 @@
 // ----------------------
 // Inside the Meetings module and nowhere else: this route sits under
 // src/app/meetings, so it is behind MeetingsGuard (../layout.tsx) and inside
-// MeetingsLayout, with the module's own sidebar and a Back to Meetings action.
+// MeetingsLayout, with the module's own sidebar and the header's one Back button.
 // It is not on the dashboard, not in the global sidebar, and not in Tasks or
 // Performance.
 //
@@ -33,7 +33,6 @@
 // ./MeetingGuide.tsx.
 
 import { useRouter } from 'next/navigation'
-import { ArrowLeft } from 'lucide-react'
 import { LoadingScreen } from '@/components/ui/atoms'
 import { MeetingsLayout } from '@/components/layout/MeetingsLayout'
 import { useMeetings } from '@/hooks/useMeetings'
@@ -51,15 +50,6 @@ export default function HowMeetingsWorkPage() {
       title="How Meetings Work"
       subtitle="What the Meeting module is for, and how an issue travels through it."
       onSignOut={signOut}
-      actions={
-        <button
-          onClick={() => router.push('/meetings')}
-          className="boe-btn boe-btn-ghost boe-desktop-only"
-          style={{ padding: '7px 13px', fontSize: '12.5px', display: 'flex', alignItems: 'center', gap: '5px' }}
-        >
-          <ArrowLeft size={13} strokeWidth={2} aria-hidden="true" /> Back to Meetings
-        </button>
-      }
     >
       <MeetingGuide onBack={() => router.push('/meetings')} />
     </MeetingsLayout>

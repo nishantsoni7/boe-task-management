@@ -45,12 +45,10 @@ describe('the Expenses table', () => {
 })
 
 describe('Back on a record', () => {
-  test('the PI Draft puts Back top-left in the Order page\'s style, not in the header actions', () => {
+  test('the Order and the PI Draft draw no Back of their own, in the page or in the header actions', () => {
     const pi = read('app/orders/drafts/[submissionId]/page.tsx')
     const order = read('app/orders/[id]/page.tsx')
-    assert.match(order, /<RecordBackLink fallbackHref="\/orders\/all" className="order-back" \/>/)
-    assert.match(pi, /<RecordBackLink fallbackHref="\/orders\/drafts" className="order-back" \/>/)
-    const actions = pi.slice(pi.indexOf('actions={<>'), pi.indexOf('actions={<>') + 160)
-    assert.equal(actions.includes('backButton'), false)
+    assert.equal(/RecordBackLink|order-back/.test(order), false)
+    assert.equal(/RecordBackLink|order-back|backButton/.test(pi), false)
   })
 })

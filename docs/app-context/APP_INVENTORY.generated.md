@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `c54b2692` — Docs: #1015 merged and live (2026-11-24 17:02 IST) (#1018)
-- Commits on this branch: 1574
+- Commit: `c191444c` — Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (no SQL)
+- Commits on this branch: 1575
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
-- Test files: 950   Next.js 16.2.6, React 19.2.4
+- Test files: 951   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `c191444c` 2026-11-24 Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (no SQL)
 - `c54b2692` 2026-11-24 Docs: #1015 merged and live (2026-11-24 17:02 IST) (#1018)
 - `cc4a1a8f` 2026-11-24 Docs: #1013 merged and live (2026-11-24 15:44 IST), stale-flag migration stamped, open items noted (#1017)
 - `345f1b58` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL) (#1015)
@@ -38,7 +39,6 @@
 - `47f146a3` 2026-11-23 Pricing: work out a Training element by wood cut list, metal weight, area or percentage (migration 20270823000000 APPLIED) (#993)
 - `db33183d` 2026-11-23 Quotations: the Fabric From box works on a row with nothing typed yet (no SQL) (#995)
 - `42e9edf6` 2026-11-23 Quotations: the builder's top section tidied, and Price approval moved up into the Status card (no SQL) (#994)
-- `f904e860` 2026-11-23 Docs: stamp #989 (the Open-tile migration file) as merged and live (no SQL) (#991)
 
 ## Pages by top-level area
 
@@ -164,7 +164,7 @@
 - `src/lib/meta` — 11 source, 8 test
 - `src/lib/minop` — 13 source, 11 test
 - `src/lib/modules` — 7 source, 8 test
-- `src/lib/navigation` — 6 source, 9 test
+- `src/lib/navigation` — 7 source, 10 test
 - `src/lib/notifications` — 9 source, 26 test
 - `src/lib/orders` — 114 source, 174 test
 - `src/lib/payroll` — 36 source, 36 test

@@ -2170,6 +2170,32 @@ html[data-boe-nav-pending] .boe-loader.boe-nav-loader { display: flex; }
   flex-shrink: 0;
 }
 
+/* THE Back control (PageBackButton): left of the page title in every module header.
+   `.boe-page-header` spreads its children with space-between, so the title takes
+   the free space (margin-right: auto) to stay beside the button, not centred.
+   44px is the touch target on a phone too; the screen rules for .boe-page-header > button
+   already ask for it. Printed pages have no use for it. */
+.boe-back-btn {
+  align-self: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  margin-right: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 1px solid rgba(185, 71, 46, 0.22);
+  background: rgba(185, 71, 46, 0.08);
+  color: #963B27;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.boe-back-btn:hover { background: #B9472E; border-color: #B9472E; color: #FFFFFF; }
+.boe-back-btn:focus-visible { outline: 2px solid #B9472E; outline-offset: 2px; }
+.boe-back-btn + .boe-page-title-group { margin-right: auto; }
+@media print { .boe-back-btn { display: none; } }
+
 /* Mobile menu toggle — hidden on desktop */
 .boe-menu-toggle {
   display: none;
@@ -15158,12 +15184,10 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
    padding and the content on the first screen. Desktop and tablet are
    untouched. */
 @media (max-width: 767px) {
-  /* Quick Start Guide: one-row bar (no badge, icon Back), tight padding, the
+  /* Quick Start Guide: one-row bar (no badge, the page's Back button), tight padding, the
      hero is just the title. */
   .boe-p4-qsg-bar { padding: 0 8px 0 12px !important; }
   .boe-p4-qsg-badge { display: none !important; }
-  .boe-p4-qsg-back { width: 44px; height: 44px; padding: 0 !important; justify-content: center; }
-  .boe-p4-qsg-backlabel { display: none; }
   .boe-p4-qsg-body { padding: 12px 12px 0 !important; }
   .boe-p4-qsg-hero { margin-bottom: 12px !important; }
   .boe-p4-qsg-eyebrow, .boe-p4-qsg-lede { display: none; }

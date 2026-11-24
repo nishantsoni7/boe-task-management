@@ -419,7 +419,8 @@ name is "BOE One" (`metadata.title`); every module sidebar header reads "BOE One
 - Launcher: `src/app/modules/page.tsx`, `modules.module.css`, `src/lib/modules/moduleOrder.ts`, `src/hooks/queries/useModuleOrder.ts`.
 - Loading lines and the daily splash: `src/lib/dailySplash/{items,splash,headlines}.ts`, `src/components/ui/BoeOneLoader.tsx`, `src/components/DailyQuoteLoader.tsx`, `src/app/api/daily-headlines/route.ts`.
 - View As: `src/lib/viewAs.ts`, `src/app/api/view-as/subject/route.ts`, `src/app/super-admin/view-user/[userId]/page.tsx`.
-- Navigation helpers: `src/lib/navigation/{appHistory,moduleNav,recordReturn,urlMirror}.ts`, `src/lib/listState.ts`, `src/hooks/useListUrlState.ts`.
+- Navigation helpers: `src/lib/navigation/{appHistory,backTarget,leaveGuard,moduleNav,recordReturn,urlMirror}.ts`, `src/lib/listState.ts`, `src/hooks/useListUrlState.ts`.
+- The one Back button: `src/components/layout/PageBackButton.tsx` (rendered by every `*Layout.tsx` header and by the four standalone pages named in section 8), `.boe-back-btn` in `globals.css`.
 - Error boundaries: `src/app/error.tsx`, `src/app/global-error.tsx` (PR #234: Try again / Reload / Go to Modules).
 
 ## 8. Decisions made & why
@@ -432,6 +433,7 @@ name is "BOE One" (`metadata.title`); every module sidebar header reads "BOE One
 - Region moved to hnd1 to sit beside the database; functions are not edge.
 - Rebrand left generated documents (PI/quotation PDFs, QR export, approval slip) untouched on purpose.
 - No dark mode.
+- **One Back button on every page (2026-11-24, owner: "there should always be an option to go back"; placement A, "beside the title", chosen from five previews; PR #1016, no SQL).** `PageBackButton` (44 px, terracotta tint, arrow icon; its tooltip names the place when it is known, "Back" when not) is drawn by each of the 21 shared headers (the `*Layout.tsx` files and `ComingSoonModule`) just before `.boe-page-title-group`, and by four standalone pages that have no module header (announcement, cash handover, quick-start guide, sample dispatch). Where it goes is decided in one place, `src/lib/navigation/backTarget.ts`: if this document pushed an entry of its own (`appHistory.hasInAppHistory`) it pops (`router.back()`), so the list returns with its filters and scroll; otherwise it goes to the validated `returnTo`, else one level up (`parentPathFor`: the last segment dropped, a module home goes to `/modules`, `PARENT_OVERRIDES` for folders that are not pages). `/modules` shows no button. Pages must not draw a Back of their own: about 25 per-page Back links, `RecordBackLink` and Task Detail's `taskBackTarget` were removed in the same change. Kept on purpose: step buttons inside forms and pop-ups ("Back to the results"), buttons in a not-found or refused state, "Back to sign in".
 
 ## 9. Known traps / gotchas / unfixed defects
 
@@ -448,6 +450,10 @@ name is "BOE One" (`metadata.title`); every module sidebar header reads "BOE One
 5. An inline `style` beats any media query; mobile overrides need CSS-module classes.
 6. No middleware: do not assume an unauthenticated request is bounced before a page renders.
 7. Deactivating or soft-deleting a user does NOT end their Supabase session (see section 4).
+8. **Back is a button, not a link, so a page with unsaved edits must guard it.** `askBeforeLeaving` (the quotation builder, the PI editor) matches `.boe-back-btn` as well as `a[href]`; a new page that registers its own guard must do the same or Back discards the edits silently. The browser's own Back is still not covered.
+9. **A new route whose parent folder is not a page needs a `PARENT_OVERRIDES` line** in `backTarget.ts`; `backTarget.test.ts` walks every `page.tsx` and fails otherwise. A new page with no module header must render `<PageBackButton />` itself.
+10. `hasInAppHistory()` stays true after Back has returned to the page the app opened on (`history.length` does not shrink), so one more press can leave the app or do nothing. Accepted, as it was for Task Detail.
+11. **Not changed on purpose (still carry their own link):** the showroom QR flow (`/showroom/*`), the client's shared quotation link (`/q/*`), the sign-in pages, the quotation print page ("Back to the quotation"), the Pricing Training case arrow, Showroom Admin product edit (own return rule and unsaved dialog), the Meetings guide's end-of-page buttons. The old classes of the removed links (`.order-back`, `.opp-back`, `.pi-edit-back`, `.boe-announce-back`) are still in the stylesheets, unused. Task Detail with nothing behind it and no `returnTo` now goes to My Tasks (a quotation task used to go to Quotation Requests); every in-app entry point sets `returnTo`.
 8. `/api/reset-password` min 6 chars vs UI 8; `/api/update-employee` and `/api/create-employee` have different role
    allow-lists (`update-employee` = admin only at this commit; `create-employee` = admin or manager).
 9. `/api/performance` (module 13) and some role-based leftovers (`/manager`, `/tasks/all`, `/api/task-detail`) predate the
@@ -475,6 +481,7 @@ name is "BOE One" (`metadata.title`); every module sidebar header reads "BOE One
 
 - **Styles, every screen (2026-10-31):** `src/app/stylesDefined.test.ts` fails when a className names a class with no rule, or a `styles.x` its module does not define; `NO_RULE_NEEDED` holds the reasoned exceptions and fails when one goes stale. `ui` and `cc` hand stylesheets on under other names: a new one like them goes in `HANDED_ON`. It cannot see a run-time name, or a rule gone while the name survives in another rule, as `.od-pair` did (pinned in `orderDashboardSummary.test.ts`). `.boe-spin` in `globals.css` is the busy icon.
 
+- **One Back button (2026-11-24):** `src/lib/navigation/backTarget.test.ts` (the rules, `returnTo` refusals, and a walk of every `page.tsx` that proves each parent is a real page), `src/lib/navigation/leaveGuard.dom.test.ts` (Back asks when there are unsaved edits); `ordersFinanceUsability`, `uiConsistencyPass`, `orderDetailArchitecture`, `piDetail.render`, `amountMask`, `paymentPlanOutputs` and `controlCenterNav` now assert that a page draws no Back of its own.
 - **For you in one call (2026-11-17):** `src/lib/modules/forYouBundle.test.ts` (the browser batcher and the migration's parts, grants and invoker rule).
 - **Page speed part 7 (2026-11-14):** `src/lib/notifications/batchedCounts.test.ts` (the browser batcher), `src/lib/notifications/countBatch.test.ts` (the server batch and the wiring).
 - **Page speed part 6 (2026-11-14):** `src/components/dayClose/batchedGet.test.ts` (the browser batcher), `src/lib/dayClose/launcherBatch.test.ts` (the server batch and the wiring), `src/hooks/queries/useOwnRowExtras.test.ts` (the shared own-row read).

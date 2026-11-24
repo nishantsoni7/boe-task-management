@@ -146,7 +146,6 @@ import {
 } from '@/lib/orders/piInternalDetails'
 import { classifyDiscountWording } from '@/lib/orders/discountWording'
 import { OrdersRouteFallback } from '@/components/layout/ModuleRouteFallback'
-import { RecordBackLink } from '@/components/layout/RecordBackLink'
 import { FromQuotationMark } from '@/components/quotations/QuotationLinks'
 import { MultilineText } from '@/components/ui/MultilineText'
 import { OrdersLayout } from '@/components/layout/OrdersLayout'
@@ -1848,10 +1847,6 @@ function PiDraftDetailPageInner() {
 
   if (load.kind === 'loading' || (load.kind === 'ready' && !capsKnown)) return <OrdersRouteFallback />
 
-  // Back to wherever this PI was opened from — PI Drafts, Confirmed Payments,
-  // the dashboard — named, and never out of the app. See RecordBackLink.
-  const backButton = <RecordBackLink fallbackHref="/orders/drafts" className="boe-btn boe-btn-ghost" />
-
   if (load.kind !== 'ready' || !draft) {
     const unavailable = load.kind === 'unavailable'
     return (
@@ -1860,7 +1855,6 @@ function PiDraftDetailPageInner() {
         title="PI Draft"
         onSignOut={handleSignOut}
         showRefresh={false}
-        actions={backButton}
       >
         <PiCard style={{ borderColor: 'rgba(180,35,50,0.3)' }}>
           <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -2651,9 +2645,6 @@ function PiDraftDetailPageInner() {
       <AmountMaskRegion hidden={amountsHidden}>
       <div className="pi-detail-stack">
 
-        {/* Back to wherever this PI was opened from, top-left, in the same place and the same
-            style as on the Order page (the header holds actions; a way back is not one). */}
-        <RecordBackLink fallbackHref="/orders/drafts" className="order-back" />
         {/* Where this PI came from, when a quotation made it (20270629000000); loads after the page has drawn. */}
         <FromQuotationMark supabase={supabase} submissionId={submissionId} />
 

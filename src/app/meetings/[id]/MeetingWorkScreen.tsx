@@ -682,22 +682,11 @@ export function MeetingWorkScreen() {
         </>
       }
     >
-      {/* Back + status strip. Back goes to the list, which restores its own
-          filters from the URL — the reason they live there. */}
+      {/* Status strip. Back is the header's one Back button; the list it returns
+          to restores its own filters from the URL — the reason they live there. */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '10px',
       }}>
-        <button
-          className="boe-p3-back"
-          onClick={() => router.push(meeting.status === 'completed' ? '/meetings/completed' : '/meetings')}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px 4px 4px',
-            background: 'none', border: 'none', cursor: 'pointer',
-            fontSize: '12.5px', fontWeight: 600, color: colors.secondary,
-          }}
-        >
-          <ArrowLeft size={14} strokeWidth={2} /> All Meetings
-        </button>
         <MeetingBadge meta={typeMeta} />
         <MeetingBadge meta={MEETING_STATUS_META[meeting.status]} />
         {attendees.length > 0 && (
