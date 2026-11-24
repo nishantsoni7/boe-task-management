@@ -1183,35 +1183,42 @@ export function OrderDetailSkeleton() {
         </div>
       </div>
 
-      {/* THE ORDER BAR: one card of ruled cells, as the page draws it, so nothing jumps. */}
+      {/* THE FACTS LINE and ONE CARD, as the page draws them, so nothing jumps (owner, 25 Nov 2026). */}
       <section className="order-stages order-stages--bar">
-        {[104, 72, 96, 120, 150].map((w, i) => (
+        {[96, 72, 80, 118, 140].map((w, i) => (
           <div key={i} className="order-stage">
-            <SkeletonBlock w={56} h={11} />
-            <SkeletonBlock w={w} h={22} radius={6} />
+            <SkeletonBlock w={52} h={12} />
+            <SkeletonBlock w={w} h={14} radius={4} />
           </div>
         ))}
       </section>
 
-      {/* The Documents card's three rows. */}
-      <div className="order-docs-row">
-        <section className="order-docs">
-          <div className="order-docs-head">
-            <SkeletonBlock w={88} h={11} />
-          </div>
-          {[0, 1, 2].map(i => (
-            <div key={i} className="order-doc-section">
-              <div>
-                <SkeletonBlock w={132} h={15} />
-                <div style={{ marginTop: 6 }}><SkeletonBlock w="46%" h={11} /></div>
-              </div>
-              <SkeletonBlock w={140} h={24} />
-              <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                {i === 0 && <SkeletonBlock w={78} h={28} radius={6} />}
+      <div className="order-top">
+        <div className="order-docs-row">
+          <section className="order-docs">
+            <div className="order-docs-head">
+              <SkeletonBlock w={88} h={11} />
+            </div>
+            <div className="order-docs-main">
+              <div className="order-pic">
+                <div className="order-docs-side order-pic-strip">
+                  {[0, 1].map(i => (
+                    <div key={i} className="order-doc-prop">
+                      <SkeletonBlock w={i === 0 ? 150 : 110} h={12} />
+                      <SkeletonBlock w={i === 0 ? 280 : 250} h={32} radius={9} />
+                    </div>
+                  ))}
+                  {[2, 3].map(i => (
+                    <div key={i} className="order-doc-section">
+                      <SkeletonBlock w={84} h={12} />
+                      <SkeletonBlock w={110} h={14} />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          ))}
-        </section>
+          </section>
+        </div>
       </div>
 
       <div className="order-products">

@@ -32,8 +32,17 @@ export const ORDER_TYPE_STAGE_LABEL = 'Order type'
 export const SAMPLE_ORDER_BADGE = 'Sample order'
 export const FULL_ORDER_BADGE = 'Full order'
 
-function StageBadge({ label, tone }: { label: string; tone: WorkspaceTone }) {
+function StageBadge({ label, tone, plain = false }: { label: string; tone: WorkspaceTone; plain?: boolean }) {
   const t = STATUS_PILL_TONE[tone]
+  // The facts line draws a status as a coloured dot and a word, not a filled pill.
+  if (plain) {
+    return (
+      <span className="order-stage-badge order-stage-badge--plain">
+        <i className="order-stage-dot" style={{ background: t.fg }} aria-hidden="true" />
+        {label}
+      </span>
+    )
+  }
   return (
     <span className="order-stage-badge" style={{ background: t.bg, color: t.fg, borderColor: t.border }}>
       {label}
@@ -61,9 +70,9 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
   /** How much of the Order has left; pressing it opens the Dispatch tab. Not drawn in the Order bar (owner: not needed on top; the Dispatch tab is one click away). */
   dispatch?: { text: string; percent: number; onOpen: () => void } | null
   /**
-   * THE ORDER BAR (Nitish / Operations, 24 Nov 2026): the same strip with the due
-   * date and the advance gate that decides whether production can start, as ONE row
-   * of five cells. The Advance cell is a button that opens its folded row below the
+   * THE ORDER BAR (Nitish / Operations, 24 Nov 2026), now THE FACTS LINE (owner, 25 Nov 2026): the same
+   * strip with the due date and the advance gate that decides whether production can start, drawn as
+   * ONE line of plain text under the order number (label, then value) and not as cells. The Advance cell is a button that opens its folded row below the
    * products. Dispatch, Fabric & Finish and From client are not on the bar (owner, on
    * the real order 549: not required on top). Absent, the strip is exactly the four
    * separate cells it always was.
@@ -74,12 +83,12 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
     <section className={bar ? 'order-stages order-stages--bar' : 'order-stages'} aria-label={bar ? 'Order at a glance' : 'Order stages'}>
       <div className="order-stage" title={bar && erp.line ? erp.line : undefined}>
         <span className="order-stage-label">{ERP_STAGE_LABEL}</span>
-        <StageBadge label={erp.label} tone={erp.tone} />
+        <StageBadge label={erp.label} tone={erp.tone} plain={!!bar} />
         {erp.line && <span className="order-stage-line">{erp.line}</span>}
       </div>
       <div className="order-stage">
         <span className="order-stage-label">{PRODUCTION_STAGE_LABEL}</span>
-        <StageBadge label={production.label} tone={production.tone} />
+        <StageBadge label={production.label} tone={production.tone} plain={!!bar} />
       </div>
       <div className={`order-stage${isSample ? ' order-stage--sample' : ''}`} title={sampleLabel ?? undefined}>
         <span className="order-stage-label">{ORDER_TYPE_STAGE_LABEL}</span>

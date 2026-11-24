@@ -1,10 +1,11 @@
 /**
- * The PI card (Nitish / Operations, 24 Nov 2026): the Documents card redrawn as the Main PI and its real
- * downloads on one row, a four-cell strip (PI history, Product pictures, Design files, Client PO), the
- * absence note, and a footer for the Sales highlight and the Notes.
+ * The PI card (owner, 25 Nov 2026, third pass): the Documents card with NO "Main PI" heading row. It is four
+ * plain columns: PI (labelled "PI · V1", with its status, PI history and Details, then the current PI as Excel,
+ * ERP and PDF), Product pictures, Design Files and Client PO; then the absence note and a footer for the Sales
+ * highlight and the Notes.
  *
- * The owner marked the first page 4 out of 10 on a real order, so these pin the things that went wrong
- * or could: the arrangement, that nothing was lost, and that the CSS cannot shrink the strip to its content.
+ * The owner marked two earlier versions 4/10 and 5/10, so these pin the arrangement, that nothing was lost,
+ * and that the CSS cannot bring the boxes back.
  *
  * Run:
  *   npx tsx --test "src/app/orders/**\/orderPiCard.render.test.tsx"
@@ -53,10 +54,12 @@ const card = (over: { footer?: React.ReactNode; withHistory?: boolean } = {}) =>
 )
 
 describe('the PI card', () => {
-  test('one card: the heading row first, then the strip, then the absence note, then the footer', () => {
+  test('one card: the strip first (NO heading row), then the absence note, then the footer', () => {
     const html = card({ footer: <p>FOOTER TEXT</p> })
     const at = (s: string) => html.indexOf(s)
-    assert.ok(at('order-pi-head') > 0 && at('order-pic-strip') > at('order-pi-head'))
+    assert.equal(html.includes('order-pi-head'), false, 'the Main PI heading row is gone')
+    assert.equal(text(html).includes('Main PI'), false)
+    assert.ok(at('order-pic-strip') > 0)
     assert.ok(at('order-docs-absence') > at('order-pic-strip'))
     assert.ok(at('order-pic-footer') > at('order-docs-absence'))
     assert.ok(at('FOOTER TEXT') > at('order-pic-footer'))
@@ -64,12 +67,19 @@ describe('the PI card', () => {
     assert.ok(html.includes('id="documents"') && html.includes('aria-label="Documents"'), 'the anchor and the label survive')
   })
 
-  test('the heading row carries the title, the status, the dates and the PI history by it', () => {
+  test('the PI column: the label and its status, then the downloads, then PI history and Details as two links', () => {
     const html = card()
-    const head = text(html.slice(html.indexOf('order-pi-head'), html.indexOf('order-pic-strip')))
-    assert.ok(head.includes('Main PI · V1') && head.includes('Details'))
-    assert.ok(head.includes('PI history') && head.includes('V1 · View history'))
-    assert.equal(/Excel|ERP|PDF|ZIP/.test(head), false, 'no download in the heading row')
+    const col = html.slice(html.indexOf('order-pic-pi'), html.indexOf('order-doc-pictures'))
+    const label = text(col.slice(0, col.indexOf('order-pic-btns')))
+    assert.ok(label.includes('PI · V1 Current'), label)
+    assert.equal(/Excel|ERP|PDF|PI history|Details/.test(label), false, 'only the version and the status on the label line')
+    assert.ok(col.includes('class="order-pic-state"'), 'one status, a dot and a word, not a pill')
+    assert.equal(col.includes('order-status-chip'), false)
+    const links = col.slice(col.indexOf('order-pic-links'))
+    assert.ok(col.indexOf('order-pic-btns') < col.indexOf('order-pic-links'), 'the links are under the downloads')
+    assert.ok(text(links).includes('PI history') && text(links).includes('Details'))
+    assert.ok(links.indexOf('PI history') < links.indexOf('Details'))
+    assert.match(links, /class="order-doc-prop-link order-pic-historylink"[^>]*aria-haspopup="dialog"/)
   })
 
   test('FIRST column is PI: the current PI as Excel, ERP and PDF, in that order, and nothing is added or removed', () => {
@@ -107,39 +117,40 @@ describe('the PI card', () => {
 
   test('no PI history without versions (legacy order or still loading)', () => {
     assert.equal(/PI history/.test(text(card({ withHistory: false }))), false)
+    assert.ok(text(card({ withHistory: false })).includes('Details'), 'the dates stay')
   })
 })
 
 describe('the page hands the highlight and the Notes to the card', () => {
-  test('both are the card\'s footer, once, and no longer drawn between the bar and the card', () => {
+  test('both are the card\'s footer, once, and nowhere else', () => {
     const body = page.slice(page.indexOf('<OrderDocumentsRow>'), page.indexOf('</OrderDocumentsRow>'))
     assert.ok(body.includes('footer={('))
     assert.equal((page.match(/<OrderHighlightRemark\b/g) ?? []).length, 1)
     assert.equal((page.match(/aria-label="Order notes"/g) ?? []).length, 1)
     assert.ok(body.includes('<OrderHighlightRemark') && body.includes('aria-label="Order notes"'))
-    assert.ok(page.indexOf('<OrderStatusStrip') < page.indexOf('<OrderDocumentsRow>'))
   })
 })
 
 describe('the card\'s styles', () => {
-  const block = css.slice(css.indexOf('CONFIRMED ORDER: THE PI CARD'))
+  const block = css.slice(css.indexOf('CONFIRMED ORDER: THE TOP OF THE PAGE'), css.indexOf('PHONE PHASE 3 — FINANCE'))
 
   test('the card body STRETCHES its children: an old rule aligned them to the start and shrank the strip to its content', () => {
-    assert.match(block, /\.order-docs \.order-pic \{ display: flex; flex-direction: column; align-items: stretch;/)
+    assert.match(block, /\.order-top \.order-docs \.order-pic \{ display: flex; flex-direction: column; align-items: stretch;/)
   })
 
-  test('the strip is four columns, two in a narrow card (a container query, not the viewport), one for the phone buttons', () => {
-    // four columns that share the row by weight and never squeeze the buttons (the PI and pictures columns have a floor)
-    assert.match(block, /\.order-pic-strip \{\s*display: grid; grid-template-columns: minmax\(250px, 1fr\) minmax\(304px, 1fr\) minmax\(0, 1\.15fr\) minmax\(0, 0\.8fr\);/)
-    assert.match(block, /@container \(max-width: 1000px\) \{\s*\.order-docs \.order-pic \.order-pic-strip, \.order-docs \.order-pic \.order-pic-strip--short \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/)
-    assert.match(block, /@container \(max-width: 640px\)[\s\S]*?min-height: 44px/)
+  test('the strip is four plain columns (the PI and pictures columns size to their buttons), two in a narrow card, one on a phone', () => {
+    assert.match(block, /\.order-pic-strip \{\s*display: grid; grid-template-columns: auto auto minmax\(0, 1fr\) minmax\(0, 1fr\);/)
+    // a container query, not the viewport: the sidebar takes a different share at every desktop size
+    assert.match(block, /@container \(max-width: 1000px\) \{\s*\.order-top \.order-docs \.order-pic \.order-pic-strip,\s*\.order-top \.order-docs \.order-pic \.order-pic-strip--short \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
+    assert.match(block, /@container \(max-width: 640px\)[\s\S]*?grid-template-columns: minmax\(0, 1fr\);[\s\S]*?min-height: 44px/)
   })
 
-  test('labels share one size and line height so every cell\'s label sits on the same line', () => {
-    assert.match(block, /\.order-doc-row-head \{ display: block; margin: 0; font-size: 12px; line-height: 1\.2; \}/)
+  test('every column label shares one size and line height so the labels sit on one line', () => {
+    assert.match(block, /\.order-doc-prop-label,\s*\.order-top \.order-docs \.order-pic \.order-pic-strip \.order-doc-row-title,\s*\.order-top \.order-docs \.order-pic \.order-pic-strip \.order-doc-pictures-title \{\s*margin: 0; font-family: var\(--boe-font-body\); font-size: 13px; font-weight: 500; letter-spacing: 0; line-height: 20px; text-transform: none;/)
+    assert.match(block, /\.order-doc-row-head \{ display: flex; align-items: center; min-height: 20px; margin: 0; font-size: 13px; line-height: 20px; \}/)
   })
 
-  test('an empty footer takes no space, no empty grid row is left under the card, and the old rules are untouched', () => {
+  test('an empty footer takes no space, and the one grid area left has no empty row under the card', () => {
     assert.match(css, /\.order-docs-row \{ grid-template-columns: minmax\(0, 1fr\); grid-template-areas: 'docs'; grid-template-rows: auto; \}/)
     assert.match(block, /\.order-pic-footer:empty \{ display: none; \}/)
     assert.ok(css.includes('.order-docs-main .order-doc-section { grid-template-columns: minmax(0, 1fr); gap: 8px; }'))

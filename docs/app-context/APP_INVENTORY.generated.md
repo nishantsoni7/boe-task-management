@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `a7b5c046` — Order bar: six cells in one row; Dispatch and Fabric & Finish are not on top
-- Commits on this branch: 1585
+- Commit: `190fb166` — Order page: the PI card (PI, Product pictures, Design Files, Client PO) and a five-cell Order bar
+- Commits on this branch: 1586
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
-- Test files: 954   Next.js 16.2.6, React 19.2.4
+- Test files: 955   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `190fb166` 2026-11-24 Order page: the PI card (PI, Product pictures, Design Files, Client PO) and a five-cell Order bar
 - `a7b5c046` 2026-11-24 Order bar: six cells in one row; Dispatch and Fabric & Finish are not on top
 - `a84b6b03` 2026-11-24 Docs: Order page Order bar and quiet rows (dossier, app context, changelog, inventory)
 - `4fe9975f` 2026-11-24 Order page: an Order bar and folded rows, so Operations reads the products first
@@ -38,7 +39,6 @@
 - `8d0ca964` 2026-11-24 Pricing: Training case page redesigned, with Overhead % and Margin % for each product (no SQL) (#1007)
 - `bb26f2d5` 2026-11-24 Docs: #1005 merged and live (2026-11-24 08:44 IST) (#1006)
 - `028eb186` 2026-11-24 Pricing: "Teach this?" on a quotation line, and rate reminders on For you (no SQL) (#1005)
-- `09a96c3f` 2026-11-24 Pricing: engine v3, photo facts and taught cases, leading only where it wins the blind test (20270826000000 APPLIED) (#1004)
 
 ## Pages by top-level area
 

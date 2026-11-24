@@ -16,7 +16,7 @@
 //                    current Main PI, Design Files and Client PO as rows.
 
 import { useCallback, useEffect, useRef } from 'react'
-import { Check, Download, ExternalLink, Eye, FileSpreadsheet, FileText, Image as ImageIcon, Layers, Upload, X } from 'lucide-react'
+import { Check, Download, Eye, FileSpreadsheet, FileText, Image as ImageIcon, Layers, Upload, X } from 'lucide-react'
 import { productPicturesLine, PRODUCT_PICTURES_TITLE, type ProductPicturesState } from '@/lib/orders/productPictures'
 import { colors } from '@/lib/tokens'
 import { MultilineText } from '@/components/ui/MultilineText'
@@ -283,7 +283,7 @@ type PiChange = {
  *               submission once — a change to both categories used to appear
  *               under each of them — with what it changes, where it stands,
  *               who holds it and the one control this reader owns on it.
- *   rows        Main PI · V1 with one status, its two dates and View PI; then
+ *   rows        PI · V1 with one status, its two dates and View PI; then
  *               Design Files and Client PO, each the accepted file names, which
  *               open the file. Nothing proposed is ever drawn in these rows.
  *
@@ -413,11 +413,14 @@ export function OrderDocumentsPanel({
   // no handoff at all) is simply Current; anything short of that says so.
   // A PI Operations cannot accept carries NO badge here (owner, 2026-10-27): the
   // notification at the top of the page says so, with the reason.
+  const piState = (label: string, tone: StatusTone) => (
+    <span className="order-pic-state"><i className="order-pic-state-dot" style={{ background: TONE[tone].fg }} aria-hidden="true" />{label}</span>
+  )
   const piStatus = mainPiOperations?.flagged
     ? null
     : mainPiOperations && mainPiOperations.tone !== 'green'
-      ? <StatusPill label={mainPiOperations.label} tone={mainPiOperations.tone} />
-      : <StatusPill label={DOCUMENT_CURRENT_LABEL} tone="green" />
+      ? piState(mainPiOperations.label, mainPiOperations.tone)
+      : piState(DOCUMENT_CURRENT_LABEL, 'green')
 
   return (
     <section className="order-docs" aria-label={DOCUMENTS_TITLE} id="documents">
@@ -560,14 +563,14 @@ export function OrderDocumentsPanel({
           here; only the arrangement changed. */}
       <div className="order-docs-main">
       <div className="order-pic">
-        {/* ── THE PI CARD, SECOND PASS (owner, 24 Nov 2026) ──
-            Heading row: Main PI · V1, its status and dates, and the PI history by it.
-            Under it a strip of four columns: PI (the current PI as Excel, ERP and PDF),
-            Product pictures (Download ZIP, View all in a popup), Design Files, Client PO.
-            The absence note, then the footer (Sales highlight, Notes): the footer is not
-            drawn at all, not even its space, when both are empty. Every control is the
-            one that was here; only the arrangement changed. */}
-        {mainPi.kind !== 'ready' ? (
+        {/* ── THE PI CARD, THIRD PASS (owner, 25 Nov 2026) ──
+            NO "MAIN PI" HEADING ROW any more: four columns, PI (labelled "PI · V1" with its
+            status, then the current PI as Excel, ERP and PDF, then PI history and Details as two
+            quiet links), Product pictures (Download ZIP, View all in a popup), Design Files and
+            Client PO. The absence note, then the footer (Sales highlight, Notes): the footer is
+            not drawn at all, not even its space, when both are empty. Every control is the one
+            that was here; only the arrangement changed. */}
+        {mainPi.kind !== 'ready' && (
           <DocRow title={DOC_MAIN_PI_TITLE} status={piHistoryLink}>
             {mainPi.kind === 'loading' ? (
               <p className="order-doc-loading" role="status">{mainPi.message}</p>
@@ -579,28 +582,6 @@ export function OrderDocumentsPanel({
             )}
             {piVersionNotes}
           </DocRow>
-        ) : (
-          <section className="order-doc-section order-doc-section--primary order-pi" aria-label={DOC_MAIN_PI_TITLE}>
-            <div className="order-pi-head">
-              <div className="order-doc-row-head">
-                <span className="order-pic-icon" aria-hidden="true"><FileText size={16} strokeWidth={2} /></span>
-                <span className="order-doc-row-title">{`${DOC_MAIN_PI_TITLE} · V${mainPi.version.versionNumber}`}</span>
-                {piStatus}
-                <PiDetails uploadedAt={mainPi.uploadedAt} approvedAt={mainPi.approvedAt} />
-              </div>
-              {/* PI HISTORY, by the heading (it was a property row under the downloads, owner 2026-10-26). */}
-              {piVersions && (
-                <div className="order-doc-prop order-pic-history">
-                  <span className="order-doc-prop-label">{PI_VERSIONS_HISTORY_LABEL}</span>
-                  <button type="button" className="order-doc-prop-link" onClick={piVersions.onOpen} aria-haspopup="dialog">
-                    {`V${mainPi.version.versionNumber}`} · View history <ExternalLink size={12} strokeWidth={2} aria-hidden="true" />
-                  </button>
-                </div>
-              )}
-            </div>
-            {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
-            {piVersionNotes}
-          </section>
         )}
 
         <div className={mainPi.kind === 'ready' ? 'order-docs-side order-pic-strip' : 'order-docs-side order-pic-strip order-pic-strip--short'}>
@@ -608,7 +589,10 @@ export function OrderDocumentsPanel({
               the colour, 2026-10-20). */}
           {mainPi.kind === 'ready' && (
             <div className="order-doc-prop order-pic-cell order-pic-pi" role="group" aria-label={DL_GROUP_LABEL}>
-              <span className="order-doc-prop-label">PI</span>
+              <div className="order-pic-lbl">
+                <span className="order-doc-prop-label">{`PI · V${mainPi.version.versionNumber}`}</span>
+                {piStatus}
+              </div>
               <div className="order-pic-btns">
                   {!mainPi.version.editedInApp && (
                     <button
@@ -648,6 +632,18 @@ export function OrderDocumentsPanel({
                     </button>
                   )}
               </div>
+              {/* PI HISTORY and the dates sit under the downloads, as two quiet links (owner, 25 Nov 2026: the
+                  Main PI heading is gone, PI history comes inside the PI column). */}
+              <div className="order-pic-links">
+                {piVersions && (
+                  <button type="button" className="order-doc-prop-link order-pic-historylink" onClick={piVersions.onOpen} aria-haspopup="dialog">
+                    {PI_VERSIONS_HISTORY_LABEL}
+                  </button>
+                )}
+                <PiDetails uploadedAt={mainPi.uploadedAt} approvedAt={mainPi.approvedAt} />
+              </div>
+              {mainPiOperations?.line && <p className="order-doc-note">{mainPiOperations.line}</p>}
+              {piVersionNotes}
             </div>
           )}
           {picturesBlock}

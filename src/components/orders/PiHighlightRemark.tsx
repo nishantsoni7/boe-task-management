@@ -215,8 +215,27 @@ export function PiHighlightRemark({ supabase, submissionId, canEdit, rowVersion,
  * the PI before approval and is read from that PI row, under the Order viewer's
  * own RLS. Nothing is drawn when there is none, or when it cannot be read.
  */
-export function OrderHighlightRemarkBanner({ remark }: { remark: string | null }) {
+export function OrderHighlightRemarkBanner({ remark, bare = false }: {
+  remark: string | null
+  /** Drawn inside the Order page's one top panel, which frames it: a label and the text, no card of its own. */
+  bare?: boolean
+}) {
   if (!remark) return null
+  if (bare) {
+    return (
+      <section className="order-highlight order-highlight--bare" aria-label={ORDER_HIGHLIGHT_LABEL}>
+        <div>
+          <i className="order-highlight-dot" aria-hidden />
+          <span>{ORDER_HIGHLIGHT_LABEL}</span>
+          <span className="pi-detail-internal-tag" title={HIGHLIGHT_REMARK_NOTE}>
+            <Lock size={10} strokeWidth={2.2} aria-hidden />
+            BOE only
+          </span>
+        </div>
+        <p>{remark}</p>
+      </section>
+    )
+  }
   return (
     // A WHITE CARD WITH AN AMBER EDGE (owner, 2026-10-19): the amber tint sat
     // too close to the warm page canvas and the note read as background.
@@ -248,11 +267,12 @@ export function OrderHighlightRemarkBanner({ remark }: { remark: string | null }
 }
 
 /** The Confirmed Order's read of the PI's highlight. */
-export function OrderHighlightRemark({ supabase, submissionId, refreshKey }: {
+export function OrderHighlightRemark({ supabase, submissionId, refreshKey, bare = false }: {
   supabase: SupabaseClient
   submissionId: string | null
   refreshKey?: unknown
+  bare?: boolean
 }) {
   const [read] = useHighlightRemark(supabase, submissionId, refreshKey)
-  return <OrderHighlightRemarkBanner remark={read.kind === 'ready' ? read.remark : null} />
+  return <OrderHighlightRemarkBanner remark={read.kind === 'ready' ? read.remark : null} bare={bare} />
 }

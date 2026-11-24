@@ -3602,6 +3602,20 @@ export default function OrderDetailPage() {
             its right. They replaced the Operations review card, whose facts the
             strip, the Production row and the Documents box already state. The
             notification and action-queue links land on this strip. */}
+        {/* THE FACTS LINE (owner, 25 Nov 2026: "too many boxes and cards on top ... classy and professional"):
+            ERP, Production, Order type, Due and Advance are ONE line of plain text under the order number,
+            not cells. Under it, ONE card (.order-top) holds the notices as quiet rows and the PI card
+            (columns, then the Sales highlight and the Notes) ruled by single lines; nothing inside it is a card. */}
+        <OrderStatusStrip
+          erp={{ label: summaryView.sales.production.label, tone: summaryView.sales.production.tone, line: summaryView.sales.production.line }}
+          production={{ label: STATUS_META[order.status]?.label ?? order.status, tone: statusTone }}
+          isSample={sampleType === 'sample_order'}
+          sampleLabel={sampleType ? SAMPLE_TYPE_LABEL[sampleType] : null}
+          fullNote={sampleType === 'sampling_needed' ? 'sampling first' : null}
+          bar={{ ...barGates, onOpen: openDetailRow }}
+        />
+
+        <div className="order-top">
         <OrderAttentionBar
           id={operationsReviewOpen ? OPERATIONS_REVIEW_ANCHOR : undefined}
           items={attention}
@@ -3659,15 +3673,6 @@ export default function OrderDetailPage() {
           ) : undefined}
         />
 
-        <OrderStatusStrip
-          erp={{ label: summaryView.sales.production.label, tone: summaryView.sales.production.tone, line: summaryView.sales.production.line }}
-          production={{ label: STATUS_META[order.status]?.label ?? order.status, tone: statusTone }}
-          isSample={sampleType === 'sample_order'}
-          sampleLabel={sampleType ? SAMPLE_TYPE_LABEL[sampleType] : null}
-          fullNote={sampleType === 'sampling_needed' ? 'sampling first' : null}
-          bar={{ ...barGates, onOpen: openDetailRow }}
-        />
-
         {/* ══ 2. THE CLIENT, THE DATES AND PENDENCIES have rows of their own below the products
             (Nitish, 24 Nov 2026); the Order bar above carries what Operations needs of them. ══ */}
 
@@ -3681,7 +3686,7 @@ export default function OrderDetailPage() {
             THE DOCUMENTS CARD ANSWERS TWO QUESTIONS, IN THIS ORDER: is anything
             changing (a panel drawn only when something is pending or rejected,
             each submission once, with its owner and this reader's one control),
-            and what is current (Main PI · V1 with its two dates and View PI, then
+            and what is current (PI · V1 with its two dates and View PI, then
             the accepted Design Files and Client PO, which open on a click).
 
             EVERY FORMER ACTION STILL HAS A ROUTE: Download PI and PI history in
@@ -3704,6 +3709,7 @@ export default function OrderDetailPage() {
                   supabase={supabase}
                   submissionId={order.source_order_submission_id ?? null}
                   refreshKey={order.updated_at}
+                  bare
                 />
                 {order.notes && (
                   <section className="order-notes" aria-label="Order notes">
@@ -3773,6 +3779,7 @@ export default function OrderDetailPage() {
             } : undefined}
           />
         </OrderDocumentsRow>
+        </div>
         {pendingUploadSettled && (
           <RunOnce run={() => {
             setPendingUpload(null)
