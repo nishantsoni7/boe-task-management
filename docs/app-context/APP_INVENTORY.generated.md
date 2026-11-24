@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `6bec6f4b` — Merge main into feat/global-back-button (again)
-- Commits on this branch: 1576
+- Commit: `2f30eae6` — Docs: nine of the "ten unapplied" migrations were live and are now recorded in the history; only 20270818000000 is unapplied
+- Commits on this branch: 1574
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,11 +14,9 @@
 
 ## Latest 25 commits
 
-- `6bec6f4b` 2026-11-24 Merge main into feat/global-back-button (again)
+- `2f30eae6` 2026-11-24 Docs: nine of the "ten unapplied" migrations were live and are now recorded in the history; only 20270818000000 is unapplied
 - `cc4a1a8f` 2026-11-24 Docs: #1013 merged and live (2026-11-24 15:44 IST), stale-flag migration stamped, open items noted (#1017)
-- `f2ab520d` 2026-11-24 Merge main into feat/global-back-button
 - `345f1b58` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL) (#1015)
-- `85e24ef6` 2026-11-24 One Back button, left of the page title, on every page
 - `e8a9b46b` 2026-11-24 Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (migration 20270827000000 APPLIED) (#1013)
 - `8890d287` 2026-11-24 Docs: the 9:30 pm backup task runs with no window (no SQL) (#1014)
 - `f6c6f05c` 2026-11-24 Docs: the first full photo read (373 of 373) and the new accuracy figures (#1012)
@@ -39,6 +37,8 @@
 - `3b7839d6` 2026-11-23 Docs: stamp #995 (the Fabric From box fix) as merged and live (no SQL) (#996)
 - `47f146a3` 2026-11-23 Pricing: work out a Training element by wood cut list, metal weight, area or percentage (migration 20270823000000 APPLIED) (#993)
 - `db33183d` 2026-11-23 Quotations: the Fabric From box works on a row with nothing typed yet (no SQL) (#995)
+- `42e9edf6` 2026-11-23 Quotations: the builder's top section tidied, and Price approval moved up into the Status card (no SQL) (#994)
+- `f904e860` 2026-11-23 Docs: stamp #989 (the Open-tile migration file) as merged and live (no SQL) (#991)
 
 ## Pages by top-level area
 
