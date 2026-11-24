@@ -304,6 +304,9 @@ Modules launcher (`src/app/modules/page.tsx`):
      - Four more, OFF by default, added from Control Center: Payment sent back to you (own `needs_clarification`),
        PI waiting for approval (`orders.approve_order`), Order change request (admins, because the Order page offers
        the review to an acting admin alone), PI waiting for Operations (own `awaiting` handoff, cancelled Orders dropped).
+     - Rates to review (Price Brain v2 phase 4, 2026-11-24, `pricing_rates_due`, OPTIONAL by default): for people who teach
+       prices (admin, or Pricing view + create), ONE card while a steel rate is 30+ days old, a wood rate 90+, or a rate is
+       missing (`src/lib/pricing/rateReview.ts`); Review rates opens `/pricing/woods`, where Still right marks one reviewed.
   3. "Cash not with the company", EVERYBODY ELSE's: `useUnclosedFunds()` (`finance_unclosed_funds`: all for admin /
      custodian / view_all, else the viewer's own), minus the viewer's own held payments and payments whose open
      handover is TO the viewer (item 2). **One card per PAYMENT since 2026-11-11 (owner: "Pending from Dhruv · 3
@@ -320,7 +323,7 @@ Modules launcher (`src/app/modules/page.tsx`):
     (`src/lib/modules/forYouSnooze.ts`, localStorage `boe.forYou.cleared.<userId>`; a key names the thing AND what it
     says, so a new or changed item shows at once; a timer brings everything back at `until`; an event keeps the panel
     and the strip in step). Nothing is deleted, decided or marked read.
-  - Which items show (owner 2026-10-31; `src/lib/modules/forYouCatalogue.ts`, the one list of 14 items, each with its
+  - Which items show (owner 2026-10-31; `src/lib/modules/forYouCatalogue.ts`, the one list of 15 items, each with its
     words, default and who it applies to). Control Center › For you sets each item Off, Optional or Always on through
     `set_for_you_item_mode` (active admin, database-enforced), stored in `for_you_item_settings`; no row = the default
     in the list, so a new item needs no seed. Each person turns Optional items off in Account Settings

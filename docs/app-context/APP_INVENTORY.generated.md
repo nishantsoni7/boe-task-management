@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `9e89001a` — Pricing: photo facts, every product photo read once into facts (#1002)
-- Commits on this branch: 1560
+- Commit: `09a96c3f` — Pricing: engine v3, photo facts and taught cases, leading only where it wins the blind test (20270826000000 APPLIED) (#1004)
+- Commits on this branch: 1561
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 506 (first `20260530_create_positions.sql`, latest `20270826000000_pricing_engine_v3.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
-- Test files: 945   Next.js 16.2.6, React 19.2.4
+- Test files: 946   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `09a96c3f` 2026-11-24 Pricing: engine v3, photo facts and taught cases, leading only where it wins the blind test (20270826000000 APPLIED) (#1004)
 - `9e89001a` 2026-11-23 Pricing: photo facts, every product photo read once into facts (#1002)
 - `eda0cbec` 2026-11-23 Pricing: the echo guard, and "How accurate is it" with "Teach next" on Price learning (#1001)
 - `1ee4636b` 2026-11-23 Pricing: a taught price worked out again for each quotation line (no SQL) (#1000)
@@ -38,7 +39,6 @@
 - `97b0fdbc` 2026-11-23 SEO brief: a short version on top and a total under every part (no SQL) (#981)
 - `057443db` 2026-11-23 Sales: the Lead Board's columns start with the page; stamps and live timings for #977, #978, #980 (no SQL) (#982)
 - `27e81248` 2026-11-23 Sales: pages wait in their own shape, Lead Master filters stop asking the server, popup reads quotations beside the record (no SQL) (#980)
-- `f7e91f93` 2026-11-23 Sales: a saved action shows on every screen at once and reads only what changed (no SQL) (#978)
 
 ## Pages by top-level area
 
@@ -171,7 +171,7 @@
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 10 source, 7 test
-- `src/lib/pricing` — 25 source, 16 test
+- `src/lib/pricing` — 27 source, 17 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
 - `src/lib/quotations` — 32 source, 30 test

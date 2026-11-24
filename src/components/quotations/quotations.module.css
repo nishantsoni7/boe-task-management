@@ -227,6 +227,11 @@ textarea.t3 { min-height: 86px; }
 .sugAct { display: inline-flex; justify-content: flex-end; }
 .sugUse { height: 20px; padding: 0 10px; border-radius: 6px; border: 1px solid var(--boe-brand); background: #fff; color: var(--boe-brand-ink); font: 600 12px/1 var(--boe-font-body); cursor: pointer; }
 .sugWhy { border: 0; background: none; padding: 0; color: var(--boe-text-muted); font: 600 12px var(--boe-font-body); text-decoration: underline; cursor: pointer; }
+/* "Teach this?" (phase 4): one row under the suggestion, across both columns. */
+.teachAsk { grid-column: 1 / -1; display: grid; gap: 5px; margin-top: 4px; padding-top: 6px; border-top: 1px dashed var(--boe-border-strong); }
+.teachChips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.teachChip { height: 24px; padding: 0 9px; border-radius: 12px; border: 1px solid var(--boe-border-strong); background: var(--boe-surface); font: 500 12px var(--boe-font-body); color: var(--boe-text-strong); cursor: pointer; white-space: nowrap; }
+.teachChip:hover:not(:disabled) { border-color: var(--boe-brand); color: var(--boe-brand-ink); }
 .plFoot { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px; margin: auto -12px 0; padding: 7px 12px; border-top: 1px solid var(--boe-border); background: var(--boe-surface-quiet); border-radius: 0 0 11px 11px; }
 .plTotal { text-align: right; font: 700 18px var(--boe-font-body); font-variant-numeric: tabular-nums; }
 .plPieces { text-align: right; }

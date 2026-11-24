@@ -9,6 +9,7 @@ import { useDisplaySubject } from '@/hooks/queries/useDisplaySubject'
 import { useUnclosedFunds } from '@/hooks/queries/useCashJourneys'
 import { deriveFinanceCapabilities } from '@/lib/permissions/finance'
 import { deriveOrdersCapabilities } from '@/lib/permissions/orders'
+import { isAdminRole } from '@/lib/permissions/moduleVisibility'
 import {
   isItemOn,
   readForYouModes,
@@ -76,6 +77,9 @@ export function useForYouAccess(): { ready: boolean; viewMode: boolean; access: 
   const funds = useUnclosedFunds()
   const finance = deriveFinanceCapabilities(subjectRole, subjectPermissionsByModule.get('finance') ?? [])
   const orders = deriveOrdersCapabilities(subjectRole, subjectPermissionsByModule.get('orders') ?? [])
+  // The same rule as pricing_training_actor().p_create: admin, or Pricing view and create.
+  const pricing = subjectPermissionsByModule.get('pricing') ?? []
+  const allows = (action: string) => pricing.some(p => p.actionKey === action && p.allowed)
   return {
     ready,
     viewMode,
@@ -88,6 +92,7 @@ export function useForYouAccess(): { ready: boolean; viewMode: boolean; access: 
       decidesOwnPayments: finance.canDecideOwnPayment,
       approvesPis: orders.canApproveOrderSubmission,
       seesAllCash: funds.data?.scope === 'all',
+      teachesPrices: isAdminRole(subjectRole) || (allows('view') && allows('create')),
     },
   }
 }

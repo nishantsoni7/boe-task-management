@@ -20,7 +20,22 @@ import { displayOrderNumber } from '@/lib/orderNumbering'
 import { draftDetailHref } from '@/lib/orders/draftsView'
 import { flaggedBrief, flaggedHref, flaggedLabel, reasonLine, type FlaggedPi } from '@/lib/orders/flaggedPis'
 import { OPERATIONS_REVIEW_ANCHOR } from '@/lib/orders/operationsHandoff'
+import { dueText, REVIEW_DAYS, type DueRate } from '@/lib/pricing/rateReview'
 import { timeAgo } from '@/lib/ui'
+
+/** Rates to review (Price Brain v2, phase 4): ONE card for every rate due, naming the first three. Clear all hides it until the list changes. */
+export function ratesDueCard(due: readonly DueRate[]): WorkCard[] {
+  if (!due.length) return []
+  const names = due.slice(0, 3).map(dueText).join(', ') + (due.length > 3 ? `, and ${due.length - 3} more` : '')
+  return [{
+    key: itemKeys.work('rates-due', due.map(d => `${d.kind}/${d.name}`).join('|'), String(due.length)),
+    label: `Rates to review · ${due.length}`,
+    brief: names,
+    detail: `Steel every ${REVIEW_DAYS.metal} days, wood every ${REVIEW_DAYS.wood}. "Still right" keeps a rate as it is.`,
+    action: 'Review rates',
+    href: '/pricing/woods',
+  }]
+}
 
 /** How many cards of one kind the column lists before "N more". */
 export const FOR_YOU_CARDS_SHOWN = 5
@@ -29,7 +44,8 @@ export const FOR_YOU_CARDS_SHOWN = 5
 export const FOR_YOU_READ_LIMIT = 20
 
 export type WorkItemKey = Extract<ForYouItemKey,
-  'payment_request' | 'payment_sent_back' | 'pi_waiting_approval' | 'order_change_request' | 'pi_waiting_operations' | 'pi_flagged_by_operations'>
+  'payment_request' | 'payment_sent_back' | 'pi_waiting_approval' | 'order_change_request' | 'pi_waiting_operations' | 'pi_flagged_by_operations'
+  | 'pricing_rates_due'>
 
 export type WorkCard = {
   /** Clear all's key: the record and its version. */

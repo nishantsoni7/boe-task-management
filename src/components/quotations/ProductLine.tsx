@@ -122,7 +122,8 @@ export function LineRow({ l, area, unit, editable, qty, total, first, last, url,
           onDiffers={taught.differs && (r => taught.differs!(r, { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }))} />}
         {/* The echo guard (20270824000000): a price set by Use is tagged, and learning leaves it out until somebody changes it. */}
         <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p), internal_note: withUsedTag(l.internal_note, Math.round(p)) })}
-          feedback={feedbackCtx && { line: { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }, ...feedbackCtx, imagePath: l.image_path, price: l.unit_price }} />
+          feedback={feedbackCtx && { line: { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }, ...feedbackCtx, imagePath: l.image_path, price: l.unit_price }}
+          note={l.internal_note} onAsked={n => onChange({ internal_note: n })} />
         <div className={s.plFoot}>
           <label className={s.optLab}><input type="checkbox" checked={l.is_optional} onChange={e => onChange({ is_optional: e.target.checked })} disabled={!editable} /> Optional</label>
           <div className={s.plTotal}>{l.unit_price === null ? <span className={s.muted}>No price</span> : formatINR(total)}</div>

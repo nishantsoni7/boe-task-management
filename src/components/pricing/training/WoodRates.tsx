@@ -10,6 +10,7 @@ import { Plus, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { num, shortDate } from '@/lib/pricing/training/doc'
 import { fetchAccess, fetchMetals, fetchRateHistory, fetchWoods, removeMetal, removeWood, saveMetal, saveWood, trainingKeys, type Metal, type TrainingError, type Wood } from '@/lib/pricing/training/api'
+import { isDue, REVIEW_DAYS, type RateKind } from '@/lib/pricing/rateReview'
 import t from './training.module.css'
 
 const inr = (v: number) => `₹${v.toLocaleString('en-IN')}`
@@ -35,7 +36,7 @@ export function WoodRates() {
     setError(''); setBusy(true)
     try {
       await work()
-      await Promise.all([trainingKeys.woods, trainingKeys.metals, trainingKeys.rateHistory].map(queryKey => qc.invalidateQueries({ queryKey })))
+      await Promise.all([trainingKeys.woods, trainingKeys.metals, trainingKeys.rateHistory, ['for-you', 'work', 'pricing_rates_due']].map(queryKey => qc.invalidateQueries({ queryKey })))
     } catch (e) { setError((e as TrainingError)?.message || 'Something went wrong. Try again.') } finally { setBusy(false) }
   }
   const add = () => {
@@ -50,6 +51,15 @@ export function WoodRates() {
     return run(async () => { await saveWood(supabase, w.name, num(v)); setTyped(x => { const y = { ...x }; delete y[w.name]; return y }) })
   }
   const remove = (w: Wood) => run(async () => { await removeWood(supabase, w.name); setRemoved({ wood: w }) })
+  // Rate reminders (phase 4, D7): saving a rate unchanged stamps its date, which is what "reviewed" means (rateReview.ts).
+  const [now] = useState(() => Date.now())
+  const stillRight = (kind: RateKind, r: Wood | Metal) => run(() => (kind === 'wood' ? saveWood(supabase, r.name, Number(r.rate)) : saveMetal(supabase, r.name, null, Number(r.rate))))
+  const saved = (kind: RateKind, r: Wood | Metal) => (
+    <>
+      Last saved {shortDate(r.updated_at)}{r.updated_by_name ? ` by ${r.updated_by_name}` : ''}
+      {may && isDue(kind, r, now) && <> · <b>due for review</b> (every {REVIEW_DAYS[kind]} days) <button type="button" className="boe-btn boe-btn-text" disabled={busy} onClick={() => stillRight(kind, r)}>Still right</button></>}
+    </>
+  )
 
   // Metals: the typed boxes are keyed "<name>|density" and "<name>|rate".
   const metalKey = (m: Metal, k: 'density' | 'rate') => `metal:${m.name}|${k}`
@@ -100,7 +110,7 @@ export function WoodRates() {
               {may
                 ? <label className={t.field}><span className="boe-input-label">Rate per cu ft (₹)</span><input className="boe-input" inputMode="decimal" value={typed[w.name] ?? (w.rate === null ? '' : String(Number(w.rate)))} placeholder="Not entered yet" onChange={e => setTyped(x => ({ ...x, [w.name]: e.target.value }))} onBlur={() => change(w)} onKeyDown={e => { if (e.key === 'Enter') change(w) }} /></label>
                 : <span>{w.rate === null ? 'Not entered yet' : `${inr(Number(w.rate))} per cu ft`}</span>}
-              <span className={t.muted}>{w.rate === null ? 'No rate yet: a price in this wood cannot be worked out' : `Changed ${shortDate(w.updated_at)}${w.updated_by_name ? ` by ${w.updated_by_name}` : ''}`}</span>
+              <span className={t.muted}>{w.rate === null ? 'No rate yet: a price in this wood cannot be worked out' : saved('wood', w)}</span>
               {may && <button type="button" className={t.iconBtn} disabled={busy} onClick={() => remove(w)} aria-label={`Remove ${w.name}`}><Trash2 size={16} aria-hidden /></button>}
             </div>
           ))}
@@ -128,7 +138,7 @@ export function WoodRates() {
               {may
                 ? <label className={t.field}><span className="boe-input-label">Rate per kg (₹)</span><input className="boe-input" inputMode="decimal" value={typed[metalKey(m, 'rate')] ?? (m.rate === null ? '' : String(Number(m.rate)))} placeholder="Not entered yet" onChange={e => setTyped(x => ({ ...x, [metalKey(m, 'rate')]: e.target.value }))} onBlur={() => changeMetal(m, 'rate')} onKeyDown={e => { if (e.key === 'Enter') changeMetal(m, 'rate') }} /></label>
                 : <span>{m.rate === null ? 'Not entered yet' : `${inr(Number(m.rate))} per kg`}</span>}
-              <span className={t.muted}>{m.rate === null ? 'No rate yet' : `Changed ${shortDate(m.updated_at)}${m.updated_by_name ? ` by ${m.updated_by_name}` : ''}`}</span>
+              <span className={t.muted}>{m.rate === null ? 'No rate yet' : saved('metal', m)}</span>
               {may && <button type="button" className={t.iconBtn} disabled={busy} onClick={() => dropMetal(m)} aria-label={`Remove ${m.name}`}><Trash2 size={16} aria-hidden /></button>}
             </div>
           ))}

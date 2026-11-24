@@ -17,6 +17,8 @@ import { suggestPrice } from '@/lib/pricing/suggest'
 import type { ModelSuggestion } from '@/lib/pricing/model'
 import { SuggestionFeedback, type FeedbackLine } from '@/components/pricing/learning/SuggestionFeedback'
 import { stashPrefill } from '@/lib/pricing/training/prefill'
+import { gapOf, kindFor, shouldAsk, TEACH_REASONS, withAskedTag } from '@/lib/pricing/teachAsk'
+import { learningErrorText, sendFeedback } from '@/lib/pricing/learning/api'
 import { istDateOf } from '@/lib/istDate'
 import {
   fetchPriceQueue, pictureUrl,
@@ -37,9 +39,11 @@ type WhyCtx = { line: FeedbackLine; clientType: string | null; quotationId: stri
  * builder gives it to holders of the Pricing module: Admin, or granted per person). Hiding is a need-to-see filter, not a
  * security boundary: the model is fitted in the browser from the shared price pool.
  */
-export function PriceHintLine({ hint, model, price, editable, onUse, feedback }: {
+export function PriceHintLine({ hint, model, price, editable, onUse, feedback, note, onAsked }: {
   hint?: PriceHint; model?: ModelSuggestion | null; price: number | null; editable: boolean; onUse: (p: number) => void
   feedback?: WhyCtx
+  /** "Teach this?" (phase 4): the line's internal note (where it remembers asking) and how to write it back. */
+  note?: string | null; onAsked?: (note: string) => void
 }) {
   const [why, setWhy] = useState(false)
   if (!model && (!hint || (!hint.ordered && !hint.quoted))) return null
@@ -62,6 +66,49 @@ export function PriceHintLine({ hint, model, price, editable, onUse, feedback }:
         </>
       )}
       {why && feedback && <PriceWhy ctx={feedback} hint={hint} model={model} sug={sug} onClose={() => setWhy(false)} />}
+      {feedback && editable && onAsked && sug && <TeachAsk ctx={feedback} sug={sug} model={model} price={price} note={note} onAsked={onAsked} />}
+    </div>
+  )
+}
+
+/**
+ * "Teach this?" (Price Brain v2, phase 4; owner approved 24 Nov 2026): for the people who see "Why?", once a typed price
+ * stays more than 10% from the suggestion. One tap on a reason sends a note to Price learning (with the line, both prices and
+ * the suggestion), where "Teach this price" makes it a Training case. Answered or not, the line remembers the price it asked
+ * about (teachAsk.ts), so it asks again only for a new price.
+ */
+function TeachAsk({ ctx, sug, model, price, note, onAsked }: {
+  ctx: WhyCtx; sug: { price: number; low: number; high: number; confidence: string; basis: string }; model?: ModelSuggestion | null
+  price: number | null; note?: string | null; onAsked: (note: string) => void
+}) {
+  // Asked only once the price has stayed still for a moment, so typing 5, 51, 512 does not flash the row.
+  const [settled, setSettled] = useState(price)
+  useEffect(() => { const t = setTimeout(() => setSettled(price), 1200); return () => clearTimeout(t) }, [price])
+  const [state, setState] = useState<'idle' | 'sending' | 'sent'>('idle')
+  const [error, setError] = useState('')
+  useEffect(() => { if (state !== 'sent') return; const t = setTimeout(() => setState('idle'), 4000); return () => clearTimeout(t) }, [state])
+  if (state === 'sent') return <div className={`${s.teachAsk} ${s.small}`} role="status">Sent to Price learning. Thank you.</div>
+  if (settled !== price || !shouldAsk(price, sug.price, note)) return null
+  const p = Math.round(price!)
+  const pct = Math.round(gapOf(p, sug.price) * 100)
+  const send = async (reason: string) => {
+    setError(''); setState('sending')
+    try {
+      await sendFeedback(createClient(), {
+        source: 'quotation', kind: kindFor(p, sug.price), comment: `Reason: ${reason}`, expected_price: p, line: ctx.line, client_type: ctx.clientType,
+        suggestion: { price: sug.price, low: sug.low, high: sug.high, confidence: sug.confidence, reasons: model?.reasons ?? [], basis: sug.basis }, quotation_id: ctx.quotationId,
+      })
+      setState('sent'); onAsked(withAskedTag(note, p))
+    } catch (e) { setError(learningErrorText(e)); setState('idle') }
+  }
+  return (
+    <div className={s.teachAsk} role="group" aria-label="Teach this price">
+      <span>{formatINR(p)} is {Math.abs(pct)}% {pct > 0 ? 'above' : 'below'} the suggestion. <b>Teach this?</b> Why:</span>
+      <div className={s.teachChips}>
+        {TEACH_REASONS.map(r => <button key={r} type="button" className={s.teachChip} disabled={state === 'sending'} onClick={() => send(r)}>{r}</button>)}
+        <button type="button" className={s.linkBtn} disabled={state === 'sending'} onClick={() => onAsked(withAskedTag(note, p))}>Not now</button>
+      </div>
+      {error && <div className={`${s.notice} ${s.noticeBad}`} role="alert">{error}</div>}
     </div>
   )
 }

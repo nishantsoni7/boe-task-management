@@ -30,7 +30,8 @@
 //      for whoever decides them, and four more an administrator can add: a
 //      payment sent back, a PI waiting for approval, a change request and a PI
 //      waiting for Operations (src/lib/modules/forYouWork.ts). Each opens its
-//      record's own page; five show, then "N more".
+//      record's own page; five show, then "N more". Also RATES TO REVIEW (Price Brain v2 phase 4, 24 Nov 2026) for people
+//      who teach prices: one card while a steel rate is 30+ days old, a wood rate 90+, or a rate is missing (rateReview.ts).
 //   3. CASH NOT WITH THE COMPANY — everybody else's, from Finance's own "money
 //      not yet with the company" list (finance_unclosed_funds: everyone's for an
 //      admin, the custodian or a view_all holder), one card PER PAYMENT saying
@@ -60,7 +61,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import {
-  ArrowDown, Banknote, ClipboardCheck, Clock, FileCheck, FilePen, Fingerprint, HandCoins, Megaphone,
+  ArrowDown, Banknote, ClipboardCheck, Clock, FileCheck, FilePen, Fingerprint, HandCoins, Megaphone, Scale,
   MessageCircleQuestion, SlidersHorizontal, TriangleAlert, Undo2, Wallet,
 } from 'lucide-react'
 import type { MyAnnouncement } from '@/lib/announcements'
@@ -521,6 +522,7 @@ const WORK_ICON: Record<WorkItemKey, typeof Banknote> = {
   order_change_request: FilePen,
   pi_waiting_operations: ClipboardCheck,
   pi_flagged_by_operations: TriangleAlert,
+  pricing_rates_due: Scale,
 }
 
 function WorkCards({ item, cards, unread, moreHref, moreLabel, failed, failedLabel }: {
