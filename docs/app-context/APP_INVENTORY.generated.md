@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f6c6f05c` — Docs: the first full photo read (373 of 373) and the new accuracy figures (#1012)
-- Commits on this branch: 1569
+- Commit: `d5f8f740` — Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL)
+- Commits on this branch: 1570
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 506 (first `20260530_create_positions.sql`, latest `20270826000000_pricing_engine_v3.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `d5f8f740` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL)
 - `f6c6f05c` 2026-11-24 Docs: the first full photo read (373 of 373) and the new accuracy figures (#1012)
 - `f4a93245` 2026-11-24 Docs: stamp #994 and #987 (the quotation builder's top section, opening a quotation) as merged and live (no SQL) (#1011)
 - `1dcd4005` 2026-11-24 Docs: #1008 merged and live (2026-11-24 11:06 IST) (#1010)
@@ -38,7 +39,6 @@
 - `43175621` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
 - `32004032` 2026-11-23 Quotations: the Open tile's migration file (already applied) and the merge stamps for #986 and #988 (#989)
 - `859bba0c` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL) (#988)
-- `dc267bab` 2026-11-23 Quotations: opening a quotation answers at once and starts its reads at the click (PR A of 5, no SQL) (#987)
 
 ## Pages by top-level area
 

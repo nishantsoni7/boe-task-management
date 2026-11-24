@@ -12,6 +12,13 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Checked.** New tests in `calc.test.ts`; tsc, eslint, full suite, build. Not seen in a browser.
 - **Rollback.** Revert the PR; the two extra keys in saved calcs are ignored by older code.
 
+## 2026-11-24 — Backups: the 9:30 pm task runs with no window (a change on the laptop; this PR is docs only) · no migration
+
+- **Why.** The 2026-11-23 21:30 run stopped at 21:40:28 IST: its console window was closed or got Ctrl+C (Task Scheduler result `0xC000013A`, `daily-backup.log` ends with `^C` and has no `finished` line). The System log shows no sleep, shutdown or logoff, and Docker was unaffected. A hand run on 2026-11-24, on the owner's request, covered the gap (verify PASS).
+- **What.** On the owner's yes, the `BOE Backup` task's action is now `conhost.exe --headless cmd.exe /c "...\boe-backup-daily.cmd"`; user, trigger and settings unchanged. Tested first with a throwaway task. `03_BACKUP_AND_RECOVERY.md` (Daily schedule, Exit codes) says so and gives the PowerShell that recreates the task (checked against the installed one).
+- **Trade-off.** Task Scheduler's Last Run Result now always shows 0x0. The log's `finished: backup-all exit N, verify exit M` line and `status/covered.json` are the record; no tool reads the task result.
+- **Rollback.** Put the old definition back: `Register-ScheduledTask -TaskName 'BOE Backup' -Xml (Get-Content '<file>' -Raw) -Force`, with the copy saved in `BOE-Development\temporary\hidden-task-test\` before the change.
+
 ## 2026-11-24 — Pricing: the first full photo read (373 of 373) and the new accuracy figures · data only, no code, no migration
 
 - **What ran.** The owner pressed "Read the 323 waiting" on Price learning (after adding Anthropic API credit; the credit had run out and had stopped the 24 Nov ~09:10 IST run at 50). Result: all 373 product photos read in about 20 minutes on 2026-11-24 (about 13:25-13:45 IST, run by the owner's button in his Chrome, no stop, none skipped, model claude-sonnet-5-5); typical miss (priced blind) 23.2% to 17.9%, prices within ±20% 44% to 54%; "With photos" leads Table 17% (was 21.4), Chair 13.8% (was 22.1), Sofa 39.4% (was 44.4); Bench / ottoman stays on today's model (22.8% against 26.1%). The page's own figures, read after a reload.
