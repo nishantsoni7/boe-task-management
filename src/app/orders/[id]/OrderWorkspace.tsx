@@ -1185,16 +1185,9 @@ export function OrderDetailSkeleton() {
 
       {/* THE ORDER BAR: one card of ruled cells, as the page draws it, so nothing jumps. */}
       <section className="order-stages order-stages--bar">
-        {[88, 72, 96, 110, 96].map((w, i) => (
+        {[104, 72, 96, 120, 150, 88].map((w, i) => (
           <div key={i} className="order-stage">
             <SkeletonBlock w={56} h={11} />
-            <SkeletonBlock w={w} h={22} radius={6} />
-          </div>
-        ))}
-        <span className="order-stage-gap" aria-hidden="true" />
-        {[104, 150, 88].map((w, i) => (
-          <div key={i} className="order-stage">
-            <SkeletonBlock w={64} h={11} />
             <SkeletonBlock w={w} h={22} radius={6} />
           </div>
         ))}

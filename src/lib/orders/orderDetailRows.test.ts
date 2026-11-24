@@ -15,7 +15,6 @@ import {
   DETAIL_ROW_ORDER,
   advanceGate,
   detailRows,
-  fabricFinishGate,
   fromClientGate,
   orderBarGates,
   type DetailRowsInput,
@@ -104,25 +103,6 @@ describe('the advance gate', () => {
   })
 })
 
-describe('the Fabric & Finish gate uses the real three-state words', () => {
-  test('both fully approved: one green chip', () => {
-    const g = fabricFinishGate([kind('Fabric', 'fully_approved'), kind('Finish', 'fully_approved')])
-    assert.deepEqual(g.chip, { text: 'Both approved', tone: 'green' })
-  })
-
-  test('partial and not approved are named per kind, never as "1 of 2"', () => {
-    const g = fabricFinishGate([kind('Fabric', 'partially_approved'), kind('Finish', 'not_approved')])
-    assert.equal(g.chip?.text, 'Fabric partial · Finish not approved')
-    assert.equal(g.chip?.tone, 'amber')
-    assert.equal(g.label, 'Fabric Partially Approved, Finish Not Approved')
-    assert.doesNotMatch(g.chip!.text, /of 2/)
-  })
-
-  test('nothing read yet is a dash, not a claim', () => {
-    assert.equal(fabricFinishGate([]).value, '—')
-  })
-})
-
 describe('the From client gate', () => {
   test('unknown until its read lands, None at zero, an amber count above', () => {
     assert.equal(fromClientGate(null).value, '—')
@@ -135,13 +115,13 @@ describe('the From client gate', () => {
 
 describe('the due date on the bar', () => {
   test('counts down, and turns late once it has passed', () => {
-    const ok = orderBarGates({ advance: advance(), approvals: [], pendingFromClient: 0, dueDate: '20 Dec', daysToDue: 26 })
+    const ok = orderBarGates({ advance: advance(), pendingFromClient: 0, dueDate: '20 Dec', daysToDue: 26 })
     assert.equal(ok.due.countdown, '26 days left')
     assert.equal(ok.due.late, false)
-    const late = orderBarGates({ advance: advance(), approvals: [], pendingFromClient: 0, dueDate: '1 Nov', daysToDue: -3 })
+    const late = orderBarGates({ advance: advance(), pendingFromClient: 0, dueDate: '1 Nov', daysToDue: -3 })
     assert.equal(late.due.countdown, '3 days overdue')
     assert.equal(late.due.late, true)
-    const none = orderBarGates({ advance: null, approvals: [], pendingFromClient: null, dueDate: null, daysToDue: null })
+    const none = orderBarGates({ advance: null, pendingFromClient: null, dueDate: null, daysToDue: null })
     assert.equal(none.due.countdown, null)
   })
 })

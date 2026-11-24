@@ -18,7 +18,7 @@
 // decision (the advance is short while Accept for production is offered).
 
 import { dueCountdownLabel } from '@/lib/orders/orderDatesTimeline'
-import { APPROVAL_STATUS_LABEL, type ApprovalKindStanding, type ApprovalStatus } from '@/lib/orders/orderApprovals'
+import { APPROVAL_STATUS_LABEL, type ApprovalKindStanding } from '@/lib/orders/orderApprovals'
 import { percentText, type AdvanceReadiness } from '@/lib/orders/advanceReadiness'
 
 export type DetailRowKey = 'client' | 'dates' | 'pay' | 'pend' | 'terms' | 'totals' | 'act'
@@ -60,7 +60,7 @@ export type DetailRowView = {
   openByDefault: boolean
 }
 
-// ── The Order bar's three gates and the due date ──────────────────────────────
+// ── The Order bar's two gates and the due date ───────────────────────────────
 
 export type BarGate = {
   /** What is drawn in the cell. */
@@ -73,18 +73,10 @@ export type BarGate = {
 export type OrderBarGates = {
   due: { date: string | null; countdown: string | null; late: boolean }
   advance: BarGate
-  fabricFinish: BarGate
   fromClient: BarGate
 }
 
 const DASH = '—'
-
-/** "Fabric Partially Approved" without repeating the word Approved: short words for the bar. */
-const SHORT_STATUS: Record<ApprovalStatus, string> = {
-  not_approved: 'not approved',
-  partially_approved: 'partial',
-  fully_approved: 'approved',
-}
 
 const allFullyApproved = (kinds: readonly ApprovalKindStanding[]): boolean =>
   kinds.length > 0 && kinds.every(k => k.status === 'fully_approved')
@@ -122,17 +114,6 @@ export function advanceGate(advance: AdvanceReadiness | null): BarGate {
   return { value, chip: { text: `Below ${threshold}`, tone: 'red' }, label: `${value} ${base}; below the ${threshold} requirement` }
 }
 
-/** The Fabric & Finish cell: the real three-state words per kind, never a count. */
-export function fabricFinishGate(kinds: readonly ApprovalKindStanding[]): BarGate {
-  if (kinds.length === 0) return { value: DASH, chip: null, label: 'Fabric and Finish approvals not read yet' }
-  if (allFullyApproved(kinds)) {
-    return { value: '', chip: { text: 'Both approved', tone: 'green' }, label: 'Fabric and Finish are both fully approved' }
-  }
-  const text = kinds.map(k => `${k.label} ${SHORT_STATUS[k.status]}`).join(' · ')
-  const long = kinds.map(k => `${k.label} ${APPROVAL_STATUS_LABEL[k.status]}`).join(', ')
-  return { value: '', chip: { text, tone: 'amber' }, label: long }
-}
-
 /** "From client": the open Pending-from-client items, once their own read has landed. */
 export function fromClientGate(openCount: number | null): BarGate {
   if (openCount === null) return { value: DASH, chip: null, label: 'Pending from client not read yet' }
@@ -146,7 +127,6 @@ export function fromClientGate(openCount: number | null): BarGate {
 
 export function orderBarGates(input: {
   advance: AdvanceReadiness | null
-  approvals: readonly ApprovalKindStanding[]
   pendingFromClient: number | null
   dueDate: string | null
   daysToDue: number | null
@@ -158,7 +138,6 @@ export function orderBarGates(input: {
       late: input.daysToDue !== null && input.daysToDue < 0,
     },
     advance: advanceGate(input.advance),
-    fabricFinish: fabricFinishGate(input.approvals),
     fromClient: fromClientGate(input.pendingFromClient),
   }
 }

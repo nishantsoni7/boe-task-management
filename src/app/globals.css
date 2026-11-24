@@ -15621,51 +15621,51 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
    rules by cascade order and leaves them as they are (tests read those by first occurrence).
    ══════════════════════════════════════════════════════════════════════════════ */
 
-/* ── The Order bar: one card, hairlines from a 1px gap on a ruled background ── */
+/* ── The Order bar: one card of six cells in ONE row (ERP, Production, Order type, Due | Advance, From client), hairlines from a
+   1px gap on a ruled background. Eight cells did not fit real values at a 1514 px window; Dispatch and Fabric & Finish left the
+   bar (owner, order 549), and the grid below keeps it calm when the window is narrower. ── */
 .order-stages--bar {
-  display: flex; flex-wrap: nowrap; align-items: stretch; gap: 1px;
+  display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.95fr) minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1.9fr) minmax(0, 1fr); gap: 1px;
   background: #ECE7E0; border: 1px solid #ECE7E0; border-radius: 12px; overflow: hidden;
 }
+.order-stages--bar > .order-stage-gap { display: none; }
 .order-stages--bar > .order-stage {
-  flex: 0 1 auto; flex-direction: column; flex-wrap: nowrap; align-items: flex-start; justify-content: center; gap: 4px;
-  padding: 9px 18px; min-width: 0; background: #fff; border: 0; border-radius: 0; font: inherit; color: #303536; text-align: left;
+  flex: none; display: flex; flex-direction: column; flex-wrap: nowrap; align-items: flex-start; justify-content: flex-start; gap: 7px;
+  min-width: 0; min-height: 70px; padding: 11px 18px 12px; background: #fff; border: 0; border-radius: 0;
+  font: inherit; color: #303536; text-align: left;
 }
 .order-stages--bar > .order-stage--sample { background: #FFF0EE; }
-.order-stages--bar .order-stage-label { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; }
+.order-stages--bar .order-stage-label { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; line-height: 1.2; white-space: nowrap; }
 .order-stages--bar .order-stage-line { display: none; }
-.order-stages--bar > .order-stage-gap { flex: 1 1 0; min-width: 8px; background: #fff; }
+.order-stages--bar .order-stage-badge { border-radius: 6px; padding: 3px 10px; font-size: 12.5px; font-weight: 600; line-height: 1.3; }
+.order-stages--bar .order-stage-full, .order-stages--bar .order-stage-sample { font-size: 14px; line-height: 1.3; }
 .order-stages--bar > .order-stage--dispatch,
 .order-stages--bar > .order-stage--gate { cursor: pointer; transition: background-color 0.15s; }
 .order-stages--bar > .order-stage--dispatch:hover,
 .order-stages--bar > .order-stage--gate:hover { background: #FBFAF8; border-color: transparent; }
 .order-stages--bar > .order-stage--dispatch {
-  display: grid; grid-template-columns: auto auto; grid-template-areas: 'label label' 'text bar'; gap: 4px 10px; align-items: center; justify-content: start;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: 'label label' 'text bar'; gap: 7px 12px; align-items: center; justify-content: stretch; align-content: start;
 }
 .order-stages--bar > .order-stage--dispatch .order-stage-label { grid-area: label; }
-.order-stages--bar > .order-stage--dispatch .order-stage-full { grid-area: text; }
-.order-stages--bar > .order-stage--dispatch .od-bar { grid-area: bar; flex: none; width: 56px; min-width: 56px; }
+.order-stages--bar > .order-stage--dispatch .order-stage-full { grid-area: text; white-space: nowrap; }
+.order-stages--bar > .order-stage--dispatch .od-bar { grid-area: bar; flex: none; width: 100%; max-width: 120px; min-width: 40px; }
 .order-stages--bar > .order-stage--dispatch svg { display: none; }
-.order-stage-duevalue { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 700; white-space: nowrap; }
+.order-stage-duevalue { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 10px; font-size: 14px; font-weight: 700; line-height: 1.3; }
 .order-stage-duevalue small { font-size: 13px; font-weight: 400; color: #686D6C; }
 .order-stage--due.is-late .order-stage-duevalue small { color: #B42332; font-weight: 700; }
-.order-stage-gatevalue { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-size: 14px; font-weight: 600; white-space: nowrap; }
-.order-bar-chip { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; background: #EEECE8; color: #595D5B; }
+.order-stage-gatevalue { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: 14px; font-weight: 600; line-height: 1.3; }
+.order-bar-chip { display: inline-flex; align-items: center; min-height: 24px; padding: 2px 9px; border-radius: 6px; font-size: 12.5px; font-weight: 600; line-height: 1.3; background: #EEECE8; color: #595D5B; }
 .order-bar-chip::before { content: ''; width: 7px; height: 7px; margin-right: 6px; border-radius: 50%; background: currentColor; flex: none; }
 .order-bar-chip--neutral { background: #EEECE8; color: #595D5B; }
 .order-bar-chip--green { background: #E8F2EC; color: #276247; }
 .order-bar-chip--amber { background: #FAF0DA; color: #805B0D; }
 .order-bar-chip--red { background: #FBE9EC; color: #A12438; }
 .order-bar-chip--blue { background: #EAF0F8; color: #335A86; }
-@media (max-width: 1480px) {
-  .order-stages--bar { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .order-stages--bar > .order-stage-gap { display: none; }
-  .order-stages--bar > .order-stage { white-space: normal; }
-  .order-stages--bar .order-stage-duevalue, .order-stages--bar .order-stage-gatevalue { flex-wrap: wrap; white-space: normal; }
-  .order-stages--bar .order-bar-chip { height: auto; min-height: 24px; padding-top: 2px; padding-bottom: 2px; line-height: 1.3; white-space: normal; }
+@media (max-width: 1240px) {
+  .order-stages--bar { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 720px) {
   .order-stages--bar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .order-stages--bar > .order-stage { min-height: 56px; }
 }
 
 /* ── The Documents row now holds the PI and the notes only ── */

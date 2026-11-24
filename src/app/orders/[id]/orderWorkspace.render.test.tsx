@@ -1207,7 +1207,7 @@ describe('the loading shell', () => {
     // Every section of the page it stands in for, in the page's own classes: the
     // Order bar, the PI (Documents), the products and the seven folded rows
     // (Nitish / Operations, 24 Nov 2026).
-    for (const cls of ['order-command-header', 'order-stages--bar', 'order-stage-gap',
+    for (const cls of ['order-command-header', 'order-stages--bar',
                        'order-docs-row', 'order-docs', 'order-doc-section', 'order-products',
                        'order-rows', 'order-rows-card', 'order-row', 'order-row-head']) {
       assert.ok(html.includes(cls), cls + ' is missing from the loading shell')
@@ -1227,7 +1227,7 @@ describe('the loading shell', () => {
     // And the classes it DOES use are all ones the stylesheet still defines, so
     // the shell cannot silently become unstyled again.
     const css = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
-    for (const cls of ['order-stages--bar', 'order-stage-gap', 'order-rows-card', 'order-row-head',
+    for (const cls of ['order-stages--bar', 'order-rows-card', 'order-row-head',
                        'order-docs-row', 'order-docs', 'order-doc-section']) {
       assert.ok(css.includes('.' + cls + ' {'), cls + ' has no rule in globals.css')
     }

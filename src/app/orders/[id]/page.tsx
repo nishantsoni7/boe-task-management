@@ -3329,7 +3329,6 @@ export default function OrderDetailPage() {
   const openDetailRow = (key: DetailRowKey) => setRowRequest(r => ({ key, nonce: (r?.nonce ?? 0) + 1 }))
   const barGates = orderBarGates({
     advance,
-    approvals: approvalView.kinds,
     pendingFromClient: pendencyOpen,
     dueDate: order.due_date ? fmtDate(order.due_date) : null,
     daysToDue: datesTimeline.daysToDue,
@@ -3667,14 +3666,6 @@ export default function OrderDetailPage() {
           isSample={sampleType === 'sample_order'}
           sampleLabel={sampleType ? SAMPLE_TYPE_LABEL[sampleType] : null}
           fullNote={sampleType === 'sampling_needed' ? 'sampling first' : null}
-          dispatch={dispatchLedger && dispatchLedger.ordered > 0 ? {
-            text: `${dispatchLedger.dispatched.toLocaleString('en-IN')} of ${dispatchLedger.ordered.toLocaleString('en-IN')} pcs`,
-            percent: dispatchLedger.percent,
-            onOpen: () => {
-              switchProductView('dispatch')
-              document.getElementById('order-products')?.scrollIntoView({ block: 'start' })
-            },
-          } : null}
           bar={{ ...barGates, onOpen: openDetailRow }}
         />
 

@@ -58,14 +58,15 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
   sampleLabel: string | null
   /** A short note beside "Full order" (for example "sampling first"). */
   fullNote?: string | null
-  /** How much of the Order has left; pressing it opens the Dispatch tab. */
+  /** How much of the Order has left; pressing it opens the Dispatch tab. Not drawn in the Order bar (owner: not needed on top; the Dispatch tab is one click away). */
   dispatch?: { text: string; percent: number; onOpen: () => void } | null
   /**
    * THE ORDER BAR (Nitish / Operations, 24 Nov 2026): the same strip with the due
-   * date and the three gates that decide whether production can start (Advance,
-   * Fabric & Finish, From client). Each gate is a button that opens its folded row
-   * below the products. Given, the strip is drawn as ONE card with ruled cells;
-   * absent, it is exactly the four separate cells it always was.
+   * date and the two gates that decide whether production can start (Advance,
+   * From client), as ONE row of six cells. Each gate is a button that opens its
+   * folded row below the products. Dispatch and Fabric & Finish are not on the bar
+   * (owner, on the real order 549: not required on top). Absent, the strip is
+   * exactly the four separate cells it always was.
    */
   bar?: (OrderBarGates & { onOpen: (row: DetailRowKey) => void }) | null
 }) {
@@ -93,7 +94,7 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
           </span>
         </div>
       )}
-      {dispatch && (
+      {dispatch && !bar && (
         <button type="button" className="order-stage order-stage--dispatch" aria-label={`Dispatch, ${dispatch.text}. Open the Dispatch tab.`} onClick={dispatch.onOpen}>
           <span className="order-stage-label">Dispatch</span>
           <span className="order-stage-full">{dispatch.text}</span>
@@ -103,9 +104,7 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
       )}
       {bar && (
         <>
-          <span className="order-stage-gap" aria-hidden="true" />
           <OrderBarGateButton label="Advance" gate={bar.advance} row="pay" onOpen={bar.onOpen} />
-          <OrderBarGateButton label="Fabric & Finish" gate={bar.fabricFinish} row="pend" onOpen={bar.onOpen} />
           <OrderBarGateButton label="From client" gate={bar.fromClient} row="pend" onOpen={bar.onOpen} />
         </>
       )}

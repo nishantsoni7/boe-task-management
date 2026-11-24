@@ -127,7 +127,7 @@ describe('the Order bar (the status strip with the due date and three gates)', (
       dispatch={{ text: '0 of 72 pcs', percent: 0, onOpen: () => {} }}
       bar={bar ? {
         ...orderBarGates({
-          advance: advance(), approvals: [kind('Fabric', 'partially_approved'), kind('Finish', 'not_approved')],
+          advance: advance(),
           pendingFromClient: 2, dueDate: '20 Dec 2026', daysToDue: 26, ...extra,
         }),
         onOpen: () => {},
@@ -135,15 +135,22 @@ describe('the Order bar (the status strip with the due date and three gates)', (
     />,
   )
 
-  test('is ONE card with the three gates as buttons, and says what each one is in words', () => {
+  test('is ONE card with the two gates as buttons, and says what each one is in words', () => {
     const html = strip()
     assert.match(html, /class="order-stages order-stages--bar"/)
-    assert.equal((html.match(/class="order-stage order-stage--gate"/g) ?? []).length, 3)
+    assert.equal((html.match(/class="order-stage order-stage--gate"/g) ?? []).length, 2)
     assert.match(html, /aria-label="Advance: 52% of the Total before GST, verified by Finance; the 40% requirement is met\. Open the details\."/)
-    assert.match(html, /aria-label="Fabric &amp; Finish: Fabric Partially Approved, Finish Not Approved\. Open the details\."/)
     assert.match(html, /aria-label="From client: 2 items pending from the client\. Open the details\."/)
-    assert.ok(html.includes('Fabric partial · Finish not approved'))
-    assert.ok(!html.includes('of 2'), 'never a loose count of approvals')
+  })
+
+  test('Dispatch and Fabric & Finish are NOT on the bar (owner: not required on top)', () => {
+    const html = strip()
+    assert.equal(html.includes('order-stage--dispatch'), false)
+    assert.equal(html.includes('Dispatch'), false)
+    assert.equal(html.includes('Fabric'), false)
+    assert.equal(html.includes('order-stage-gap'), false)
+    // six cells: ERP, Production, Order type, Due, Advance, From client
+    assert.equal((html.match(/class="order-stage[ "]/g) ?? []).length, 6)
   })
 
   test('the due date counts down, and says OVERDUE in words once it has passed', () => {
@@ -160,9 +167,9 @@ describe('the Order bar (the status strip with the due date and three gates)', (
   })
 
   test('before the reads land the gates say a dash, not a claim', () => {
-    const html = strip({ advance: null, approvals: [], pendingFromClient: null })
+    const html = strip({ advance: null, pendingFromClient: null })
     assert.ok(html.includes('Not read yet'))
-    assert.equal((html.match(/—/g) ?? []).length >= 3, true)
+    assert.equal((html.match(/—/g) ?? []).length >= 2, true)
   })
 
   test('WITHOUT a bar it is exactly the four separate cells it always was', () => {
