@@ -4,15 +4,23 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-24 — One Back button, left of the title, on every page (PR pending) · no migration
+## 2026-11-24 — One Back button, left of the title, on every page (PR #1016) · no migration
 
 - **Owner request.** "On all the pages of the app, there should be always an option to go back ... have it at one place all across the app", after opening a page from a quotation and finding no way back (the installed app window has no browser Back arrow). Five placements were previewed; the owner chose A, beside the title.
 - **Changed.** `PageBackButton` (44 px arrow, tooltip names the place when known) in the header of the 21 shared shells (`*Layout.tsx`, `ComingSoonModule`) and on four standalone pages (announcement, cash handover, quick-start guide, sample dispatch). `src/lib/navigation/backTarget.ts` decides where it goes: pop when this document pushed an entry of its own, else the validated `returnTo`, else one level up (`PARENT_OVERRIDES` for folders that are not pages); `/modules` shows none. `askBeforeLeaving` now also asks before Back when edits are unsaved (quotation builder); the PI editor registers the same guard in place of its own Back link.
 - **Removed.** About 25 per-page Back links (Orders, PI, Payment plan, Dispatch, Old orders, Upload PI, Account, Attendance, Payroll, Performance, All Tasks, Task Detail, Inventory, Vendors, Meetings, Customer Reviews, Showroom Admin inquiry, Control Center phone crumb), `RecordBackLink`, and Task Detail's `taskBackTarget` with its tests.
 - **Behaviour change.** Task Detail with nothing behind it and no `returnTo` goes to My Tasks (a quotation task used to go to Quotation Requests). Upload PI no longer withholds its way out once a preview is on screen (leaving discards the preview, which is only read, not saved).
 - **Not changed.** Showroom QR flow, the client's shared quotation link, sign-in pages, the quotation print page's "Back to the quotation", Pricing Training case arrow, Showroom Admin product edit, Meetings guide end-of-page buttons, step buttons and not-found/refused-state buttons; the old link classes are still in the stylesheets, unused.
-- **Proof.** `backTarget.test.ts` walks every `page.tsx` and fails on a parent that is not a page; `leaveGuard.dom.test.ts` proves Back asks when dirty. Lint 0, `tsc` clean. First whole-suite run found 7 tests that pinned the removed links (22,323 tests, 22,307 pass, 9 skipped); all 7 updated and re-run green. Not tried in a browser: the owner tests before merge.
+- **Proof.** `backTarget.test.ts` walks every `page.tsx` and fails on a parent that is not a page; `leaveGuard.dom.test.ts` proves Back asks when dirty. Lint 0, `tsc` clean. First whole-suite run found 7 tests that pinned the removed links (22,323 tests, 22,307 pass, 9 skipped); all 7 were updated and the whole suite then passed (22,323 tests, 22,314 pass, 0 fail, 9 skipped), run before main's pricing PR #1015 was merged in. Not tried in a browser: the owner tests before merge.
 - **Rollback.** Revert the PR. No data, no migration.
+
+## 2026-11-24 — Pricing: weighed frames, step one: vendor rate per finished kg and the weighed bare frame (branch `feat/weighed-frames`, not merged) · no migration
+
+- **Why.** The owner pays the frame vendor one rate (₹120-150) per finished kg of the bare frame, and the vendor buys the steel; the store keeps no issue records. The metal calculator priced cut loss, a steel rate and fabrication separately, which is not how BOE pays.
+- **What.** a metal element of a Training case can be priced the way BOE pays for frames: a switch "Made by a vendor who buys the steel" (one rate per finished kg, so no cut loss and no fabrication; coating by area stays), and an optional "Weighed bare frame (kg)" box whose weight replaces the calculated kg. The element shows the calculator's kg against the scale's, for example "+11.0%". Both are kept inside the saved calc (`vendor`, `weighed_kg` in `MetalCalc`, `src/lib/pricing/training/calc.ts`); `weighedGap()` gives the comparison; a row saved before them reads back as not vendor and not weighed.
+- **Not in this step.** The learned weighed-to-calculated ratio applied on a quotation line (step two, needs a function-only migration and the owner's yes); store issues (no data: the store keeps none).
+- **Checked.** New tests in `calc.test.ts`; tsc, eslint, full suite, build. Not seen in a browser.
+- **Rollback.** Revert the PR; the two extra keys in saved calcs are ignored by older code.
 
 ## 2026-11-24 — Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (PR #1013) · migration `20270827000000` → APPLIED 2026-11-24 14:46 IST
 
