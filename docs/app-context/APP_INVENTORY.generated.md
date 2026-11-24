@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `a2190f13` — Merge remote-tracking branch 'origin/main' into feat/weighed-frames
+- Commit: `345f1b58` — Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL) (#1015)
 - Commits on this branch: 1572
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
@@ -14,8 +14,8 @@
 
 ## Latest 25 commits
 
-- `a2190f13` 2026-11-24 Merge remote-tracking branch 'origin/main' into feat/weighed-frames
-- `d5f8f740` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL)
+- `345f1b58` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL) (#1015)
+- `e8a9b46b` 2026-11-24 Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (migration 20270827000000 APPLIED) (#1013)
 - `8890d287` 2026-11-24 Docs: the 9:30 pm backup task runs with no window (no SQL) (#1014)
 - `f6c6f05c` 2026-11-24 Docs: the first full photo read (373 of 373) and the new accuracy figures (#1012)
 - `f4a93245` 2026-11-24 Docs: stamp #994 and #987 (the quotation builder's top section, opening a quotation) as merged and live (no SQL) (#1011)
