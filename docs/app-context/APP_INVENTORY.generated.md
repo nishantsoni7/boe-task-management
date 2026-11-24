@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `85e24ef6` — One Back button, left of the page title, on every page
-- Commits on this branch: 1572
+- Commit: `f2ab520d` — Merge main into feat/global-back-button
+- Commits on this branch: 1574
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `f2ab520d` 2026-11-24 Merge main into feat/global-back-button
+- `345f1b58` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL) (#1015)
 - `85e24ef6` 2026-11-24 One Back button, left of the page title, on every page
 - `e8a9b46b` 2026-11-24 Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (migration 20270827000000 APPLIED) (#1013)
 - `8890d287` 2026-11-24 Docs: the 9:30 pm backup task runs with no window (no SQL) (#1014)
@@ -37,8 +39,6 @@
 - `db33183d` 2026-11-23 Quotations: the Fabric From box works on a row with nothing typed yet (no SQL) (#995)
 - `42e9edf6` 2026-11-23 Quotations: the builder's top section tidied, and Price approval moved up into the Status card (no SQL) (#994)
 - `f904e860` 2026-11-23 Docs: stamp #989 (the Open-tile migration file) as merged and live (no SQL) (#991)
-- `0b74fdbb` 2026-11-23 Docs: stamp the merge of #990 (Improve picture: line details and reference box) on its entries (#992)
-- `43175621` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
 
 ## Pages by top-level area
 

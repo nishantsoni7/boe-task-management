@@ -22,7 +22,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Checked.** New tests in `calc.test.ts`; tsc, eslint, full suite, build. Not seen in a browser.
 - **Rollback.** Revert the PR; the two extra keys in saved calcs are ignored by older code.
 
-## 2026-11-24 — Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (PR #1013) · migration `20270827000000` → APPLIED 2026-11-24 14:46 IST
+## 2026-11-24 — Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (PR #1013, merged as `e8a9b46b` 2026-11-24 15:44 IST, production deployment succeeded 15:46 IST) · migration `20270827000000` → APPLIED 2026-11-24 14:46 IST
 
 - **Owner report.** Task "513 Bharghav" (Working since 17 Nov, five updates since) showed "flagged the task as stale — Auto-flagged: same status for 5+ days with no progress" on 24 Nov 12:30 IST, two minutes after the assignee's latest update. Read from the live database the same day: `is_stale = true`, `stale_day_count = 0`, no status change in 6 days, 5 updates in the last 6 days.
 - **Cause.** `run_task_health_check()` decided "stale" from `status_changed` rows alone. A comment, a Send Update or a file is a `note_added` row, which it never looked at. Its day count came from `last_update_at` (which a comment moves), so the card read "Same status for 0d" beside the flag. Nothing ever set `is_stale` back to false, so a wrong flag stayed (169 tasks carried the flag on 24 Nov: 13 working, 144 completed, 12 cancelled).
