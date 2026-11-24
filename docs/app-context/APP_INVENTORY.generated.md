@@ -5,16 +5,18 @@
 
 ## Snapshot
 
-- Commit: `d5f8f740` — Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL)
-- Commits on this branch: 1570
+- Commit: `a2190f13` — Merge remote-tracking branch 'origin/main' into feat/weighed-frames
+- Commits on this branch: 1572
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
-- Migrations: 506 (first `20260530_create_positions.sql`, latest `20270826000000_pricing_engine_v3.sql`)
+- Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
-- Test files: 949   Next.js 16.2.6, React 19.2.4
+- Test files: 950   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `a2190f13` 2026-11-24 Merge remote-tracking branch 'origin/main' into feat/weighed-frames
 - `d5f8f740` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL)
+- `8890d287` 2026-11-24 Docs: the 9:30 pm backup task runs with no window (no SQL) (#1014)
 - `f6c6f05c` 2026-11-24 Docs: the first full photo read (373 of 373) and the new accuracy figures (#1012)
 - `f4a93245` 2026-11-24 Docs: stamp #994 and #987 (the quotation builder's top section, opening a quotation) as merged and live (no SQL) (#1011)
 - `1dcd4005` 2026-11-24 Docs: #1008 merged and live (2026-11-24 11:06 IST) (#1010)
@@ -37,8 +39,6 @@
 - `f904e860` 2026-11-23 Docs: stamp #989 (the Open-tile migration file) as merged and live (no SQL) (#991)
 - `0b74fdbb` 2026-11-23 Docs: stamp the merge of #990 (Improve picture: line details and reference box) on its entries (#992)
 - `43175621` 2026-11-23 Quotations: Improve picture sends the product's details and has a proper reference picture box (no SQL) (#990)
-- `32004032` 2026-11-23 Quotations: the Open tile's migration file (already applied) and the merge stamps for #986 and #988 (#989)
-- `859bba0c` 2026-11-23 Quotations: the list's columns (Client Details, Sales person, Pending from) and a phone layout of cards (no SQL) (#988)
 
 ## Pages by top-level area
 
@@ -182,7 +182,7 @@
 - `src/lib/seo` — 8 source, 5 test
 - `src/lib/showroom` — 12 source, 12 test
 - `src/lib/supabase` — 3 source, 1 test
-- `src/lib/tasks` — 27 source, 44 test
+- `src/lib/tasks` — 27 source, 45 test
 - `src/lib/testing` — 5 source, 2 test
 - `src/lib/ui` — 2 source, 2 test
 - `src/lib/users` — 3 source, 3 test
@@ -525,7 +525,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270803000000_day_close_hold_decision.sql`
 - `20270804000000_quotation_request_receivers.sql`
 - `20270805000000_quotation_for_request.sql`
 - `20270806000000_quotation_picture_originals.sql`
@@ -555,6 +554,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270824000000_pricing_echo_guard.sql`
 - `20270825000000_pricing_photo_facts.sql`
 - `20270826000000_pricing_engine_v3.sql`
+- `20270827000000_task_health_check_updates_count_as_progress.sql`
 
 ## All SQL function names
 
