@@ -1553,3 +1553,13 @@ task's Activity. Mechanism 2 (the dashboard's admin-only view, and the Manager
 "Silent 72h+" filter) was not part of the request and is unchanged. The written
 24/48/72-hour rule above is therefore no longer implemented anywhere as a
 recorded event.
+
+**Update 2026-11-24 — the stale flag counts updates.** The one thing
+`run_task_health_check()` still does, the stale flag, looked only at
+`status_changed` rows, so a task with daily comments was flagged "same status for
+5+ days with no progress". Migration
+`20270827000000_task_health_check_updates_count_as_progress.sql` treats the
+newest `status_changed` or `note_added` row (anyone's) as progress, measures the
+day count from it, and takes the flag down when a started or working task shows
+progress again. The thresholds (6 days without progress on a task at least 5 days
+old) are unchanged. Not applied at the time of writing. (PR number added when opened.)
