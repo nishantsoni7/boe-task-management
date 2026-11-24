@@ -3,9 +3,9 @@ import { mount } from '@/lib/testing/domHarness'
 import '@/lib/testing/cssModuleStub'
 import { afterEach, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createElement } from 'react'
+import { act, createElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AskCard } from './AskCard'
+import { AskButton, AskNote } from './AskCard'
 import { PriceBrief } from './PriceBrief'
 import { periodDates } from './HomeCards'
 import type { AskRequest, AskState, Quotation } from '@/lib/quotations/api'
@@ -34,13 +34,17 @@ afterEach(() => { for (const m of mounted.splice(0)) m.unmount() })
 const wrap = (child: ReturnType<typeof createElement>) => createElement(QueryClientProvider, { client: new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } }) }, child)
 const ready = async (u: { settle: () => Promise<void> }) => { await u.settle(); await u.settle(); await u.settle() }
 const BASE = { id: 'q1' } as Quotation
+// The Senior row and the button in the Share row are two components over one cached answer; mounted together they are the old card.
+const askUi = (sb: { client: unknown }, o: { dirty?: boolean; onChanged?: () => void; onSentBack?: (id: string) => void } = {}) => wrap(createElement('div', null,
+  createElement(AskNote, { supabase: sb.client as never, base: BASE }),
+  createElement(AskButton, { supabase: sb.client as never, base: BASE, dirty: o.dirty ?? false, onChanged: o.onChanged ?? (() => {}), onSentBack: o.onSentBack })))
 
 describe('Ask a senior', () => {
   test('a salesperson sends their own quotation to a chosen senior for prices; the pick is remembered', async () => {
     const sb = fake(state()); let changed = 0
-    const m = mount(wrap(createElement(AskCard, { supabase: sb.client as never, base: BASE, dirty: false, onChanged: () => { changed++ } }))); mounted.push(m)
+    const m = mount(askUi(sb, { onChanged: () => { changed++ } })); mounted.push(m)
     await ready(m)
-    assert.match(m.text(), /Not sure of a price/)
+    assert.ok(!/Senior|Not sure of a price/.test(m.text()), 'nothing was asked: no Senior row')
     m.click(m.button('Ask a senior')); await ready(m)
     assert.ok(sb.calls.some(c => c.fn === 'quotation_desk_people'))
     m.click(m.button('Send')); await ready(m)
@@ -53,13 +57,13 @@ describe('Ask a senior', () => {
     assert.ok(changed >= 1)
   })
   test('Save first: nothing can be sent or sent back while the page has unsaved edits', async () => {
-    const m = mount(wrap(createElement(AskCard, { supabase: fake(state()).client as never, base: BASE, dirty: true, onChanged: () => {} }))); mounted.push(m)
+    const m = mount(askUi(fake(state()), { dirty: true })); mounted.push(m)
     await ready(m)
-    assert.equal(m.button('Ask a senior').disabled, true); assert.match(m.text(), /Save first/)
+    assert.equal(m.button('Ask a senior').disabled, true); assert.equal(m.button('Ask a senior').title, 'Save first')
   })
   test('the asker sees who it is with and how long; they can withdraw', async () => {
     const sb = fake(state({ open: REQ, may_ask: false, may_withdraw: true }))
-    const m = mount(wrap(createElement(AskCard, { supabase: sb.client as never, base: BASE, dirty: false, onChanged: () => {} }))); mounted.push(m)
+    const m = mount(askUi(sb)); mounted.push(m)
     await ready(m)
     assert.match(m.text(), /Sent to Nitish Bansal/); assert.match(m.text(), /waiting/); assert.match(m.text(), /Teak, 56 rooms/)
     m.click(m.button('Withdraw')); await ready(m)
@@ -67,7 +71,7 @@ describe('Ask a senior', () => {
   })
   test('the senior is told who sent it, sends it back with a note, and the brief is offered', async () => {
     const sb = fake(state({ open: REQ, may_ask: false, may_answer: true })); const sent: string[] = []
-    const m = mount(wrap(createElement(AskCard, { supabase: sb.client as never, base: BASE, dirty: false, onChanged: () => {}, onSentBack: id => { sent.push(id) } }))); mounted.push(m)
+    const m = mount(askUi(sb, { onSentBack: id => { sent.push(id) } })); mounted.push(m)
     await ready(m)
     assert.match(m.text(), /Shravi/); assert.match(m.text(), /sent this to you/)
     m.click(m.button(/Send back to Shravi/)); await ready(m)
@@ -76,8 +80,24 @@ describe('Ask a senior', () => {
     assert.deepEqual(sb.calls.find(c => c.fn === 'quotation_request_answer')!.args, { p_id: 'r1', p_note: 'Priced at the usual teak rate' })
     assert.deepEqual(sent, ['r1'])
   })
+  test('the form is a pop-over under the button, and Escape closes it', async () => {
+    const m = mount(askUi(fake(state()))); mounted.push(m)
+    await ready(m)
+    assert.equal(m.all('[role="dialog"]').length, 0)
+    m.click(m.button('Ask a senior')); await ready(m)
+    assert.equal(m.all('[role="dialog"]').length, 1)
+    act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    assert.equal(m.all('[role="dialog"]').length, 0)
+  })
+  test('what the senior sent back is the Senior row, with the date and the note', async () => {
+    const last = { ...REQ, status: 'answered', answered_at: '2026-11-23T10:00:00Z', answer_note: 'Shared the costing', answered_by_name: 'Nishant Soni' } as AskRequest
+    const m = mount(askUi(fake(state({ last })))); mounted.push(m)
+    await ready(m)
+    assert.match(m.text(), /Senior/); assert.match(m.text(), /Nishant Soni sent it back 23 Nov: “Shared the costing”/)
+    assert.ok(m.button('Ask a senior'), 'they may still ask again')
+  })
   test('nothing shows when there is nothing to do and nothing was asked', async () => {
-    const m = mount(wrap(createElement(AskCard, { supabase: fake(state({ may_ask: false })).client as never, base: BASE, dirty: false, onChanged: () => {} }))); mounted.push(m)
+    const m = mount(askUi(fake(state({ may_ask: false })))); mounted.push(m)
     await ready(m)
     assert.equal(m.text().trim(), '')
   })
