@@ -1,4 +1,4 @@
-// Deleting a quotation (owner, 20 Nov 2026; 20270817000000): the confirm, the Status card's Delete button and the list's bin, run for real.
+// Deleting a quotation (owner, 20 Nov 2026; 20270817000000): the confirm, the top panel's Delete item and the list's bin, run for real.
 // The database decides who may delete what (quotation_delete_blocker, proved in supabase/tests/quotations_pglite.mjs); these prove the
 // screens ask it, show its answer, and leave the page the way the owner asked.
 import { mount } from '@/lib/testing/domHarness'
@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs'
 import { createElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { DeleteQuotationDialog, goneOutNote, type DeleteTarget } from './DeleteQuotationDialog'
-import { StatusCard } from './StatusCard'
+import { panel, quote, type PanelOver } from './topPanel.testkit'
 import type { Quotation, QuotationStatus } from '@/lib/quotations/api'
 
 const TARGET: DeleteTarget = { id: 'q-1', quote_no: 'QT-NS-01009', client_name: 'Hotel Aravali', project_name: 'Aravali Resort', status: 'draft' }
@@ -72,29 +72,24 @@ describe('the delete confirm', () => {
   })
 })
 
-const quote = (o: Partial<Quotation> = {}) => ({ id: 'q1', quote_no: 'QT-1', status: 'draft' as QuotationStatus, may_edit: true, pi: null, price: null, share_token: null, ...o }) as Quotation
-function card(base: Quotation, over: Partial<Parameters<typeof StatusCard>[0]> = {}) {
-  return createElement(StatusCard, { base, dirty: false, busy: false, isAdmin: false, canConfirm: false, piProblems: [], priceBlocked: false, piStage: null,
-    lostNote: null, setLostNote: () => {}, lostReason: '', setLostReason: () => {}, onMove: () => {}, onConfirm: () => {},
-    needs: [], onAskPrice: () => {}, onDecidePrice: () => {}, ...over })
-}
-/** What the More menu offers: open it as a person does and read the items (none when the card has no More button at all). */
-function menuItems(base: Quotation, over: Partial<Parameters<typeof StatusCard>[0]> = {}): string[] {
-  const ui = mount(card(base, over))
-  if (ui.all('button').some(b => (b.textContent ?? '').trim() === 'More')) ui.click(ui.button('More'))
+const MORE = 'button[aria-label="More actions"]'
+/** What the ⋯ menu offers: open it as a person does and read the items (none when the panel has no ⋯ button at all). */
+function menuItems(base: Quotation, over: PanelOver = {}): string[] {
+  const ui = mount(panel(base, over))
+  if (ui.all(MORE).length) ui.click(ui.one(MORE))
   const items = ui.all('[role="menuitem"]').map(b => (b.textContent ?? '').trim())
   ui.unmount()
   return items
 }
 
-describe('the Status card\'s Delete item (in the More menu)', () => {
+describe('the top panel\'s Delete item (in the ⋯ menu)', () => {
   test('is there only when the database said the person may delete, and choosing it asks to confirm', () => {
     assert.ok(!menuItems(quote()).includes('Delete…'), 'no answer yet: no item')
     assert.ok(!menuItems(quote(), { canDelete: false, onDelete: () => {} }).includes('Delete…'), 'not allowed: no item')
     assert.ok(menuItems(quote(), { canDelete: true, onDelete: () => {} }).includes('Delete…'))
     let asked = 0
-    const ui = mount(card(quote(), { canDelete: true, onDelete: () => { asked++ } }))
-    ui.click(ui.button('More'))
+    const ui = mount(panel(quote(), { canDelete: true, onDelete: () => { asked++ } }))
+    ui.click(ui.one(MORE))
     ui.click(ui.button('Delete…'))
     assert.equal(asked, 1)
     ui.unmount()

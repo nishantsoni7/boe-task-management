@@ -58,7 +58,11 @@ describe('the Lead card: what it offers', () => {
     const sb = fake(info()); const u = ui(sb, quote('sent')); await u.settle(); await u.settle()
     assert.match(u.text(), /#1201 Hotel Aravali/); assert.match(u.text(), /Potential Clients/); assert.match(u.text(), /Held by Mohit Sharma/)
     assert.match(u.text(), /follow-up 25 Nov/); assert.match(u.text(), /not logged on the lead yet/)
-    assert.deepEqual(u.all('button').map(b => b.textContent?.trim()), ['Unlink', 'Log on the lead'])
+    assert.deepEqual(u.all('button').map(b => b.textContent?.trim()), ['Log on the lead', 'Unlink'])
+    // the lead's stage IS the status: a chip, and four of the five steps of the sale filled for Potential Clients
+    assert.match(u.one('.stage').textContent ?? '', /^Potential Clients$/)
+    assert.equal(u.all('.meter i').length, 5); assert.equal(u.all('.meter i.meterOn').length, 4)
+    assert.equal(u.one('.meter').getAttribute('aria-label'), 'Stage 4 of 5')
     assert.deepEqual(sb.writes(), [], 'showing the card writes nothing')
     u.unmount()
   })
@@ -84,11 +88,20 @@ describe('the Lead card: what it offers', () => {
       u.unmount()
     }
   })
-  test('with unsaved edits the buttons are off and the card says "Save first"', async () => {
+  test('with unsaved edits the buttons are off and each says "Save first" in its tooltip (the panel says it once, in words)', async () => {
     const u = ui(fake(info()), quote('sent'), { dirty: true }); await u.settle(); await u.settle()
     assert.equal(u.button('Log on the lead').disabled, true)
-    assert.match(u.text(), /Save first/)
+    assert.equal(u.button('Log on the lead').title, 'Save first'); assert.equal(u.button('Unlink').title, 'Save first')
     u.unmount()
+  })
+  test('the chip wears the lead\'s outcome, and a lead off the path of a sale has no meter', async () => {
+    for (const [stage, tone, meter] of [['converted', 'stageDone', 0], ['dead', 'stageDead', 0], ['follow_up_later', 'stageLater', 0], ['negotiation', '', 5]] as const) {
+      const u = ui(fake(info({ lead: { ...LEAD, stage } })), quote('sent')); await u.settle(); await u.settle()
+      assert.equal(u.one('.stage').className.includes(tone || 'stage'), true, stage)
+      if (tone) assert.ok(u.one('.stage').className.includes(tone), stage)
+      assert.equal(u.all('.meter i.meterOn').length, meter, stage)
+      u.unmount()
+    }
   })
   test('a person with no Sales and no link sees no card; a link they cannot open is only said, never named', async () => {
     const none = ui(fake(info({ sales_open: false, linked: false, lead: null })), quote('sent')); await none.settle(); await none.settle()

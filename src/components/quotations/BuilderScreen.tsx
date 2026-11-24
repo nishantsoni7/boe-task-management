@@ -26,7 +26,7 @@ import { formatINR } from '@/lib/currency'
 import { istDateOf } from '@/lib/istDate'
 import {
   STATUS_LABEL, errorKind, errorText, fetchQuotation, fetchPictureMark, pictureMarkKey, pictureSrc, quotationKeys, setPictureMark, saveDoc, saveQuotation,
-  setStatus as setStatusRpc, shareQuotation, fetchHints, requestPriceApproval, decidePrice, type PriceHint, uploadPicture, type Header, type Quotation, type QuotationStatus,
+  setStatus as setStatusRpc, shareQuotation, fetchHints, type PriceHint, uploadPicture, type Header, type Quotation, type QuotationStatus,
   fetchSuggestionSettings, suggestionsKey, fetchPaymentDetails, deleteCheckKey, fetchDeleteCheck,
 } from '@/lib/quotations/api'
 import {
@@ -34,23 +34,19 @@ import {
   type QuoteArea, type QuoteLine,
 } from '@/lib/quotations/math'
 import { CLOSING, DEFAULT_CLIENT_NOTE, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS } from '@/lib/quotations/terms'
-import { needsYou, REQUEST_CARD_ID } from '@/lib/quotations/needsYou'
+import { REQUEST_CARD_ID } from '@/lib/quotations/needsYou'
 import { ImportDialog } from './ImportDialog'
 import { WANTS } from '@/lib/quotations/importBoq'
 import { lineDetails } from '@/lib/quotations/pictureStudio'
-import { StatusPill } from './ListScreen'
 import { StudioDialog } from './StudioDialog'
 import { VersionsCard } from './VersionsCard'
 import { RequestCard } from './RequestCard'
-import { AskCard } from './AskCard'
 import { PriceBrief } from './PriceBrief'
 import { DeleteQuotationDialog } from './DeleteQuotationDialog'
-import { LeadCard } from './LeadCard'
 import { LineRow } from './ProductLine'
 import { CostingPage } from './CostingPage'
 import { effectiveLeadTime } from './LeadTime'
-import { StatusCard, LOCKED } from './StatusCard'
-import { ShareCard } from './ShareCard'
+import { TopPanel, LOCKED } from './TopPanel'
 import { ClientCard } from './ClientCard'
 import { PictureViewer, viewerItemsOf } from './PictureViewer'
 import { MyDetailsReminder } from './MyDetails'
@@ -257,6 +253,8 @@ export default function BuilderScreen() {
     if (!base || busy) return
     setBusy(true); setMsg(null)
     try {
+      // The database confirms only a Sent or Negotiating quotation: a Draft goes to Negotiating first (its history says so).
+      if (base.status === 'draft') await setStatusRpc(supabase, id, 'negotiating')
       const r = await makePiDraft(supabase, base, setPiStage)
       // Some of the client's extra pictures did not fit: say so here (and stay) rather than lose the note on the way to the draft.
       if (!r.linkError && !r.extrasLeftOut) { router.push(draftDetailHref(r.submissionId)); return }
@@ -266,6 +264,7 @@ export default function BuilderScreen() {
       await quoteQ.refetch()
     } catch (e) {
       setMsg({ tone: 'bad', text: errorText(e) })
+      void quoteQ.refetch() // a draft may already be Negotiating
     } finally { setBusy(false); setPiStage(null) }
   }
 
@@ -285,7 +284,7 @@ export default function BuilderScreen() {
   const waText = `Hello${h.contact_name ? ' ' + h.contact_name.split(' ')[0] : ''}, here is our quotation ${base.quote_no} for ${h.project_name || h.client_name}: ${formatINR(totals.grand)} including GST, valid until ${formatDateIN(validUntil(issued, h.valid_days))}.\nView it with pictures and save the PDF here: ${link}\n– ${profile?.full_name ?? ''}, Best of Exports`
   const copy = async () => {
     try { await navigator.clipboard.writeText(link); setCopied(true); setTimeout(() => setCopied(false), 1800) }
-    catch { (document.getElementById('q-link') as HTMLInputElement | null)?.select() }
+    catch { setMsg({ tone: 'warn', text: `Copy this link: ${link}` }) }
   }
   // The Excel of the saved quotation for the client (owner, 18 Nov 2026): styled, a picture beside each product, live formulas for editing; never the internal PI sheet.
   const downloadExcel = async () => {
@@ -340,11 +339,10 @@ export default function BuilderScreen() {
   const unit = h.dimension_unit
   const viewerItems = viewerItemsOf(groups.flatMap(g => g.lines), unit)
   const viewerAt = viewing ? viewerItems.findIndex(x => x.key === viewing) : -1
-  const waiting = needsYou(base)
-  // Confirm → PI draft lives in the Status bar (the PI draft card is gone, owner 18 Nov 2026). It works on the SAVED quotation.
+  // Confirm → PI draft lives in the top panel (the PI draft card is gone, owner 18 Nov 2026). It works on the SAVED quotation. A Draft can be confirmed
+  // too (owner, 24 Nov 2026: Mark sent and Negotiating are gone); the database confirms only a Sent or Negotiating one, so confirmToPi moves a draft first.
   const piProblems = conversionProblems(base.areas, base.lines)
-  const canConfirm = base.may_edit && !base.pi && (base.status === 'sent' || base.status === 'negotiating')
-  const priceBlocked = !!base.price?.blocked
+  const canConfirm = base.may_edit && !base.pi && (base.status === 'draft' || base.status === 'sent' || base.status === 'negotiating')
   // A city the list knows fills in the state, and with it the tax; any other city leaves the state as it is.
   const setCity = (v: string) => {
     const st = stateOfCity(v)
@@ -353,11 +351,8 @@ export default function BuilderScreen() {
   const setState = (v: string) => {
     setH(p => (p ? { ...p, supply_state: v, gst_mode: SUPPLY_STATES.some(x => x.toLowerCase() === v.trim().toLowerCase()) ? gstModeForState(v) : p.gst_mode } : p)); touch()
   }
-  const hasRequest = !!profile && !!base.request
-
   const actions = (
     <>
-      <span className={s.hideOnPhone}><StatusPill status={base.status} /></span>
       {dirty ? <span className={`${s.dirty} ${s.saveState}`}>Unsaved changes</span> : <span className={`${s.small} ${s.muted} ${s.saveState} ${s.hideOnPhone}`}><Check size={13} aria-hidden /> Saved</span>}
       {editable && <button className={`${s.btn} ${s.btnPrimary}`} onClick={save} disabled={!dirty || saving}><Save size={15} aria-hidden /> {saving ? 'Saving…' : 'Save'}</button>}
     </>
@@ -380,23 +375,16 @@ export default function BuilderScreen() {
         target={{ id, quote_no: base.quote_no, client_name: h.client_name, project_name: h.project_name || null, status: base.status }}
         onDeleted={() => { dirtyRef.current = false; router.push('/quotations') }} />}
 
-      {/* the top row (owner-approved layout, 18 Nov 2026; tidied 23 Nov 2026): the request, where the quotation is (with the price approval), and sharing, as compact cards */}
-      <div className={`${s.band} ${hasRequest ? '' : s.bandTwo}`}>
+      {/* the top panel (owner-approved mockup, 24 Nov 2026): the request when there is one, then ONE card of slim rows (Lead, Senior, Share and the next step) */}
+      <div className={s.topStack}>
         {profile && <RequestCard id={REQUEST_CARD_ID} supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
-        <StatusCard base={base} dirty={dirty} busy={busy} isAdmin={access.admin} canConfirm={canConfirm} piProblems={piProblems} priceBlocked={priceBlocked} piStage={piStage}
+        <TopPanel supabase={supabase} id={id} base={base} dirty={dirty} busy={busy} isAdmin={access.admin} canConfirm={canConfirm} piProblems={piProblems} piStage={piStage}
+          lineCount={lines.length} phone={h.contact_phone} waText={waText} copied={copied}
+          markOn={markQ.data} onMark={on => act(async () => { await setPictureMark(supabase, id, on); qc.setQueryData(pictureMarkKey(id), on) }, on ? 'The Best of Exports logo is on the pictures.' : 'The pictures are clean, without the logo.')}
           lostNote={lostNote} setLostNote={setLostNote} lostReason={lostReason} setLostReason={setLostReason} onMove={moveTo} onConfirm={confirmToPi}
+          onCopy={copy} onExcel={downloadExcel} onShare={on => act(async () => { await shareQuotation(supabase, id, on); if (on && isDesk) setBriefing(true) }, on ? 'The client link is on.' : 'The client link is off.')}
           canDelete={delQ.data?.may === true} onDelete={() => setDeleting(true)}
-          needs={waiting} onAskPrice={() => act(() => requestPriceApproval(supabase, id), 'Sent to the pricing desk.')}
-          onDecidePrice={(approve, note) => act(() => decidePrice(supabase, id, approve, note), approve ? 'Prices approved.' : 'Sent back to the salesperson.')} />
-        <ShareCard id={id} base={base} dirty={dirty} busy={busy} lineCount={lines.length} phone={h.contact_phone} link={link} waText={waText} copied={copied}
-          onCopy={copy} onExcel={downloadExcel} markOn={markQ.data}
-          onMark={on => act(async () => { await setPictureMark(supabase, id, on); qc.setQueryData(pictureMarkKey(id), on) }, on ? 'The Best of Exports logo is on the pictures.' : 'The pictures are clean, without the logo.')} onShare={on => act(async () => { await shareQuotation(supabase, id, on); if (on && isDesk) setBriefing(true) }, on ? 'The client link is on.' : 'The client link is off.')} />
-      </div>
-
-      {/* Lead | Ask a senior: one strip of two halves; each half draws nothing when it has nothing to say, and then the strip is :empty and hidden */}
-      <div className={s.strip}>
-        <LeadCard supabase={supabase} base={base} dirty={dirty} onChanged={() => { quoteQ.refetch() }} />
-        <AskCard supabase={supabase} base={base} dirty={dirty} onChanged={() => { quoteQ.refetch() }} onSentBack={() => { if (isDesk) setBriefing(true) }} />
+          onChanged={() => { quoteQ.refetch() }} onSentBack={() => { if (isDesk) setBriefing(true) }} />
       </div>
 
       <ClientCard h={h} areas={areas} editable={editable} advOpen={advOpen} onAdv={() => setAdvOpen(o => !o)} onField={updH}

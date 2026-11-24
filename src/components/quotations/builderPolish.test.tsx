@@ -21,8 +21,7 @@ import type { QuoteArea, QuoteLine } from '@/lib/quotations/math'
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const SCREEN = read('src/components/quotations/BuilderScreen.tsx')
 const CLIENT = read('src/components/quotations/ClientCard.tsx')
-const STATUS = read('src/components/quotations/StatusCard.tsx')
-const SHARE = read('src/components/quotations/ShareCard.tsx')
+const PANEL = read('src/components/quotations/TopPanel.tsx')
 const CSS = read('src/components/quotations/quotations.module.css')
 // The text of one CSS rule: from its selector to the closing brace.
 const rule = (selector: string) => {
@@ -99,20 +98,21 @@ describe('contact person and email (items 5 and 7)', () => {
 
 describe('the page rows (items 8 and 9, redone on 18 Nov 2026)', () => {
   const between = (from: string, to: string) => SCREEN.slice(SCREEN.indexOf(from), SCREEN.indexOf(to))
-  test('the top row is three compact cards (request, status, share), then the Client card, then the products', () => {
-    const order = ['className={`${s.band}', '<RequestCard', '<StatusCard', '<ShareCard', '<ClientCard', 'aria-labelledby="q-products"'].map(i => SCREEN.indexOf(i))
+  test('the top is the request (when there is one), ONE panel, then the Client card, then the products', () => {
+    const order = ['className={s.topStack}', '<RequestCard', '<TopPanel', '<ClientCard', 'aria-labelledby="q-products"'].map(i => SCREEN.indexOf(i))
     assert.ok(order.every(i => i > 0), 'every part is on the page')
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
-    assert.match(rule('.band'), /grid-template-columns: minmax\(0, \.9fr\) minmax\(0, 1\.5fr\) minmax\(0, 1\.1fr\);/)
-    assert.match(rule('.bandTwo'), /grid-template-columns: minmax\(0, 1\.5fr\) minmax\(0, 1\.1fr\);/)
-    assert.ok(SCREEN.includes("${hasRequest ? '' : s.bandTwo}"), 'a quotation that did not come from a request has a row of two cards')
+    assert.match(rule('.topStack'), /gap: 12px;/)
+    assert.match(rule('.panel'), /border-radius: var\(--boe-radius-panel\);/)
+    assert.match(rule('.prow'), /grid-template-columns: 64px minmax\(0, 1fr\);/)
+    for (const gone of ['.band', '.bandTwo', '.strip', '.steps', '.leadStrip', '.askStrip', '.shareFoot']) assert.ok(!CSS.includes(`${gone} {`), `${gone} is gone`)
   })
-  test('Share carries the two downloads and the WhatsApp message', () => {
-    for (const w of ['Download PDF', 'Download Excel', 'Open WhatsApp with the message', 'Create client link', 'Turn the link off']) assert.ok(SHARE.includes(w), w)
+  test('the Share row carries the two downloads, the client link and WhatsApp', () => {
+    for (const w of ['Download PDF', 'Download Excel', 'WhatsApp', 'Copy link', 'Create client link', 'Turn the client link off']) assert.ok(PANEL.includes(w), w)
   })
   test('the downloads are made from the saved quotation: disabled while there are unsaved changes', () => {
-    assert.match(SHARE, /dirty\s*\? <button type="button" className=\{s\.btn\} disabled><Printer/)
-    assert.match(SHARE, /onClick=\{onExcel\} disabled=\{dirty \|\| busy \|\| lineCount === 0\}/)
+    assert.match(PANEL, /dirty\s*\? <button type="button" className=\{s\.btn\} disabled title="Save first"><Printer/)
+    assert.match(PANEL, /onClick=\{onExcel\} disabled=\{dirty \|\| busy \|\| lineCount === 0\}/)
   })
   test('Terms and notes (textareas stacked) and History share one row; the bottom grid no longer holds Share or History', () => {
     const pair = between('className={s.pair}', 'className={s.bottom}')
@@ -129,24 +129,24 @@ describe('the page rows (items 8 and 9, redone on 18 Nov 2026)', () => {
     assert.match(rule('.acts2'), /flex-wrap: wrap;/)
     assert.match(rule('.card'), /min-width: 0;/)
   })
-  test('under 1200 px the top row is two columns, under 1024 px Terms and History stack, and on a phone every grid is one column', () => {
-    assert.match(CSS, /@media \(max-width: 1199px\) \{[^@]*\.band, \.bandTwo \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/)
+  test('under 1200 px the Client fields are two columns, under 1024 px Terms and History stack, and on a phone every grid is one column', () => {
+    assert.match(CSS, /@media \(max-width: 1199px\) \{[^@]*\.fgrid \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\); \}/)
     assert.match(CSS, /@media \(max-width: 1023px\) \{\s*\.pair \{ grid-template-columns: minmax\(0, 1fr\); \}/)
-    assert.match(CSS, /\.grid2, \.grid3, \.grid4, \.band, \.bandTwo, \.fgrid, \.leadEdit \{ grid-template-columns: minmax\(0, 1fr\); \}/)
+    assert.match(CSS, /\.grid2, \.grid3, \.grid4, \.fgrid, \.leadEdit \{ grid-template-columns: minmax\(0, 1fr\); \}/)
   })
 })
 
 describe('the tidy-up of 18 Nov 2026 (owner: request on top, no PI draft card, City, one-line Saved, no Total)', () => {
   const between = (from: string, to: string) => SCREEN.slice(SCREEN.indexOf(from), SCREEN.indexOf(to))
   test('the Quotation request card is the first card of the top row, before Status; the Needs you strip is gone (23 Nov 2026: its words are in the Status card)', () => {
-    assert.ok(SCREEN.indexOf('<RequestCard') < SCREEN.indexOf('<StatusCard'))
+    assert.ok(SCREEN.indexOf('<RequestCard') < SCREEN.indexOf('<TopPanel'))
     assert.ok(!SCREEN.includes('Needs you') && !SCREEN.includes('Go there'))
   })
-  test('the PI draft card and the PI-format download are gone, but a sent quotation can still become a PI from the Status card', () => {
-    assert.ok(!/PiCard|downloadPi|Download in PI format/.test(SCREEN + STATUS))
-    for (const w of ['Confirm → make PI draft', 'Open the PI draft', 'onClick={onConfirm}', 'Show which', 'Waiting for price approval']) assert.ok(STATUS.includes(w), w)
-    assert.match(SCREEN, /const canConfirm = base\.may_edit && !base\.pi && \(base\.status === 'sent' \|\| base\.status === 'negotiating'\)/)
-    assert.match(STATUS, /disabled=\{off \|\| piProblems\.length > 0 \|\| priceBlocked\}/, 'the same reasons the old card had for waiting')
+  test('the PI draft card and the PI-format download are gone, but a quotation can still become a PI from the top panel', () => {
+    assert.ok(!/PiCard|downloadPi|Download in PI format/.test(SCREEN + PANEL))
+    for (const w of ['Confirm → PI draft', 'Open the PI draft', 'onClick={onConfirm}', 'Show which']) assert.ok(PANEL.includes(w), w)
+    assert.match(SCREEN, /const canConfirm = base\.may_edit && !base\.pi && \(base\.status === 'draft' \|\| base\.status === 'sent' \|\| base\.status === 'negotiating'\)/)
+    assert.match(PANEL, /disabled=\{off \|\| piProblems\.length > 0\}/, 'unsaved edits, or something missing')
   })
   test('the page header says Saved on one line and no longer carries the total', () => {
     const actions = between('const actions = (', 'const body = (')
@@ -175,14 +175,14 @@ describe('the capped page and its header (owner-approved layout, 18 Nov 2026)', 
     assert.ok(layout.includes('boe-main-content-capped') && layout.includes("'--boe-content-max'") || layout.includes('--boe-content-max'))
     assert.ok(layout.includes('contentMaxWidth?: number'))
   })
-  test('on a phone the status pill and "Saved" leave the header (the Status card shows them); Print / PDF is not in the header at all (23 Nov 2026: it is Download PDF in the Share card)', () => {
+  test('the header carries no status (24 Nov 2026: the lead is the status) and, on a phone, "Saved" leaves it too; Print / PDF is not in the header at all (23 Nov 2026: it is Download PDF in the panel)', () => {
     const actions = SCREEN.slice(SCREEN.indexOf('const actions = ('), SCREEN.indexOf('const body = ('))
-    assert.ok(actions.includes('<span className={s.hideOnPhone}><StatusPill'))
+    assert.ok(!actions.includes('StatusPill') && actions.includes('s.hideOnPhone'))
     assert.ok(!actions.includes('Print / PDF') && !actions.includes('/print'))
   })
   test('the rhythm: 24 px between rows, 16 px between cards, a 16 px section heading, nothing under 12 px (BOE identity)', () => {
     assert.match(rule('.builder'), /gap: 24px;/)
-    assert.match(rule('.band'), /gap: 16px;/)
+    assert.match(rule('.topStack'), /gap: 12px;/)
     assert.match(rule('.builder .cardHead h2'), /font-size: 16px;/)
     const block = CSS.slice(CSS.indexOf("/* THE BUILDER'S TOP AREA"), CSS.indexOf('.advGrid {'))
     const sizes = [...block.matchAll(/font(?:-size)?: (?:\d+ )?(\d+(?:\.\d+)?)px/g)].map(m => Number(m[1]))
@@ -244,36 +244,46 @@ describe('the numbers panel of a product (owner, 15 Nov 2026)', () => {
   })
 })
 
-describe('the top section tidied on 23 Nov 2026 (owner: fewer, calmer blocks)', () => {
+describe('the top panel of 24 Nov 2026 (owner: smartly designed, no wasted height, the lead is the status, no price block)', () => {
   const at = (needle: string) => SCREEN.indexOf(needle)
   test('the "Saved." message is gone (the header says Saved); every other message stays', () => {
     assert.ok(!SCREEN.includes("text: 'Saved.'"))
     assert.ok(SCREEN.includes("setMsg(null) // the header's"), 'a save clears what was on screen and says nothing more')
     assert.ok(SCREEN.includes('Unsaved changes') && SCREEN.includes("tone: 'bad'") && SCREEN.includes('undo: () =>'))
   })
-  test('Lead and Ask a senior share one strip under the top row, before the Client card; the strip hides itself when both halves are empty', () => {
-    const order = ['<StatusCard', '<ShareCard', 'className={s.strip}', '<LeadCard', '<AskCard', '<ClientCard'].map(at)
-    assert.ok(order.every(i => i > 0), 'every part is on the page')
+  test('Lead, Senior and Share are rows of ONE panel, in that order, before the Client card; a row with nothing to say draws nothing', () => {
+    const order = ['<LeadCard', '<AskNote', 'Share and next step', '<AskButton'].map(i => PANEL.indexOf(i))
+    assert.ok(order.every(i => i > 0), 'every part is in the panel')
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
-    assert.match(rule('.strip:empty'), /display: none;/)
-    assert.match(rule('.strip'), /grid-auto-flow: column;/)
-    for (const [file, cls] of [['LeadCard', 'leadStrip'], ['AskCard', 'askStrip']]) {
+    assert.ok(at('<TopPanel') > 0 && at('<TopPanel') < at('<ClientCard'))
+    for (const file of ['LeadCard', 'AskCard']) {
       const src = read(`src/components/quotations/${file}.tsx`)
-      assert.ok(src.includes(`className={s.${cls}}`) && !src.includes('${s.card} ${s.' + cls), `${file} is a half of the strip, not a card of its own`)
+      assert.ok(src.includes('className={s.prow}') || src.includes('${s.prow}'), `${file} is a row of the panel`)
+      assert.ok(!src.includes('s.card'), `${file} is not a card of its own`)
     }
   })
-  test('the price approval is in the Status card: the page has no Price approval card and no Go there jump', () => {
-    assert.ok(at('needs={waiting}') > at('<StatusCard') && at('needs={waiting}') < at('<ShareCard'))
-    assert.ok(STATUS.includes('<PriceBlock') && STATUS.includes('needs={needs}'))
-    assert.ok(!SCREEN.includes('PriceCard') && !SCREEN.includes('PRICE_CARD_ID'))
+  test('the tracker, Mark sent and Negotiating are gone: the lead\'s stage is the status', () => {
+    assert.ok(!PANEL.includes('STEPS') && !PANEL.includes('Mark sent') && !PANEL.includes("onMove('sent')") && !PANEL.includes('<ol'))
+    assert.ok(!CSS.includes('.steps') && !CSS.includes('.stepCur'))
+    const lead = read('src/components/quotations/LeadCard.tsx')
+    assert.ok(lead.includes('PATH_STAGES') && lead.includes('s.stage') && lead.includes('s.meter'))
   })
-  test('the Other outcome row is gone: the outcomes are items of a More menu that reuses the Orders menu', () => {
-    assert.ok(!STATUS.includes('Other outcome') && !CSS.includes('.outcomes') && !CSS.includes('.quietRow'))
-    assert.ok(STATUS.includes("import { MoreActionsMenu, type MoreActionItem } from '@/app/orders/[id]/MoreActionsMenu'"))
-    for (const w of ['Confirmed, no PI', 'Mark as lost…', 'Archive', 'Delete…']) assert.ok(STATUS.includes(w), w)
+  test('the prices-outside-the-limits block is not on the page, and nothing on the page asks for or decides a price; PriceBlock is kept for later', () => {
+    for (const w of ['PriceBlock', 'priceBlocked', 'needsYou(', 'onAskPrice', 'onDecidePrice', 'requestPriceApproval', 'decidePrice']) assert.ok(!SCREEN.includes(w) && !PANEL.includes(w), w)
+    assert.ok(read('src/components/quotations/PricingDesk.tsx').includes('export function PriceBlock'), 'kept for when the system is trained')
   })
-  test('the Share card explains in one or two lines, not three', () => {
-    assert.ok(!SHARE.includes('The message carries the link') && !SHARE.includes('the client link and the PDF show a small Best of Exports strip'))
-    assert.match(SHARE, /WhatsApp opens with the text ready/)
+  test('Confirm on a draft moves it to Negotiating first, because the database confirms only a Sent or Negotiating quotation', () => {
+    assert.match(SCREEN, /if \(base\.status === 'draft'\) await setStatusRpc\(supabase, id, 'negotiating'\)\n\s*const r = await makePiDraft/)
+    assert.ok(read('supabase/migrations/20270617000000_quotation_pricing_desk.sql').includes("q.status not in ('sent', 'negotiating')"), 'the rule this works around')
+  })
+  test('the outcomes are items of a ⋯ menu that reuses the Orders menu', () => {
+    assert.ok(!PANEL.includes('Other outcome') && !CSS.includes('.outcomes') && !CSS.includes('.quietRow'))
+    assert.ok(PANEL.includes("import { MoreActionsMenu, type MoreActionItem } from '@/app/orders/[id]/MoreActionsMenu'"))
+    for (const w of ['Confirmed, no PI', 'Mark as lost…', 'Archive', 'Delete…', 'Turn the client link off']) assert.ok(PANEL.includes(w), w)
+  })
+  test('the Share row explains in tooltips, not paragraphs', () => {
+    assert.ok(!PANEL.includes('The message carries the link') && !PANEL.includes('shareFoot'))
+    assert.match(PANEL, /WhatsApp opens with the text ready/)
+    assert.match(PANEL, /Nothing is sent to anyone: the PI stays a Draft until you submit it there\./)
   })
 })
