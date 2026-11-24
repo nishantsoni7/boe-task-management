@@ -4,6 +4,13 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-24 — Pricing: the first full photo read (373 of 373) and the new accuracy figures · data only, no code, no migration
+
+- **What ran.** The owner pressed "Read the 323 waiting" on Price learning (after adding Anthropic API credit; the credit had run out and had stopped the 24 Nov ~09:10 IST run at 50). Result: all 373 product photos read in about 20 minutes on 2026-11-24 (about 13:25-13:45 IST, run by the owner's button in his Chrome, no stop, none skipped, model claude-sonnet-5-5); typical miss (priced blind) 23.2% to 17.9%, prices within ±20% 44% to 54%; "With photos" leads Table 17% (was 21.4), Chair 13.8% (was 22.1), Sofa 39.4% (was 44.4); Bench / ottoman stays on today's model (22.8% against 26.1%). The page's own figures, read after a reload.
+- **Cost.** Not measured; estimated at about US$3-4 for the 323 (Sonnet 5.5, about 1-2 US cents a photo). The Anthropic Console Usage page has the exact figure. The same API key serves 14 other AI routes, so an empty balance stops them all.
+- **Weak readings stay.** Blurry quotation-line photos read low (for example a pouffe read as "Bed", 35% sure); the owner can Correct any reading and a correction is never read over.
+- **Rollback.** None needed (rows in `pricing_photo_facts`); a wrong reading is corrected on the page.
+
 ## 2026-11-24 — Pricing: reading the product photos no longer stops at 50, and says why when it must (PR #1008, merged as `4a65a657` 2026-11-24 11:06 IST, production deployment succeeded 11:08 IST, the live bundle carries "five every 10 seconds") · no migration
 
 - **Why.** The first live run (24 Nov ~09:10 IST, owner: "read the 373 waiting") read 50 photos, then stopped: the card asked as fast as it could and hit the route's 30-a-minute limit; the limit counted refused calls too, so it stayed shut; then every photo came back "400 invalid_request_error" and the card skipped them one by one, calling each "too large, or not a picture", until it stalled at 50 skipped. The photos themselves were fine (all in storage, about 0.1 MB, JPG or PNG).
