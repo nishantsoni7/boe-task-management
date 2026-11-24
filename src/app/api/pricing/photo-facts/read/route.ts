@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { adminClient } from '@/lib/supabase/admin'
 import { answerJson, jsonFormat } from '@/lib/ai/structuredOutput'
 import { FACTS_INSTRUCTION, FACTS_SCHEMA, FACTS_SYSTEM_PROMPT, parseFacts, storageOf, type Facts, type PhotoResult } from '@/lib/pricing/photoFacts'
+import { photoRateLimiter, sniffMedia } from '@/lib/pricing/photoRun'
 
 // Pricing, photo facts (Price Brain v2, phase 3B): reads up to five product photos BOE One holds into facts from a fixed
 // list. The caller must be signed in and allowed to teach in Pricing (create, or Admin); the database decides again when
@@ -20,14 +21,7 @@ const MAX_BYTES = 3_700_000 // the AI service takes at most about 5 MB once enco
 const MEDIA: Record<string, string> = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp' }
 
 // shortcut: per-instance memory, so the limit is per server instance, not global; move to the database if abused.
-const hits = new Map<string, number[]>()
-function rateLimited(userId: string, n: number): boolean {
-  const now = Date.now()
-  const recent = (hits.get(userId) ?? []).filter(t => now - t < 60_000)
-  for (let i = 0; i < n; i++) recent.push(now)
-  hits.set(userId, recent)
-  return recent.length > 30
-}
+const rateLimited = photoRateLimiter()
 
 type Reply = { ok: true; results: PhotoResult[] } | { ok: false; error: string }
 const reply = (body: Reply, status = 200) => NextResponse.json(body, { status })
@@ -47,12 +41,14 @@ async function readOne(apiKey: string, media: string, data: string): Promise<{ f
       })
     } catch { return { facts: null, model, error: 'Reading took too long.' } }
     if (res.ok) return { facts: parseFacts(answerJson(await res.json().catch(() => null))), model }
-    const detail = await res.json().catch(() => null) as { error?: { type?: string } } | null
-    console.error('photo facts: provider refused', { model, status: res.status, type: detail?.error?.type })
-    why = `${res.status} ${detail?.error?.type ?? 'error'}`
+    const detail = await res.json().catch(() => null) as { error?: { type?: string; message?: string } } | null
+    // The service's own words (24 Nov 2026: "400 invalid_request_error" alone could not tell an empty credit balance from a bad photo).
+    const said = String(detail?.error?.message ?? '').replace(/\s+/g, ' ').trim().slice(0, 200)
+    console.error('photo facts: provider refused', { model, status: res.status, type: detail?.error?.type, message: said })
+    why = `${res.status} ${detail?.error?.type ?? 'error'}${said ? `: ${said}` : ''}`
     if (res.status !== 404) break // only an unknown model moves on to the next one
   }
-  return { facts: null, model: '', error: `The reading service answered ${why}.` }
+  return { facts: null, model: '', error: `The reading service answered ${why}` }
 }
 
 export async function POST(req: NextRequest) {
@@ -83,12 +79,14 @@ export async function POST(req: NextRequest) {
 
   const results = await Promise.all(asks.map(async ({ key, label }): Promise<PhotoResult> => {
     const where = storageOf(key)!
-    const media = MEDIA[(where.path.split('.').pop() ?? '').toLowerCase()]
-    if (!media) return { key, ok: false, error: 'Not a JPEG, PNG or WebP photo.' }
+    if (!MEDIA[(where.path.split('.').pop() ?? '').toLowerCase()]) return { key, ok: false, error: 'Not a JPEG, PNG or WebP photo.' }
     const file = await admin.client.storage.from(where.bucket).download(where.path)
     if (file.error || !file.data) return { key, ok: false, error: 'The photo could not be opened.' }
     if (file.data.size > MAX_BYTES) return { key, ok: false, error: 'The photo is too large to read (over 3.7 MB).' }
-    const read = await readOne(apiKey, media, Buffer.from(await file.data.arrayBuffer()).toString('base64'))
+    const bytes = Buffer.from(await file.data.arrayBuffer())
+    const media = sniffMedia(bytes)
+    if (!media) return { key, ok: false, error: 'Not a JPEG, PNG or WebP photo.' }
+    const read = await readOne(apiKey, media, bytes.toString('base64'))
     if (!read.facts) return { key, ok: false, error: read.error ?? 'Nothing could be read from this photo.' }
     // Saved as the person: the database checks again that they may, and that the photo is one BOE One holds.
     const saved = await asUser.rpc('pricing_photo_fact_save', { p_key: key, p_label: label, p_facts: read.facts, p_model: read.model })

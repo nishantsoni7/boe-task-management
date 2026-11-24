@@ -22,7 +22,8 @@ export const correctPhotoFact = (s: Supabase, key: string, facts: Facts) => rpc<
 /** The facts of these photos ("<bucket>/<path>", at most 200), for pricing quotation lines (20270826000000). Read photos only. */
 export const fetchFactsFor = (s: Supabase, keys: string[]) => rpc<Record<string, Partial<Facts>>>(() => s.rpc('pricing_photo_facts_for', { p_keys: keys }))
 
-/** Reads up to five photos on the server. A failure of the whole call throws a sentence; each photo has its own result. */
+/** Reads up to five photos on the server. A failure of the whole call throws a sentence (with the server's status, so the
+ *  card can tell "too many in a minute", 429, from a real failure); each photo has its own result. */
 export async function readPhotos(s: Supabase, photos: readonly { key: string; label: string | null }[]): Promise<PhotoResult[]> {
   const { data: { session } } = await s.auth.getSession()
   if (!session) throw new Error('Your session ended. Sign in again.')
@@ -30,7 +31,7 @@ export async function readPhotos(s: Supabase, photos: readonly { key: string; la
   try { res = await fetch('/api/pricing/photo-facts/read', { method: 'POST', body: JSON.stringify({ photos }), headers: { 'content-type': 'application/json', Authorization: `Bearer ${session.access_token}` } }) } catch { throw new Error('No connection. Check the network and try again.') }
   const json = await res.json().catch(() => null) as { ok: true; results: PhotoResult[] } | { ok: false; error: string } | null
   if (!json) throw new Error(`The server answered ${res.status}.`)
-  if (!json.ok) throw new Error(json.error)
+  if (!json.ok) throw Object.assign(new Error(json.error), { status: res.status })
   return json.results
 }
 
