@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-24 — Quotations: no price hint at all for sales candidates, the "Last ordered · Use" history line included (branch `fix/hide-price-history-non-desk`, PR open) · no migration
+## 2026-11-24 — Quotations: no price hint at all for sales candidates, the "Last ordered · Use" history line included (PR #1023, branch `fix/hide-price-history-non-desk`, open) · no migration
 
 - **Why.** The owner (24 Nov): sales candidates are in training and the hint under a product is not recommending correct figures. The live setting was already "Pricing desk only" (`quotation_suggestion_settings.shown_to = '{}'` since 18 Nov), so the Suggested price and Range were already hidden; what they still saw was the history fallback "Last ordered ₹22,500 · Use", matched by product name only.
 - **What.** `BuilderScreen`: when the person is outside the switch (`suggestOn` false), `hint` is `undefined` and the hints are not fetched; `historyOnly()` and `src/lib/quotations/suggestions.ts` deleted. The Control Center card's wording now says everyone else sees no price hint. The pricing desk sees what it saw before.
