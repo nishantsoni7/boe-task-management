@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `de871848` — Docs: migration 20270827000000 applied to production (2026-11-24 14:46 IST), first scheduled run checked
+- Commit: `a2190f13` — Merge remote-tracking branch 'origin/main' into feat/weighed-frames
 - Commits on this branch: 1572
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
@@ -14,10 +14,10 @@
 
 ## Latest 25 commits
 
-- `de871848` 2026-11-24 Docs: migration 20270827000000 applied to production (2026-11-24 14:46 IST), first scheduled run checked
-- `34509306` 2026-11-24 Docs: record the rollback rehearsal on the real database for the stale-flag migration
-- `30210578` 2026-11-24 Docs: put PR #1013 in the stale-flag entries (changelog, Tasks dossier, app context, business rules)
-- `2a2392d2` 2026-11-24 Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (migration 20270827000000, not yet applied)
+- `a2190f13` 2026-11-24 Merge remote-tracking branch 'origin/main' into feat/weighed-frames
+- `d5f8f740` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL)
+- `8890d287` 2026-11-24 Docs: the 9:30 pm backup task runs with no window (no SQL) (#1014)
+- `f6c6f05c` 2026-11-24 Docs: the first full photo read (373 of 373) and the new accuracy figures (#1012)
 - `f4a93245` 2026-11-24 Docs: stamp #994 and #987 (the quotation builder's top section, opening a quotation) as merged and live (no SQL) (#1011)
 - `1dcd4005` 2026-11-24 Docs: #1008 merged and live (2026-11-24 11:06 IST) (#1010)
 - `4a65a657` 2026-11-24 Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL) (#1008)

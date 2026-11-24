@@ -1,7 +1,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { emptyForm, emptyLine, problems, saveDoc, structureRest, toLine, totals, workCase, sizeOf, type Line } from './doc'
-import { faceArea, newCalc, packCalc, unpackCalc, type Calc } from './calc'
+import { faceArea, newCalc, packCalc, unpackCalc, weighedGap, type Calc } from './calc'
 
 const line = (p: Partial<Line>): Line => ({ ...emptyLine(), ...p })
 const pct = (v: string, of: 'cost' | 'above' = 'cost'): Calc => ({ type: 'percent', pct: v, of })
@@ -80,13 +80,51 @@ describe('a wooden structure from a cut list', () => {
 
 describe('a metal frame weighed', () => {
   test('kg + cut loss × rate, + fabrication per kg, + coating by area', () => {
-    const calc: Calc = { type: 'metal', metal: 'MS tube and pipe', density: '7850', rate: '75', loss_pct: '5', fab_per_kg: '40', coat_per_sqft: '12',
+    const calc: Calc = { type: 'metal', metal: 'MS tube and pipe', density: '7850', rate: '75', loss_pct: '5', fab_per_kg: '40', coat_per_sqft: '12', vendor: false, weighed_kg: '',
       parts: [{ name: 'Legs', profile: 'sqtube', a: '25', b: '', t: '1.6', unit: 'mm', gauge: '', corners: 'round', length: '0.75', length_unit: 'm', qty: '4' }] }
     const [w] = workCase([line({ element: 'Frame', kind: 'metal', calc })])
     const kg = 1.6 * (0.0314 * 25 - 0.044877 * 1.6) * 3 * 1.05      // 3.594 kg bought
     const sqft = 0.1 * 3 * 10.7639                                   // 3.229 sq ft
     assert.ok(Math.abs(w.amount - (Math.round(kg * 75 * 100) / 100 + Math.round(kg * 40 * 100) / 100 + Math.round(sqft * 12 * 100) / 100)) < 0.02, String(w.amount))
     assert.equal(w.problem, undefined)
+  })
+  // Frames are made by a vendor who buys the steel and is paid one rate per finished kg (owner, 24 Nov 2026); the bare frame is weighed.
+  const frame = (patch: Partial<Extract<Calc, { type: 'metal' }>>): Calc => ({ type: 'metal', metal: 'MS tube and pipe', density: '7850', rate: '135', loss_pct: '5', fab_per_kg: '40', coat_per_sqft: '12', vendor: false, weighed_kg: '',
+    parts: [{ name: 'Legs', profile: 'sqtube', a: '25', b: '', t: '1.6', unit: 'mm', gauge: '', corners: 'round', length: '0.75', length_unit: 'm', qty: '4' }], ...patch })
+  const calcKg = 1.6 * (0.0314 * 25 - 0.044877 * 1.6) * 3                 // 3.423 kg
+  const sqft = 0.1 * 3 * 10.7639
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.02
+  test('a vendor frame is the finished kg × his rate: no cut loss, no fabrication; coating stays', () => {
+    const [w] = workCase([line({ element: 'Frame', kind: 'metal', calc: frame({ vendor: true }) })])
+    assert.ok(near(w.amount, Math.round(calcKg * 135 * 100) / 100 + Math.round(sqft * 12 * 100) / 100), String(w.amount))
+    assert.match(w.note, /from the vendor/); assert.doesNotMatch(w.note, /cut loss|fabrication/)
+  })
+  test('a weighed bare frame replaces the calculated kg, and the note says how far the calculator was', () => {
+    const [w] = workCase([line({ element: 'Frame', kind: 'metal', calc: frame({ vendor: true, weighed_kg: '3.8' }) })])
+    assert.ok(near(w.amount, 3.8 * 135 + Math.round(sqft * 12 * 100) / 100), String(w.amount))
+    assert.match(w.note, /3\.80 kg weighed \(calculated 3\.42 kg, \+11\.0%\)/)
+    const gap = weighedGap(frame({ weighed_kg: '3.8' }) as Extract<Calc, { type: 'metal' }>)!
+    assert.ok(near(gap.calculated, calcKg) && gap.weighed === 3.8 && Math.abs(gap.pct - 11) < 0.1)
+    assert.equal(weighedGap(frame({}) as Extract<Calc, { type: 'metal' }>), null)                      // not weighed
+    assert.equal(weighedGap(frame({ weighed_kg: '0', parts: [] }) as Extract<Calc, { type: 'metal' }>), null)
+  })
+  test('without the vendor switch a weighed frame still carries its cut loss and fabrication', () => {
+    const [w] = workCase([line({ element: 'Frame', kind: 'metal', calc: frame({ weighed_kg: '4' }) })])
+    assert.ok(near(w.amount, Math.round(4 * 1.05 * 135 * 100) / 100 + Math.round(4 * 1.05 * 40 * 100) / 100 + Math.round(sqft * 12 * 100) / 100), String(w.amount))
+  })
+  test('a weight with no frame to compare it with is not used, and says what is missing', () => {
+    const [w] = workCase([line({ element: 'Frame', kind: 'metal', calc: frame({ vendor: true, weighed_kg: '4', parts: [] }) })])
+    assert.equal(w.problem, 'Add at least one part of the frame.')
+  })
+  test('both new fields are saved, and a row saved before them reads back as no vendor and not weighed', () => {
+    const packed = packCalc(frame({ vendor: true, weighed_kg: '3.8' }))! as Record<string, unknown>
+    assert.equal(packed.vendor, true); assert.equal(packed.weighed_kg, 3.8)
+    const back = unpackCalc(packed)!
+    assert.ok(back.type === 'metal' && back.vendor === true && back.weighed_kg === '3.8')
+    assert.equal(packCalc(frame({}))!['weighed_kg' as never], null)
+    const old = unpackCalc({ type: 'metal', density: 7850, rate: 75, parts: [] })!
+    assert.ok(old.type === 'metal' && old.vendor === false && old.weighed_kg === '')
+    assert.equal((unpackCalc({ type: 'metal', vendor: 'yes' }) as Extract<Calc, { type: 'metal' }>).vendor, false)   // only true is true
   })
   test('a slip in a size is named with its part', () => {
     const calc = newCalc('metal') as Extract<Calc, { type: 'metal' }>

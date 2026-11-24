@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-24 — Pricing: weighed frames, step one: vendor rate per finished kg and the weighed bare frame (branch `feat/weighed-frames`, not merged) · no migration
+
+- **Why.** The owner pays the frame vendor one rate (₹120-150) per finished kg of the bare frame, and the vendor buys the steel; the store keeps no issue records. The metal calculator priced cut loss, a steel rate and fabrication separately, which is not how BOE pays.
+- **What.** a metal element of a Training case can be priced the way BOE pays for frames: a switch "Made by a vendor who buys the steel" (one rate per finished kg, so no cut loss and no fabrication; coating by area stays), and an optional "Weighed bare frame (kg)" box whose weight replaces the calculated kg. The element shows the calculator's kg against the scale's, for example "+11.0%". Both are kept inside the saved calc (`vendor`, `weighed_kg` in `MetalCalc`, `src/lib/pricing/training/calc.ts`); `weighedGap()` gives the comparison; a row saved before them reads back as not vendor and not weighed.
+- **Not in this step.** The learned weighed-to-calculated ratio applied on a quotation line (step two, needs a function-only migration and the owner's yes); store issues (no data: the store keeps none).
+- **Checked.** New tests in `calc.test.ts`; tsc, eslint, full suite, build. Not seen in a browser.
+- **Rollback.** Revert the PR; the two extra keys in saved calcs are ignored by older code.
+
 ## 2026-11-24 — Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (PR #1013) · migration `20270827000000` → APPLIED 2026-11-24 14:46 IST
 
 - **Owner report.** Task "513 Bharghav" (Working since 17 Nov, five updates since) showed "flagged the task as stale — Auto-flagged: same status for 5+ days with no progress" on 24 Nov 12:30 IST, two minutes after the assignee's latest update. Read from the live database the same day: `is_stale = true`, `stale_day_count = 0`, no status change in 6 days, 5 updates in the last 6 days.

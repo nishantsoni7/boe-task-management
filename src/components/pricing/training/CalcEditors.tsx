@@ -7,7 +7,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { formatINR } from '@/lib/currency'
 import { PROFILES, SWG, type ProfileKey } from '@/lib/pricing/costing/metal'
-import { FACES_LABEL, emptyMetalPart, emptyWoodPart, faceArea, metalParts, type AreaCalc, type Calc, type Faces, type MetalCalc, type MetalPartRow, type PercentCalc, type Size, type WoodCalc, type WoodPart, type Worked } from '@/lib/pricing/training/calc'
+import { FACES_LABEL, emptyMetalPart, emptyWoodPart, faceArea, metalParts, weighedGap, type AreaCalc, type Calc, type Faces, type MetalCalc, type MetalPartRow, type PercentCalc, type Size, type WoodCalc, type WoodPart, type Worked } from '@/lib/pricing/training/calc'
 import type { Metal, Wood } from '@/lib/pricing/training/api'
 import t from './training.module.css'
 
@@ -77,6 +77,7 @@ function MetalEditor({ calc, onChange, metals, idPrefix }: Props & { calc: Metal
   const set = (patch: Partial<MetalCalc>) => onChange({ ...calc, ...patch })
   const setPart = (i: number, patch: Partial<MetalPartRow>) => set({ parts: calc.parts.map((x, k) => (k === i ? { ...x, ...patch } : x)) })
   const weights = metalParts(calc)
+  const gap = weighedGap(calc)
   const listed = metals.find(m => m.name.trim().toLowerCase() === calc.metal.trim().toLowerCase())
   const listedRate = listed?.rate === null || listed?.rate === undefined ? null : Number(listed.rate)
   const listId = `${idPrefix}-metals`
@@ -88,11 +89,16 @@ function MetalEditor({ calc, onChange, metals, idPrefix }: Props & { calc: Metal
         <datalist id={listId}>{metals.map(m => <option key={m.name} value={m.name} />)}</datalist>
       </label>
       <Num id={`${idPrefix}-density`} label="Density (kg/m³)" value={calc.density} onChange={v => set({ density: v })} placeholder="Mild steel 7850" />
-      <Num id={`${idPrefix}-rate`} label="Rate per kg (₹)" value={calc.rate} onChange={v => set({ rate: v })} placeholder={listedRate ? `List: ${formatINR(listedRate)}` : undefined} />
-      <Num id={`${idPrefix}-loss`} label="Cut loss %" value={calc.loss_pct} onChange={v => set({ loss_pct: v })} placeholder="e.g. 5" />
-      <Num id={`${idPrefix}-fab`} label="Fabrication per kg (₹)" value={calc.fab_per_kg} onChange={v => set({ fab_per_kg: v })} />
+      <Num id={`${idPrefix}-rate`} label={calc.vendor ? 'Vendor rate per finished kg (₹)' : 'Rate per kg (₹)'} value={calc.rate} onChange={v => set({ rate: v })} placeholder={listedRate ? `List: ${formatINR(listedRate)}` : calc.vendor ? 'e.g. 135' : undefined} />
+      {!calc.vendor && <Num id={`${idPrefix}-loss`} label="Cut loss %" value={calc.loss_pct} onChange={v => set({ loss_pct: v })} placeholder="e.g. 5" />}
+      {!calc.vendor && <Num id={`${idPrefix}-fab`} label="Fabrication per kg (₹)" value={calc.fab_per_kg} onChange={v => set({ fab_per_kg: v })} />}
       <Num id={`${idPrefix}-coat`} label="Coating per sq ft (₹)" value={calc.coat_per_sqft} onChange={v => set({ coat_per_sqft: v })} />
+      <Num id={`${idPrefix}-weighed`} label="Weighed bare frame (kg)" value={calc.weighed_kg} onChange={v => set({ weighed_kg: v })} placeholder="Optional: from the scale" />
     </div>
+    <label className={t.field} htmlFor={`${idPrefix}-vendor`}>
+      <span><input id={`${idPrefix}-vendor`} type="checkbox" checked={calc.vendor} onChange={e => set({ vendor: e.target.checked })} /> Made by a vendor who buys the steel: one rate per finished kg, no cut loss or fabrication</span>
+    </label>
+    {gap && <p className={t.calcNote}>Calculator {kgText(gap.calculated)} kg, scale {kgText(gap.weighed)} kg ({gap.pct >= 0 ? '+' : '−'}{kgText(Math.abs(gap.pct), 1)}%). The scale weight is used.</p>}
     {listedRate !== null && n(calc.rate) !== listedRate && <button type="button" className="boe-btn boe-btn-text" onClick={() => set({ rate: String(listedRate) })}>Use {formatINR(listedRate)} per kg from the metal list</button>}
     <div className={t.scroll}>
       <table className={t.calcTable}>
