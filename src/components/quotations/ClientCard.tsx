@@ -1,8 +1,8 @@
 'use client'
 
-// The builder's Client card (owner-approved layout, 18 Nov 2026): a plain grid of the basic fields (client name, phone, City, lead time),
-// with Advanced client details as a slim bar at the foot of the card that opens into a grid of the rest. Moved out of BuilderScreen with
-// its behaviour unchanged: a well-known city fills the state and the tax, the state and GST type are under Advanced.
+// The builder's Client section (owner-approved layout, 18 Nov 2026; below the totals and without a card's frame since 25 Nov 2026): a plain grid of the
+// basic fields (client name, phone, City, lead time), with Advanced client details as a slim row that opens into a grid of the rest. Moved out of
+// BuilderScreen with its behaviour unchanged: a well-known city fills the state and the tax, the state and GST type are under Advanced.
 
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CLIENT_TYPES, type Header } from '@/lib/quotations/api'
@@ -20,9 +20,9 @@ type Props = {
 export function ClientCard({ h, areas, editable, advOpen, onAdv, onField, onPatch, onCity, onState }: Props) {
   const stateKnown = SUPPLY_STATES.some(x => x.toLowerCase() === h.supply_state.trim().toLowerCase())
   return (
-    <section className={s.card} aria-labelledby="q-client">
-      <div className={s.cardHead}><h2 id="q-client">Client</h2></div>
-      <div className={s.cardBody}>
+    <section className={s.sec} aria-labelledby="q-client">
+      <h2 id="q-client" className={s.secH}>Client</h2>
+      <div>
         <div className={s.fgrid}>
           <label className={s.field}><span>Client name *</span><input id="q-client-name" className={s.input} value={h.client_name} onChange={e => onField('client_name', e.target.value)} disabled={!editable} /></label>
           <label className={s.field}><span>Contact phone</span><input id="q-phone" className={s.input} value={h.contact_phone} inputMode="tel" onChange={e => onField('contact_phone', e.target.value)} disabled={!editable} /></label>
@@ -52,7 +52,7 @@ export function ClientCard({ h, areas, editable, advOpen, onAdv, onField, onPatc
           </div>
         )}
       </div>
-      <div className={s.cardFoot}>
+      <div className={s.advRow}>
         <button type="button" className={s.advToggle} aria-expanded={advOpen} aria-controls="q-advanced" onClick={onAdv}>
           {advOpen ? <ChevronDown size={16} aria-hidden /> : <ChevronRight size={16} aria-hidden />} Advanced client details <span className={s.hintTxt}>Company, client type, project type, project, contact person, their role, email, state, GST type, GSTIN</span>
         </button>

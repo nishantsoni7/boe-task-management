@@ -5,7 +5,7 @@ import { afterEach, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { act, createElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { AskButton, AskNote } from './AskCard'
+import { SeniorRow } from './AskCard'
 import { PriceBrief } from './PriceBrief'
 import { periodDates } from './HomeCards'
 import type { AskRequest, AskState, Quotation } from '@/lib/quotations/api'
@@ -34,17 +34,16 @@ afterEach(() => { for (const m of mounted.splice(0)) m.unmount() })
 const wrap = (child: ReturnType<typeof createElement>) => createElement(QueryClientProvider, { client: new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } }) }, child)
 const ready = async (u: { settle: () => Promise<void> }) => { await u.settle(); await u.settle(); await u.settle() }
 const BASE = { id: 'q1' } as Quotation
-// The Senior row and the button in the Share row are two components over one cached answer; mounted together they are the old card.
-const askUi = (sb: { client: unknown }, o: { dirty?: boolean; onChanged?: () => void; onSentBack?: (id: string) => void } = {}) => wrap(createElement('div', null,
-  createElement(AskNote, { supabase: sb.client as never, base: BASE }),
-  createElement(AskButton, { supabase: sb.client as never, base: BASE, dirty: o.dirty ?? false, onChanged: o.onChanged ?? (() => {}), onSentBack: o.onSentBack })))
+// The Senior row of the properties panel: what was asked and what came back, with the Ask a senior button in the same row.
+const askUi = (sb: { client: unknown }, o: { dirty?: boolean; onChanged?: () => void; onSentBack?: (id: string) => void } = {}) => wrap(
+  createElement(SeniorRow, { supabase: sb.client as never, base: BASE, dirty: o.dirty ?? false, onChanged: o.onChanged ?? (() => {}), onSentBack: o.onSentBack }))
 
 describe('Ask a senior', () => {
   test('a salesperson sends their own quotation to a chosen senior for prices; the pick is remembered', async () => {
     const sb = fake(state()); let changed = 0
     const m = mount(askUi(sb, { onChanged: () => { changed++ } })); mounted.push(m)
     await ready(m)
-    assert.ok(!/Senior|Not sure of a price/.test(m.text()), 'nothing was asked: no Senior row')
+    assert.match(m.text(), /Nothing asked yet/, 'nothing was asked: the Senior row says so')
     m.click(m.button('Ask a senior')); await ready(m)
     assert.ok(sb.calls.some(c => c.fn === 'quotation_desk_people'))
     m.click(m.button('Send')); await ready(m)
