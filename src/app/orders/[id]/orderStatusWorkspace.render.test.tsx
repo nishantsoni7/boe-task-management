@@ -123,10 +123,15 @@ const docs = (over: {
   />,
 )
 
-/** Just the Main PI subsection's own markup, for the assertions about it. */
+/**
+ * Just the PI's own markup, for the assertions about it. THERE IS NO "MAIN PI" HEADING ROW any more (owner,
+ * 25 Nov 2026): a PI in force is the first column of the strip, labelled "PI · V1"; an Order with no PI (or
+ * one still loading) keeps the "Main PI" row that says so.
+ */
 const card = (rows: PersistedPiVersion[] = [row()]) => {
   const html = docs({ rows })
-  const at = html.indexOf('aria-label="' + DOC_MAIN_PI_TITLE + '"')
+  const col = html.indexOf('order-pic-pi')
+  const at = col >= 0 ? col : html.indexOf('aria-label="' + DOC_MAIN_PI_TITLE + '"')
   return html.slice(at, html.indexOf('aria-label="' + DOC_DESIGN_FILES_TITLE + '"'))
 }
 
@@ -135,13 +140,14 @@ const card = (rows: PersistedPiVersion[] = [row()]) => {
 describe('the Main PI card', () => {
   test('states the version, ONE status and both dates', () => {
     const body = text(card())
-    for (const s of ['Main PI · V1', 'Current',
+    for (const s of ['PI · V1', 'Current',
                      MAIN_PI_UPLOADED_LABEL, '2026-09-02',
                      MAIN_PI_APPROVED_LABEL, '2026-09-08']) {
       assert.ok(body.includes(s), s)
     }
     // One status for the current PI, not a stack of badges.
-    assert.equal((card().match(/order-status-chip/g) ?? []).length, 1)
+    assert.equal((card().match(/class="order-pic-state"/g) ?? []).length, 1)
+    assert.equal(card().includes('Main PI'), false, 'no Main PI heading')
   })
 
   test('the original Excel is one labelled download; the card header carries no History link', () => {
@@ -202,7 +208,7 @@ describe('the Main PI card', () => {
     ] })
     const rows = text(html.slice(html.indexOf('class="order-docs-main"')))
     const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-main"')))
-    assert.ok(rows.includes('Main PI · V1'), 'the approved version is still the current row')
+    assert.ok(rows.includes('PI · V1'), 'the approved version is still the current one')
     assert.equal(rows.includes('V2'), false)
     // SINCE 20270113000000 the proposal is NAMED — but only in the changes
     // panel, above the rows, with its stage and its owner.
@@ -225,8 +231,10 @@ describe('the Main PI card', () => {
     assert.equal(/PI V\d/.test(body), false, 'a pending upload is never shown as in force')
   })
 
-  test('the card is labelled for a reader who is not seeing it', () => {
-    assert.match(card(), /aria-label="Main PI"/)
+  test('the PI column is a labelled group for a reader who is not seeing it', () => {
+    const html = docs()
+    assert.match(html, /class="order-doc-prop order-pic-cell order-pic-pi" role="group" aria-label="[^"]+"/)
+    assert.ok(text(card()).includes('PI · V1'))
   })
 })
 
@@ -268,21 +276,23 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     assert.match(html, new RegExp('aria-label="' + DOCUMENTS_TITLE + '"'))
     assert.match(html, /<h2 class="order-docs-title">Documents<\/h2>/)
     const body = text(html)
-    assert.ok(body.indexOf(DOC_MAIN_PI_TITLE) < body.indexOf(DOC_DESIGN_FILES_TITLE))
+    assert.ok(body.indexOf('PI · V1') < body.indexOf(DOC_DESIGN_FILES_TITLE))
     assert.ok(body.indexOf(DOC_DESIGN_FILES_TITLE) < body.indexOf(DOC_CLIENT_PO_TITLE))
-    // Each is a labelled section of its own, so a screen reader can jump to it.
-    for (const title of [DOC_MAIN_PI_TITLE, DOC_DESIGN_FILES_TITLE, DOC_CLIENT_PO_TITLE]) {
+    // Design Files and Client PO are labelled sections of their own, so a screen reader can jump to them;
+    // the PI is the labelled group before them (there is no Main PI heading).
+    for (const title of [DOC_DESIGN_FILES_TITLE, DOC_CLIENT_PO_TITLE]) {
       assert.ok(html.includes('aria-label="' + title + '"'), title)
     }
+    assert.ok(html.includes('order-pic-pi'))
   })
 
-  test('the subsections are separated by a rule, not by three outlines', () => {
+  test('the columns are not outlined boxes: ONE outer card, and the strip cells have no border or fill', () => {
     const html = docs()
-    // ONE outer card.
     assert.equal((html.match(/class="order-docs"/g) ?? []).length, 1)
-    assert.equal((html.match(/class="order-doc-section[ "]/g) ?? []).length, 3)
-    // And the rule between them is a border on the section, not a card each.
-    assert.match(css, /\.order-doc-section \+ \.order-doc-section \{ border-top:/)
+    // Design Files and Client PO are the two sections left (the PI is a column, not a section).
+    assert.equal((html.match(/class="order-doc-section[ "]/g) ?? []).length, 2)
+    const block = css.slice(css.indexOf('CONFIRMED ORDER: THE TOP OF THE PAGE'), css.indexOf('PHONE PHASE 3 — FINANCE'))
+    assert.match(block, /\.order-pic-strip > \.order-doc-section \{\s*display: flex;[^}]*background: transparent; border: 0;/)
   })
 
   test('THE FABRIC AND FINISH APPROVALS ARE NOT RESTATED HERE', () => {
@@ -304,7 +314,7 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     assert.equal(/Manage|Upload|Replace|Delete/i.test(design), false,
       'the row must not promise an action the Order cannot perform')
     const main = text(html.slice(0, html.indexOf('aria-label="' + DOC_DESIGN_FILES_TITLE + '"')))
-    assert.ok(main.includes('Product pictures') && main.includes('9 pictures'))
+    assert.ok(main.includes('Product pictures') && main.includes('View all (9)') && main.includes('Download ZIP'))
   })
 
   test('Design Files with no supporting-document read says only that nothing is attached', () => {
@@ -334,11 +344,13 @@ describe('the Documents box holds all three kinds of paperwork', () => {
     assert.ok(state({ kind: 'none' }).includes('No product pictures on this PI.'))
     assert.ok(state({ kind: 'missing', recorded: 16 }).includes('16 pictures recorded, but the files are no longer in storage.'))
     assert.ok(state({ kind: 'ready', available: 12, unavailable: 4 }).includes('12 of 16 pictures available'))
-    // Only a usable set offers View and the ZIP.
+    // Only a usable set offers View all and the ZIP.
     for (const p of [{ kind: 'loading' }, { kind: 'unreadable' }, { kind: 'none' }, { kind: 'missing', recorded: 3 }] as ProductPicturesState[]) {
-      assert.equal(state(p).includes('· ZIP'), false, p.kind)
+      assert.equal(state(p).includes('Download ZIP'), false, p.kind)
+      assert.equal(state(p).includes('View all'), false, p.kind)
     }
-    assert.ok(state({ kind: 'ready', available: 2, unavailable: 0 }).includes('Pictures (2) · ZIP'))
+    assert.ok(state({ kind: 'ready', available: 2, unavailable: 0 }).includes('Download ZIP'))
+    assert.ok(state({ kind: 'ready', available: 2, unavailable: 0 }).includes('View all (2)'))
     // Only the problems are drawn as problems.
     assert.ok(docs({ pictures: { kind: 'missing', recorded: 3 } }).includes('order-doc-pictures-line--warn'))
     assert.equal(docs({ pictures: { kind: 'none' } }).includes('order-doc-pictures-line--warn'), false)

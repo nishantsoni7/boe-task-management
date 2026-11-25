@@ -24,6 +24,7 @@ import {
   type OrderDatesTimeline,
 } from '@/lib/orders/orderDatesTimeline'
 import type { WorkspaceTone } from '@/lib/orders/orderWorkspace'
+import type { BarGate, ChipTone, DetailRowKey, OrderBarGates } from '@/lib/orders/orderDetailRows'
 
 export const ERP_STAGE_LABEL = 'ERP'
 export const PRODUCTION_STAGE_LABEL = 'Production'
@@ -31,8 +32,17 @@ export const ORDER_TYPE_STAGE_LABEL = 'Order type'
 export const SAMPLE_ORDER_BADGE = 'Sample order'
 export const FULL_ORDER_BADGE = 'Full order'
 
-function StageBadge({ label, tone }: { label: string; tone: WorkspaceTone }) {
+function StageBadge({ label, tone, plain = false }: { label: string; tone: WorkspaceTone; plain?: boolean }) {
   const t = STATUS_PILL_TONE[tone]
+  // The facts line draws a status as a coloured dot and a word, not a filled pill.
+  if (plain) {
+    return (
+      <span className="order-stage-badge order-stage-badge--plain">
+        <i className="order-stage-dot" style={{ background: t.fg }} aria-hidden="true" />
+        {label}
+      </span>
+    )
+  }
   return (
     <span className="order-stage-badge" style={{ background: t.bg, color: t.fg, borderColor: t.border }}>
       {label}
@@ -49,7 +59,7 @@ function StageBadge({ label, tone }: { label: string; tone: WorkspaceTone }) {
  * pulsing dot so nobody ships it as a production order by mistake; a full order
  * is quiet. The pulse stops for readers who ask for reduced motion.
  */
-export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullNote = null, dispatch = null }: {
+export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullNote = null, dispatch = null, bar = null }: {
   erp: { label: string; tone: WorkspaceTone; line: string | null }
   production: { label: string; tone: WorkspaceTone }
   isSample: boolean
@@ -57,25 +67,43 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
   sampleLabel: string | null
   /** A short note beside "Full order" (for example "sampling first"). */
   fullNote?: string | null
-  /** How much of the Order has left; pressing it opens the Dispatch tab. */
+  /** How much of the Order has left; pressing it opens the Dispatch tab. Not drawn in the Order bar (owner: not needed on top; the Dispatch tab is one click away). */
   dispatch?: { text: string; percent: number; onOpen: () => void } | null
+  /**
+   * THE ORDER BAR (Nitish / Operations, 24 Nov 2026), now THE FACTS LINE (owner, 25 Nov 2026): the same
+   * strip with the due date and the advance gate that decides whether production can start, drawn as
+   * ONE line of plain text under the order number (label, then value) and not as cells. The Advance cell is a button that opens its folded row below the
+   * products. Dispatch, Fabric & Finish and From client are not on the bar (owner, on
+   * the real order 549: not required on top). Absent, the strip is exactly the four
+   * separate cells it always was.
+   */
+  bar?: (OrderBarGates & { onOpen: (row: DetailRowKey) => void }) | null
 }) {
   return (
-    <section className="order-stages" aria-label="Order stages">
-      <div className="order-stage">
+    <section className={bar ? 'order-stages order-stages--bar' : 'order-stages'} aria-label={bar ? 'Order at a glance' : 'Order stages'}>
+      <div className="order-stage" title={bar && erp.line ? erp.line : undefined}>
         <span className="order-stage-label">{ERP_STAGE_LABEL}</span>
-        <StageBadge label={erp.label} tone={erp.tone} />
+        <StageBadge label={erp.label} tone={erp.tone} plain={!!bar} />
         {erp.line && <span className="order-stage-line">{erp.line}</span>}
       </div>
       <div className="order-stage">
         <span className="order-stage-label">{PRODUCTION_STAGE_LABEL}</span>
-        <StageBadge label={production.label} tone={production.tone} />
+        <StageBadge label={production.label} tone={production.tone} plain={!!bar} />
       </div>
       <div className={`order-stage${isSample ? ' order-stage--sample' : ''}`} title={sampleLabel ?? undefined}>
         <span className="order-stage-label">{ORDER_TYPE_STAGE_LABEL}</span>
         <OrderTypeValue isSample={isSample} fullNote={fullNote} />
       </div>
-      {dispatch && (
+      {bar && (
+        <div className={`order-stage order-stage--due${bar.due.late ? ' is-late' : ''}`}>
+          <span className="order-stage-label">Due</span>
+          <span className="order-stage-duevalue">
+            {bar.due.date ?? 'Not set'}
+            {bar.due.countdown && <small>{bar.due.countdown}</small>}
+          </span>
+        </div>
+      )}
+      {dispatch && !bar && (
         <button type="button" className="order-stage order-stage--dispatch" aria-label={`Dispatch, ${dispatch.text}. Open the Dispatch tab.`} onClick={dispatch.onOpen}>
           <span className="order-stage-label">Dispatch</span>
           <span className="order-stage-full">{dispatch.text}</span>
@@ -83,7 +111,41 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
           <ChevronRight aria-hidden="true" />
         </button>
       )}
+      {bar && (
+        <>
+          <OrderBarGateButton label="Advance" gate={bar.advance} row="pay" onOpen={bar.onOpen} />
+        </>
+      )}
     </section>
+  )
+}
+
+const CHIP_CLASS: Record<ChipTone, string> = {
+  neutral: 'order-bar-chip--neutral', blue: 'order-bar-chip--blue', green: 'order-bar-chip--green',
+  amber: 'order-bar-chip--amber', red: 'order-bar-chip--red',
+}
+
+/** One gate on the Order bar: words first, the tint only agrees; pressing it opens its row. */
+function OrderBarGateButton({ label, gate, row, onOpen }: {
+  label: string
+  gate: BarGate
+  row: DetailRowKey
+  onOpen: (row: DetailRowKey) => void
+}) {
+  return (
+    <button
+      type="button"
+      className="order-stage order-stage--gate"
+      aria-label={`${label}: ${gate.label}. Open the details.`}
+      title={gate.label}
+      onClick={() => onOpen(row)}
+    >
+      <span className="order-stage-label">{label}</span>
+      <span className="order-stage-gatevalue">
+        {gate.value && <span>{gate.value}</span>}
+        {gate.chip && <span className={`order-bar-chip ${CHIP_CLASS[gate.chip.tone]}`}>{gate.chip.text}</span>}
+      </span>
+    </button>
   )
 }
 

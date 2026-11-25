@@ -48,7 +48,7 @@ describe('V1 stays the current PI; V2 is a change, shown apart', () => {
     const html = panel()
     const changes = text(html.slice(html.indexOf('class="order-doc-changes'), html.indexOf('class="order-docs-main"')))
     const rows = text(html.slice(html.indexOf('class="order-docs-main"')))
-    assert.ok(rows.includes('Main PI · V1 Current'))
+    assert.ok(rows.includes('PI · V1 Current'), 'the PI column names the version in force')
     assert.equal(rows.includes('V2'), false, 'a proposed PI never looks like the current one')
     assert.ok(changes.includes('New PI · V2 Waiting for Operations'))
     assert.ok(changes.includes('What changed: “client changed qty”'))

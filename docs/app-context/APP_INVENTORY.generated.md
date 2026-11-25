@@ -5,16 +5,22 @@
 
 ## Snapshot
 
-- Commit: `876ce154` — Quotations: the builder's top is ONE panel, the lead is the status, no price-limits block
-- Commits on this branch: 1580
+- Commit: `190fb166` — Order page: the PI card (PI, Product pictures, Design Files, Client PO) and a five-cell Order bar
+- Commits on this branch: 1586
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
-- Test files: 951   Next.js 16.2.6, React 19.2.4
+- Test files: 955   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `876ce154` 2026-11-24 Quotations: the builder's top is ONE panel, the lead is the status, no price-limits block
+- `190fb166` 2026-11-24 Order page: the PI card (PI, Product pictures, Design Files, Client PO) and a five-cell Order bar
+- `a7b5c046` 2026-11-24 Order bar: six cells in one row; Dispatch and Fabric & Finish are not on top
+- `a84b6b03` 2026-11-24 Docs: Order page Order bar and quiet rows (dossier, app context, changelog, inventory)
+- `4fe9975f` 2026-11-24 Order page: an Order bar and folded rows, so Operations reads the products first
+- `52b12d79` 2026-11-24 Docs: #1023 merged and live (2026-11-24 20:18 IST) (#1024)
+- `d0b8cc70` 2026-11-24 Quotations: the builder's top is ONE panel, the lead is the status, no price-limits block (#1025)
+- `e7318db1` 2026-11-24 Quotations: no price hint at all for people outside the pricing desk (#1023)
 - `15175abf` 2026-11-24 Docs: #1020 merged and live (2026-11-24 19:11 IST) (#1022)
 - `32015bc8` 2026-11-24 Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (no SQL) (#1020)
 - `cb04085e` 2026-11-24 Docs: migration 20270818000000 (approver payment chips in one call) applied 2026-11-24 18:37 IST (#1021)
@@ -33,12 +39,6 @@
 - `8d0ca964` 2026-11-24 Pricing: Training case page redesigned, with Overhead % and Margin % for each product (no SQL) (#1007)
 - `bb26f2d5` 2026-11-24 Docs: #1005 merged and live (2026-11-24 08:44 IST) (#1006)
 - `028eb186` 2026-11-24 Pricing: "Teach this?" on a quotation line, and rate reminders on For you (no SQL) (#1005)
-- `09a96c3f` 2026-11-24 Pricing: engine v3, photo facts and taught cases, leading only where it wins the blind test (20270826000000 APPLIED) (#1004)
-- `9e89001a` 2026-11-23 Pricing: photo facts, every product photo read once into facts (#1002)
-- `eda0cbec` 2026-11-23 Pricing: the echo guard, and "How accurate is it" with "Teach next" on Price learning (#1001)
-- `1ee4636b` 2026-11-23 Pricing: a taught price worked out again for each quotation line (no SQL) (#1000)
-- `92d06650` 2026-11-23 Docs: stamp #998 (the Modules launcher quiet tiles) as merged and live (no SQL) (#999)
-- `6c3063dc` 2026-11-23 Modules launcher: quiet tiles, a tile with nothing to say says nothing (#998)
 
 ## Pages by top-level area
 
@@ -166,7 +166,7 @@
 - `src/lib/modules` — 7 source, 8 test
 - `src/lib/navigation` — 7 source, 10 test
 - `src/lib/notifications` — 9 source, 26 test
-- `src/lib/orders` — 114 source, 174 test
+- `src/lib/orders` — 115 source, 175 test
 - `src/lib/payroll` — 36 source, 36 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test

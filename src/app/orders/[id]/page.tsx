@@ -31,6 +31,8 @@ import {
   type OrderActivityItem,
 } from './OrderWorkspace'
 import { OrderDatesTimelineCard, OrderInternalDetailsCard, OrderStatusStrip } from './OrderRedesign'
+import { OrderDetailRows, type RowOpenRequest } from './OrderDetailRows'
+import { detailRows, orderBarGates, type DetailRowKey } from '@/lib/orders/orderDetailRows'
 import { orderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
 import { firstPiMilestones } from '@/lib/orders/orderPiMilestones'
 import { isKeyActivityEvent, isMainActivityEvent } from '@/lib/orders/orderActivityImportance'
@@ -60,7 +62,6 @@ import {
   type WorkspaceTone,
 } from '@/lib/orders/orderWorkspace'
 import {
-  ORDER_COMMERCIAL_TITLE,
   orderCommercialLines,
   orderStoredCommercialLines,
 } from '@/lib/orders/orderCommercial'
@@ -924,6 +925,13 @@ export default function OrderDetailPage() {
    * draws no marks at all.
    */
   const [newSince, setNewSince] = useState<string | null>(null)
+  /**
+   * THE ORDER BAR'S "FROM CLIENT" COUNT: reported by the Pendencies card's own
+   * read (it loads itself, so the page's startup reads do not change), null until
+   * that read lands. And the bar's request to open a folded row below the products.
+   */
+  const [pendencyOpen, setPendencyOpen] = useState<number | null>(null)
+  const [rowRequest, setRowRequest] = useState<RowOpenRequest | null>(null)
   const [handoffReady, setHandoffReady] = useState(false)
   const changeRequestsRef = useRef<HTMLDivElement | null>(null)
   // The startup gate's resolver, parked here by the startup path and released
@@ -3313,6 +3321,49 @@ export default function OrderDetailPage() {
     />
   )
 
+  // ══ THE ORDER BAR AND THE FOLDED ROWS (Nitish / Operations, 24 Nov 2026) ══
+  // The bar above the PI says the four things that decide whether production can
+  // start; the rows below the products carry everything else, each with one line
+  // that says where it stands. Both are WORDED by lib/orders/orderDetailRows from
+  // values this page already holds: nothing here formats or derives a figure.
+  const openDetailRow = (key: DetailRowKey) => setRowRequest(r => ({ key, nonce: (r?.nonce ?? 0) + 1 }))
+  const barGates = orderBarGates({
+    advance,
+    dueDate: order.due_date ? fmtDate(order.due_date) : null,
+    daysToDue: datesTimeline.daysToDue,
+  })
+  const quietRows = detailRows({
+    clientRows: summaryView.client.rows,
+    salesRows: summaryView.sales.rows,
+    dates: {
+      confirm: order.confirm_date ? fmtDate(order.confirm_date) : null,
+      approved: piApprovedAtIso ? fmtDate(piApprovedAtIso) : null,
+      due: order.due_date ? fmtDate(order.due_date) : null,
+      daysToDue: datesTimeline.daysToDue,
+    },
+    payment: {
+      loaded: recordsReady,
+      verifiedPercent: finance.verifiedPercent,
+      orderValue: finance.orderValue,
+      awaiting: formatMoney(finance.awaitingVerification),
+      awaitingCount: finance.counts.awaiting,
+    },
+    advance,
+    approvals: approvalView.kinds,
+    pendingFromClient: pendencyOpen,
+    internalRows: piInternalRows,
+    termsCount: commercialTermsPoints(piTerms.terms).length,
+    commercial: commercialLines,
+    activity: {
+      count: history.length,
+      latestLabel: history[0]?.label ?? null,
+      latestWhen: history[0]?.createdAtIso ? fmtDate(history[0].createdAtIso) : null,
+      newCount: newSince ? history.filter(e => !!e.createdAtIso && e.createdAtIso >= newSince).length : 0,
+    },
+    // Accept for production is offered to this reader and the advance is what holds it up.
+    acceptBlockedByAdvance: operationsDecisionOffered && advanceAttentionLabel(advance) !== null,
+  })
+
   // PENDENCIES (the former Fabric & Finish card), the third column of the top band (owner, 2026-10-26).
   const pendenciesCard = (
   <OrderFabricFinishCard
@@ -3324,6 +3375,7 @@ export default function OrderDetailPage() {
     pendencies={{
       orderId: order.id,
       canManage: (mayRecordApproval || mayDecidePiAsAdmin) && order.status !== 'cancelled',
+      onCount: setPendencyOpen,
     }}
   />
   )
@@ -3550,6 +3602,20 @@ export default function OrderDetailPage() {
             its right. They replaced the Operations review card, whose facts the
             strip, the Production row and the Documents box already state. The
             notification and action-queue links land on this strip. */}
+        {/* THE FACTS LINE (owner, 25 Nov 2026: "too many boxes and cards on top ... classy and professional"):
+            ERP, Production, Order type, Due and Advance are ONE line of plain text under the order number,
+            not cells. Under it, ONE card (.order-top) holds the notices as quiet rows and the PI card
+            (columns, then the Sales highlight and the Notes) ruled by single lines; nothing inside it is a card. */}
+        <OrderStatusStrip
+          erp={{ label: summaryView.sales.production.label, tone: summaryView.sales.production.tone, line: summaryView.sales.production.line }}
+          production={{ label: STATUS_META[order.status]?.label ?? order.status, tone: statusTone }}
+          isSample={sampleType === 'sample_order'}
+          sampleLabel={sampleType ? SAMPLE_TYPE_LABEL[sampleType] : null}
+          fullNote={sampleType === 'sampling_needed' ? 'sampling first' : null}
+          bar={{ ...barGates, onOpen: openDetailRow }}
+        />
+
+        <div className="order-top">
         <OrderAttentionBar
           id={operationsReviewOpen ? OPERATIONS_REVIEW_ANCHOR : undefined}
           items={attention}
@@ -3607,74 +3673,8 @@ export default function OrderDetailPage() {
           ) : undefined}
         />
 
-        <OrderStatusStrip
-          erp={{ label: summaryView.sales.production.label, tone: summaryView.sales.production.tone, line: summaryView.sales.production.line }}
-          production={{ label: STATUS_META[order.status]?.label ?? order.status, tone: statusTone }}
-          isSample={sampleType === 'sample_order'}
-          sampleLabel={sampleType ? SAMPLE_TYPE_LABEL[sampleType] : null}
-          fullNote={sampleType === 'sampling_needed' ? 'sampling first' : null}
-          dispatch={dispatchLedger && dispatchLedger.ordered > 0 ? {
-            text: `${dispatchLedger.dispatched.toLocaleString('en-IN')} of ${dispatchLedger.ordered.toLocaleString('en-IN')} pcs`,
-            percent: dispatchLedger.percent,
-            onOpen: () => {
-              switchProductView('dispatch')
-              document.getElementById('order-products')?.scrollIntoView({ block: 'start' })
-            },
-          } : null}
-        />
-
-        {/* ══ 1b. THE ORDER HIGHLIGHT (20270210000000) ══
-            The internal remark Sales wrote on the PI before approval, read from
-            that PI row under this viewer's own RLS, in its own failure-tolerant
-            query. Labelled internal; never on a client document. Nothing is
-            drawn when there is none. */}
-        <OrderHighlightRemark
-          supabase={supabase}
-          submissionId={order.source_order_submission_id ?? null}
-          refreshKey={order.updated_at}
-        />
-
-        {/* ══ 2. THE SUMMARY PANEL ══
-            THREE GROUPS, ONE SURFACE, in the order a reader asks them: who the
-            client is and what the order is worth; who owns the sale and
-            whether production has been aligned; and the dates.
-
-            IT ABSORBED Record information. The salesperson, the lead source
-            and production used to sit in their own block BELOW the payment
-            section, which meant a reader told "Production not aligned" by the
-            attention strip had to scroll past the money to find the field that
-            said so. They are in group 2 now, from the same columns and the
-            same builder, and that block is gone.
-
-            THE CLIENT'S CONTACT IS NEW TO THIS PAGE and to nothing else: it is
-            the number the approved PI already carried and the PI card already
-            printed, resolved by that card's own builder.
-
-            THE ORIGINATING REQUEST NUMBER AND THE AUDIT TIMESTAMPS ARE STILL
-            OFF THE PAGE, for the reason they left it: nobody plans against
-            either.
-
-            RAISED BY IS NOT DRAWN. A DISPLAY REMOVAL ONLY: orders.requested_by
-            is still read, still carried on the row, still the column the PI
-            revision rule reads to find the PI's owner, and the activity trail
-            still names who did what. Nothing was dropped from a select and
-            nothing was dropped from the database. */}
-        <OrderSummaryPanel
-          view={summaryView}
-          client={piHandoff.kind === 'ready' ? piHandoff.client : null}
-          pendenciesSlot={pendenciesCard}
-          datesSlot={(
-            <OrderDatesTimelineCard
-              title={SUMMARY_GROUP_TITLE.dates}
-              confirm={order.confirm_date ? fmtDate(order.confirm_date) : null}
-              upload={piFirstUploadedAtIso ? fmtDateTime(piFirstUploadedAtIso) : piUploadedAt}
-              approved={piApprovedAtIso ? fmtDateTime(piApprovedAtIso) : null}
-              due={order.due_date ? fmtDate(order.due_date) : null}
-              timeline={datesTimeline}
-              overdue={!!isOverdue}
-            />
-          )}
-        />
+        {/* ══ 2. THE CLIENT, THE DATES AND PENDENCIES have rows of their own below the products
+            (Nitish, 24 Nov 2026); the Order bar above carries what Operations needs of them. ══ */}
 
         {/* ══ 3. FABRIC & FINISH, THEN DOCUMENTS ══
             BOTH FULL WIDTH, STACKED. They used to share a two-thirds / one-third
@@ -3686,7 +3686,7 @@ export default function OrderDetailPage() {
             THE DOCUMENTS CARD ANSWERS TWO QUESTIONS, IN THIS ORDER: is anything
             changing (a panel drawn only when something is pending or rejected,
             each submission once, with its owner and this reader's one control),
-            and what is current (Main PI · V1 with its two dates and View PI, then
+            and what is current (PI · V1 with its two dates and View PI, then
             the accepted Design Files and Client PO, which open on a click).
 
             EVERY FORMER ACTION STILL HAS A ROUTE: Download PI and PI history in
@@ -3697,20 +3697,28 @@ export default function OrderDetailPage() {
             ADVANCE RECEIVED IS STILL GONE, and did not move: every figure it drew
             is in the Payment section below the products. */}
         <OrderDocumentsRow>
-          {paymentCard}
-          {/* ── Notes ──
-              OPERATIONAL CONTENT, and the one thing on Record Information that
-              was never metadata: somebody typed it about this Order for somebody
-              else to read. It keeps its own quiet block rather than following
-              that section out. */}
-          {order.notes && (
-            <section className="order-notes" aria-label="Order notes">
-              <div className="order-notes-head">Notes</div>
-              <div className="order-notes-body">{order.notes}</div>
-            </section>
-          )}
-
           <OrderDocumentsPanel
+            /* THE FOOTER OF THE PI CARD (Nitish / Operations, 24 Nov 2026): the internal remark Sales
+               wrote on the PI (read from that PI row under this viewer's own RLS, in its own
+               failure-tolerant query; labelled internal, never on a client document; nothing is drawn
+               when there is none) and the Order's notes (operational content: somebody typed it about
+               this Order for somebody else to read). They were two more cards above and below it. */
+            footer={(
+              <>
+                <OrderHighlightRemark
+                  supabase={supabase}
+                  submissionId={order.source_order_submission_id ?? null}
+                  refreshKey={order.updated_at}
+                  bare
+                />
+                {order.notes && (
+                  <section className="order-notes" aria-label="Order notes">
+                    <div className="order-notes-head">Notes</div>
+                    <div className="order-notes-body">{order.notes}</div>
+                  </section>
+                )}
+              </>
+            )}
             mainPi={mainPi}
             clientPo={clientPo}
             onDownload={v => { void openVersionFile(v, 'download') }}
@@ -3771,6 +3779,7 @@ export default function OrderDetailPage() {
             } : undefined}
           />
         </OrderDocumentsRow>
+        </div>
         {pendingUploadSettled && (
           <RunOnce run={() => {
             setPendingUpload(null)
@@ -3824,26 +3833,7 @@ export default function OrderDetailPage() {
           </button>
         )}
 
-        {/* ══ THE LOWER WORKSPACE ══
-            Everything that follows the product list: the record on the left,
-            the money on the extreme right. The commercial column is the ONLY
-            place on the page any of these figures appear. */}
-        <div className="order-lower">
-        <div className="order-lower-main">
-
-        {/* ══ ORDER RECORDS WAS HERE, AND EVERY FACT IT HELD IS STILL ON THIS
-            PAGE. It carried one thing: the source PI, named, with a Download.
-            The PI in force — which for a converted Order IS that document —
-            is the Main PI card in Current Status, with its own View, Download
-            and View history, all signed through the reader's own session.
-
-            NOTHING UNDERNEATH IT WAS TOUCHED. orders.source_order_submission_id
-            is unchanged and still frozen, the PI's own row, its files and its
-            version history are untouched, PI History still opens every version,
-            the merged chronology below still interleaves the PI's activity
-            trail, and the RLS door can_view_order_submission_via_order
-            (20260924000000) still stands. */}
-
+        {/* ══ NOTICES ABOUT THE PI ══ (unchanged: an Order says something about its PI, even when there is none to read) */}
         {/* EVERY ORDER SAYS SOMETHING ABOUT ITS PI. "This Order has no PI" and
             "the feature is not deployed" are indistinguishable from the
             outside, so the absence is stated rather than left silent. */}
@@ -3914,85 +3904,92 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        {/* ══ INTERNAL ORDER DETAILS AND GENERAL TERMS ══
-            The left column of the bottom band. Internal details were inside the
-            Documents card; they are their own card now. Activity moved under the
-            commercial breakdown on the right. */}
-        {(handoffReady || !order.source_order_submission_id) && (
-          <OrderInternalDetailsCard
-            title={ORDER_INTERNAL_DETAILS_TITLE}
-            rows={piInternalRows}
-            termsPoints={commercialTermsPoints(piTerms.terms)}
-            sample={{
-              value: sampleType,
-              canEdit: mayRecordApproval && order.status !== 'cancelled',
-              saving: sampleSaving,
-              failure: sampleError,
-              onChange: next => { void changeSampleType(next) },
-            }}
-          />
-        )}
-
-        </div>
-
-        {/* ══ 9. COMMERCIAL ══
-            THE EXTREME RIGHT, BELOW PRODUCTS, and THE ONLY PLACE ANY OF THESE
-            FIGURES APPEAR. A `Product value` / `Order value` totals block used
-            to sit above the breakdown and restate its own first and last lines
-            under different captions — the same rupees twice, four lines apart.
-            Both figures are now the two ends of the one working that connects
-            them, and this column has ONE heading rather than a column head and
-            a section title saying nearly the same word.
-
-            NOTHING ON THIS PAGE RECOMPUTES A TOTAL. Every amount below is
-            literally the string the approved PI screen prints. */}
-        <aside className="order-lower-aside" aria-label={ORDER_COMMERCIAL_TITLE}>
-          <div className="order-lower-aside-inner">
-
-            <div className="order-commercial">
-              <OrderCommercialBreakdown lines={commercialLines} embedded />
-              {!handoffReady && order.source_order_submission_id && (
-                <div style={{ marginTop: '10px' }}><SkeletonBlock w="100%" h={92} /></div>
-              )}
-            </div>
-          </div>
-        </aside>
-
-        </div>
-
-        {/* ══ 7. ACTIVITY ══ the complete trail, last: the current state is
-            understood before the history that produced it. */}
-        {!recordsReady ? (
-          <SectionSkeleton rows={3} label="Loading activity" />
-        ) : (
-          /* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the source
-             PI's, interleaved newest first. Every entry is worded HERE,
-             exactly as before; the list only decides how many are on screen —
-             the latest five until it is expanded. */
-          <OrderActivityList items={history.map((entry): OrderActivityItem => {
-            const orderEntry = entry.source === 'order'
-              ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
-              : null
-            return {
-              key: entry.key,
-              label: entry.label,
-              detail: entry.detail,
-              lines: orderEntry ? amendmentLines(orderEntry) : [],
-                  important: isKeyActivityEvent({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
-                  minor: !isMainActivityEvent({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
-              category: activityCategory({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
-              actor: entry.actor,
-              when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
-              dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,
-              fromPi: entry.source === 'pi',
-              // NEW SINCE THIS READER'S LAST VISIT. `newSince` is the timestamp
-              // of their oldest unread update, captured on open before those
-              // rows were marked read, so everything at or after it is what
-              // they have not seen. Null — the ordinary case — marks nothing.
-              isNew: !!newSince && !!entry.createdAtIso && entry.createdAtIso >= newSince,
-            }
-          })} />
-        )}
+        {/* ══ ORDER DETAILS, FOLDED (Nitish / Operations, 24 Nov 2026) ══
+            Seven rows below the products, each with one line saying where it
+            stands. Every body is the page's own card, mounted from the start
+            (a closed row is only `hidden`), so no read moved and the cards that
+            load themselves still load once. Each fact is stated in full in its
+            row; the Order bar and the row summaries are views of the same values. */}
+        <OrderDetailRows
+          rows={quietRows}
+          request={rowRequest}
+          bodies={{
+            client: (
+              <OrderSummaryPanel
+                view={summaryView}
+                client={piHandoff.kind === 'ready' ? piHandoff.client : null}
+                groups="client"
+              />
+            ),
+            dates: (
+              <OrderDatesTimelineCard
+                title={SUMMARY_GROUP_TITLE.dates}
+                confirm={order.confirm_date ? fmtDate(order.confirm_date) : null}
+                upload={piFirstUploadedAtIso ? fmtDateTime(piFirstUploadedAtIso) : piUploadedAt}
+                approved={piApprovedAtIso ? fmtDateTime(piApprovedAtIso) : null}
+                due={order.due_date ? fmtDate(order.due_date) : null}
+                timeline={datesTimeline}
+                overdue={!!isOverdue}
+                bare
+              />
+            ),
+            pay: paymentCard,
+            pend: pendenciesCard,
+            terms: (handoffReady || !order.source_order_submission_id) ? (
+              <OrderInternalDetailsCard
+                title={ORDER_INTERNAL_DETAILS_TITLE}
+                rows={piInternalRows}
+                termsPoints={commercialTermsPoints(piTerms.terms)}
+                sample={{
+                  value: sampleType,
+                  canEdit: mayRecordApproval && order.status !== 'cancelled',
+                  saving: sampleSaving,
+                  failure: sampleError,
+                  onChange: next => { void changeSampleType(next) },
+                }}
+              />
+            ) : null,
+            totals: (
+              <div className="order-commercial">
+                <OrderCommercialBreakdown lines={commercialLines} embedded />
+                {!handoffReady && order.source_order_submission_id && (
+                  <div style={{ marginTop: '10px' }}><SkeletonBlock w="100%" h={92} /></div>
+                )}
+              </div>
+            ),
+            act: !recordsReady ? (
+                  <SectionSkeleton rows={3} label="Loading activity" />
+                ) : (
+                  /* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the source
+                     PI's, interleaved newest first. Every entry is worded HERE,
+                     exactly as before; the list only decides how many are on screen —
+                     the latest five until it is expanded. */
+                  <OrderActivityList items={history.map((entry): OrderActivityItem => {
+                    const orderEntry = entry.source === 'order'
+                      ? orderEntryById.get(entry.key.slice('order:'.length)) ?? null
+                      : null
+                    return {
+                      key: entry.key,
+                      label: entry.label,
+                      detail: entry.detail,
+                      lines: orderEntry ? amendmentLines(orderEntry) : [],
+                          important: isKeyActivityEvent({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
+                          minor: !isMainActivityEvent({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
+                      category: activityCategory({ source: entry.source, label: entry.label, eventType: orderEntry?.event_type ?? null }),
+                      actor: entry.actor,
+                      when: entry.createdAtIso ? fmtDateTime(entry.createdAtIso) : '—',
+                      dot: orderEntry ? <ActivityDot event_type={orderEntry.event_type} /> : <HistoryDot tone={entry.tone} />,
+                      fromPi: entry.source === 'pi',
+                      // NEW SINCE THIS READER'S LAST VISIT. `newSince` is the timestamp
+                      // of their oldest unread update, captured on open before those
+                      // rows were marked read, so everything at or after it is what
+                      // they have not seen. Null — the ordinary case — marks nothing.
+                      isNew: !!newSince && !!entry.createdAtIso && entry.createdAtIso >= newSince,
+                    }
+                  })} />
+                ),
+          }}
+        />
 
       </div>
 

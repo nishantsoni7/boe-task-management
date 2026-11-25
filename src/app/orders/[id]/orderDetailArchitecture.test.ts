@@ -52,7 +52,8 @@ describe('the page reads in one order, with no second summary', () => {
     attention: body.indexOf('<OrderAttentionBar'),
     documents: body.indexOf('<OrderDocumentsRow>'),
     products: body.indexOf('className="order-products"'),
-    payment:  body.indexOf('{paymentCard}'),
+    // Payment is a folded row below the products (Nitish, 24 Nov 2026).
+    payment:  body.indexOf('pay: paymentCard'),
     activity: body.indexOf('<OrderActivityList'),
   }
 
@@ -64,11 +65,13 @@ describe('the page reads in one order, with no second summary', () => {
 
   test('and they appear in the agreed reading order', () => {
     const order = Object.entries(marks).sort((a, b) => a[1] - b[1]).map(([name]) => name)
-    // REVISED (owner, 2026-10-26): notifications come right under the order number,
-    // ahead of the summary; Pendencies is the summary band's third column and Payment sits beside Documents. Earlier (2026-10-19): Payment sits in the rail beside Documents,
-    // below Fabric & Finish and Notes, so it comes before the products.
+    // REVISED (Nitish / Operations, 24 Nov 2026): the top of the page carries only what
+    // Operations reads all day, the PI (Documents) and the products. The client and
+    // sale, dates, Payment, Pendencies, terms, breakdown and Activity are folded rows
+    // BELOW the products, in that order (see the folded-rows tests below).
+    // Earlier: notifications right under the order number (2026-10-26); Payment beside Documents.
     assert.deepEqual(order, [
-      'header', 'attention', 'summary', 'documents', 'payment', 'products',
+      'header', 'attention', 'documents', 'products', 'summary', 'payment',
       'activity',
     ])
   })
@@ -103,12 +106,15 @@ describe('the redundant surfaces are gone', () => {
   })
 
   test('Fabric & Finish is a strip ABOVE the box, and is the only place the approvals are stated', () => {
-    // REVISED (owner, 2026-10-26): the card is called Pendencies and is the summary band's third column.
+    // REVISED (Nitish / Operations, 24 Nov 2026): the card is called Pendencies and is a
+    // folded row below the products (it was the summary band's third column).
     assert.equal((page.match(/<OrderFabricFinishCard/g) ?? []).length, 1, 'built once')
-    assert.ok(body.includes('pendenciesSlot={pendenciesCard}'))
+    assert.ok(body.includes('pend: pendenciesCard'))
     const row = body.slice(body.indexOf('<OrderDocumentsRow>'), body.indexOf('</OrderDocumentsRow>'))
     assert.equal(row.includes('<OrderFabricFinishCard'), false)
-    assert.ok(row.indexOf('{paymentCard}') >= 0 && row.indexOf('{paymentCard}') < row.indexOf('<OrderDocumentsPanel'), 'Payment sits beside Documents')
+    assert.equal(row.includes('paymentCard'), false, 'Payment left the Documents row: it is a folded row now')
+    assert.equal(row.includes('pendenciesCard'), false)
+    assert.ok(row.includes('<OrderDocumentsPanel'), 'the PI stays on top')
     // The Documents box does not summarise them a column away from the card
     // that states them in full.
     const panel = code(STATUS).slice(code(STATUS).indexOf('export function OrderDocumentsPanel'))
@@ -419,24 +425,32 @@ describe('no Order fact is stated twice', () => {
     assert.equal(read(CSS).includes('.order-dates {'), false, 'and so is its styling')
   })
 
-  test('payment is stated in ONE place, in the rail beside Documents', () => {
+  test('payment is stated in full in ONE place: its folded row below the products', () => {
     // It used to be stated twice: the Advance Received card carried the verified
     // share of the Order value beside the Documents, and the Payment section
     // carried the same two figures with the rest of the position.
-    // REVISED (owner, 2026-10-19): inside the Documents row's rail.
-    // REVISED (owner, 2026-10-26, again): beside Documents, built once.
+    // REVISED (owner, 2026-10-19): inside the Documents row's rail. REVISED (owner,
+    // 2026-10-26): beside Documents. REVISED (Nitish / Operations, 24 Nov 2026): a
+    // folded row below the products; the Order bar and the row's one-line summary
+    // are views of the same values, worded by lib/orders/orderDetailRows.
     const row = body.slice(body.indexOf('<OrderDocumentsRow>'), body.indexOf('</OrderDocumentsRow>'))
-    assert.ok(row.includes('{paymentCard}'), 'Payment is in the Documents row')
+    assert.equal(row.includes('paymentCard'), false, 'Payment is no longer in the Documents row')
+    assert.ok(body.includes('pay: paymentCard'), 'Payment is the Payment row\'s body')
     assert.equal((page.match(/const paymentCard =/g) ?? []).length, 1)
     assert.ok(page.includes('className="order-docs-pay"') && page.includes('PAYMENT_SECTION_TITLE'))
-    // ONE line is allowed to name the advance above the products: the attention
-    // strip's figure-free "Production blocked: advance below 40% — see Payment"
-    // (20270116000000). Its figures are in the Payment section.
-    // Nothing BEFORE the Documents row (which now holds Payment) names a figure.
-    // The Payment card is built once above the return (const paymentCard) and drawn in the summary band.
+    // The page states no payment figure above the Documents row. It hands the
+    // values to the two builders (the Order bar's gates and the rows' summaries)
+    // and draws what they return; the lines that do so are cut out here and
+    // checked on their own below.
     const cardStart = body.indexOf('const paymentCard = (')
     const cardEnd = body.indexOf('\n  )\n', cardStart) + 5
-    const above = (body.slice(0, cardStart) + body.slice(cardEnd)).slice(0, body.indexOf('<OrderDocumentsRow>') - (cardEnd - cardStart))
+    const cutCall = (text: string, start: string) => {
+      const a = text.indexOf(start)
+      if (a < 0) return text
+      return text.slice(0, a) + text.slice(text.indexOf('\n  })\n', a) + 7)
+    }
+    let above = (body.slice(0, cardStart) + body.slice(cardEnd)).slice(0, body.indexOf('<OrderDocumentsRow>') - (cardEnd - cardStart))
+    above = cutCall(cutCall(above, 'const barGates = orderBarGates({'), 'const quietRows = detailRows({')
       .replace('advanceBelowLabel: advanceAttentionLabel(advance),', '')
       // …and the same words as the reason Accept for production is disabled.
       .replace('acceptBlockedReason={advanceAttentionLabel(advance)}', '')
@@ -460,6 +474,15 @@ describe('no Order fact is stated twice', () => {
                           'finance.awaitingVerification', 'verifiedPercent', 'advance']) {
       assert.equal(above.includes(figure), false, figure + ' appears above the product list')
     }
+    // The two builder calls hand values over and nothing more: no arithmetic, no
+    // formatting of a figure beyond the page's own money formatter.
+    const quiet = body.slice(body.indexOf('const barGates = orderBarGates({'), body.indexOf('const pendenciesCard ='))
+    assert.ok(quiet.includes('verifiedPercent: finance.verifiedPercent'), 'the percentage is the shared builder\'s own')
+    assert.ok(quiet.includes('awaiting: formatMoney(finance.awaitingVerification)'))
+    for (const sum of ['finance.verified +', 'finance.verified -', 'finance.verified *', 'finance.verified /',
+                       'advance.percent +', 'advance.percent -', 'Number(finance.']) {
+      assert.equal(quiet.includes(sum), false, 'the page derives a figure: ' + sum)
+    }
   })
 
   test('every payment figure lives in the payment section and nowhere else', () => {
@@ -482,10 +505,10 @@ describe('no Order fact is stated twice', () => {
       assert.equal(read(CSS).includes('.' + cls + ' {'), false, cls + ' is still styled')
     }
 
-    // In the lower workspace's right column, and after the products.
-    const aside = body.slice(body.indexOf('order-lower-aside'))
-    assert.ok(aside.includes('<OrderCommercialBreakdown'))
-    assert.ok(body.indexOf('className="order-products"') < body.indexOf('order-lower-aside'),
+    // In its folded row (Nitish / Operations, 24 Nov 2026), after the products.
+    const totals = body.slice(body.indexOf('totals: ('))
+    assert.ok(totals.includes('<OrderCommercialBreakdown'))
+    assert.ok(body.indexOf('className="order-products"') < body.indexOf('totals: ('),
       'the money sits below the products it describes')
     assert.equal((body.match(/<OrderCommercialBreakdown/g) ?? []).length, 1)
   })
@@ -530,24 +553,31 @@ describe('no Order fact is stated twice', () => {
     assert.equal(page.includes('orderCommercialNet'), false)
   })
 
-  test('the lower workspace puts the record left and the money right', () => {
-    const lower = body.slice(body.indexOf('className="order-lower"'))
-    const main = lower.indexOf('order-lower-main')
-    const aside = lower.indexOf('order-lower-aside')
-    assert.ok(main > 0 && aside > main, 'the record column comes first, the money column second')
-    // REVISED (owner, 2026-10-19): the record (Activity) on the left; the
-    // Commercial working on the right. Payment moved up beside Documents.
-    const left = lower.slice(main, aside)
-    const right = lower.slice(aside)
-    // REVISED (owner, 2026-10-26): Internal order details and General terms on the left;
-    // the Commercial working with Activity beneath it on the right.
-    assert.ok(left.includes('<OrderInternalDetailsCard'), 'Internal order details belong in the left column')
-    assert.ok(left.includes('termsPoints='), 'General terms are inside the same card')
-    assert.ok(right.includes('<OrderCommercialBreakdown'), 'the Commercial working is on the right')
-    // REVISED (owner, 2026-10-26, again): Activity is FULL WIDTH, after the lower band.
-    assert.ok(body.indexOf('<OrderActivityList') > body.indexOf('</aside>'), 'Activity follows the lower band')
-    assert.equal(lower.slice(main, body.indexOf('</aside>') - body.indexOf('className="order-lower"')).includes('<OrderActivityList'), false)
-    assert.ok(!lower.includes('PAYMENT_SECTION_TITLE'), 'Payment is no longer in the lower workspace')
+  test('the folded rows follow the products, in the agreed order, each body drawn once', () => {
+    const at = body.indexOf('<OrderDetailRows')
+    assert.ok(at > body.indexOf('className="order-products"'), 'the rows come after the products')
+    const rows = body.slice(at)
+    const order = ['client: (', 'dates: (', 'pay: paymentCard', 'pend: pendenciesCard', 'terms: ', 'totals: (', 'act: ']
+      .map(mark => [mark, rows.indexOf(mark)] as const)
+    for (const [mark, pos] of order) assert.ok(pos > 0, mark + ' is missing from the rows')
+    assert.deepEqual([...order].sort((a, b) => a[1] - b[1]).map(([mark]) => mark), order.map(([mark]) => mark))
+    assert.equal((body.match(/<OrderDetailRows/g) ?? []).length, 1)
+    // Internal details and General terms are one card, in the terms row; the
+    // breakdown is its own row; Activity is the last row, full width.
+    const terms = rows.slice(rows.indexOf('terms: '), rows.indexOf('totals: ('))
+    assert.ok(terms.includes('<OrderInternalDetailsCard') && terms.includes('termsPoints='))
+    assert.ok(rows.slice(rows.indexOf('act: ')).includes('<OrderActivityList'), 'Activity is the last row')
+    assert.equal(/order-lower/.test(body), false, 'the old two-column lower workspace is gone')
+    assert.ok(!rows.slice(rows.indexOf('terms: '), rows.indexOf('act: ')).includes('PAYMENT_SECTION_TITLE'))
+  })
+
+  test('every row body stays mounted: a closed row is only hidden, so no read moves', () => {
+    const rowsFile = code('src/app/orders/[id]/OrderDetailRows.tsx')
+    assert.ok(rowsFile.includes('hidden={!open}'))
+    assert.equal(/open && /.test(rowsFile.replace(/aria-expanded=\{open\}/g, '')), false, 'a body is never mounted conditionally')
+    // And the pendency count the Order bar shows comes from that card's own read.
+    assert.ok(page.includes('onCount: setPendencyOpen'))
+    assert.equal(/\.from\('order_pendencies'\)/.test(page), false, 'the page does not read pendencies itself')
   })
 })
 

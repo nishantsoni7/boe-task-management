@@ -49,7 +49,7 @@ describe('the page', () => {
     // After a send the same button says so and offers another (owner, 2026-11-12: four presses looked like nothing).
     const label = "{operationsSent && chainHolder === 'sales' ? SEND_BACK_AGAIN_LABEL : SEND_BACK_BUTTON_LABEL}"
     assert.ok(body.indexOf('<OrderAttentionBar') < body.indexOf(label))
-    assert.ok(body.indexOf(label) < body.indexOf('<OrderStatusStrip'))
+    assert.ok(body.indexOf(label) < body.indexOf('<OrderDocumentsRow>'), 'the actions sit on the notice, above the PI card')
     assert.match(body, /onClick=\{\(\) => \{ setHandoffError\(null\); setSendBackOpen\(true\) \}\}/)
   })
 
