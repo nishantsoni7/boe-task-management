@@ -15,7 +15,7 @@ import { draftDetailHref } from '@/lib/orders/draftsView'
 import { DEAD_REASONS } from '@/lib/salesLeads/board'
 import type { Quotation, QuotationStatus } from '@/lib/quotations/api'
 import { whatsappLink } from '@/lib/quotations/math'
-import type { ConversionProblem } from '@/lib/quotations/piWorkbook'
+import { waitsFor, type ConversionProblem } from '@/lib/quotations/piWorkbook'
 import { PI_STAGE_LABEL, type PiStage } from '@/lib/quotations/toPiDraft'
 import { AskButton, AskNote } from './AskCard'
 import { LeadCard } from './LeadCard'
@@ -26,18 +26,11 @@ type Supabase = ReturnType<typeof createClient>
 
 export const LOCKED: QuotationStatus[] = ['confirmed', 'lost', 'archived']
 
-const NEEDS: Record<Exclude<ConversionProblem['code'], 'NO_LINES'>, string> = {
-  NAME_MISSING: 'a name', QTY_MISSING: 'a quantity above 0', PRICE_MISSING: 'a price above ₹0', PICTURE_MISSING: 'a picture (Orders needs one for every product)',
-}
 const KIND: Record<Exclude<ConversionProblem['code'], 'NO_LINES'>, string> = { NAME_MISSING: 'Name', QTY_MISSING: 'Quantity', PRICE_MISSING: 'Price', PICTURE_MISSING: 'Picture' }
 const SHOWN = 6
 
-/** The one line the panel says while Confirm waits: what is missing, for how many products. */
-export function waitsFor(problems: readonly ConversionProblem[]): string {
-  if (problems.length !== 1) return `${problems.length} things to fix before this can become a PI.`
-  const p = problems[0]
-  return p.code === 'NO_LINES' ? 'Add at least one product that is not optional.' : `${p.lines.length} ${p.lines.length === 1 ? 'product needs' : 'products need'} ${NEEDS[p.code]} before this can become a PI.`
-}
+/** The one line the panel says while Confirm waits (it lives in piWorkbook.ts now, so Lead Management says the same words). */
+export { waitsFor }
 
 export type Outcome = 'unshare' | 'no_pi' | 'lost' | 'archive' | 'delete'
 

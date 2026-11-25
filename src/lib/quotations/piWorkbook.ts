@@ -130,6 +130,16 @@ export function conversionProblems(areas: readonly QuoteArea[], lines: readonly 
   return problems.filter(p => p.lines.length > 0)
 }
 
+const NEEDS: Record<Exclude<ConversionProblem['code'], 'NO_LINES'>, string> = {
+  NAME_MISSING: 'a name', QTY_MISSING: 'a quantity above 0', PRICE_MISSING: 'a price above ₹0', PICTURE_MISSING: 'a picture (Orders needs one for every product)',
+}
+/** The one line that says what stops the PI: what is missing, for how many products (the quotation page and Lead Management both say it). */
+export function waitsFor(problems: readonly ConversionProblem[]): string {
+  if (problems.length !== 1) return `${problems.length} things to fix before this can become a PI.`
+  const p = problems[0]
+  return p.code === 'NO_LINES' ? 'Add at least one product that is not optional.' : `${p.lines.length} ${p.lines.length === 1 ? 'product needs' : 'products need'} ${NEEDS[p.code]} before this can become a PI.`
+}
+
 export function piFigures(input: Pick<PiWorkbookInput, 'money' | 'areas' | 'lines' | 'dimensionUnit'>): PiFigures {
   const ordered = piLines(input.lines)
   const lines: PiLine[] = ordered.map((l, i) => {

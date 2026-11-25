@@ -19,7 +19,7 @@ const quote = (n: number, o: Partial<LeadQuotation> = {}): LeadQuotation => ({
 const data = (o: Partial<LeadQuotations> = {}): LeadQuotations => ({ open: true, may_create: true, quotations: [quote(1)], ...o })
 
 type Reply = { data: unknown; error: { message: string } | null }
-function fake(d: LeadQuotations, refuse: Record<string, string> = {}) {
+function fake(d: LeadQuotations, refuse: Record<string, string> = {}, got: unknown = null) {
   const calls: Array<{ fn: string; args: Record<string, unknown> }> = []
   return {
     calls,
@@ -29,6 +29,7 @@ function fake(d: LeadQuotations, refuse: Record<string, string> = {}) {
         if (fn in refuse) return { data: null, error: { message: refuse[fn] } }
         if (fn === 'quotation_for_lead') return { data: d, error: null }
         if (fn === 'quotation_start') return { data: 'new-q', error: null }
+        if (fn === 'quotation_get') return { data: got, error: null }
         return { data: null, error: null }
       },
     },
@@ -104,5 +105,50 @@ describe('the lead popup: Make quotation', () => {
     assert.match(u.text(), /marked Dead/)
     assert.deepEqual(pushes, [])
     assert.equal(u.button(/Make quotation/).disabled, false, 'it can be tried again')
+  })
+})
+
+// The saved quotation as quotation_get returns it: one product with a name, quantity, price and picture (what Orders needs).
+const line = (o: Record<string, unknown> = {}) => ({ id: 'l1', area_id: null, name: 'Chair', size_text: '18 × 21', spec: '', material: 'Ash', finish: null,
+  qty_per_unit: null, qty_fixed: 10, unit_price: 5000, tax_rate: 18, image_path: 'p/chair.jpg', is_optional: false, client_note: '', ...o })
+const got = (o: Record<string, unknown> = {}) => ({ quotation: { id: 'q1', quote_no: 'QT-MS-01001', status: 'sent' }, owner_name: 'Mohit Sharma', may_edit: true,
+  areas: [], lines: [line()], events: [], pi: null, ...o })
+// The click reads the quotation and loads the PI code on demand: wait for the line to change rather than a fixed number of turns.
+async function until(u: { settle: () => Promise<void>; text: () => string }, re: RegExp) { for (let i = 0; i < 40 && !re.test(u.text()); i++) await u.settle() }
+
+describe('the lead popup: Create PI draft (owner, 25 Nov 2026: the PI is made from Lead Management)', () => {
+  test('a Draft, Sent or Negotiating quotation offers Create PI draft; a Confirmed one Open the PI draft; a Lost or Archived one nothing', async () => {
+    const qs = [quote(1, { status: 'draft' }), quote(2, { status: 'negotiating' }), quote(3, { status: 'confirmed' }), quote(4, { status: 'lost' }), quote(5, { status: 'archived' })]
+    const { u } = ui(fake(data({ quotations: qs }))); await ready(u)
+    assert.ok(u.button(/Create PI draft/), 'the newest, a Draft')
+    u.click(u.button('+4 more')); await u.settle()
+    const rows = u.all('li').map(li => li.textContent ?? '')
+    assert.match(rows[0], /Create PI draft/); assert.match(rows[1], /Open the PI draft/)
+    assert.ok(!/PI draft/.test(rows[2]) && !/PI draft/.test(rows[3]), 'nothing for Lost and Archived')
+  })
+  test('a quotation that already has its PI opens that PI and changes nothing', async () => {
+    const sb = fake(data(), {}, got({ pi: { id: 'sub-9', draft_reference: 'D-9', status: 'draft' } })); const { u, pushes } = ui(sb); await ready(u)
+    u.click(u.button(/Create PI draft/))
+    for (let i = 0; i < 40 && pushes.length === 0; i++) await u.settle()
+    assert.deepEqual(pushes, ['/orders/drafts/sub-9'])
+    assert.ok(!sb.calls.some(c => c.fn === 'quotation_set_status'), 'nothing is changed')
+  })
+  test('what Orders needs is checked first: a product without a picture stops it, the line says so and nothing changes', async () => {
+    const sb = fake(data(), {}, got({ lines: [line({ image_path: null })] })); const { u, pushes } = ui(sb); await ready(u)
+    u.click(u.button(/Create PI draft/)); await until(u, /Open the quotation to fix it/)
+    assert.match(u.text(), /QT-MS-01001: 1 product needs a picture .* before this can become a PI\. Open the quotation to fix it\./)
+    assert.deepEqual(pushes, []); assert.ok(!sb.calls.some(c => c.fn === 'quotation_set_status'))
+    assert.equal(u.button(/Create PI draft/).disabled, false, 'it can be tried again after the fix')
+  })
+  test('somebody who may not edit the quotation is told who can, and nothing changes', async () => {
+    const sb = fake(data(), {}, got({ may_edit: false })); const { u } = ui(sb); await ready(u)
+    u.click(u.button(/Create PI draft/)); await until(u, /Only the owner/)
+    assert.match(u.text(), /Only the owner of QT-MS-01001, or someone with Edit and See all, can make its PI draft/)
+    assert.ok(!sb.calls.some(c => c.fn === 'quotation_set_status'))
+  })
+  test('a Confirmed quotation with no PI says so and opens nothing', async () => {
+    const sb = fake(data({ quotations: [quote(1, { status: 'confirmed' })] }), {}, got({ quotation: { id: 'q1', quote_no: 'QT-MS-01001', status: 'confirmed' } })); const { u, pushes } = ui(sb); await ready(u)
+    u.click(u.button(/Open the PI draft/)); await until(u, /confirmed without a PI/)
+    assert.match(u.text(), /QT-MS-01001 was confirmed without a PI/); assert.deepEqual(pushes, [])
   })
 })

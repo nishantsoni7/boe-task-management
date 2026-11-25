@@ -10,9 +10,10 @@
 import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
-import { FileText, Plus } from 'lucide-react'
+import { FileCheck2, FileText, Plus } from 'lucide-react'
 import { AppLink as Link } from '@/components/ui/AppLink'
-import { errorText, fetchLeadQuotations, leadQuotationsKey, startQuotation, STATUS_LABEL, type LeadQuotation, type LeadQuotations } from '@/lib/quotations/api'
+import { errorText, fetchLeadQuotations, fetchQuotation, leadQuotationsKey, setStatus, startQuotation, STATUS_LABEL, type LeadQuotation, type LeadQuotations } from '@/lib/quotations/api'
+import { draftDetailHref } from '@/lib/orders/draftsView'
 import { valueLabel } from '@/lib/salesLeads/board'
 import type { WorkLead } from '@/lib/salesLeads/api'
 import type { LeadWork } from './useLeadWork'
@@ -41,6 +42,50 @@ function Item({ x }: { x: LeadQuotation }) {
       <span className={s.qMeta}>{x.version_no ? `v${x.version_no} · ` : ''}{STATUS_LABEL[x.status] ?? x.status}</span>
       <span className={s.qVal}>{valueLabel(Math.round(x.value) * 100)}</span>
     </>
+  )
+}
+
+/**
+ * Create PI draft (owner, 25 Nov 2026: the PI is made from Lead Management, not from the quotation page). The same steps the quotation
+ * page's Confirm → PI draft took: read the SAVED quotation, check what Orders needs, move a Draft to Negotiating (the database confirms only
+ * a Sent or Negotiating one), make the PI draft and open it. A quotation that already has its PI opens it instead. The PI workbook code is
+ * loaded on the click, so the lead board does not carry it.
+ */
+function PiAction({ x, leadId, work, onErr }: { x: LeadQuotation; leadId: string; work: LeadWork; onErr: (text: string) => void }) {
+  const router = useRouter()
+  const qc = useQueryClient()
+  const [stage, setStage] = useState<string | null>(null)
+  const make = x.status === 'draft' || x.status === 'sent' || x.status === 'negotiating'
+  if (!make && x.status !== 'confirmed') return null
+
+  async function go() {
+    setStage(make ? 'Checking…' : 'Opening…'); onErr('')
+    try {
+      const q = await fetchQuotation(work.supabase, x.id)
+      if (q.pi) { router.push(draftDetailHref(q.pi.id)); return }
+      if (!make) { onErr(`${x.quote_no} was confirmed without a PI.`); return }
+      if (!q.may_edit) { onErr(`Only the owner of ${x.quote_no}, or someone with Edit and See all, can make its PI draft.`); return }
+      const { conversionProblems, waitsFor } = await import('@/lib/quotations/piWorkbook')
+      const problems = conversionProblems(q.areas, q.lines)
+      if (problems.length) { onErr(`${x.quote_no}: ${waitsFor(problems)} Open the quotation to fix it.`); return }
+      const { makePiDraft, PI_STAGE_LABEL, extrasLeftOutText } = await import('@/lib/quotations/toPiDraft')
+      if (q.status === 'draft') await setStatus(work.supabase, q.id, 'negotiating')
+      const r = await makePiDraft(work.supabase, q, st => setStage(PI_STAGE_LABEL[st]))
+      void qc.invalidateQueries({ queryKey: leadQuotationsKey(leadId) })
+      if (r.linkError) { onErr(`The PI draft was made (Orders → PI Drafts), but ${x.quote_no} could not be linked to it: ${r.linkError}`); return }
+      if (r.extrasLeftOut) { onErr(`The PI draft was made (Orders → PI Drafts). ${extrasLeftOutText(r.extrasLeftOut)}`); return }
+      router.push(draftDetailHref(r.submissionId))
+    } catch (e) {
+      onErr(errorText(e))
+      void qc.invalidateQueries({ queryKey: leadQuotationsKey(leadId) }) // a draft may already be Negotiating
+    } finally { setStage(null) }
+  }
+
+  return (
+    <button type="button" className={s.qPi} disabled={stage !== null} onClick={() => void go()}
+      title={make ? 'Makes a PI draft in Orders from the saved quotation. Nothing is sent to anyone: the PI stays a Draft until you submit it there.' : undefined}>
+      <FileCheck2 aria-hidden="true" />{stage ?? (make ? 'Create PI draft' : 'Open the PI draft')}
+    </button>
   )
 }
 
@@ -75,10 +120,15 @@ function Band({ lead, work, data, mayMake }: { lead: WorkLead; work: LeadWork; d
         {rest.length > 0 && (
           <button type="button" className={s.qMore} aria-expanded={more} onClick={() => setMore(v => !v)}>{more ? 'Show less' : `+${rest.length} more`}</button>
         )}
-        {mayMake && (
-          <button type="button" className={s.qMake} disabled={busy} onClick={() => void make()}>
-            <Plus aria-hidden="true" />{busy ? 'Making…' : 'Make quotation'}
-          </button>
+        {(first || mayMake) && (
+          <span className={s.qActs}>
+            {first && <PiAction x={first} leadId={lead.id} work={work} onErr={setErr} />}
+            {mayMake && (
+              <button type="button" className={s.qMake} disabled={busy} onClick={() => void make()}>
+                <Plus aria-hidden="true" />{busy ? 'Making…' : 'Make quotation'}
+              </button>
+            )}
+          </span>
         )}
       </div>
       {err && <p className={s.qErr} role="alert">{err}</p>}
@@ -88,6 +138,7 @@ function Band({ lead, work, data, mayMake }: { lead: WorkLead; work: LeadWork; d
             <li key={x.id} className={s.qRow}>
               <Item x={x} />
               {x.owner_name && <span className={s.qBy}>{x.owner_name}</span>}
+              <PiAction x={x} leadId={lead.id} work={work} onErr={setErr} />
             </li>
           ))}
         </ul>
