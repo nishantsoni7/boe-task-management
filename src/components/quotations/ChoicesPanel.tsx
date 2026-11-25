@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { ChevronDown, ChevronRight, ImagePlus } from 'lucide-react'
+import { ImagePlus } from 'lucide-react'
 import { istToday } from '@/lib/istDate'
 import { CHOICE_KINDS, CHOICE_LABEL, CHOICE_MAX, choiceCounts, type ChoiceKind, type LineChoice, type LineChoices } from '@/lib/quotations/math'
 import { Pic } from './Pic'
@@ -12,12 +12,29 @@ import s from './quotations.module.css'
  * catalog or their own. Layout 2 of the preview: one row per product in the table that PR 2 prints; this is where it is entered.
  * A choice never changes a price and is never locked; "Confirmed by the client" only stamps today's date.
  */
+/**
+ * What the product's strip says while the panel is closed (owner, 25 Nov 2026, version 2): the first two choices by name, then how many wait
+ * for the client, so nobody has to open the panel to know.
+ */
+export function ChoicesSummary({ choices }: { choices: LineChoices | undefined }) {
+  const { total, open: waiting } = choiceCounts(choices)
+  if (!total) return <span className={`${s.small} ${s.muted} ${s.chSumText}`}>fabric, finish, stone, rope weave</span>
+  const used = CHOICE_KINDS.filter(k => choices?.[k])
+  const words = (c: LineChoice) => [c.name, c.code].map(x => (x ?? '').trim()).filter(Boolean).join(' ') || (c.source === 'client' ? 'client’s own' : c.source === 'code' ? 'client’s code' : 'not named yet')
+  return (
+    <>
+      {used.slice(0, 2).map(k => <span key={k} className={s.chSum}>{CHOICE_LABEL[k]}: {words(choices![k]!)}</span>)}
+      {used.length > 2 && <span className={s.chSum}>+{used.length - 2} more</span>}
+      {waiting > 0 ? <span className={`${s.chip} ${s.chWait}`}>{waiting} to confirm</span> : <span className={`${s.chip} ${s.chDone}`}>{total} confirmed</span>}
+    </>
+  )
+}
+
+/** The panel under a product; its strip (ProductLine.tsx) opens and closes it. Fabric and finish are chosen here only (25 Nov 2026). */
 export function ChoicesPanel({ choices, editable, url, onChange, onUpload }: {
   choices: LineChoices | undefined; editable: boolean; url: (path: string) => string
   onChange: (c: LineChoices) => void; onUpload: (f: File) => Promise<string>
 }) {
-  const { total, open: waiting } = choiceCounts(choices)
-  const [shown, setShown] = useState(false)
   const set = (k: ChoiceKind, v: LineChoice | undefined) => {
     const next = { ...choices }
     if (v) next[k] = v
@@ -26,21 +43,12 @@ export function ChoicesPanel({ choices, editable, url, onChange, onUpload }: {
   }
   return (
     <div className={s.chWrap}>
-      <button type="button" className={s.chToggle} aria-expanded={shown} onClick={() => setShown(v => !v)}>
-        {shown ? <ChevronDown size={15} aria-hidden /> : <ChevronRight size={15} aria-hidden />}
-        Client choices
-        {total > 0
-          ? <span className={`${s.chip} ${waiting ? s.chWait : s.chDone}`}>{waiting ? `${waiting} to confirm` : `${total} confirmed`}</span>
-          : <span className={`${s.small} ${s.muted}`}>fabric, finish, stone, rope weave</span>}
-      </button>
-      {shown && (
-        <div className={s.chBody}>
-          {CHOICE_KINDS.map(k => (
-            <ChoiceRow key={k} kind={k} v={choices?.[k]} editable={editable} url={url} onUpload={onUpload} onChange={v => set(k, v)} />
-          ))}
-          <p className={`${s.small} ${s.muted}`}>Printed for the client on a “Client choices” page, and in the Excel, with the next version you send (the Note stays inside BOE One). A choice never changes the price.</p>
-        </div>
-      )}
+      <div className={s.chBody}>
+        {CHOICE_KINDS.map(k => (
+          <ChoiceRow key={k} kind={k} v={choices?.[k]} editable={editable} url={url} onUpload={onUpload} onChange={v => set(k, v)} />
+        ))}
+        <p className={`${s.small} ${s.muted}`}>Fabric and finish are chosen here only; the Fabric and packing tab prices them. Printed for the client on a “Client choices” page, and in the Excel, with the next version you send (the Note stays inside BOE One). A choice never changes the price.</p>
+      </div>
     </div>
   )
 }

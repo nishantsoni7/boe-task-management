@@ -1,41 +1,41 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { ImagePlus } from 'lucide-react'
+import { ArrowDownToLine } from 'lucide-react'
 import { formatINR } from '@/lib/currency'
 import {
-  CHOICE_MAX, PACKING_TYPE_MAX, cleanCosting, costWaitingText, costingSums, lineCost,
+  PACKING_TYPE_MAX, cleanCosting, costWaitingText, costingSums, lineCost,
   type LineChoice, type LineCosting, type QuoteArea, type QuoteLine,
 } from '@/lib/quotations/math'
+import { tintStyle } from './areaTint'
 import { Pic } from './Pic'
 import s from './quotations.module.css'
 
 /**
- * The Fabric, finish and packing page of the builder (owner, 21 Nov 2026), laid out as a sheet like the Excel file: one row per product with its
- * picture. Fabric and packing are priced PER PIECE and multiplied by the product's quantity; finish has no price, only a code and a picture.
- * Everything here is the same data the client choices already hold (fabric source, name and code; finish code and picture) plus the line's
- * `costing` numbers, so the product row's Client choices panel and this page always agree. The two sums go into the totals on save.
+ * The Fabric and packing tab of the builder (owner, 21 Nov 2026; simplified 25 Nov 2026, version 2): one row per product WITH its picture, like
+ * the Excel file, and only the calculations. Fabric and finish are CHOSEN under each product (its Client choices); here the chosen fabric is
+ * shown under the product's name, read only, and priced: metres per piece × rupees per metre = fabric per piece, × quantity; packing per piece,
+ * × quantity. Finish has no price, so it is not here. The two sums go into the totals on save.
  */
 type Group = { area: QuoteArea | null; lines: QuoteLine[] }
-const SOURCES: ReadonlyArray<[LineChoice['source'], string]> = [['catalog', 'From our catalog'], ['client', 'Client’s own'], ['code', 'Client’s code, we source it']]
 const rupees = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 2 })
 
-/** A choice with nothing left in it goes away, so an emptied box leaves no "to confirm" behind. A source other than the default (catalog) is something the person picked, so it stays. */
-function tidy(c: LineChoice): LineChoice | undefined {
-  const has = (v?: string) => !!(v ?? '').trim()
-  return c.source !== 'catalog' || has(c.name) || has(c.code) || has(c.supplier) || has(c.used_for) || has(c.note) || c.photo ? c : undefined
+/** The chosen fabric in a few words: "Berlin velvet F18", "Client's own: linen", "Client's code RW-22, we source it". */
+export function fabricLine(f: LineChoice | undefined): string {
+  if (!f) return ''
+  const name = (f.name ?? '').trim(), code = (f.code ?? '').trim()
+  if (f.source === 'code') return `Client’s code${code ? ` ${code}` : ''}, we source it`
+  if (f.source === 'client') return `Client’s own${name ? `: ${name}` : ''}`
+  return [name, code].filter(Boolean).join(' ') || 'Not named yet'
 }
 
-export function CostingPage({ groups, areas, lines, editable, qtyOf, url, onChange, onUploadSwatch }: {
+export function CostingPage({ groups, areas, lines, editable, qtyOf, url, onChange }: {
   groups: Group[]; areas: QuoteArea[]; lines: QuoteLine[]; editable: boolean
   qtyOf: (key: string) => number; url: (path: string) => string
   onChange: (key: string, patch: Partial<QuoteLine>) => void
-  onUploadSwatch: (f: File) => Promise<string>
 }) {
   const [msg, setMsg] = useState('')
-  const fileFor = useRef<QuoteLine | null>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
-  // The newest copy of each line, for what finishes later (a picture upload): the row it started from may have been edited meanwhile.
+  // The newest copy of each line, for an edit that lands after another one in the same row.
   const latest = useRef(lines)
   useEffect(() => { latest.current = lines })
   const fresh = (l: QuoteLine): QuoteLine => latest.current.find(x => x.key === l.key) ?? l
@@ -43,110 +43,64 @@ export function CostingPage({ groups, areas, lines, editable, qtyOf, url, onChan
   const rows = groups.flatMap(g => g.lines)
   const first = rows[0]
 
-  const setChoice = (l: QuoteLine, kind: 'fabric' | 'finish', patch: Partial<LineChoice>) => {
-    const now = fresh(l)
-    const cur: LineChoice = now.choices?.[kind] ?? { source: 'catalog', status: 'to_confirm' }
-    const next = tidy({ ...cur, ...patch })
-    const choices = { ...now.choices }
-    if (next) choices[kind] = next; else delete choices[kind]
-    onChange(l.key, { choices })
-  }
   const setCosting = (l: QuoteLine, part: 'fabric' | 'packing', patch: Record<string, number | string | undefined>) => {
     const cur = fresh(l).costing ?? {}
     onChange(l.key, { costing: cleanCosting({ ...cur, [part]: { ...(cur[part] ?? {}), ...patch } } as LineCosting) })
   }
   const num = (t: string) => (t === '' ? undefined : Math.max(0, Number(t)))
 
-  const pickPicture = async (f: File | undefined) => {
-    const l = fileFor.current
-    if (!f || !l) return
-    setMsg('Uploading the picture…')
-    try { setChoice(l, 'finish', { photo: await onUploadSwatch(f) }); setMsg('Picture added. Save to keep it.') }
-    catch (e) { setMsg(e instanceof Error ? e.message : 'The picture could not be uploaded') }
-  }
-
-  // Excel's "fill down": the first row's pick goes to every other row. Metres per piece are not copied (they belong to each product); a copied choice starts as to confirm.
-  const fillDown = (what: 'fabric' | 'finish' | 'packing') => {
+  // Excel's "fill down" for the packing: the first row's packing type and price go to every other row.
+  const fillDown = () => {
     if (!first) return
     let n = 0
-    for (const l of rows.slice(1)) {
-      if (what === 'packing') { onChange(l.key, { costing: cleanCosting({ ...l.costing, packing: first.costing?.packing }) }) }
-      else {
-        const src = first.choices?.[what]
-        const choices = { ...l.choices }
-        if (src) choices[what] = { ...src, status: 'to_confirm', confirmed_on: undefined }; else delete choices[what]
-        onChange(l.key, what === 'fabric'
-          ? { choices, costing: cleanCosting({ ...l.costing, fabric: { ...(first.costing?.fabric?.rate !== undefined ? { rate: first.costing.fabric.rate } : {}), ...(l.costing?.fabric?.metres !== undefined ? { metres: l.costing.fabric.metres } : {}) } }) }
-          : { choices })
-      }
-      n++
-    }
-    setMsg(n ? `${what === 'fabric' ? 'Fabric' : what === 'finish' ? 'Finish' : 'Packing'} copied from ${first.name.trim() || 'the first product'} to ${n} other ${n === 1 ? 'product' : 'products'}.${what === 'fabric' ? ' Metres per piece were not copied.' : ''}` : '')
+    for (const l of rows.slice(1)) { onChange(l.key, { costing: cleanCosting({ ...l.costing, packing: first.costing?.packing }) }); n++ }
+    setMsg(n ? `Packing copied from ${first.name.trim() || 'the first product'} to ${n} other ${n === 1 ? 'product' : 'products'}.` : '')
   }
-
-  const fillHead = (what: 'fabric' | 'finish' | 'packing', label: string) => (
-    <th key={what} scope="col" className={s.cpPick}>{label}{editable && rows.length > 1 && <button type="button" className={s.cpFill} onClick={() => fillDown(what)} title={`Copy the first product's ${label.toLowerCase()} to every other product`}>Fill down</button>}</th>
-  )
 
   return (
     <div className={s.cpWrap}>
-      <p className={s.cpHelp}>One row per product. Fabric and packing are priced <b>per piece</b> and multiplied by the product&apos;s quantity; the totals below pick them up. Finish has only a code and a picture. The sheet scrolls sideways on a small screen, and the product stays in view.</p>
-      <input ref={fileRef} type="file" accept="image/*" hidden onChange={e => { void pickPicture(e.target.files?.[0]); e.target.value = '' }} />
+      <p className={s.cpHelp}>Fabric and finish are chosen under each product (Client choices). Here you price them: the fabric&apos;s metres and rate per metre, and packing, all <b>per piece</b> and multiplied by the product&apos;s quantity. The totals below pick them up.</p>
       <div className={s.cpScroll}>
         <table className={s.cpTable}>
+          <colgroup><col className={s.cpColProd} /><col className={s.cpColQty} /><col /><col /><col /><col className={s.cpColTot} /><col className={s.cpColType} /><col /><col className={s.cpColTot} /></colgroup>
           <thead>
             <tr>
-              <th scope="col" rowSpan={2} className={`${s.cpStick} ${s.cpHead}`}>Product</th>
+              <th scope="col" rowSpan={2} className={`${s.cpStick} ${s.cpHead}`}>Product and its fabric</th>
               <th scope="col" rowSpan={2} className={s.cpQtyH}>Qty</th>
-              <th scope="colgroup" colSpan={6} className={s.cpGrp}>Fabric</th>
-              <th scope="colgroup" colSpan={2} className={s.cpGrp}>Finish</th>
-              <th scope="colgroup" colSpan={2} className={s.cpGrp}>Packing</th>
-              <th scope="colgroup" colSpan={2} className={s.cpGrp}>Per piece × quantity</th>
+              <th scope="colgroup" colSpan={4} className={s.cpGrp}>Fabric</th>
+              <th scope="colgroup" colSpan={3} className={s.cpGrp}>Packing</th>
             </tr>
             <tr>
-              {fillHead('fabric', 'From')}
-              <th scope="col">Name</th><th scope="col">Code</th><th scope="col">Metres / pc</th><th scope="col">₹ / metre</th><th scope="col" className={s.cpCalcH}>Fabric ₹ / pc</th>
-              {fillHead('finish', 'Code')}<th scope="col">Picture</th>
-              {fillHead('packing', 'Type')}<th scope="col">Packing ₹ / pc</th>
-              <th scope="col" className={s.cpCalcH}>Extras ₹ / pc</th><th scope="col" className={s.cpCalcH}>Total × qty</th>
+              <th scope="col" className={s.cpCalcH}>Metres / pc</th><th scope="col" className={s.cpCalcH}>₹ / metre</th><th scope="col" className={s.cpCalcH}>Fabric / pc</th><th scope="col" className={s.cpCalcH}>Fabric × qty</th>
+              <th scope="col" className={s.cpPick}>Type{editable && rows.length > 1 && <button type="button" className={s.cpFill} onClick={fillDown} title="Fill down: copy the first product's packing to every other product" aria-label="Fill down the packing"><ArrowDownToLine size={14} aria-hidden /></button>}</th>
+              <th scope="col" className={s.cpCalcH}>Packing / pc</th><th scope="col" className={s.cpCalcH}>Packing × qty</th>
             </tr>
           </thead>
           <tbody>
             {groups.map((g, gi) => g.lines.length > 0 && [
-              g.area && <tr key={`a${gi}`} className={s.cpArea}><th scope="rowgroup" colSpan={13}>{g.area.name}{g.area.multiplier > 1 ? ` × ${g.area.multiplier} ${g.area.unit_label}` : ''}</th></tr>,
+              g.area && <tr key={`a${gi}`} className={s.cpArea} style={tintStyle(areas.findIndex(a => a.key === g.area!.key))}><th scope="rowgroup" colSpan={9}>{g.area.name}{g.area.multiplier > 1 ? ` × ${g.area.multiplier} ${g.area.unit_label}` : ''}</th></tr>,
               ...g.lines.map(l => {
                 const qty = qtyOf(l.key), c = lineCost(l, qty), label = l.name.trim() || 'this product'
-                const fab = l.choices?.fabric, fin = l.choices?.finish, cf = l.costing?.fabric, cp = l.costing?.packing
+                const fab = l.choices?.fabric, cf = l.costing?.fabric, cp = l.costing?.packing
                 const fabricPart = c.fabric.state === 'none' ? '—' : c.fabric.state === 'wait' ? 'Price to come' : c.fabric.state === 'metres' ? 'Add metres' : rupees(c.fabric.per)
-                const waiting = c.fabric.state === 'wait' || c.fabric.state === 'metres' || c.packing.state === 'wait'
-                const used = c.fabric.state !== 'none' || c.packing.state !== 'none'
+                const fabOk = c.fabric.state === 'ok', packOk = c.packing.state === 'ok'
                 return (
                   <tr key={l.key} id={`cost-${l.key}`}>
                     <th scope="row" className={`${s.cpStick} ${s.cpProd}`}>
                       <span className={s.cpProdBox}>
                         <span className={s.cpThumb}>{l.image_path ? <Pic className={s.cpThumbImg} src={url(l.image_path)} alt="" lazy /> : null}</span>
-                        <span><b>{l.name.trim() || 'Untitled product'}</b><small>{qty.toLocaleString('en-IN')} {qty === 1 ? 'piece' : 'pieces'}{l.is_optional ? ' · optional, not counted' : ''}</small></span>
+                        <span><b>{l.name.trim() || 'Untitled product'}</b><small>{qty.toLocaleString('en-IN')} {qty === 1 ? 'piece' : 'pieces'}{l.is_optional ? ' · optional, not counted' : ''}</small>
+                          <small className={s.cpFabric}>{fab ? fabricLine(fab) : 'No fabric chosen'}</small></span>
                       </span>
                     </th>
                     <td className={s.cpQty}>{qty.toLocaleString('en-IN')}</td>
-                    <td><select aria-label={`Where the fabric of ${label} comes from`} className={s.cpIn} value={fab?.source ?? 'catalog'} disabled={!editable} onChange={e => setChoice(l, 'fabric', { source: e.target.value as LineChoice['source'] })}>
-                      {SOURCES.map(([v, t]) => <option key={v} value={v}>{t}</option>)}
-                    </select></td>
-                    <td><input aria-label={`Fabric name for ${label}`} className={s.cpIn} maxLength={CHOICE_MAX.name} placeholder={fab?.source === 'client' ? 'Their fabric' : 'e.g. Berlin velvet'} value={fab?.name ?? ''} disabled={!editable} onChange={e => setChoice(l, 'fabric', { name: e.target.value })} /></td>
-                    <td><input aria-label={`Fabric code for ${label}`} className={s.cpIn} maxLength={CHOICE_MAX.code} placeholder={fab?.source === 'code' ? 'Their code' : 'F18'} value={fab?.code ?? ''} disabled={!editable} onChange={e => setChoice(l, 'fabric', { code: e.target.value })} /></td>
                     <td className={`${s.cpNum} ${c.fabric.state === 'metres' ? s.cpBad : ''}`}><input aria-label={`Metres of fabric per piece for ${label}`} className={`${s.cpIn} ${s.cpMoney}`} type="number" min={0} step={0.1} inputMode="decimal" placeholder="0" value={cf?.metres ?? ''} disabled={!editable} onChange={e => setCosting(l, 'fabric', { metres: num(e.target.value) })} /></td>
                     <td className={s.cpNum}><input aria-label={`Fabric price per metre for ${label}`} className={`${s.cpIn} ${s.cpMoney}`} type="number" min={0} inputMode="numeric" placeholder={fab?.source === 'client' ? 'No charge' : 'To come'} value={cf?.rate ?? ''} disabled={!editable} onChange={e => setCosting(l, 'fabric', { rate: num(e.target.value) })} /></td>
                     <td className={`${s.cpCalc} ${c.fabric.state === 'wait' || c.fabric.state === 'metres' ? s.cpWait : ''}`}>{c.fabric.state === 'ok' && !c.fabric.priced ? 'No charge' : fabricPart}</td>
-                    <td><input aria-label={`Finish code for ${label}`} className={s.cpIn} maxLength={CHOICE_MAX.code} placeholder="e.g. W-04" value={fin?.code ?? ''} disabled={!editable} onChange={e => setChoice(l, 'finish', { code: e.target.value })} /></td>
-                    <td className={s.cpPic}>
-                      {fin?.photo ? <button type="button" className={s.cpPicBtn} disabled={!editable} onClick={() => { fileFor.current = l; fileRef.current?.click() }} aria-label={`Replace the finish picture of ${label}`} title="Replace the picture"><Pic className={s.cpThumbImg} src={url(fin.photo)} alt="" lazy /></button>
-                        : <button type="button" className={s.cpAdd} disabled={!editable} onClick={() => { fileFor.current = l; fileRef.current?.click() }} aria-label={`Add a finish picture for ${label}`}><ImagePlus size={15} aria-hidden /> Add</button>}
-                      {fin?.photo && editable && <button type="button" className={s.cpDrop} onClick={() => setChoice(l, 'finish', { photo: null })} aria-label={`Remove the finish picture of ${label}`}>Remove</button>}
-                    </td>
+                    <td className={`${s.cpCalc} ${s.cpStrong}`}>{fabOk && c.fabric.priced ? formatINR(c.fabric.total) : '—'}</td>
                     <td><input aria-label={`Packing type for ${label}`} className={s.cpIn} maxLength={PACKING_TYPE_MAX} placeholder="e.g. Carton with foam" value={cp?.type ?? ''} disabled={!editable} onChange={e => setCosting(l, 'packing', { type: e.target.value })} /></td>
                     <td className={`${s.cpNum} ${c.packing.state === 'wait' ? s.cpBad : ''}`}><input aria-label={`Packing price per piece for ${label}`} className={`${s.cpIn} ${s.cpMoney}`} type="number" min={0} inputMode="numeric" placeholder="To come" value={cp?.per_piece ?? ''} disabled={!editable} onChange={e => setCosting(l, 'packing', { per_piece: num(e.target.value) })} /></td>
-                    <td className={s.cpCalc}>{used ? (c.per ? rupees(c.per) : waiting ? '—' : '₹0') : '—'}</td>
-                    <td className={`${s.cpCalc} ${s.cpStrong} ${waiting ? s.cpWait : ''}`}>{used ? `${formatINR(c.total)}${waiting ? ' +' : ''}` : '—'}</td>
+                    <td className={`${s.cpCalc} ${s.cpStrong}`}>{packOk ? formatINR(c.packing.total) : '—'}</td>
                   </tr>
                 )
               }),
@@ -155,12 +109,10 @@ export function CostingPage({ groups, areas, lines, editable, qtyOf, url, onChan
           <tfoot>
             <tr>
               <th scope="row" className={s.cpStick} colSpan={2}>All pieces</th>
-              <td colSpan={4} />
-              <td className={s.cpFoot}><b>{formatINR(sums.fabric)}</b><small>fabric × qty</small></td>
+              <td colSpan={3} />
+              <td className={s.cpFoot}><b>{formatINR(sums.fabric)}</b><small>all fabric</small></td>
               <td colSpan={2} />
-              <td />
-              <td className={s.cpFoot}><b>{formatINR(sums.packing)}</b><small>packing × qty</small></td>
-              <td /><td className={s.cpFoot}><b>{formatINR(sums.fabric + sums.packing)}</b><small>all extras</small></td>
+              <td className={s.cpFoot}><b>{formatINR(sums.packing)}</b><small>all packing</small></td>
             </tr>
           </tfoot>
         </table>

@@ -17,6 +17,7 @@ import '@/lib/testing/cssModuleStub'
 import { QuotationDocument, type DocData } from './QuotationDocument'
 import { LineRow } from './ProductLine'
 import { viewerItemsOf } from './PictureViewer'
+import { AREA_SUGGESTIONS, AREA_TINTS, tintStyle } from './areaTint'
 import { fetchQuotation, saveDoc, type Header, type Quotation } from '@/lib/quotations/api'
 import { sizeWithUnit, toDimensionUnit, type QuoteArea, type QuoteLine } from '@/lib/quotations/math'
 import { needsYou } from '@/lib/quotations/needsYou'
@@ -118,7 +119,7 @@ describe('the quotation reads and saves the new fields', () => {
 describe('a product line (layout B)', () => {
   const noop = () => {}
   const draw = (l: QuoteLine, extra: { unit?: 'in' | 'cm'; editable?: boolean } = {}) => renderToStaticMarkup(
-    <LineRow l={l} area={null} unit={extra.unit ?? 'in'} editable={extra.editable ?? true} qty={14} total={539000} first last url={p => `https://img.example/${p}`}
+    <LineRow l={l} n={4} area={null} unit={extra.unit ?? 'in'} editable={extra.editable ?? true} qty={14} total={539000} first last url={p => `https://img.example/${p}`}
       onChange={noop} onUpload={noop} onImprove={noop} onView={noop} onRemove={noop} onMove={noop} onDuplicate={noop} />)
   test('it has Remarks / customization and a Material box of the same height, no GST box and no note for the client', () => {
     const html = draw(line())
@@ -126,23 +127,38 @@ describe('a product line (layout B)', () => {
     assert.match(html, /<textarea[^>]*aria-label="Remarks \/ customization"[^>]*rows="3"/)
     assert.ok(!/Specification and customization|Note for the client|GST rate|aria-label="GST/i.test(html))
     assert.ok(html.includes('Price before GST'), 'the rupee sign is drawn inside the price box, not in the label')
+    assert.match(html, /<span class="clientTag" title="The client reads this">[\s\S]*?<span class="clientTagText">The client reads this<\/span>/, 'Remarks says the client reads it')
   })
-  test('the unit sits inside the dimensions box and in its label, and follows the quotation', () => {
-    assert.ok(draw(line()).includes('Dimensions (in)'))
+  test('the unit sits only inside the dimensions box (version 2: not in the label) and follows the quotation', () => {
+    const inches = draw(line())
+    assert.ok(inches.includes('<span>Dimensions</span>') && !inches.includes('Dimensions ('))
+    assert.ok(inches.includes('<span class="unitTag" aria-hidden="true">in</span>'))
     const cm = draw(line(), { unit: 'cm' })
-    assert.ok(cm.includes('Dimensions (cm)') && !cm.includes('Dimensions (in)'))
+    assert.ok(cm.includes('<span class="unitTag" aria-hidden="true">cm</span>') && !cm.includes('Dimensions ('))
+  })
+  test('feet and inches typed in an inches quotation are read back in inches under the box; a centimetre quotation reads nothing back', () => {
+    assert.match(draw(line({ size_text: `6'0" × 6'6"` })), /= (<!-- -->)?72 × 78(<!-- -->)? in/)
+    assert.ok(!/= (<!-- -->)?72 × 78/.test(draw(line({ size_text: `6'0" × 6'6"` }), { unit: 'cm' })))
+  })
+  test('the picture tile carries the product\'s running number', () => {
+    assert.match(draw(line({ image_path: 'u/p.jpg' })), /<span class="plNo" aria-hidden="true">4<\/span>/)
+    assert.match(draw(line()), /<button type="button" class="plPicEmpty" aria-label="Add a picture for Beds"><span class="plNo" aria-hidden="true">4<\/span>/)
   })
   test('the total shows the pieces; an optional product says it is not in the total', () => {
     assert.ok(draw(line()).includes('14 pieces'))
     assert.ok(draw(line({ is_optional: true })).includes('not in the total'))
   })
-  test('a picture opens the pop-up; Replace and Remove sit beside Improve picture; a product without one offers Add picture', () => {
+  test('a picture opens the pop-up; Improve, Replace and Remove are ONE row of icon buttons with Improve standing out; a product without one offers Add picture', () => {
     const withPic = draw(line({ image_path: 'u/p.jpg' }))
     assert.match(withPic, /aria-label="View the picture of Beds"/)
-    for (const w of ['Improve picture', 'Replace', 'Remove']) assert.ok(withPic.includes(w), w)
+    const acts = withPic.match(/<div class="plActs" role="group" aria-label="Picture">[\s\S]*?<\/div>/)?.[0] ?? ''
+    const labels = [...acts.matchAll(/<button[^>]*aria-label="([^"]+)"/g)].map(m => m[1])
+    assert.deepEqual(labels, ['Improve picture', 'Replace picture', 'Remove picture'])
+    assert.match(acts, /<button type="button" class="plAct plActMain"[^>]*aria-label="Improve picture"/)
+    assert.ok(!/class="(improve|plRm)"/.test(withPic), 'the old text links are gone')
     const none = draw(line())
-    assert.ok(none.includes('Add picture') && !none.includes('View the picture'))
-    assert.ok(!draw(line({ image_path: 'u/p.jpg' }), { editable: false }).includes('Replace'), 'read-only: no picture tools')
+    assert.ok(none.includes('Add picture') && none.includes('or paste (Ctrl+V)') && !none.includes('View the picture') && !none.includes('plActs'))
+    assert.ok(!draw(line({ image_path: 'u/p.jpg' }), { editable: false }).includes('plActs'), 'read-only: no picture tools')
   })
   test('the pop-up steps through the pictures in the order given, and skips products without one', () => {
     const items = viewerItemsOf([line({ key: 'a', name: 'Beds', image_path: 'x/1.jpg' }), line({ key: 'b', name: 'Lamp' }), line({ key: 'c', name: ' Table ', image_path: 'x/2.jpg', material: 'Acacia' })], 'cm')
@@ -171,12 +187,34 @@ describe('the "Needs you" strip', () => {
 
 describe('the builder page', () => {
   const SCREEN = read('src/components/quotations/BuilderScreen.tsx')
-  test('the right-hand column is gone: the quotation request and status on top, client beside share, products, totals, terms beside history, then the cards', () => {
+  test('the right-hand column is gone: the quotation request and status on top, products, totals, the client (below the totals since 25 Nov 2026), terms beside history, then the cards', () => {
     const at = (needle: string) => SCREEN.indexOf(needle)
-    const order = ['<RequestCard', '<TopPanel', '<ClientCard', 'id="q-products"', 'id="q-extra"', 'className={s.pair}', 'id="q-terms"', '<h2>History</h2>', 'className={s.bottom}'].map(at)
+    const order = ['<RequestCard', '<TopPanel', 'aria-label="Products and costing"', 'id="q-extra"', '<ClientCard', 'className={s.pair}', 'id="q-terms"', '<h2>History</h2>', 'className={s.bottom}'].map(at)
     assert.ok(order.every(i => i > 0), 'every section is on the page')
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
     assert.ok(!/\bs\.split\b|\bs\.sticky\b|Valid for \(days\)/.test(SCREEN), 'no side column, no Valid for box')
+  })
+  test('the Products card\'s head IS the two tabs, with the counts on them, and the tools on its right (version 2)', () => {
+    const head = SCREEN.slice(SCREEN.indexOf('className={s.tabHead}'), SCREEN.indexOf('id="q-tabpanel"'))
+    assert.match(head, /role="tablist" aria-label="Products and costing"/)
+    assert.match(head, /Products <span className=\{`\$\{s\.chip\} \$\{s\.tabChip\}`\}>\{lines\.length\} lines · \{totals\.pieces\.toLocaleString\('en-IN'\)\} pieces<\/span>/)
+    assert.match(head, /Fabric and packing\{costSums\.waiting\.length > 0 && <span[^>]*>\{costSums\.waiting\.length\} to price<\/span>\}/)
+    for (const w of ['Dimensions in', 'DIMENSION_UNITS.map', ' Add area', ' Import client file']) assert.ok(head.includes(w), w)
+    assert.ok(!SCREEN.includes('s.cpTabs') && !SCREEN.includes('id="q-products"') && !SCREEN.includes('Room type'), 'no separate tab strip, no second "Products" heading, no "Room type"')
+    const panel = SCREEN.slice(SCREEN.indexOf('id="q-tabpanel"'), SCREEN.indexOf('</section>', SCREEN.indexOf('id="q-tabpanel"')))
+    assert.ok(panel.includes('<CostingPage') && panel.includes('<LineRow'), 'Fabric and packing is drawn inside the same card')
+  })
+  test('areas (were room types) are optional, named "Area <n>" when added, tinted one by one, and each has its band, total and foot', () => {
+    assert.match(SCREEN, /name: `Area \$\{p\.length \+ 1\}`/)
+    for (const w of ['aria-label="Area name" list="q-area-names"', 'aria-label="Style"', '<span>Area total</span>', 'aria-label={`Remove area ${g.area.name}`}', 'Not in an area', 'Add product to {g.area.name.trim() || \'this area\'}', ' Add another area', ' Add product</button>', '<span>Products total</span>', '<datalist id="q-area-names">{AREA_SUGGESTIONS.map(']) assert.ok(SCREEN.includes(w), w)
+    assert.match(SCREEN, /className=\{g\.area \? s\.agroup : undefined\} style=\{g\.area \? tintStyle\(areas\.findIndex\(a => a\.key === g\.area!\.key\)\) : undefined\}/)
+    assert.match(SCREEN, /areas\.length\s*\? <button[^>]*onClick=\{addArea\}>[\s\S]*?Add another area<\/button>\s*: <button[^>]*onClick=\{\(\) => addLine\(null\)\}>/, 'the list foot adds an area once there are areas, a product while there are none')
+  })
+  test('each area gets the next light tint, round and round; the suggestions name common areas', () => {
+    assert.deepEqual(tintStyle(0), { '--area-tint': AREA_TINTS[0].tint, '--area-line': AREA_TINTS[0].line, '--area-strong': AREA_TINTS[0].strong })
+    assert.deepEqual(tintStyle(AREA_TINTS.length + 1), tintStyle(1))
+    assert.deepEqual(tintStyle(-1), tintStyle(AREA_TINTS.length - 1), 'never undefined, even for an area not found')
+    for (const n of ['Indoor', 'Outdoor', 'Private dining area']) assert.ok((AREA_SUGGESTIONS as readonly string[]).includes(n), n)
   })
   test('the Advanced client details are closed until opened and hold the fields the owner named', () => {
     assert.match(SCREEN, /const \[advOpen, setAdvOpen\] = useState\(false\)/)
@@ -198,7 +236,7 @@ describe('the builder page', () => {
   test('every class the quotation screens use is in the module stylesheet (a missing one fails silently, with no styling)', () => {
     const css = read('src/components/quotations/quotations.module.css')
     const defined = new Set([...css.matchAll(/\.([A-Za-z_][\w-]*)/g)].map(m => m[1]))
-    const files = ['BuilderScreen', 'TopPanel', 'LeadCard', 'AskCard', 'ClientCard', 'LeadTime', 'ProductLine', 'PictureViewer', 'RequestCard', 'PricingDesk', 'VersionsCard', 'ListScreen', 'ReportsScreen', 'ImportDialog', 'StudioDialog', 'QuotationLinks', 'RequestsScreen']
+    const files = ['BuilderScreen', 'TopPanel', 'LeadCard', 'AskCard', 'ClientCard', 'LeadTime', 'ProductLine', 'ChoicesPanel', 'LeadBrief', 'PictureViewer', 'RequestCard', 'PricingDesk', 'VersionsCard', 'ListScreen', 'ReportsScreen', 'ImportDialog', 'StudioDialog', 'QuotationLinks', 'RequestsScreen']
     for (const f of files) {
       const used = [...new Set([...read(`src/components/quotations/${f}.tsx`).matchAll(/\bs\.([A-Za-z_]\w*)/g)].map(m => m[1]))]
       assert.deepEqual(used.filter(c => !defined.has(c)), [], `${f}.tsx uses a class that quotations.module.css does not define`)

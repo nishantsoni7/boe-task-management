@@ -8,13 +8,10 @@ import { fetchLibrary, fetchRework, photoUrl, trainingKeys, type ReworkAsk } fro
 import { lineWood, pickedCaseNo } from '@/lib/pricing/training/match'
 import { sendFeedback, type FeedbackDoc } from '@/lib/pricing/learning/api'
 import type { DiffersReport } from '@/components/pricing/training/TaughtPrice'
-import { Check, ChevronRight, FileUp, Plus, Save, Trash2, X } from 'lucide-react'
-import { draftDetailHref } from '@/lib/orders/draftsView'
+import { Check, ChevronRight, FileUp, LayoutGrid, Plus, Save, Trash2, X } from 'lucide-react'
 import { saveProblem } from '@/lib/quotations/saveCheck'
 import { fetchVersions, issuedAt } from '@/lib/quotations/versions'
 import { askBeforeLeaving } from '@/lib/navigation/leaveGuard'
-import { conversionProblems } from '@/lib/quotations/piWorkbook'
-import { extrasLeftOutText, makePiDraft, type PiStage } from '@/lib/quotations/toPiDraft'
 import { stateOfCity } from '@/lib/quotations/cities'
 import { QuotationsLayout } from '@/components/layout/QuotationsLayout'
 import { ModulePageSkeleton } from '@/components/layout/ModulePageSkeleton'
@@ -48,6 +45,7 @@ import { CostingPage } from './CostingPage'
 import { effectiveLeadTime } from './LeadTime'
 import { TopPanel, LOCKED } from './TopPanel'
 import { ClientCard } from './ClientCard'
+import { AREA_SUGGESTIONS, tintStyle } from './areaTint'
 import { PictureViewer, viewerItemsOf } from './PictureViewer'
 import { MyDetailsReminder } from './MyDetails'
 import { productType } from '@/lib/pricing/features'
@@ -92,15 +90,12 @@ export default function BuilderScreen() {
   const [dirty, setDirty] = useState(false)
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState<Msg>(null)
-  const [lostNote, setLostNote] = useState<string | null>(null)
-  const [lostReason, setLostReason] = useState('')
   const [busy, setBusy] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [piStage, setPiStage] = useState<PiStage | null>(null)
   const [studioFor, setStudioFor] = useState<string | null>(null)
   const [viewing, setViewing] = useState<string | null>(null)
   const [advOpen, setAdvOpen] = useState(false)
-  // Products, or the Fabric, finish and packing page (21 Nov 2026); both edit the same lines.
+  // Products, or the Fabric and packing sheet (21 Nov 2026); both edit the same lines.
   const [tab, setTab] = useState<'products' | 'costing'>('products')
   // The price brief (20 Nov 2026): asked of the owner / pricing desk when they send a quotation back or share it; always optional.
   const [briefing, setBriefing] = useState(false)
@@ -248,25 +243,6 @@ export default function BuilderScreen() {
   }
   const moveTo = (status: QuotationStatus, note?: string, reason?: string) => act(() => setStatusRpc(supabase, id, status, note, reason), `Marked ${STATUS_LABEL[status]}.`)
 
-  // Confirm → PI draft, from the SAVED quotation (the button waits for Save).
-  const confirmToPi = async () => {
-    if (!base || busy) return
-    setBusy(true); setMsg(null)
-    try {
-      // The database confirms only a Sent or Negotiating quotation: a Draft goes to Negotiating first (its history says so).
-      if (base.status === 'draft') await setStatusRpc(supabase, id, 'negotiating')
-      const r = await makePiDraft(supabase, base, setPiStage)
-      // Some of the client's extra pictures did not fit: say so here (and stay) rather than lose the note on the way to the draft.
-      if (!r.linkError && !r.extrasLeftOut) { router.push(draftDetailHref(r.submissionId)); return }
-      setMsg({ tone: 'warn', text: r.linkError
-        ? `The PI draft was made (Orders → PI Drafts), but this quotation could not be linked to it: ${r.linkError}`
-        : `The PI draft was made (Orders → PI Drafts). ${extrasLeftOutText(r.extrasLeftOut)}` })
-      await quoteQ.refetch()
-    } catch (e) {
-      setMsg({ tone: 'bad', text: errorText(e) })
-      void quoteQ.refetch() // a draft may already be Negotiating
-    } finally { setBusy(false); setPiStage(null) }
-  }
 
   const layout = (title: string, body: React.ReactNode, subtitle?: string, actions?: React.ReactNode) => (
     <QuotationsLayout profile={profile} access={access} onSignOut={signOut} title={title} subtitle={subtitle} actions={actions} contentMaxWidth={1360}>{body}</QuotationsLayout>
@@ -339,10 +315,11 @@ export default function BuilderScreen() {
   const unit = h.dimension_unit
   const viewerItems = viewerItemsOf(groups.flatMap(g => g.lines), unit)
   const viewerAt = viewing ? viewerItems.findIndex(x => x.key === viewing) : -1
-  // Confirm → PI draft lives in the top panel (the PI draft card is gone, owner 18 Nov 2026). It works on the SAVED quotation. A Draft can be confirmed
-  // too (owner, 24 Nov 2026: Mark sent and Negotiating are gone); the database confirms only a Sent or Negotiating one, so confirmToPi moves a draft first.
-  const piProblems = conversionProblems(base.areas, base.lines)
-  const canConfirm = base.may_edit && !base.pi && (base.status === 'draft' || base.status === 'sent' || base.status === 'negotiating')
+  // The running number of each product on the page (its badge), area after area as the page shows them.
+  const lineNo = new Map(groups.flatMap(g => g.lines).map((l, i) => [l.key, i + 1] as const))
+  const addLine = (areaKey: string | null) => { setLines(p => [...p, blankLine(areaKey, startRate)]); touch() }
+  // An area starts with one empty product, as a room type did.
+  const addArea = () => { const k = newKey(); setAreas(p => [...p, { key: k, name: `Area ${p.length + 1}`, style: '', multiplier: 1, unit_label: 'rooms' }]); setLines(p => [...p, blankLine(k, startRate)]); touch() }
   // A city the list knows fills in the state, and with it the tax; any other city leaves the state as it is.
   const setCity = (v: string) => {
     const st = stateOfCity(v)
@@ -368,84 +345,105 @@ export default function BuilderScreen() {
       {/* until the owner has filled in the details their quotations print (20270801000000) */}
       {base.may_edit && profile?.id === base.owner_id && <MyDetailsReminder supabase={supabase} />}
       {!base.may_edit && <div className={s.notice}>You can read this quotation. Only its owner, or someone with Edit and See all, can change it.</div>}
-      {base.may_edit && LOCKED.includes(base.status) && <div className={`${s.notice} ${s.noticeWarn}`}>This quotation is {STATUS_LABEL[base.status].toLowerCase()} and cannot be changed. {base.status !== 'confirmed' || access.admin ? 'Reopen it from the Status card to edit.' : 'Only an administrator can reopen it.'}</div>}
+      {base.may_edit && LOCKED.includes(base.status) && (
+        <div className={`${s.notice} ${s.noticeWarn}`}><div className={s.row}>
+          <span>This quotation is {STATUS_LABEL[base.status].toLowerCase()} and cannot be changed.{base.status === 'confirmed' && !access.admin ? ' Only an administrator can reopen it.' : ''}</span>
+          {(base.status !== 'confirmed' || access.admin) && <button type="button" className={`${s.btn} ${s.btnSm}`} disabled={busy} onClick={() => moveTo('negotiating')}>Reopen</button>}
+        </div></div>
+      )}
 
       {briefing && <PriceBrief supabase={supabase} quotationId={id} lines={lines} onClose={n => { setBriefing(false); if (n > 0) setMsg({ tone: 'ok', text: `Saved the price brief for ${n} product${n === 1 ? '' : 's'}.` }) }} />}
       {deleting && <DeleteQuotationDialog supabase={supabase} onClose={() => setDeleting(false)}
         target={{ id, quote_no: base.quote_no, client_name: h.client_name, project_name: h.project_name || null, status: base.status }}
         onDeleted={() => { dirtyRef.current = false; router.push('/quotations') }} />}
 
-      {/* the top panel (owner-approved mockup, 24 Nov 2026): the request when there is one, then ONE card of slim rows (Lead, Senior, Share and the next step) */}
+      {/* the top panel (owner, 25 Nov 2026, version 2): the request when there is one, then ONE card of slim rows (Status from the lead, Lead, Senior, Share) */}
       <div className={s.topStack}>
         {profile && <RequestCard id={REQUEST_CARD_ID} supabase={supabase} base={base} userId={profile.id} dirty={dirty} onDone={text => { setMsg({ tone: 'ok', text }); quoteQ.refetch() }} />}
-        <TopPanel supabase={supabase} id={id} base={base} dirty={dirty} busy={busy} isAdmin={access.admin} canConfirm={canConfirm} piProblems={piProblems} piStage={piStage}
+        <TopPanel supabase={supabase} id={id} base={base} dirty={dirty} busy={busy}
           lineCount={lines.length} phone={h.contact_phone} waText={waText} copied={copied}
           markOn={markQ.data} onMark={on => act(async () => { await setPictureMark(supabase, id, on); qc.setQueryData(pictureMarkKey(id), on) }, on ? 'The Best of Exports logo is on the pictures.' : 'The pictures are clean, without the logo.')}
-          lostNote={lostNote} setLostNote={setLostNote} lostReason={lostReason} setLostReason={setLostReason} onMove={moveTo} onConfirm={confirmToPi}
           onCopy={copy} onExcel={downloadExcel} onShare={on => act(async () => { await shareQuotation(supabase, id, on); if (on && isDesk) setBriefing(true) }, on ? 'The client link is on.' : 'The client link is off.')}
           canDelete={delQ.data?.may === true} onDelete={() => setDeleting(true)}
           onChanged={() => { quoteQ.refetch() }} onSentBack={() => { if (isDesk) setBriefing(true) }} />
       </div>
 
-      <ClientCard h={h} areas={areas} editable={editable} advOpen={advOpen} onAdv={() => setAdvOpen(o => !o)} onField={updH}
-        onPatch={patch => { setH(p => (p ? { ...p, ...patch } : p)); touch() }} onCity={setCity} onState={setState} />
-
-      {/* Products, or the page where fabric, finish and packing are priced per piece (21 Nov 2026) */}
-      <div className={s.cpTabs} role="tablist" aria-label="Products and costing">
-        <button type="button" role="tab" id="q-tab-products" aria-selected={tab === 'products'} className={s.cpTab} onClick={() => setTab('products')}>Products</button>
-        <button type="button" role="tab" id="q-tab-costing" aria-selected={tab === 'costing'} className={s.cpTab} onClick={() => setTab('costing')}>
-          Fabric, finish and packing{costSums.waiting.length > 0 ? ` · ${costSums.waiting.length} to price` : ''}
-        </button>
-      </div>
-      {tab === 'costing' && (
-        <section className={s.card} aria-labelledby="q-costing">
-          <div className={s.cardHead}><h2 id="q-costing">Fabric, finish and packing</h2><span className={s.chip}>{lines.length} {lines.length === 1 ? 'product' : 'products'}</span></div>
-          <CostingPage groups={groups} areas={areas} lines={lines} editable={editable} qtyOf={k => totals.lineQty[k] ?? 0} url={picSrc}
-            onChange={(key, patch) => updLine(key, patch)}
-            onUploadSwatch={f => (profile ? uploadPicture(supabase, profile.id, f) : Promise.reject(new Error('Sign in again to add a picture')))} />
-        </section>
-      )}
-
-      <section className={s.card} aria-labelledby="q-products" hidden={tab !== 'products'}>
-        <div className={s.cardHead}>
-          <h2 id="q-products">Products</h2><span className={s.chip}>{lines.length} lines · {totals.pieces.toLocaleString('en-IN')} pieces</span>
-          <span className={`${s.chip} ${s.phoneOnly}`}>Total {formatINR(totals.grand)}</span><span className={s.spacer} />
-          <span className={s.segLab} id="q-unit-label">Dimensions in</span>
-          <span className={s.seg} role="group" aria-labelledby="q-unit-label">
-            {DIMENSION_UNITS.map(u => (
-              <button key={u.value} type="button" aria-pressed={unit === u.value} disabled={!editable} onClick={() => unit !== u.value && updH('dimension_unit', u.value)}>{u.label}</button>
-            ))}
-          </span>
-          {editable && <button className={`${s.btn} ${s.btnSm}`} onClick={() => { const k = newKey(); setAreas(p => [...p, { key: k, name: `Room type ${p.length + 1}`, style: '', multiplier: 1, unit_label: 'rooms' }]); setLines(p => [...p, blankLine(k, startRate)]); touch() }}><Plus size={14} aria-hidden /> Room type</button>}
-          {editable && profile && <button className={`${s.btn} ${s.btnSm} ${base?.request && !lines.some(l => l.name.trim()) ? s.btnPrimary : ''}`} onClick={() => setImporting(true)}><FileUp size={14} aria-hidden /> Import client file</button>}
-        </div>
-        {groups.map((g, gi) => (g.area || g.lines.length > 0 || areas.length === 0) && (
-          <div key={g.area?.key ?? `none${gi}`}>
-            <div className={s.areaHead}>
-              {g.area ? (
-                <>
-                  <input aria-label="Room type name" className={s.input} style={{ maxWidth: 220, fontWeight: 700 }} value={g.area.name} onChange={e => updArea(g.area!.key, { name: e.target.value })} disabled={!editable} />
-                  <input aria-label="Style" className={s.input} style={{ maxWidth: 150 }} placeholder="Style (e.g. Boho)" value={g.area.style} onChange={e => updArea(g.area!.key, { style: e.target.value })} disabled={!editable} />
-                  <span className={s.small}>×</span>
-                  <input aria-label={`Number of ${g.area.unit_label}`} className={`${s.input} ${s.mult}`} type="number" min={1} value={g.area.multiplier || ''} onChange={e => updArea(g.area!.key, { multiplier: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} disabled={!editable} />
-                  <input aria-label="Unit" className={s.input} style={{ maxWidth: 90 }} value={g.area.unit_label} onChange={e => updArea(g.area!.key, { unit_label: e.target.value })} onBlur={e => { if (!e.target.value.trim()) updArea(g.area!.key, { unit_label: 'rooms' }) }} disabled={!editable} />
-                </>
-              ) : <b>{areas.length ? 'Not in a room type' : 'Products'}</b>}
-              <span className={s.spacer} />
-              <b className={s.num}>{formatINR(totals.areaTotal[g.area?.key ?? ''] ?? 0)}</b>
-              {editable && <button className={`${s.btn} ${s.btnSm}`} onClick={() => { setLines(p => [...p, blankLine(g.area?.key ?? null, startRate)]); touch() }}><Plus size={14} aria-hidden /> Product</button>}
-              {editable && g.area && <button className={s.iconBtn} onClick={() => removeArea(g.area!.key)} aria-label={`Remove room type ${g.area.name}`} title="Remove the room type (its products stay, outside any room type)"><Trash2 size={15} /></button>}
-            </div>
-            {g.lines.map((l, li) => (
-              <LineRow key={l.key} l={l} area={g.area} unit={unit} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
-                first={li === 0} last={li === g.lines.length - 1} url={picSrc}
-                onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onUploadSwatch={f => (profile ? uploadPicture(supabase, profile.id, f) : Promise.reject(new Error("Sign in again to add a picture")))} onImprove={() => setStudioFor(l.key)} onView={() => setViewing(l.key)}
-                hint={suggestOn ? hintFor.get(l.name.trim()) : undefined} model={suggestOn ? modelFor.get(l.key) : null} taught={suggestOn ? taught : undefined} onRemove={() => removeLine(l.key)}
-                feedbackCtx={seesWhy ? { clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) } : undefined}
-                onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
-            ))}
+      {/* Products and the Fabric and packing sheet: ONE card whose head is the two tabs (owner, 25 Nov 2026: the separate tab strip and the
+          card's own "Products" heading read as two headings). Areas (were "room types") are optional and each gets a light tint of its own. */}
+      <section className={`${s.card} ${s.tabCard}`} aria-label="Products and costing">
+        <div className={s.tabHead}>
+          <div className={s.tabs2} role="tablist" aria-label="Products and costing">
+            <button type="button" role="tab" id="q-tab-products" aria-controls="q-tabpanel" aria-selected={tab === 'products'} className={s.tab2} onClick={() => setTab('products')}>
+              Products <span className={`${s.chip} ${s.tabChip}`}>{lines.length} lines · {totals.pieces.toLocaleString('en-IN')} pieces</span>
+            </button>
+            <button type="button" role="tab" id="q-tab-costing" aria-controls="q-tabpanel" aria-selected={tab === 'costing'} className={s.tab2} onClick={() => setTab('costing')}>
+              Fabric and packing{costSums.waiting.length > 0 && <span className={`${s.chip} ${s.chWait}`}>{costSums.waiting.length} to price</span>}
+            </button>
           </div>
-        ))}
+          {tab === 'products' ? (
+            <div className={s.tabTools}>
+              <span className={s.segLab} id="q-unit-label">Dimensions in</span>
+              <span className={s.seg} role="group" aria-labelledby="q-unit-label">
+                {DIMENSION_UNITS.map(u => (
+                  <button key={u.value} type="button" aria-pressed={unit === u.value} disabled={!editable} onClick={() => unit !== u.value && updH('dimension_unit', u.value)}>{u.label}</button>
+                ))}
+              </span>
+              {editable && <button className={`${s.btn} ${s.btnSm}`} onClick={addArea}><LayoutGrid size={14} aria-hidden /> Add area</button>}
+              {editable && profile && <button className={`${s.btn} ${s.btnSm} ${base?.request && !lines.some(l => l.name.trim()) ? s.btnPrimary : ''}`} onClick={() => setImporting(true)}><FileUp size={14} aria-hidden /> Import client file</button>}
+            </div>
+          ) : <div className={s.tabTools}><span className={`${s.small} ${s.muted}`}>Added to the totals below</span></div>}
+        </div>
+        <div id="q-tabpanel" role="tabpanel" aria-labelledby={tab === 'products' ? 'q-tab-products' : 'q-tab-costing'}>
+          {tab === 'costing' ? (
+            <CostingPage groups={groups} areas={areas} lines={lines} editable={editable} qtyOf={k => totals.lineQty[k] ?? 0} url={picSrc}
+              onChange={(key, patch) => updLine(key, patch)} />
+          ) : (
+            <>
+              {groups.map((g, gi) => (g.area || g.lines.length > 0) && (
+                <div key={g.area?.key ?? `none${gi}`} className={g.area ? s.agroup : undefined} style={g.area ? tintStyle(areas.findIndex(a => a.key === g.area!.key)) : undefined}>
+                  {g.area ? (
+                    <div className={s.areaBand}>
+                      <span className={s.areaDot} aria-hidden />
+                      <input aria-label="Area name" list="q-area-names" className={`${s.input} ${s.areaName}`} placeholder="Area, e.g. Outdoor" value={g.area.name} onChange={e => updArea(g.area!.key, { name: e.target.value })} disabled={!editable} />
+                      <input aria-label="Style" className={`${s.input} ${s.areaStyle}`} placeholder="Style (optional)" value={g.area.style} onChange={e => updArea(g.area!.key, { style: e.target.value })} disabled={!editable} />
+                      <span className={s.small} aria-hidden>×</span>
+                      <span className={s.areaCount}>
+                        <input aria-label={`Number of ${g.area.unit_label}`} className={s.areaMult} type="number" min={1} value={g.area.multiplier || ''} onChange={e => updArea(g.area!.key, { multiplier: Math.max(0, Math.floor(Number(e.target.value) || 0)) })} disabled={!editable} />
+                        <input aria-label="Of what (rooms, areas, floors)" className={s.areaUnit} value={g.area.unit_label} onChange={e => updArea(g.area!.key, { unit_label: e.target.value })} onBlur={e => { if (!e.target.value.trim()) updArea(g.area!.key, { unit_label: 'rooms' }) }} disabled={!editable} />
+                      </span>
+                      <span className={s.atot}><span>Area total</span><b className={s.num}>{formatINR(totals.areaTotal[g.area.key] ?? 0)}</b></span>
+                      {editable && <button className={s.iconBtn} onClick={() => removeArea(g.area!.key)} aria-label={`Remove area ${g.area.name}`} title="Remove the area (its products stay, outside any area)"><Trash2 size={15} /></button>}
+                    </div>
+                  ) : areas.length > 0 ? (
+                    <div className={s.areaBand}>
+                      <b className={s.areaNone}>Not in an area</b>
+                      <span className={s.atot}><span>Total</span><b className={s.num}>{formatINR(totals.areaTotal[''] ?? 0)}</b></span>
+                      {editable && <button className={`${s.btn} ${s.btnSm}`} onClick={() => addLine(null)}><Plus size={14} aria-hidden /> Add product</button>}
+                    </div>
+                  ) : null}
+                  {g.lines.map((l, li) => (
+                    <LineRow key={l.key} l={l} n={lineNo.get(l.key) ?? li + 1} area={g.area} unit={unit} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
+                      first={li === 0} last={li === g.lines.length - 1} url={picSrc}
+                      onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onUploadSwatch={f => (profile ? uploadPicture(supabase, profile.id, f) : Promise.reject(new Error("Sign in again to add a picture")))} onImprove={() => setStudioFor(l.key)} onView={() => setViewing(l.key)}
+                      hint={suggestOn ? hintFor.get(l.name.trim()) : undefined} model={suggestOn ? modelFor.get(l.key) : null} taught={suggestOn ? taught : undefined} onRemove={() => removeLine(l.key)}
+                      feedbackCtx={seesWhy ? { clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) } : undefined}
+                      onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
+                  ))}
+                  {g.area && editable && (
+                    <div className={s.listFoot}><button type="button" className={s.addLine} onClick={() => addLine(g.area!.key)}><Plus size={15} aria-hidden /> Add product to {g.area.name.trim() || 'this area'}</button></div>
+                  )}
+                </div>
+              ))}
+              <div className={s.listFoot}>
+                {editable && (areas.length
+                  ? <button type="button" className={s.addLine} onClick={addArea}><Plus size={15} aria-hidden /> Add another area</button>
+                  : <button type="button" className={s.addLine} onClick={() => addLine(null)}><Plus size={15} aria-hidden /> Add product</button>)}
+                <span className={s.listTotal}><span>Products total</span><b className={s.num}>{formatINR(totals.subtotal)}</b></span>
+              </div>
+              <datalist id="q-area-names">{AREA_SUGGESTIONS.map(n => <option key={n} value={n} />)}</datalist>
+            </>
+          )}
+        </div>
       </section>
 
       <section className={s.card} aria-labelledby="q-extra">
@@ -475,6 +473,10 @@ export default function BuilderScreen() {
           </div>
         </div>
       </section>
+
+      {/* the Client, below the totals (owner, 25 Nov 2026) */}
+      <ClientCard h={h} areas={areas} editable={editable} advOpen={advOpen} onAdv={() => setAdvOpen(o => !o)} onField={updH}
+        onPatch={patch => { setH(p => (p ? { ...p, ...patch } : p)); touch() }} onCity={setCity} onState={setState} />
 
       <div className={s.pair}>
       <section className={s.card} aria-labelledby="q-terms">

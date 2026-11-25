@@ -1,105 +1,98 @@
 /**
- * The builder's top panel (owner, 24 Nov 2026, from an approved mockup): the Share row with the next step, the Lost box and the amber row, drawn for
- * real from their props, one state at a time. There is no four-step tracker and no Mark sent / Negotiating: the lead's stage is the status
- * (leadCard.dom.test.tsx). The ⋯ menu and the price block that is no longer drawn are driven in statusMore.dom.test.tsx.
+ * The builder's top panel, version 2 (owner, 25 Nov 2026): a Status row, the Lead row, the Senior row and the Share row, drawn for real from their
+ * props, one state at a time. Nothing in the panel changes a status any more: Confirm → PI draft, the amber "what is missing" row, Confirmed no PI,
+ * Mark as lost, Archive, the Lost box and Reopen are gone (a PI draft is made in Lead Management; Reopen sits in the builder's lock notice).
+ * With a lead the Status row is the lead's stage (leadCard.dom.test.tsx); here the database answers nothing, so it shows the quotation's own.
+ * The ⋯ menu is driven in statusMore.dom.test.tsx.
  *
  * Run: npm run test:file -- src/components/quotations/topRow.test.tsx
  */
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { renderToStaticMarkup } from 'react-dom/server'
 import '@/lib/testing/cssModuleStub'
 import { waitsFor } from './TopPanel'
 import { panel, quote, type PanelOver } from './topPanel.testkit'
 import type { QuotationStatus } from '@/lib/quotations/api'
-import type { ConversionProblem } from '@/lib/quotations/piWorkbook'
 
+const ALL: QuotationStatus[] = ['draft', 'sent', 'negotiating', 'confirmed', 'lost', 'archived']
 const names = (n: number) => Array.from({ length: n }, (_, i) => `Chair ${i + 1}`)
 const draw = (base: ReturnType<typeof quote>, o: PanelOver = {}) => renderToStaticMarkup(panel(base, o))
 const button = (html: string, label: string) => html.match(new RegExp(`<button[^>]*>(?:(?!</button>).)*${label}[^<]*</button>`))?.[0] ?? null
-const READY: PanelOver = { canConfirm: true }
+/** One row of the panel, by its group name. */
+const row = (html: string, name: string) => {
+  const at = html.indexOf(`aria-label="${name}"`)
+  const next = html.indexOf('role="group"', at + 1)
+  return at < 0 ? '' : html.slice(at, next < 0 ? undefined : next)
+}
 
-describe('the lead is the status: nothing of the old tracker is left', () => {
-  test('no four-step tracker, no Mark sent, no Negotiating button, whatever the quotation\'s own status', () => {
-    for (const status of ['draft', 'sent', 'negotiating', 'confirmed', 'lost', 'archived'] as QuotationStatus[]) {
-      const html = draw(quote({ status }), READY)
-      assert.ok(!html.includes('<ol') && !html.includes('Mark sent') && !html.includes('>Negotiating<') && !html.includes('Where the quotation is'), status)
+describe('the Status row: with no lead to follow, the quotation\'s own status, read only', () => {
+  test('every status shows as its pill, with how to follow the lead\'s status instead; there is no button in the row', () => {
+    for (const status of ALL) {
+      const st = row(draw(quote({ status })), 'Status')
+      assert.ok(st.includes(`pill st_${status}`), status)
+      assert.match(st, /Link a lead to follow its status here\./, status)
+      assert.ok(!st.includes('<button') && !st.includes('Open in Lead Management'), status)
     }
   })
-  test('the quotation\'s own status shows only once it has left the usual path (Confirmed, Lost or Archived)', () => {
-    for (const status of ['draft', 'sent', 'negotiating'] as QuotationStatus[]) assert.ok(!draw(quote({ status })).includes('pill st_'), status)
-    for (const status of ['confirmed', 'lost', 'archived'] as QuotationStatus[]) assert.ok(draw(quote({ status })).includes(`pill st_${status}`), status)
+  test('the Status row comes first and the Share row last; the quotation\'s pill is no longer in the Share row', () => {
+    const html = draw(quote({ status: 'lost' }))
+    assert.ok(html.indexOf('aria-label="Status"') < html.indexOf('aria-label="Share"'))
+    assert.ok(!row(html, 'Share').includes('pill st_'))
+  })
+  test('with no lead information there is no Lead row (it needs the database\'s answer)', () => {
+    assert.ok(!draw(quote()).includes('aria-label="Lead"'))
+  })
+})
+
+describe('nothing in the panel changes a status any more', () => {
+  test('no Confirm → PI draft, no Confirmed no PI, Mark as lost, Archive, Lost box or Reopen, whatever the status and whoever looks', () => {
+    for (const status of ALL) {
+      for (const may_edit of [true, false]) {
+        const html = draw(quote({ status, may_edit }))
+        for (const w of ['Confirm → PI', 'Confirmed, no PI', 'Mark as lost', 'Mark lost', 'Archive<', 'Why was it lost', 'Reopen', 'Mark sent', '<ol', '<select'])
+          assert.ok(!html.includes(w), `${status} ${may_edit}: ${w}`)
+      }
+    }
+  })
+  test('no amber "what is missing" row: the panel is not told what a PI would need', () => {
+    const html = draw(quote({ status: 'sent' }))
+    assert.ok(!html.includes('before this can become a PI') && !html.includes('hintBody') && !html.includes('Show which'))
+  })
+  test('the "what Orders still needs" line is still exported from the panel, worded for one product, for none, and for several things at once', () => {
+    assert.equal(waitsFor([{ code: 'NAME_MISSING', lines: ['Line 3'] }]), '1 product needs a name before this can become a PI.')
+    assert.equal(waitsFor([{ code: 'NO_LINES', lines: [] }]), 'Add at least one product that is not optional.')
+    assert.equal(waitsFor([{ code: 'PRICE_MISSING', lines: names(2) }, { code: 'PICTURE_MISSING', lines: names(1) }]), '2 things to fix before this can become a PI.')
   })
 })
 
 describe('the Share row: what can be done', () => {
-  test('a draft, a sent and a negotiating quotation each offer Confirm → PI draft (the main button) when it is ready; nothing is missing, so it is on', () => {
-    for (const status of ['draft', 'sent', 'negotiating'] as QuotationStatus[]) {
-      const html = draw(quote({ status }), READY)
-      assert.ok(button(html, 'Confirm → PI draft')?.includes('btnPrimary'), status)
-      assert.doesNotMatch(button(html, 'Confirm → PI draft') ?? '', /disabled/, status)
-      assert.match(html, /title="Makes a PI draft in Orders from the saved quotation\. Nothing is sent to anyone: the PI stays a Draft until you submit it there\."/)
-    }
-    assert.ok(!draw(quote(), {}).includes('Confirm → PI draft'), 'the page decides when Confirm is offered')
+  test('a PI draft made from the quotation shows its reference and state beside Open the PI draft (the main button); none, none', () => {
+    const html = draw(quote({ status: 'confirmed', pi: { id: 'p1', draft_reference: 'DR-1042', status: 'under_review' } as never }))
+    const share = row(html, 'Share')
+    assert.match(share, /PI draft <b>DR-1042<\/b> · under review/)
+    assert.match(share, /<a class="btn btnPrimary pnext" href="[^"]*p1[^"]*">/)
+    assert.match(share, /Open the PI draft/)
+    for (const status of ALL) assert.ok(!draw(quote({ status })).includes('PI draft'), status)
   })
-  test('while Confirm waits: it is off, one amber row says what is missing, six names show and the rest are counted', () => {
-    const problems: ConversionProblem[] = [{ code: 'PRICE_MISSING', lines: names(15) }]
-    const html = draw(quote({ status: 'sent' }), { canConfirm: true, piProblems: problems })
-    assert.match(button(html, 'Confirm → PI draft') ?? '', /disabled/)
-    assert.match(html, /15 products need a price above ₹0 before this can become a PI\./)
-    assert.match(html, /Show which/)
-    assert.equal((html.match(/<span class="chip">Chair \d+<\/span>/g) ?? []).length, 6)
-    assert.match(html, /<span class="chip">\+ 9 more<\/span>/)
-  })
-  test('the amber row draws only while Confirm is offered and something is missing', () => {
-    const problems: ConversionProblem[] = [{ code: 'NO_LINES', lines: [] }]
-    assert.match(draw(quote(), { canConfirm: true, piProblems: problems }), /Add at least one product that is not optional\./)
-    assert.ok(!draw(quote(), { canConfirm: false, piProblems: problems }).includes('Add at least one product'), 'a quotation that cannot be confirmed is not nagged')
-    assert.ok(!draw(quote(), READY).includes('class="hintBody"'))
-  })
-  test('the line is worded for one product, for none, and for several things at once', () => {
-    assert.equal(waitsFor([{ code: 'NAME_MISSING', lines: ['Line 3'] }]), '1 product needs a name before this can become a PI.')
-    assert.equal(waitsFor([{ code: 'NO_LINES', lines: [] }]), 'Add at least one product that is not optional.')
-    assert.equal(waitsFor([{ code: 'PRICE_MISSING', lines: names(2) }, { code: 'PICTURE_MISSING', lines: names(1) }]), '2 things to fix before this can become a PI.')
-    const html = draw(quote(), { canConfirm: true, piProblems: [{ code: 'PRICE_MISSING', lines: names(2) }, { code: 'PICTURE_MISSING', lines: names(1) }] })
-    assert.match(html, /<b>Price needed:<\/b>/); assert.match(html, /<b>Picture needed:<\/b>/)
-  })
-  test('unsaved edits switch Confirm, the downloads and the client link off with "Save first", and say so once, beside the buttons', () => {
-    const html = draw(quote({ status: 'sent' }), { canConfirm: true, dirty: true })
-    for (const w of ['Confirm → PI draft', 'Download PDF', 'Download Excel', 'Create client link']) {
+  test('unsaved edits switch the downloads and the client link off with "Save first", and say so once, beside the buttons', () => {
+    const html = draw(quote({ status: 'sent' }), { dirty: true })
+    for (const w of ['Download PDF', 'Download Excel', 'Create client link']) {
       assert.match(button(html, w) ?? '', /disabled="" title="Save first"|title="Save first"[^>]*disabled=""|disabled=""[^>]*title="Save first"/, w)
     }
     assert.equal((html.match(/<span class="dirty">Save first<\/span>/g) ?? []).length, 1)
     // the items of the ⋯ menu wait too: statusMore.dom.test.tsx
   })
-  test('the made PI shows beside Open the PI draft; a confirmed quotation has no ⋯ menu, and only an administrator can reopen it', () => {
-    const base = quote({ status: 'confirmed', pi: { id: 'p1', draft_reference: 'DR-1042', status: 'under_review' } as never })
-    const html = draw(base)
-    assert.match(html, /PI draft <b>DR-1042<\/b> · under review/)
-    assert.match(html, /<a class="btn btnPrimary pnext" href="[^"]*p1[^"]*">/)
-    assert.ok(!html.includes('aria-haspopup="menu"') && !html.includes('Reopen') && !html.includes('Confirm → PI draft'))
-    assert.ok(draw(base, { isAdmin: true }).includes('Reopen'))
-  })
-  test('a lost quotation can be reopened, not lost again (its menu is in statusMore.dom.test.tsx); Mark as lost… opens the box that asks why', () => {
-    const html = draw(quote({ status: 'lost' }))
-    assert.ok(html.includes('Reopen') && !html.includes('Mark lost'))
-    const asking = draw(quote({ status: 'sent' }), { lostNote: '' })
-    assert.match(asking, /Why was it lost\?/); assert.match(button(asking, 'Mark lost') ?? '', /disabled/, 'a reason must be chosen first')
-  })
-  test('the Lost box asks for one of the lead\'s eleven reasons; only "Other" needs words', () => {
-    const asking = draw(quote({ status: 'sent' }), { lostNote: '' })
-    assert.equal((asking.match(/<option /g) ?? []).length, 12, 'a prompt and the eleven reasons')
-    assert.match(asking, /Price too high/); assert.match(asking, /Chose another supplier/); assert.match(asking, /Other \(say why\)/)
-    assert.match(asking, /Note \(optional\)/)
-    assert.doesNotMatch(button(draw(quote({ status: 'sent' }), { lostNote: '', lostReason: 'price_too_high' }), 'Mark lost') ?? '', /disabled/, 'a reason alone is enough')
-    const other = draw(quote({ status: 'sent' }), { lostNote: '', lostReason: 'other' })
-    assert.match(other, /Note \(required\)/); assert.match(button(other, 'Mark lost') ?? '', /disabled/)
-    assert.doesNotMatch(button(draw(quote({ status: 'sent' }), { lostNote: 'Client sold the hotel', lostReason: 'other' }), 'Mark lost') ?? '', /disabled/)
-  })
-  test('a reader who may not edit sees the downloads and nothing that changes the quotation', () => {
+  test('a reader who may not edit sees the downloads and nothing that changes the quotation: no client link to create, no ⋯ menu', () => {
     const html = draw(quote({ status: 'sent', may_edit: false }))
     assert.ok(html.includes('Download PDF') && html.includes('Download Excel'))
-    assert.ok(!html.includes('Create client link') && !html.includes('Confirm') && !html.includes('aria-haspopup'))
+    assert.ok(!html.includes('Create client link') && !html.includes('aria-label="More actions"') && !html.includes('Save first'))
+  })
+  test('no ⋯ button when there is nothing to put in it (no client link and no Delete)', () => {
+    for (const status of ALL) assert.ok(!draw(quote({ status })).includes('aria-label="More actions"'), status)
+    assert.ok(draw(quote({ share_token: 'abc' })).includes('aria-label="More actions"'))
+    assert.ok(draw(quote(), { canDelete: true, onDelete: () => {} }).includes('aria-label="More actions"'))
   })
 })
 
@@ -135,5 +128,19 @@ describe('the Share row: sharing', () => {
     assert.doesNotMatch(draw(quote(), { onMark: () => {}, markOn: false }), /id="q-mark" checked/)
     assert.match(draw(quote({ may_edit: false }), { onMark: () => {}, markOn: true }), /id="q-mark" disabled="" checked=""/)
     assert.ok(!draw(quote()).includes('q-mark'), 'no switch without a handler')
+  })
+})
+
+describe('Reopen moved to the builder\'s lock notice', () => {
+  const page = readFileSync('src/components/quotations/BuilderScreen.tsx', 'utf8').replace(/\r/g, '')
+  const notice = page.slice(page.indexOf('{base.may_edit && LOCKED.includes(base.status) && ('), page.indexOf('{briefing &&'))
+  test('a locked quotation (confirmed, lost or archived) that the person may edit says it cannot be changed, and Reopen moves it to Negotiating', () => {
+    assert.ok(notice.length > 0, 'the lock notice is on the page')
+    assert.match(notice, /This quotation is \{STATUS_LABEL\[base\.status\]\.toLowerCase\(\)\} and cannot be changed\./)
+    assert.match(notice, /onClick=\{\(\) => moveTo\('negotiating'\)\}>Reopen<\/button>/)
+  })
+  test('lost and archived reopen for anyone who may edit; a confirmed quotation only for an administrator, and anyone else is told so', () => {
+    assert.match(notice, /\{\(base\.status !== 'confirmed' \|\| access\.admin\) && <button/)
+    assert.match(notice, /base\.status === 'confirmed' && !access\.admin \? ' Only an administrator can reopen it\.' : ''/)
   })
 })

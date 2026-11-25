@@ -9,11 +9,11 @@ export type SaveProblem = { text: string; lineKey?: string }
 const MAX_PRICE = 100_000_000_000
 const fmt = (n: number) => n.toLocaleString('en-IN')
 
-/** The first problem, in page order: room types first, then products room by room as the builder shows them. */
+/** The first problem, in page order: areas first (they were "room types" until 25 Nov 2026), then products area by area as the builder shows them. */
 export function saveProblem(areas: readonly QuoteArea[], lines: readonly QuoteLine[]): SaveProblem | null {
   for (const [i, a] of areas.entries()) {
     const name = a.name.trim()
-    const label = name ? `Room type "${name}"` : `Room type ${i + 1}`
+    const label = name ? `Area "${name}"` : `Area ${i + 1}`
     if (!name) return { text: `${label} needs a name.` }
     if (name.length > 80) return { text: `${label}: the name is longer than 80 characters.` }
     if (!(a.multiplier >= 1) || a.multiplier > 100_000) return { text: `${label} needs between 1 and ${fmt(100_000)} rooms.` }
@@ -26,7 +26,7 @@ export function saveProblem(areas: readonly QuoteArea[], lines: readonly QuoteLi
     const n = (seen.get(l.area_key ?? null) ?? 0) + 1
     seen.set(l.area_key ?? null, n)
     const where = room ? ` in ${room}` : ''
-    const label = l.name.trim() ? `"${l.name.trim()}"${where}` : `Product ${n}${where || ' (no room type)'}`
+    const label = l.name.trim() ? `"${l.name.trim()}"${where}` : `Product ${n}${where || ' (not in an area)'}`
     const say = (what: string): SaveProblem => ({ text: `${label}: ${what}`, lineKey: l.key })
     if (!l.name.trim()) return say('needs a name.')
     if (l.name.trim().length > 160) return say('the name is longer than 160 characters.')
