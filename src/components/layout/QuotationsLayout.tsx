@@ -25,13 +25,11 @@ type Props = {
   actions?: React.ReactNode
   /** A centred column no wider than this many px (the header's title and actions line up with it), as BoeOsLayout's contentMaxWidth. The builder uses 1360. */
   contentMaxWidth?: number
-  /** A plain white page instead of the warm canvas (the quotation builder, 25 Nov 2026); every other page keeps the canvas. */
-  plain?: boolean
   onSignOut: () => void
   children: React.ReactNode
 }
 
-export function QuotationsLayout({ profile, access, title, subtitle, actions, contentMaxWidth, plain, onSignOut, children }: Props) {
+export function QuotationsLayout({ profile, access, title, subtitle, actions, contentMaxWidth, onSignOut, children }: Props) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [railPinned, toggleRailPinned] = useSidebarPinned()
   const router = useRouter()
@@ -109,7 +107,7 @@ export function QuotationsLayout({ profile, access, title, subtitle, actions, co
       </aside>
 
       <div
-        className={`boe-main-content${contentMaxWidth ? ' boe-main-content-capped' : ''}${plain ? ' boe-main-plain' : ''}`}
+        className={`boe-main-content${contentMaxWidth ? ' boe-main-content-capped' : ''}`}
         style={contentMaxWidth ? { '--boe-content-max': `${contentMaxWidth}px` } as React.CSSProperties : undefined}
       >
         <div className="boe-page-header">
