@@ -4,7 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-25 — Login as member: a switch, and Return to admin, stay on the page you were looking at (branch `fix/login-as-stay-on-page`, PR pending; owner: "it redirects me to the main module page. But ideally it should redirect to the same page where we were before switching")
+## 2026-11-25 — Login as member: the floating button can be dragged out of the way, and its list follows it (branch `feat/login-as-movable-icon`, PR pending; owner: "this icon which helps me switch to different users should be movable as it sometimes overlaps on content of the page")
+
+- **What.** Drag the round button, the Acting as pill or the return button anywhere in the window (mouse or touch). A 6 px dead zone keeps a normal click a click, and the click that ends a drag is swallowed. The spot is saved in the browser (`localStorage` key `boeLoginAsPosition`: pixels from the right and bottom edges) and `clampPosition` pulls it back inside the window when it first appears, on a resize and when the row grows (the Acting as pill). A drag closes an open list. On a phone the slim edge tab slides up and down its edge only.
+- **The list follows.** When opened, it grows downward if there is more room below the button than above, from the button's left edge if it would run off the left, and its maximum height shrinks to the room it has (`flip` state in `LoginAsMemberWidget.tsx`).
+- **Traps.** `react-hooks/set-state-in-effect` is on in this repo: the phone width comes from `useSyncExternalStore`, the clamp from a `ResizeObserver` callback, never a `setState` in an effect body. Pointer capture is taken only after the drag starts: a capture from the first press makes the browser aim the click at the box instead of the button.
+- No SQL, no new package, nothing to apply, no backup needed. The entry below is stamped merged in the same PR. Dossier 08 (Login as member). Pinned in `impersonation.test.ts` (clamp and read-back are real tests; the drag wiring is a source pin).
+
+## 2026-11-25 — Login as member: a switch, and Return to admin, stay on the page you were looking at (PR #1032, merged as `7056118b` 2026-11-25 10:02 IST, production deployment succeeded 10:04 IST; owner: "it redirects me to the main module page. But ideally it should redirect to the same page where we were before switching")
 
 - **What.** `LoginAsMemberWidget` ended every swap and every return to the admin with `window.location.assign('/modules')`. Both now call `stayOnThisPage()`, which is `window.location.reload()`: path, query string and `#` stay, so the admin sees the SAME quotation, order or filter as the member. A full reload on purpose, not `router.refresh()`: it still drops everything the previous person's session cached in the browser. The sign-in-failed fallbacks still go to `/login`. Pinned in `impersonation.test.ts`.
 - **Limit.** If the member you switch to may not open that page, the page applies its own access rule (not checked live: the owner tests by hand).

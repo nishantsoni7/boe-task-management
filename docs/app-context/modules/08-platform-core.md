@@ -374,6 +374,12 @@ View As (`src/lib/viewAs.ts`, `src/contexts/ViewAsContext.tsx`, `src/hooks/queri
   is gone. See CHANGELOG 2026-10-23 for traps (no signOut during swap; stash before verifyOtp; single-use refresh tokens).
   AFTER A SWAP, or after Return to admin, the page is reloaded in place (`stayOnThisPage()`, 2026-11-25, owner request), so the admin sees
   the SAME page as the member; it used to go to `/modules`. A full reload on purpose: it drops the previous session's browser cache. Pinned in `impersonation.test.ts`.
+  MOVABLE (2026-11-25, owner request: it sat on top of page content): drag the round button, the Acting as pill or the return button anywhere;
+  the spot is saved per browser (`boeLoginAsPosition`, px from the right and bottom edges; `clampPosition`, `readPosition`, `writePosition` in
+  `impersonation.ts`) and clamped back inside the window on first show, resize and when the row grows. The slim phone tab slides up and down its edge only.
+  The open list grows toward the roomier side (`flip` in the widget). A drag does not open the list: pointer capture starts after 6 px and the click that ends
+  a drag is swallowed. Lint trap: `react-hooks/set-state-in-effect` is on, so no setState in an effect body (`useSyncExternalStore` for the phone width, a
+  ResizeObserver callback for the clamp). Pinned in `impersonation.test.ts`.
   ON A PHONE (owner, 2026-11-04, PR #610 squash-merged as d3c61d98, deployed): below 768px the round button is a slim tab (24px) flush with the right edge,
   because it covered search boxes and rows (Confirmed Orders). Position and trigger shape are CSS (`.boe-viewas`,
   `.boe-viewas-trigger` in globals.css), not inline styles, so the phone rule can win. While acting as a member the

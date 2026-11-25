@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `792b5436` — Quotations: the page redesign of #1028 taken back, the builder is the page of #1025 again (#1031)
-- Commits on this branch: 1587
+- Commit: `7056118b` — Login as member: a switch, and Return to admin, stay on the page you were on (#1032)
+- Commits on this branch: 1588
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `7056118b` 2026-11-25 Login as member: a switch, and Return to admin, stay on the page you were on (#1032)
 - `792b5436` 2026-11-25 Quotations: the page redesign of #1028 taken back, the builder is the page of #1025 again (#1031)
 - `02a7e806` 2026-11-25 Docs: #1028 merged and live (2026-11-25 07:02 IST) (#1030)
 - `b1eaf0b6` 2026-11-25 Docs: #1027 merged and live (2026-11-25 06:53 IST) (#1029)
@@ -38,7 +39,6 @@
 - `4a65a657` 2026-11-24 Pricing: reading the product photos no longer stops at 50, and says why when it must (no SQL) (#1008)
 - `57c51bd1` 2026-11-24 Docs: #1007 merged and live (2026-11-24 09:40 IST) (#1009)
 - `8d0ca964` 2026-11-24 Pricing: Training case page redesigned, with Overhead % and Margin % for each product (no SQL) (#1007)
-- `bb26f2d5` 2026-11-24 Docs: #1005 merged and live (2026-11-24 08:44 IST) (#1006)
 
 ## Pages by top-level area
 

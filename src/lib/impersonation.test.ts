@@ -7,7 +7,7 @@
 import { test, describe } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { isEligibleImpersonator, startRefusal, parseStash } from './impersonation'
+import { isEligibleImpersonator, startRefusal, parseStash, clampPosition, parsePosition } from './impersonation'
 
 const read = (p: string) => readFileSync(p, 'utf8')
 
@@ -39,6 +39,55 @@ describe('the stash', () => {
     assert.equal(parseStash(null), null)
     assert.equal(parseStash('not json'), null)
     assert.equal(parseStash(JSON.stringify({ sessionId: 's' })), null)
+  })
+})
+
+describe('where the floating button is parked (owner, 2026-11-25: it covered page content)', () => {
+  const box = { width: 48, height: 48 }
+  const win = { width: 1000, height: 800 }
+
+  test('a spot inside the window is kept as it is', () => {
+    assert.deepEqual(clampPosition({ right: 300, bottom: 200 }, box, win), { right: 300, bottom: 200 })
+  })
+
+  test('the whole button stays inside the window, 8px from every edge', () => {
+    assert.deepEqual(clampPosition({ right: -50, bottom: -50 }, box, win), { right: 8, bottom: 8 })
+    assert.deepEqual(clampPosition({ right: 5000, bottom: 5000 }, box, win), { right: 1000 - 48 - 8, bottom: 800 - 48 - 8 })
+  })
+
+  test('a window smaller than the button never gives a negative or flipped spot', () => {
+    assert.deepEqual(clampPosition({ right: 40, bottom: 40 }, box, { width: 30, height: 30 }), { right: 8, bottom: 8 })
+  })
+
+  test('a saved spot is read back, and anything malformed is ignored', () => {
+    assert.deepEqual(parsePosition('{"right":20,"bottom":90}'), { right: 20, bottom: 90 })
+    assert.equal(parsePosition(null), null)
+    assert.equal(parsePosition('nope'), null)
+    assert.equal(parsePosition('{"right":"20","bottom":90}'), null)
+    assert.equal(parsePosition('{"right":20}'), null)
+  })
+
+  test('the widget moves by pointer drag, ignores the open list, and swallows the click after a drag', () => {
+    const w = read('src/components/layout/LoginAsMemberWidget.tsx')
+    assert.ok(w.includes('onPointerDown={onPointerDown}') && w.includes('onClickCapture={swallowDragClick}'))
+    // Only the three buttons start a drag; the open list scrolls and takes the search box.
+    assert.ok(w.includes(`b.closest('[role="dialog"]')`))
+    // Captured only once the pointer has really moved, so a plain click still reaches its button.
+    assert.ok(w.indexOf('Math.hypot(dx, dy) < 6') < w.indexOf('setPointerCapture'))
+    // A press released out of the box's hearing must not turn the next bare hover into a drag.
+    assert.ok(w.includes('if (e.buttons === 0) { drag.current = null; return }'))
+    // The slim phone tab slides along its edge only; everything else follows the pointer both ways.
+    assert.ok(w.includes('right: slim ? (pos?.right ?? 16) : d.right - dx'))
+    assert.ok(w.includes('if (d.last) writePosition(d.last)'))
+    // A finger that drags a button must not scroll the page.
+    assert.ok(w.includes("touchAction: 'none'"))
+  })
+
+  test('the open list grows toward the roomier side so a parked button cannot push it off screen', () => {
+    const w = read('src/components/layout/LoginAsMemberWidget.tsx')
+    assert.ok(w.includes('...(flip.left ? { left: 0 } : { right: 0 })'))
+    assert.ok(w.includes("...(flip.down ? { top: 'calc(100% + 10px)' } : { bottom: 'calc(100% + 10px)' })"))
+    assert.ok(w.includes('const down = r.top < window.innerHeight - r.bottom'))
   })
 })
 
