@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `43ed6667` — Quotations: the page, version 2 (status from the lead, the lead's brief, tabs as the card head, areas, a calmer product block, a simpler Fabric and packing tab) (#1039)
-- Commits on this branch: 1594
+- Commit: `0b7b6cb7` — Quotations: client choices with any name, as compact cards, with Copy to... and one Client choices bar
+- Commits on this branch: 1595
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 508 (first `20260530_create_positions.sql`, latest `20270828000000_quotation_choices_any_name.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `0b7b6cb7` 2026-11-25 Quotations: client choices with any name, as compact cards, with Copy to... and one Client choices bar
 - `43ed6667` 2026-11-25 Quotations: the page, version 2 (status from the lead, the lead's brief, tabs as the card head, areas, a calmer product block, a simpler Fabric and packing tab) (#1039)
 - `03c080d5` 2026-11-25 Lead Management: "Create PI draft" on the lead's quotation line (#1036)
 - `78fbe795` 2026-11-25 Docs: #1031 merged and live (2026-11-25 09:42 IST) (#1037)
@@ -38,7 +39,6 @@
 - `cc4a1a8f` 2026-11-24 Docs: #1013 merged and live (2026-11-24 15:44 IST), stale-flag migration stamped, open items noted (#1017)
 - `345f1b58` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL) (#1015)
 - `e8a9b46b` 2026-11-24 Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (migration 20270827000000 APPLIED) (#1013)
-- `8890d287` 2026-11-24 Docs: the 9:30 pm backup task runs with no window (no SQL) (#1014)
 
 ## Pages by top-level area
 
