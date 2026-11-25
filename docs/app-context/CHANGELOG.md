@@ -14,7 +14,7 @@ Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 - **Client** card below Adjustments and totals.
 - **Not in this step.** Client choices as cards with free names, Copy to…, the Client choices bar (step 3, needs SQL).
 
-## 2026-11-25 — Lead Management: "Create PI draft" on the lead's quotation line (branch `feat/lead-create-pi-draft`, no SQL) · no migration
+## 2026-11-25 — Lead Management: "Create PI draft" on the lead's quotation line (PR #1036, merged as `03c080d5` 2026-11-25 12:25 IST, live 12:27 IST (GitHub Production deployment success), no SQL; not seen signed in) · no migration
 
 - **Why.** Owner, 25 Nov 2026, on the quotation page version 2 mockup: the page will only show the lead's status, changed only in Lead Management, and its Confirm → PI draft goes; asked where a PI draft is then made: "From Lead Management". Step 1 of 3, so a PI can still be made once the page loses its button (step 2).
 - **What.** The lead popup's Quotations band (`LeadQuotes.tsx`): a Draft, Sent or Negotiating quotation gets **Create PI draft**, a Confirmed one **Open the PI draft**, Lost and Archived nothing; on the newest quotation's line (beside Make quotation) and on each row under "+N more". The click reads the SAVED quotation (`quotation_get`), opens its PI if it has one, says who may make it if the person may not edit it, says what Orders still needs (the same `conversionProblems` check and words), moves a Draft to Negotiating, makes the PI draft with the quotation page's own `makePiDraft`, and opens it. The PI code loads on the click, so the lead board carries none of it.
