@@ -5,15 +5,16 @@
 
 ## Snapshot
 
-- Commit: `52b12d79` — Docs: #1023 merged and live (2026-11-24 20:18 IST) (#1024)
-- Commits on this branch: 1582
+- Commit: `053767a9` — Quotations: the page redesigned, ONE status (the lead's), one products card, a floating bar
+- Commits on this branch: 1583
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
-- Test files: 951   Next.js 16.2.6, React 19.2.4
+- Test files: 955   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `053767a9` 2026-11-25 Quotations: the page redesigned, ONE status (the lead's), one products card, a floating bar
 - `52b12d79` 2026-11-24 Docs: #1023 merged and live (2026-11-24 20:18 IST) (#1024)
 - `d0b8cc70` 2026-11-24 Quotations: the builder's top is ONE panel, the lead is the status, no price-limits block (#1025)
 - `e7318db1` 2026-11-24 Quotations: no price hint at all for people outside the pricing desk (#1023)
@@ -38,7 +39,6 @@
 - `09a96c3f` 2026-11-24 Pricing: engine v3, photo facts and taught cases, leading only where it wins the blind test (20270826000000 APPLIED) (#1004)
 - `9e89001a` 2026-11-23 Pricing: photo facts, every product photo read once into facts (#1002)
 - `eda0cbec` 2026-11-23 Pricing: the echo guard, and "How accurate is it" with "Teach next" on Price learning (#1001)
-- `1ee4636b` 2026-11-23 Pricing: a taught price worked out again for each quotation line (no SQL) (#1000)
 
 ## Pages by top-level area
 
@@ -166,7 +166,7 @@
 - `src/lib/modules` — 7 source, 8 test
 - `src/lib/navigation` — 7 source, 10 test
 - `src/lib/notifications` — 9 source, 26 test
-- `src/lib/orders` — 114 source, 174 test
+- `src/lib/orders` — 115 source, 175 test
 - `src/lib/payroll` — 36 source, 36 test
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
