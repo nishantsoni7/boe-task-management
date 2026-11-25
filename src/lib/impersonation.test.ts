@@ -70,6 +70,14 @@ describe('the routes', () => {
     assert.ok(swap.indexOf('writeStash({') < swap.indexOf('verifyOtp'), 'stash before the swap')
   })
 
+  test('a swap and the return to admin stay on the page the admin was looking at (owner, 2026-11-25)', () => {
+    const w = read('src/components/layout/LoginAsMemberWidget.tsx')
+    const flows = w.slice(w.indexOf('const exit'), w.indexOf('const filtered'))
+    assert.equal(flows.includes("assign('/modules')"), false, 'neither button sends the admin to the launcher')
+    assert.equal(flows.match(/stayOnThisPage\(\)/g)?.length, 2, 'exit and loginAs both reload in place')
+    assert.ok(w.includes('window.location.reload()'), 'a full reload keeps path, query and hash and drops the old cache')
+  })
+
   test('on a phone the button is a slim tab on the right edge; the Acting as pill keeps its size', () => {
     const w = read('src/components/layout/LoginAsMemberWidget.tsx')
     assert.ok(w.includes("className={`boe-viewas${impersonating ? ' is-acting' : ''}`}"))

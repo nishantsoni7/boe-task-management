@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-25 — Login as member: a switch, and Return to admin, stay on the page you were looking at (branch `fix/login-as-stay-on-page`, PR pending; owner: "it redirects me to the main module page. But ideally it should redirect to the same page where we were before switching")
+
+- **What.** `LoginAsMemberWidget` ended every swap and every return to the admin with `window.location.assign('/modules')`. Both now call `stayOnThisPage()`, which is `window.location.reload()`: path, query string and `#` stay, so the admin sees the SAME quotation, order or filter as the member. A full reload on purpose, not `router.refresh()`: it still drops everything the previous person's session cached in the browser. The sign-in-failed fallbacks still go to `/login`. Pinned in `impersonation.test.ts`.
+- **Limit.** If the member you switch to may not open that page, the page applies its own access rule (not checked live: the owner tests by hand).
+- No SQL, nothing to apply, no backup needed. Dossier 08 (Login as member).
+
 ## 2026-11-25 — Quotations: the page redesign of #1028 taken back, the builder is the page of #1025 again (branch `revert/quotation-page-redesign`, owner: "did not liked the way the quotation page is looking. Lets get it back to the earlier version only") · no migration
 
 - **What.** `git revert` of `8c746d30` (PR #1028, the one-status redesign, 28 files). `PropsPanel.tsx` and `ActionDock.tsx` are gone, `TopPanel.tsx` is back, and `LeadCard`, `ProductLine`, `AskCard`, `ChoicesPanel`, `ClientCard`, `BuilderScreen`, `QuotationsLayout`, `globals.css` (`.boe-main-plain`) and `quotations.module.css` are as they were after #1025. The tests the redesign rewrote went back with it. `src` is byte-identical to main at `ffcb0080` (the commit before #1028).
