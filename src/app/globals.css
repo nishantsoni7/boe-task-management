@@ -11976,11 +11976,9 @@ textarea.pi-form-input { height: auto; }
 .order-pi-details-pop dt { color: #686D6C; }
 .order-pi-details-pop dd { margin: 0; color: #303536; text-align: right; }
 
-.order-docs-absence { grid-column: 1 / -1; margin: 0; padding: 0 20px 14px; font-size: 12px; color: #8F9392; }
 .order-docs-main > .order-doc-pictures .order-doc-pictures-actions { margin-left: auto; }
 .order-docs-side .order-doc-section { padding: 18px 20px 16px; gap: 8px; }
 .order-docs-side .order-doc-section .order-doc-row-title { margin-bottom: 2px; }
-.order-docs-absence { padding: 0 20px 18px; }
 
 /* ── ORDER SUMMARY: due-date rule + addresses link (owner, 2026-10-21) ──
    The NOTION PASS above resets `.order-sum-row { padding: 7px 0 }`, which came
@@ -12691,7 +12689,6 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-docs-main .order-doc-pictures.order-doc-prop { margin: 0; border: 0; border-bottom: 1px solid #F3EEE9; border-radius: 0; background: transparent; padding: 11px 0; }
 .order-docs-side { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; border-top: 0; margin-top: 14px; }
 .order-docs-side .order-doc-section, .order-docs-side .order-doc-section + .order-doc-section { background: #FAF7F4; border: 0; border-radius: 12px; padding: 14px 16px; }
-.order-docs-absence { grid-column: 1 / -1; }
 @media (max-width: 640px) { .order-docs-side { grid-template-columns: minmax(0, 1fr); } }
 .order-info-row--sample dd { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .order-docs .order-docs-main .order-doc-pictures.order-doc-prop { margin: 0 20px; padding: 11px 0; border: 0; border-bottom: 1px solid #F3EEE9; background: transparent; }
@@ -13124,11 +13121,6 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .opp-lot-items { color: var(--boe-text-muted); flex: 1 1 200px; }
 .opp-link { background: none; border: 0; padding: 0; color: var(--boe-brand); font-size: 12.5px; cursor: pointer; text-decoration: underline; }
 .opp-fix { margin-top: 8px; display: flex; flex-direction: column; gap: 10px; background: var(--boe-surface-quiet); padding: 12px; border-radius: var(--boe-radius-control); }
-.opp-entry { width: 100%; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding: 14px 18px; background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); color: var(--boe-text); text-decoration: none; }
-.opp-entry:hover { background: var(--boe-surface-hover); border-color: var(--boe-border-strong); }
-.opp-entry-text { display: flex; flex-direction: column; gap: 2px; font-size: 12.5px; color: var(--boe-text-muted); }
-.opp-entry-text strong { font-size: 14px; color: var(--boe-text-strong); }
-.opp-entry-go { font-size: 13px; font-weight: 600; color: var(--boe-brand); white-space: nowrap; }
 .opp-page { max-width: none; margin: 0; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
 .opp-back { font-size: 13px; color: var(--boe-brand); text-decoration: none; }
 .opp-pic { width: 64px; }
@@ -14417,83 +14409,123 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   CONFIRMED ORDER: THE ORDER BAR AND THE FOLDED ROWS (Nitish / Operations, 24 Nov 2026)
-   The strip above the PI becomes ONE card with ruled cells (Due and three gates added);
-   the client, dates, payment, pendencies, terms, breakdown and activity sit in folded rows
-   below the products. This block comes last on purpose: it overrides the earlier Order-page
-   rules by cascade order and leaves them as they are (tests read those by first occurrence).
-   ══════════════════════════════════════════════════════════════════════════════ */
+   CONFIRMED ORDER: THE DETAILS BELOW THE PRODUCTS, ALL OPEN (owner, 25 Nov 2026)
+   The seven folded rows (24 Nov) are gone: "everything is collapsed which is not required ... the commercial
+   breakdown should be always visible". Six sections in TWO flat cards (the terms and the money apart from the rest,
+   owner, second look), in two columns that are the SAME HEIGHT:
+     the foot of the Products card   Internal details and terms (Pendencies at its foot)  |  Commercial breakdown
+     a card of its own below it      Payment                                              |  Dates over Client and sale
+                                     Activity
+   THE HEIGHTS MATCH BY LAYOUT, NOT BY LUCK: a section is a column that fills its cell (grid items stretch), and the
+   block at its foot (Pendencies, the Order value, the advance note) has margin-top: auto, so two columns end on the
+   same line whatever their content. A light vertical rule runs between the columns, like the top card's.
+   This block sits ABOVE the phone phases on purpose: four phone tests scan from a phone marker to the end of the
+   file and demand only phone rules after it.
+   ═════════════════════════════════════════════════════════════════════════ */
+.order-sections { container-type: inline-size; margin: 0; background: #fff; border: 1px solid #E4DED7; border-radius: 14px; }
 
-/* ── The Documents row now holds the PI and the notes only ── */
-.order-docs-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'docs'; grid-template-rows: auto; }
-.order-docs-row > .order-docs { height: auto; }
+/* THE FOOT OF THE PRODUCTS CARD (owner, 25 Nov 2026: "part of the product section only, with some minimal separation through
+   color or line"): Internal details and terms beside the Commercial breakdown sit directly under the product list, in the same
+   outline: the products card loses its bottom corners, the band loses its gap and its own top edge (the one line is the products
+   card's bottom edge) and takes a faint warm tint. The products card is an inline-styled div, hence !important. */
+.order-products--joined > div:first-child { border-bottom-left-radius: 0 !important; border-bottom-right-radius: 0 !important; }
+.order-sections--attached { margin-top: -1px; border-color: #ECE7E0; border-radius: 0 0 12px 12px; background: #FBFAF8; }
 
-/* ── The folded rows ── */
-.order-rows { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
-.order-rows-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; padding: 0 4px; }
-.order-rows-title { margin: 0; font-family: var(--boe-font-heading); font-size: 16px; font-weight: 700; color: #303536; }
-.order-rows-note { font-size: 13px; color: #686D6C; }
-.order-rows-card { background: #fff; border: 1px solid #ECE7E0; border-radius: 12px; overflow: hidden; }
-.order-row + .order-row { border-top: 1px solid #ECE7E0; }
-.order-row-head {
-  display: grid; grid-template-columns: 36px minmax(0, 1fr) auto 20px; align-items: center; gap: 14px;
-  width: 100%; min-height: 60px; padding: 10px 18px; border: 0; background: none; text-align: left;
-  font: inherit; color: inherit; cursor: pointer; transition: background-color 0.15s;
+/* the page's own cards drop their chrome and their own headings: the section says what it is */
+.order-sections .order-facts, .order-sections .order-sum-group, .order-sections .order-ff, .order-sections .order-info-card,
+.order-sections .order-activity-card, .order-sections .order-commercial {
+  background: transparent; border: 0; box-shadow: none; padding: 0; border-radius: 0;
 }
-.order-row-head:hover, .order-row-head[aria-expanded='true'] { background: #FBFAF8; }
-.order-row-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: #F1EEE9; color: #4C5352; }
-.order-row--amber .order-row-icon { background: #FAF0DA; color: #805B0D; }
-.order-row--red .order-row-icon { background: #FBE9EC; color: #A12438; }
-.order-row-text { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; min-width: 0; }
-.order-row-title { font-size: 14.5px; font-weight: 600; color: #303536; white-space: nowrap; }
-.order-row-summary { min-width: 0; font-size: 13.5px; color: #686D6C; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.order-row-badge { display: inline-flex; align-items: center; height: 24px; padding: 0 9px; border-radius: 6px; font-size: 12.5px; font-weight: 600; white-space: nowrap; background: #EEECE8; color: #595D5B; }
-.order-row-badge--amber { background: #FAF0DA; color: #805B0D; }
-.order-row-badge--red { background: #FBE9EC; color: #A12438; }
-.order-row-badge--blue { background: #EAF0F8; color: #335A86; }
-.order-row-badge--green { background: #E8F2EC; color: #276247; }
-.order-row-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-.order-row-chev { color: #686D6C; transition: transform 0.2s; }
-.order-row-head[aria-expanded='true'] .order-row-chev { transform: rotate(180deg); }
-.order-row-body { padding: 8px 24px 22px 68px; background: #FBFAF8; border-top: 1px solid #ECE7E0; }
-@media (prefers-reduced-motion: reduce) { .order-row-head, .order-row-chev { transition: none; } }
+.order-sections .order-sum-group-head, .order-sections .order-ff-title, .order-sections .order-activity-card-title,
+.order-sections .order-commercial .order-record-title { display: none; }
 
-/* Inside a row, the page's own cards drop their chrome and their own headings: the row says what it is. */
-.order-row-body .order-facts,
-.order-row-body .order-sum-group,
-.order-row-body .order-ff,
-.order-row-body .order-info-card,
-.order-row-body .order-activity-card { background: transparent; border: 0; box-shadow: none; padding: 0; border-radius: 0; }
-.order-row-body .order-sum-groups { grid-template-columns: minmax(0, 1fr); }
-.order-row-body .order-sum-group-head,
-.order-row-body .order-ff-title,
-.order-row-body .order-activity-card-title { display: none; }
-.order-row-body .order-sum-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 40px; align-items: start; }
-.order-row-body .order-sum-group > .order-sum-divider { display: none; }
-.order-row-body .order-sum-group > dl:first-of-type { grid-column: 1; grid-row: 1; }
-.order-row-body .order-sum-group > dl:last-of-type { grid-column: 2; grid-row: 1; }
-.order-row-body .order-sum-group > .order-sum-link { grid-column: 1; grid-row: 2; justify-self: start; margin-top: 8px; }
-.order-row-body .order-docs-pay > div[style] { background: transparent !important; border: 0 !important; box-shadow: none !important; border-radius: 0 !important; }
-.order-row-body .order-commercial { max-width: 560px; }
-.order-row-body .order-docs-pay { max-width: 760px; }
-.order-row-body .order-commercial .order-record-title { display: none; }
-.order-row-body .order-ff { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 40px; align-items: start; padding: 0; }
-.order-row-body .order-ff-items { flex-direction: column; flex-wrap: nowrap; gap: 0; }
-.order-row-body .order-ff-pend { border-top: 0; padding-top: 0; }
-.order-row-body .order-ff-end { grid-column: 1 / -1; margin-left: 0; padding-top: 12px; }
-.order-row-body .order-timeline { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 24px; }
-.order-row-body .order-timeline-bare { max-width: 880px; }
-@media (max-width: 1100px) {
-  .order-row-body { padding-left: 24px; }
-  .order-row-body .order-sum-group, .order-row-body .order-ff { grid-template-columns: minmax(0, 1fr); }
-  .order-row-body .order-sum-group > dl:first-of-type, .order-row-body .order-sum-group > dl:last-of-type, .order-row-body .order-sum-group > .order-sum-link { grid-column: 1; grid-row: auto; }
+/* bands ruled by single lines; two columns ruled by a light vertical line */
+.order-sections-band { display: grid; grid-template-columns: minmax(0, 1fr); align-items: stretch; gap: 0; padding: 22px 20px 26px; }
+.order-sections-band + .order-sections-band { border-top: 1px solid #ECE7E0; }
+.order-sections-band--two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.order-sections-band--one { grid-template-columns: minmax(0, 1fr); }
+.order-sections-band--two > :first-child { padding-right: 36px; }
+.order-sections-band--two > :last-child { padding-left: 36px; border-left: 1px solid #ECE7E0; }
+
+/* every section, and the stack of two, is a column that fills its cell: that is what makes the heights match */
+.order-section, .order-sections-stack { min-width: 0; display: flex; flex-direction: column; }
+.order-section-head { display: flex; align-items: center; gap: 9px; height: 32px; margin: 0 0 14px; color: #8F9392; }
+.order-section-title { margin: 0; font-family: var(--boe-font-heading); font-size: 15px; font-weight: 700; color: #303536; }
+.order-section-actions { display: flex; align-items: center; gap: 16px; margin-left: auto; }
+.order-section-link { padding: 0; border: 0; background: none; font: inherit; font-size: 13px; font-weight: 600; color: var(--boe-brand); white-space: nowrap; cursor: pointer; }
+.order-section-link:hover { text-decoration: underline; }
+.order-section-link:focus-visible { outline: 2px solid #B9472E; outline-offset: 3px; border-radius: 3px; }
+.order-section-btn { height: 32px; min-height: 32px; padding: 0 12px; font-size: 12.5px; flex-shrink: 0; }
+
+/* Dates over Client and sale: one column as tall as Payment, the two sections spread to fill it */
+.order-sections-stack { justify-content: space-between; gap: 26px; }
+.order-sections-stack > .order-section + .order-section { padding-top: 22px; border-top: 1px solid #F1EEE9; }
+
+/* ── INTERNAL DETAILS AND TERMS, Pendencies at the foot: the foot sticks to the bottom of the cell ── */
+.order-sections .order-info-card > .order-info-card-head:first-child { display: none; }
+.order-sections .order-info-card { margin-bottom: 22px; }
+.order-sections .order-info-sub { margin: 20px 0 0; padding: 0; border: 0; }
+.order-sections .order-info-sub .order-info-card-head { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: #686D6C; }
+.order-section-foot { margin-top: auto; padding-top: 20px; border-top: 1px solid #F1EEE9; }
+.order-sections .order-ff { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: 'items end' 'pend pend'; align-items: center; gap: 14px 16px; }
+.order-sections .order-ff-items { grid-area: items; }
+.order-sections .order-ff-end { grid-area: end; margin: 0; padding: 0; }
+.order-sections .order-ff-pend { grid-area: pend; }
+
+/* ── COMMERCIAL BREAKDOWN: a ledger, hairlines only; the Order value is the one strong line and sits on the bottom edge ── */
+.order-section--commercial > .order-commercial, .order-sections .order-breakdown { flex: 1 1 auto; display: flex; flex-direction: column; }
+.order-sections .order-breakdown-lines { flex: 1 1 auto; display: flex; flex-direction: column; border: 0; border-radius: 0; overflow: visible; background: transparent; }
+.order-sections .order-breakdown-lines > .order-breakdown-line { grid-template-columns: minmax(0, 1fr) auto; background: transparent; border-top: 1px solid #F1EEE9; }
+.order-sections .order-breakdown-lines > .order-breakdown-line:nth-child(even) { background: transparent; }
+.order-sections .order-breakdown-lines > .order-breakdown-line > .order-breakdown-label { padding: 8px 0; border-right: 0; font-size: 14px; color: #4C5352; }
+.order-sections .order-breakdown-lines > .order-breakdown-line > .order-breakdown-value { padding: 8px 0; font-size: 14px; }
+.order-sections .order-breakdown-lines > .order-breakdown-line--running > .order-breakdown-label,
+.order-sections .order-breakdown-lines > .order-breakdown-line--base > .order-breakdown-label { color: #303536; font-weight: 600; }
+.order-sections .order-breakdown-lines > .order-breakdown-line:nth-last-child(2) { margin-bottom: 14px; }
+.order-sections .order-breakdown-lines > .order-breakdown-line.order-breakdown-line--final { margin: auto 0 0; padding: 0 16px; background: #F6F1EA; border: 0; border-radius: 10px; }
+.order-sections .order-breakdown-lines > .order-breakdown-line.order-breakdown-line--final > .order-breakdown-label,
+.order-sections .order-breakdown-lines > .order-breakdown-line.order-breakdown-line--final > .order-breakdown-value { padding-top: 14px; padding-bottom: 14px; }
+.order-sections .order-breakdown-lines > .order-breakdown-line.order-breakdown-line--final > .order-breakdown-label { font-size: 15px; font-weight: 700; color: #303536; }
+.order-sections .order-breakdown-lines > .order-breakdown-line.order-breakdown-line--final > .order-breakdown-value { font-size: 22px; font-weight: 700; color: #303536; }
+
+/* ── PAYMENT: the two amounts are plain figures with a dot, not tiles; the advance note is a quiet note on the bottom edge ── */
+.order-section--payment > .order-docs-pay { flex: 1 1 auto; display: flex; flex-direction: column; }
+.order-sections .order-pay-metrics { display: flex; flex-wrap: wrap; gap: 10px 40px; margin: 14px 0 12px; }
+.order-sections .order-pay-metric { flex: 0 1 auto; padding: 0; border: 0; border-radius: 0; background: transparent; }
+.order-sections .order-pay-metric-label::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 7px; border-radius: 50%; background: currentColor; vertical-align: 1px; }
+.order-sections .order-pay-metric--verified .order-pay-metric-label { color: #276247; }
+.order-sections .order-pay-metric--awaiting .order-pay-metric-label { color: #9A6A12; }
+.order-sections .order-pay-metric-value { font-size: 20px; color: #303536; white-space: nowrap; }
+.order-sections section[aria-label='Advance'] { margin-top: auto !important; padding: 14px 0 0 !important; border: 0 !important; border-top: 1px solid #F1EEE9 !important; border-radius: 0 !important; background: transparent !important; }
+.order-sections .order-pay-facts { margin-bottom: 16px; }
+.order-sections .order-pay-fact dd { margin-left: auto; }
+
+/* ── DATES: the four stops as a 2 x 2 grid, so Dates and Client and sale together are no taller than Payment ── */
+.order-section--dates .order-timeline { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 28px; margin: 0; padding: 0; }
+.order-section--dates .order-timeline::before { display: none; }
+.order-section--dates .order-timeline-stop { padding: 6px 0 10px 20px; }
+.order-section--dates .order-timeline-stop::before { left: 0; top: 11px; }
+
+/* ── CLIENT AND SALE: one column of label / value rows ── */
+.order-sections .order-sum-groups { display: block; }
+.order-sections .order-sum-group { display: flex; flex-direction: column; }
+.order-sections .order-sum-group > .order-sum-divider { display: none; }
+.order-sections .order-sum-link { order: 3; align-self: flex-start; margin-top: 10px; }
+
+/* narrower card: the two columns stack, and the rule between them becomes a line across */
+@container (max-width: 820px) {
+  .order-sections-band, .order-sections-band--two { grid-template-columns: minmax(0, 1fr); padding: 18px 16px 20px; }
+  .order-sections-band--two > :first-child { padding-right: 0; }
+  .order-sections-band--two > :last-child { padding-left: 0; margin-top: 24px; padding-top: 24px; border-left: 0; border-top: 1px solid #ECE7E0; }
+  .order-sections-stack { gap: 0; }
+  .order-sections-stack > .order-section + .order-section { margin-top: 22px; }
 }
-@media (max-width: 720px) {
-  .order-row-head { grid-template-columns: 36px minmax(0, 1fr) 20px; gap: 12px; min-height: 64px; padding: 10px 14px; }
-  .order-row-badge { display: none; }
-  .order-row-summary { white-space: normal; }
-  .order-row-body { padding: 4px 16px 20px; }
-  .order-row-body .order-timeline { grid-template-columns: minmax(0, 1fr); }
+@container (max-width: 560px) {
+  .order-section--dates .order-timeline { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .order-section-btn { height: 44px; min-height: 44px; }
+  .order-section-link { min-height: 44px; display: inline-flex; align-items: center; }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
@@ -14546,6 +14578,8 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 
 /* ── The Documents row holds the one card ── */
 .order-docs-row { gap: 0; }
+.order-docs-row { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'docs'; grid-template-rows: auto; }
+.order-docs-row > .order-docs { height: auto; }
 
 /* ── THE CARD ── */
 .order-top { min-width: 0; background: #fff; border: 1px solid #E4DED7; border-radius: 14px; }
@@ -14580,15 +14614,18 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 .order-top .order-docs .order-pic { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; gap: 0; padding: 0; }
 .order-top .order-docs .order-pic > .order-doc-section { margin: 0; padding: 14px 20px 0; background: transparent; border: 0; border-radius: 0; }
 .order-top .order-docs .order-pic .order-pic-strip {
-  display: grid; grid-template-columns: auto auto minmax(0, 1fr) minmax(0, 1fr); gap: 18px 40px; margin: 0; padding: 16px 20px 16px;
+  display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr); gap: 0; margin: 0; padding: 16px 20px;
   background: transparent; border: 0; border-radius: 0; overflow: visible;
 }
-.order-top .order-docs .order-pic .order-pic-strip--short { grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); }
+.order-top .order-docs .order-pic .order-pic-strip--short { grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr); }
 .order-top .order-docs .order-pic .order-pic-strip > .order-doc-prop,
 .order-top .order-docs .order-pic .order-pic-strip > .order-doc-section {
   display: flex; flex-direction: column; align-items: flex-start; justify-content: flex-start; gap: 7px;
-  min-width: 0; margin: 0; padding: 0; background: transparent; border: 0; border-radius: 0;
+  min-width: 0; margin: 0; padding: 0 24px; background: transparent; border: 0; border-radius: 0;
 }
+.order-top .order-docs .order-pic .order-pic-strip > :first-child { padding-left: 0; }
+.order-top .order-docs .order-pic .order-pic-strip > :last-child { padding-right: 0; }
+.order-top .order-docs .order-pic .order-pic-strip > :not(:first-child) { border-left: 1px solid #ECE7E0; }
 .order-top .order-docs .order-pic .order-pic-strip .order-doc-prop-label,
 .order-top .order-docs .order-pic .order-pic-strip .order-doc-row-title,
 .order-top .order-docs .order-pic .order-pic-strip .order-doc-pictures-title {
@@ -14632,7 +14669,6 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 }
 .order-top .order-docs .order-pic .order-pic-btns .order-dl-btn svg { color: #686D6C; }
 .order-top .order-docs .order-pic .order-pic-btns .order-dl-btn:hover:not(:disabled) { background: #FAF7F4; border-color: #D5CFC7; }
-.order-top .order-docs .order-pic .order-docs-absence { margin: -6px 0 0; padding: 0 20px 16px; font-size: 13px; color: #686D6C; }
 
 /* Band 3, the footer: the Sales highlight and the Notes as plain text; nothing at all when neither exists */
 .order-top .order-docs .order-pic .order-pic-footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 40px; padding: 16px 20px 18px; border-top: 1px solid #ECE7E0; }
@@ -14650,16 +14686,20 @@ button.od-ov-card:focus-visible { outline: 2px solid #B9472E; outline-offset: 2p
 /* A narrower card: two columns, then one with a hairline between the cells */
 @container (max-width: 1000px) {
   .order-top .order-docs .order-pic .order-pic-strip,
-  .order-top .order-docs .order-pic .order-pic-strip--short { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 32px; }
+  .order-top .order-docs .order-pic .order-pic-strip--short { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
+  .order-top .order-docs .order-pic .order-pic-strip > .order-doc-prop,
+  .order-top .order-docs .order-pic .order-pic-strip > .order-doc-section { padding-top: 0; padding-bottom: 14px; }
+  .order-top .order-docs .order-pic .order-pic-strip > :nth-child(odd) { padding-left: 0; border-left: 0; }
+  .order-top .order-docs .order-pic .order-pic-strip > :nth-child(even) { padding-right: 0; border-left: 1px solid #ECE7E0; }
+  .order-top .order-docs .order-pic .order-pic-strip > :nth-child(n + 3) { padding-top: 14px; padding-bottom: 0; border-top: 1px solid #ECE7E0; }
 }
 @container (max-width: 640px) {
   .order-top .order-docs .order-pic .order-pic-strip,
   .order-top .order-docs .order-pic .order-pic-strip--short { grid-template-columns: minmax(0, 1fr); gap: 0; padding: 0 16px; }
   .order-top .order-docs .order-pic .order-pic-strip > .order-doc-prop,
-  .order-top .order-docs .order-pic .order-pic-strip > .order-doc-section { padding: 14px 0; border-top: 1px solid #ECE7E0; }
+  .order-top .order-docs .order-pic .order-pic-strip > .order-doc-section { padding: 14px 0; border-left: 0; border-top: 1px solid #ECE7E0; }
   .order-top .order-docs .order-pic .order-pic-strip > :first-child { border-top: 0; }
   .order-top .order-docs .order-pic .order-pic-btns .order-dl-btn { flex: 1 1 auto; height: auto; min-height: 44px; white-space: nowrap; }
-  .order-top .order-docs .order-pic .order-docs-absence { margin-top: 0; padding: 0 16px 14px; }
   .order-top .order-docs .order-pic .order-pic-footer { grid-template-columns: minmax(0, 1fr); gap: 16px 0; padding: 14px 16px 16px; }
   .order-top .order-docs .order-doc-changes, .order-top .order-docs .order-doc-changes--you { padding-left: 16px; padding-right: 16px; }
 }

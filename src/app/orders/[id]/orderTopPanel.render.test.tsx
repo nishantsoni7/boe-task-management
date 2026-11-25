@@ -18,7 +18,7 @@ import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { OrderHighlightRemarkBanner } from '@/components/orders/PiHighlightRemark'
 import { OrderStatusStrip } from './OrderRedesign'
-import { orderBarGates } from '@/lib/orders/orderDetailRows'
+import { orderBarGates } from '@/lib/orders/orderBarGates'
 
 const noop = () => {}
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r\n/g, '\n')
@@ -42,8 +42,8 @@ describe('the page: the facts line, then ONE card', () => {
   })
 
   test('the products and the folded rows stay outside it, as cards of their own', () => {
-    assert.ok(page.indexOf('<div className="order-products">') > close)
-    assert.ok(page.indexOf('<OrderDetailRows') > close)
+    assert.ok(page.indexOf('<div className="order-products order-products--joined">') > close)
+    assert.ok(page.indexOf('<OrderDetailSections') > close)
   })
 
   test('the highlight is drawn bare inside the card', () => {
@@ -136,13 +136,13 @@ describe('the card\'s styles', () => {
     assert.match(block, /\.order-top \.order-notice-icon \{[^}]*border-radius: 50%;/)
   })
 
-  test('the strip cells, the footer and the Needs-your-action block have no box: bands ruled by single horizontal lines', () => {
+  test('the strip cells, the footer and the Needs-your-action block have no box: bands ruled by horizontal lines, the four columns by light vertical ones', () => {
     const strip = block.match(/\.order-pic \.order-pic-strip \{([^}]*)\}/)
     assert.ok(strip)
     assert.ok(/background: transparent; border: 0; border-radius: 0/.test(strip[1]))
     assert.match(block, /\.order-pic-footer \{[^}]*border-top: 1px solid #ECE7E0;/)
     assert.match(block, /\.order-doc-changes--you \{[^}]*border: 0; border-bottom: 1px solid #ECE7E0; border-radius: 0; box-shadow: none;/)
-    assert.equal(/border-left: 1px solid #ECE7E0/.test(block), false, 'no vertical rules between columns')
+    assert.match(block, /\.order-pic-strip > :not\(:first-child\) \{ border-left: 1px solid #ECE7E0; \}/)
   })
 
   test('the Sales highlight and the Notes share one label style and one text size', () => {
@@ -152,7 +152,7 @@ describe('the card\'s styles', () => {
 
   test('the CSS lives ABOVE the phone phases, never after them', () => {
     assert.ok(css.indexOf('CONFIRMED ORDER: THE TOP OF THE PAGE') < css.indexOf('PHONE PHASE 3 — FINANCE'))
-    assert.ok(css.indexOf('CONFIRMED ORDER: THE ORDER BAR AND THE FOLDED ROWS') < css.indexOf('PHONE PHASE 3 — FINANCE'))
+    assert.ok(css.indexOf('CONFIRMED ORDER: THE DETAILS BELOW THE PRODUCTS, ALL OPEN') < css.indexOf('PHONE PHASE 3 — FINANCE'))
   })
 
   test('an empty footer takes no space, and a single one spans the card', () => {
@@ -162,7 +162,7 @@ describe('the card\'s styles', () => {
   })
 
   test('on a phone the cells stack with a line between them, the footer stacks, and the notice buttons are 44px', () => {
-    assert.match(block, /@container \(max-width: 640px\) \{[\s\S]*?\.order-pic-strip > \.order-doc-section \{ padding: 14px 0; border-top: 1px solid #ECE7E0; \}/)
+    assert.match(block, /@container \(max-width: 640px\) \{[\s\S]*?\.order-pic-strip > \.order-doc-section \{ padding: 14px 0; border-left: 0; border-top: 1px solid #ECE7E0; \}/)
     assert.match(block, /@container \(max-width: 640px\) \{[\s\S]*?\.order-pic-footer \{ grid-template-columns: minmax\(0, 1fr\);/)
     assert.match(block, /@media \(max-width: 640px\) \{[\s\S]*?\.order-notice-actions \.boe-btn \{ flex: 1 1 0; min-height: 44px; \}/)
   })

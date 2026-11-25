@@ -28,16 +28,7 @@ import {
 const approvedOn = (iso: string | null) =>
   iso ? new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : ''
 
-export default function OrderPendencies({ orderId, canManage, onCount }: {
-  orderId: string
-  canManage: boolean
-  /**
-   * The number of open items once this card's own read has landed, or null when it
-   * could not be read. The Order bar's "From client" cell says it without a second
-   * read of its own.
-   */
-  onCount?: (open: number | null) => void
-}) {
+export default function OrderPendencies({ orderId, canManage }: { orderId: string; canManage: boolean }) {
   const supabase = useMemo(() => createClient(), [])
   const [rows, setRows] = useState<PersistedPendency[] | null>(null)
   const [unreadable, setUnreadable] = useState(false)
@@ -118,10 +109,6 @@ export default function OrderPendencies({ orderId, canManage, onCount }: {
     if (error || !data?.signedUrl) { setProblem('The screenshot could not be opened.'); return }
     window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
   }
-
-  const openCount = rows === null ? null : splitPendencies(rows).open.length
-  const reportedCount = unreadable ? null : openCount
-  useEffect(() => { onCount?.(reportedCount) }, [onCount, reportedCount])
 
   if (unreadable) return null
   if (rows === null) return null

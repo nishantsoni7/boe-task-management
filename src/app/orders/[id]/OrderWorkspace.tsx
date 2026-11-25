@@ -1221,23 +1221,32 @@ export function OrderDetailSkeleton() {
         </div>
       </div>
 
-      <div className="order-products">
-        <SectionSkeleton rows={4} label="Loading products" />
-      </div>
-
-      {/* The seven folded rows below the products. */}
-      <section className="order-rows">
-        <div className="order-rows-card">
-          {[0, 1, 2, 3, 4, 5, 6].map(i => (
-            <div key={i} className="order-row">
-              <div className="order-row-head">
-                <SkeletonBlock w={36} h={36} radius={10} />
-                <SkeletonBlock w={`${34 + (i % 3) * 8}%`} h={13} />
+      {/* The products with the terms and money joined to their foot, then the details card (two columns, then
+          Activity): the page's own shapes, so nothing jumps when the data lands. */}
+      {[[5], [6, 1]].map((bands, card) => {
+        const sections = (
+          <section key={card} className={card === 0 ? 'order-sections order-sections--attached' : 'order-sections'}>
+            {bands.map((lines, band) => (
+              <div key={band} className={`order-sections-band ${card === 1 && band === 1 ? 'order-sections-band--one' : 'order-sections-band--two'}`}>
+                {(card === 1 && band === 1 ? [0] : [0, 1]).map(col => (
+                  <div key={col} className="order-section">
+                    <div className="order-section-head"><SkeletonBlock w={150} h={14} /></div>
+                    {Array.from({ length: lines }, (_, i) => (
+                      <div key={i} style={{ marginBottom: 12 }}><SkeletonBlock w={`${92 - (i % 3) * 14}%`} h={14} /></div>
+                    ))}
+                  </div>
+                ))}
               </div>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </section>
+        )
+        return card === 0 ? (
+          <div key={card} className="order-products order-products--joined">
+            <SectionSkeleton rows={4} label="Loading products" />
+            {sections}
+          </div>
+        ) : sections
+      })}
     </div>
   )
 }

@@ -230,16 +230,6 @@ function PiDetails({ uploadedAt, approvedAt }: { uploadedAt: string; approvedAt:
   )
 }
 
-/**
- * The two absence confirmations ("Not provided — X confirmed sending the PI
- * without design files on D" / "...without a client PO on D") say the same
- * thing twice. When they differ only in the category, say it once.
- */
-export function mergeAbsenceNotes(a: string, b: string): string | null {
-  const one = (t: string) => t.replace(/without (?:a client PO|design files)/, 'without these')
-  return one(a) === one(b) ? one(a) : null
-}
-
 function DocRow({ title, status, children, meta, actions, primary = false }: {
   title: string
   /** The Main PI: the first and most prominent row. */
@@ -404,10 +394,6 @@ export function OrderDocumentsPanel({
   )
   const needsYou = piNeedsYou || changes.some(c => c.action !== null)
   const hasChanges = !!piChange || changes.length > 0
-  const absenceNotes = supporting
-    ? [supporting.design, supporting.clientPo].flatMap(r => (r.kind === 'none' && r.note ? [r.note] : []))
-    : []
-  const mergedAbsence = absenceNotes.length === 2 ? mergeAbsenceNotes(absenceNotes[0], absenceNotes[1]) : null
 
   // THE ONE STATUS ON THE MAIN PI ROW. Accepted by Operations (or an Order with
   // no handoff at all) is simply Current; anything short of that says so.
@@ -558,18 +544,19 @@ export function OrderDocumentsPanel({
       {/* ── WHAT IS CURRENT, AS ONE CARD (Nitish / Operations, 24 Nov 2026) ──
           Row one: the Main PI, its status and dates, and the real downloads on the same line.
           Row two: a four-cell strip, label above value: PI history, Product pictures, Design
-          Files, Client PO (an empty one is one muted word, not a box). Under it: the absence
-          note, then the footer (Sales highlight, Notes). Every control is the one that was
-          here; only the arrangement changed. */}
+          Files, Client PO (an empty one is one muted word, not a box). Under it: the footer
+          (Sales highlight, Notes). Every control is the one that was here; only the
+          arrangement changed. */}
       <div className="order-docs-main">
       <div className="order-pic">
         {/* ── THE PI CARD, THIRD PASS (owner, 25 Nov 2026) ──
             NO "MAIN PI" HEADING ROW any more: four columns, PI (labelled "PI · V1" with its
             status, then the current PI as Excel, ERP and PDF, then PI history and Details as two
             quiet links), Product pictures (Download ZIP, View all in a popup), Design Files and
-            Client PO. The absence note, then the footer (Sales highlight, Notes): the footer is
-            not drawn at all, not even its space, when both are empty. Every control is the one
-            that was here; only the arrangement changed. */}
+            Client PO, 30 / 30 / 20 / 20 with light rules between them (owner, 25 Nov 2026), no
+            absence line. Then the footer (Sales highlight, Notes): not drawn at all, not even
+            its space, when both are empty. Every control is the one that was here; only the
+            arrangement changed. */}
         {mainPi.kind !== 'ready' && (
           <DocRow title={DOC_MAIN_PI_TITLE} status={piHistoryLink}>
             {mainPi.kind === 'loading' ? (
@@ -658,7 +645,7 @@ export function OrderDocumentsPanel({
             meta={supporting.design.kind === 'files' && supporting.design.acceptedAt
               ? <DocMeta items={[{ label: DOC_ACCEPTED_LABEL, value: supporting.formatWhen(supporting.design.acceptedAt) }]} /> : undefined}
           >
-            <SupportingBody row={supporting.design} onOpen={open} onDownload={onDownloadFile} hideNote={!!mergedAbsence} />
+            <SupportingBody row={supporting.design} onOpen={open} onDownload={onDownloadFile} />
           </DocRow>
         ) : (
           <DocRow title={DOC_DESIGN_FILES_TITLE}>
@@ -675,7 +662,7 @@ export function OrderDocumentsPanel({
             meta={supporting.clientPo.kind === 'files' && supporting.clientPo.acceptedAt
               ? <DocMeta items={[{ label: DOC_ACCEPTED_LABEL, value: supporting.formatWhen(supporting.clientPo.acceptedAt) }]} /> : undefined}
           >
-            <SupportingBody row={supporting.clientPo} onOpen={open} onDownload={onDownloadFile} hideNote={!!mergedAbsence} />
+            <SupportingBody row={supporting.clientPo} onOpen={open} onDownload={onDownloadFile} />
           </DocRow>
         ) : (
           <DocRow title={DOC_CLIENT_PO_TITLE}>
@@ -687,8 +674,7 @@ export function OrderDocumentsPanel({
           </DocRow>
         )}
         </div>
-        {mergedAbsence && <p className="order-doc-note order-docs-absence">{mergedAbsence}</p>}
-        {footer && <div className="order-pic-footer">{footer}</div>}
+        {footer &&<div className="order-pic-footer">{footer}</div>}
       </div>
       </div>
       {fileError &&<p className="order-doc-unavailable order-docs-error" role="alert">{fileError}</p>}
@@ -697,22 +683,15 @@ export function OrderDocumentsPanel({
 }
 
 /** What is on file for one supporting category — accepted files only. */
-function SupportingBody({ row, onOpen, onDownload, hideNote = false }: {
-  hideNote?: boolean
+function SupportingBody({ row, onOpen, onDownload }: {
   row: SupportingRowView
   onOpen: (f: PersistedDocumentFile) => void
   onDownload?: (f: PersistedDocumentFile) => void
 }) {
   if (row.kind === 'loading') return <p className="order-doc-loading" role="status">Loading…</p>
   if (row.kind === 'unavailable') return <p className="order-doc-unavailable">These files could not be read.</p>
-  if (row.kind === 'none') {
-    return (
-      <>
-        <p className="order-doc-empty">{row.message}</p>
-        {row.note && !hideNote && <p className="order-doc-note">{row.note}</p>}
-      </>
-    )
-  }
+  // "Not provided: X confirmed sending the PI without these" (row.note) is recorded, but not drawn here (owner, 25 Nov 2026).
+  if (row.kind === 'none') return <p className="order-doc-empty">{row.message}</p>
   return <FileLinks files={row.files} onOpen={onOpen} onDownload={onDownload} />
 }
 
@@ -794,7 +773,7 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
   standing: ApprovalStanding
   canUpdate: boolean
   /** The Order's "Pending from client" list; omitted = not drawn. */
-  pendencies?: { orderId: string; canManage: boolean; onCount?: (open: number | null) => void }
+  pendencies?: { orderId: string; canManage: boolean }
   onUpdate: () => void
   onViewEvidence: (path: string) => void
   /** Which proof is being signed, if any. */
@@ -858,7 +837,7 @@ export function OrderFabricFinishCard({ standing, canUpdate, onUpdate, onViewEvi
           </div>
         ))}
       </dl>
-      {pendencies && <OrderPendencies orderId={pendencies.orderId} canManage={pendencies.canManage} onCount={pendencies.onCount} />}
+      {pendencies && <OrderPendencies orderId={pendencies.orderId} canManage={pendencies.canManage} />}
       <div className="order-ff-end">
         {canUpdate ? (
           <button type="button" className="boe-btn boe-btn-ghost order-status-action" onClick={onUpdate}>

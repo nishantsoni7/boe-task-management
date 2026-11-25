@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ProductPicturesState } from '@/lib/orders/productPictures'
-import { OrderDocumentsPanel, mergeAbsenceNotes } from './OrderStatusWorkspace'
+import { OrderDocumentsPanel } from './OrderStatusWorkspace'
 import { SubmissionHistoryList, uploadAvailability } from './OrderDocumentSubmissions'
 import { designFilesDocument } from '@/lib/orders/orderDocumentsPanel'
 import { mainPiCard } from '@/lib/orders/orderMainPi'
@@ -178,12 +178,13 @@ describe('the Documents card', () => {
     assert.equal(/Needs your action|Document changes/.test(text(html)), false)
   })
 
-  test('an absent file says "on file", and never implies one was accepted', () => {
+  test('an absent file says "No client PO", never implies one was accepted, and the Not provided line is not drawn (owner, 25 Nov 2026)', () => {
     const t = rowsOf(card([], viewer(), { absence: 'Not provided — Asha confirmed sending the PI without a client PO on 2026-09-20.' }))
     assert.ok(t.includes('No client PO'))
     assert.ok(t.includes('No design files'))
     assert.ok(!t.includes('on file'), 'compact: a short statement, not a sentence')
-    assert.ok(t.includes('Not provided — Asha confirmed'))
+    assert.equal(t.includes('Not provided'), false, 'the confirmation is recorded, not drawn')
+    assert.equal(t.includes('confirmed sending'), false)
   })
 
   test('the PI\'s product pictures sit with the Main PI — never among Design Files', () => {
@@ -404,16 +405,5 @@ describe('the upload dialog names the files it will send', () => {
     assert.ok(src.includes('<ChosenFiles files={design} />'))
     assert.ok(src.includes('<ChosenFiles files={po} />'))
     assert.match(css, /.order-docsub-chosen {/)
-  })
-})
-
-describe('the two absence confirmations are said once (owner, 2026-10-20)', () => {
-  const a = 'Not provided — Asha confirmed sending the PI without design files on 1 Sep 2026.'
-  const b = 'Not provided — Asha confirmed sending the PI without a client PO on 1 Sep 2026.'
-  test('identical but for the category: merged', () => {
-    assert.equal(mergeAbsenceNotes(a, b), 'Not provided — Asha confirmed sending the PI without these on 1 Sep 2026.')
-  })
-  test('different people or dates: not merged', () => {
-    assert.equal(mergeAbsenceNotes(a, b.replace('1 Sep', '2 Sep')), null)
   })
 })
