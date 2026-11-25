@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `f4dbb798` — Docs: #1034 merged and live (2026-11-25 10:42 IST) (#1035)
-- Commits on this branch: 1591
+- Commit: `4ff1e96d` — Quotations: the page, version 2 (status from the lead, the lead's brief, tabs as the card head, areas, a calmer product block, a simpler Fabric and packing tab)
+- Commits on this branch: 1593
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,6 +14,8 @@
 
 ## Latest 25 commits
 
+- `4ff1e96d` 2026-11-25 Quotations: the page, version 2 (status from the lead, the lead's brief, tabs as the card head, areas, a calmer product block, a simpler Fabric and packing tab)
+- `98bb5fe9` 2026-11-25 Lead Management: "Create PI draft" on the lead's quotation line
 - `f4dbb798` 2026-11-25 Docs: #1034 merged and live (2026-11-25 10:42 IST) (#1035)
 - `4556b7e5` 2026-11-25 Order page: details open below the products, terms and breakdown at the foot of the Products card; PI strip 30/30/20/20 with separators (#1034)
 - `592bea9f` 2026-11-25 Login as member: the floating button can be dragged out of the way (#1033)
@@ -37,8 +39,6 @@
 - `e8a9b46b` 2026-11-24 Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (migration 20270827000000 APPLIED) (#1013)
 - `8890d287` 2026-11-24 Docs: the 9:30 pm backup task runs with no window (no SQL) (#1014)
 - `f6c6f05c` 2026-11-24 Docs: the first full photo read (373 of 373) and the new accuracy figures (#1012)
-- `f4a93245` 2026-11-24 Docs: stamp #994 and #987 (the quotation builder's top section, opening a quotation) as merged and live (no SQL) (#1011)
-- `1dcd4005` 2026-11-24 Docs: #1008 merged and live (2026-11-24 11:06 IST) (#1010)
 
 ## Pages by top-level area
 
