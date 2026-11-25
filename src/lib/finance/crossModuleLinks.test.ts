@@ -393,7 +393,7 @@ describe('the Order opens Finance’s payment form and never its own', () => {
     assert.ok(page.includes('orderStatus: order.status,'))
     // Drawn only when the gate says so, and mounted only when it says so — the
     // second check means a stale open flag cannot outlive the permission.
-    assert.ok(page.includes('{mayRecordPayment && ('))
+    assert.ok(page.includes('{recordsReady && mayRecordPayment && ('))
     assert.ok(page.includes('{recordingPayment && mayRecordPayment && ('))
   })
 

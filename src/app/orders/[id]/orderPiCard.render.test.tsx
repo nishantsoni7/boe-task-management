@@ -1,7 +1,8 @@
 /**
  * The PI card (owner, 25 Nov 2026, third pass): the Documents card with NO "Main PI" heading row. It is four
  * plain columns: PI (labelled "PI · V1", with its status, PI history and Details, then the current PI as Excel,
- * ERP and PDF), Product pictures, Design Files and Client PO; then the absence note and a footer for the Sales
+ * ERP and PDF), Product pictures, Design Files and Client PO, 30 / 30 / 20 / 20 with light rules between them;
+ * then a footer for the Sales
  * highlight and the Notes.
  *
  * The owner marked two earlier versions 4/10 and 5/10, so these pin the arrangement, that nothing was lost,
@@ -54,14 +55,14 @@ const card = (over: { footer?: React.ReactNode; withHistory?: boolean } = {}) =>
 )
 
 describe('the PI card', () => {
-  test('one card: the strip first (NO heading row), then the absence note, then the footer', () => {
+  test('one card: the strip first (NO heading row), then the footer, and no absence line', () => {
     const html = card({ footer: <p>FOOTER TEXT</p> })
     const at = (s: string) => html.indexOf(s)
     assert.equal(html.includes('order-pi-head'), false, 'the Main PI heading row is gone')
     assert.equal(text(html).includes('Main PI'), false)
     assert.ok(at('order-pic-strip') > 0)
-    assert.ok(at('order-docs-absence') > at('order-pic-strip'))
-    assert.ok(at('order-pic-footer') > at('order-docs-absence'))
+    assert.equal(html.includes('order-docs-absence'), false, 'the Not provided line is gone (owner, 25 Nov 2026)')
+    assert.ok(at('order-pic-footer') > at('order-pic-strip'))
     assert.ok(at('FOOTER TEXT') > at('order-pic-footer'))
     assert.equal(html.split('class="order-docs"').length - 1, 1, 'still one Documents card')
     assert.ok(html.includes('id="documents"') && html.includes('aria-label="Documents"'), 'the anchor and the label survive')
@@ -103,10 +104,10 @@ describe('the PI card', () => {
     assert.ok(strip.includes('No design files') && strip.includes('No client PO'), 'an empty one is one muted word, not a box')
   })
 
-  test('the absence note is said ONCE, under the strip, not in each empty cell', () => {
+  test('the absence confirmation is not drawn at all: not under the strip, not in an empty cell', () => {
     const t = text(card())
-    assert.equal((t.match(/confirmed sending the PI/g) ?? []).length, 1)
-    assert.ok(t.includes('without these'), 'the two notes merged into one')
+    assert.equal(t.includes('confirmed sending'), false)
+    assert.equal(t.includes('Not provided'), false)
   })
 
   test('the footer is only drawn when the page gives one; the title stays for the label', () => {
@@ -138,8 +139,11 @@ describe('the card\'s styles', () => {
     assert.match(block, /\.order-top \.order-docs \.order-pic \{ display: flex; flex-direction: column; align-items: stretch;/)
   })
 
-  test('the strip is four plain columns (the PI and pictures columns size to their buttons), two in a narrow card, one on a phone', () => {
-    assert.match(block, /\.order-pic-strip \{\s*display: grid; grid-template-columns: auto auto minmax\(0, 1fr\) minmax\(0, 1fr\);/)
+  test('the strip is four columns, 30 / 30 / 20 / 20, divided by light rules; two in a narrow card, one on a phone', () => {
+    assert.match(block, /\.order-pic-strip \{\s*display: grid; grid-template-columns: minmax\(0, 3fr\) minmax\(0, 3fr\) minmax\(0, 2fr\) minmax\(0, 2fr\); gap: 0;/)
+    assert.match(block, /\.order-pic-strip--short \{ grid-template-columns: minmax\(0, 3fr\) minmax\(0, 2fr\) minmax\(0, 2fr\); \}/)
+    assert.match(block, /\.order-pic-strip > :not\(:first-child\) \{ border-left: 1px solid #ECE7E0; \}/)
+    assert.match(block, /\.order-pic-strip > :first-child \{ padding-left: 0; \}/)
     // a container query, not the viewport: the sidebar takes a different share at every desktop size
     assert.match(block, /@container \(max-width: 1000px\) \{\s*\.order-top \.order-docs \.order-pic \.order-pic-strip,\s*\.order-top \.order-docs \.order-pic \.order-pic-strip--short \{ grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);/)
     assert.match(block, /@container \(max-width: 640px\)[\s\S]*?grid-template-columns: minmax\(0, 1fr\);[\s\S]*?min-height: 44px/)

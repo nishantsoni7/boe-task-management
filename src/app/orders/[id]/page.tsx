@@ -22,7 +22,6 @@ import {
   OrderPaymentListDialog,
   OrderSummaryPanel,
   ADD_PAYMENT_ACTION_LABEL,
-  PAYMENT_SECTION_TITLE,
   PaymentSummaryFigures,
   SECTION_HEADER_STYLE,
   SectionSkeleton,
@@ -31,8 +30,8 @@ import {
   type OrderActivityItem,
 } from './OrderWorkspace'
 import { OrderDatesTimelineCard, OrderInternalDetailsCard, OrderStatusStrip } from './OrderRedesign'
-import { OrderDetailRows, type RowOpenRequest } from './OrderDetailRows'
-import { detailRows, orderBarGates, type DetailRowKey } from '@/lib/orders/orderDetailRows'
+import { OrderDetailSections, OrderTermsAndMoney, type SectionKey, type SectionRequest } from './OrderDetailSections'
+import { orderBarGates } from '@/lib/orders/orderBarGates'
 import { orderDatesTimeline } from '@/lib/orders/orderDatesTimeline'
 import { firstPiMilestones } from '@/lib/orders/orderPiMilestones'
 import { isKeyActivityEvent, isMainActivityEvent } from '@/lib/orders/orderActivityImportance'
@@ -925,13 +924,8 @@ export default function OrderDetailPage() {
    * draws no marks at all.
    */
   const [newSince, setNewSince] = useState<string | null>(null)
-  /**
-   * THE ORDER BAR'S "FROM CLIENT" COUNT: reported by the Pendencies card's own
-   * read (it loads itself, so the page's startup reads do not change), null until
-   * that read lands. And the bar's request to open a folded row below the products.
-   */
-  const [pendencyOpen, setPendencyOpen] = useState<number | null>(null)
-  const [rowRequest, setRowRequest] = useState<RowOpenRequest | null>(null)
+  /** The facts line's request to scroll to a section below the products (the Advance cell asks for Payment). */
+  const [sectionRequest, setSectionRequest] = useState<SectionRequest | null>(null)
   const [handoffReady, setHandoffReady] = useState(false)
   const changeRequestsRef = useRef<HTMLDivElement | null>(null)
   // The startup gate's resolver, parked here by the startup path and released
@@ -3321,50 +3315,19 @@ export default function OrderDetailPage() {
     />
   )
 
-  // ══ THE ORDER BAR AND THE FOLDED ROWS (Nitish / Operations, 24 Nov 2026) ══
-  // The bar above the PI says the four things that decide whether production can
-  // start; the rows below the products carry everything else, each with one line
-  // that says where it stands. Both are WORDED by lib/orders/orderDetailRows from
-  // values this page already holds: nothing here formats or derives a figure.
-  const openDetailRow = (key: DetailRowKey) => setRowRequest(r => ({ key, nonce: (r?.nonce ?? 0) + 1 }))
+  // ══ THE FACTS LINE AND THE OPEN DETAIL SECTIONS (Nitish / Operations, 24 Nov 2026; owner, 25 Nov 2026) ══
+  // The line under the order number says the facts that decide whether production can
+  // start; the sections below the products carry everything else, all open. The two gates
+  // on the line are WORDED by lib/orders/orderBarGates from values this page already
+  // holds: nothing here formats or derives a figure.
+  const scrollToSection = (key: SectionKey) => setSectionRequest(r => ({ key, nonce: (r?.nonce ?? 0) + 1 }))
   const barGates = orderBarGates({
     advance,
     dueDate: order.due_date ? fmtDate(order.due_date) : null,
     daysToDue: datesTimeline.daysToDue,
   })
-  const quietRows = detailRows({
-    clientRows: summaryView.client.rows,
-    salesRows: summaryView.sales.rows,
-    dates: {
-      confirm: order.confirm_date ? fmtDate(order.confirm_date) : null,
-      approved: piApprovedAtIso ? fmtDate(piApprovedAtIso) : null,
-      due: order.due_date ? fmtDate(order.due_date) : null,
-      daysToDue: datesTimeline.daysToDue,
-    },
-    payment: {
-      loaded: recordsReady,
-      verifiedPercent: finance.verifiedPercent,
-      orderValue: finance.orderValue,
-      awaiting: formatMoney(finance.awaitingVerification),
-      awaitingCount: finance.counts.awaiting,
-    },
-    advance,
-    approvals: approvalView.kinds,
-    pendingFromClient: pendencyOpen,
-    internalRows: piInternalRows,
-    termsCount: commercialTermsPoints(piTerms.terms).length,
-    commercial: commercialLines,
-    activity: {
-      count: history.length,
-      latestLabel: history[0]?.label ?? null,
-      latestWhen: history[0]?.createdAtIso ? fmtDate(history[0].createdAtIso) : null,
-      newCount: newSince ? history.filter(e => !!e.createdAtIso && e.createdAtIso >= newSince).length : 0,
-    },
-    // Accept for production is offered to this reader and the advance is what holds it up.
-    acceptBlockedByAdvance: operationsDecisionOffered && advanceAttentionLabel(advance) !== null,
-  })
 
-  // PENDENCIES (the former Fabric & Finish card), the third column of the top band (owner, 2026-10-26).
+  // PENDENCIES (the former Fabric & Finish card): at the foot of Internal details and terms (owner, 25 Nov 2026).
   const pendenciesCard = (
   <OrderFabricFinishCard
     standing={approvalView}
@@ -3375,119 +3338,124 @@ export default function OrderDetailPage() {
     pendencies={{
       orderId: order.id,
       canManage: (mayRecordApproval || mayDecidePiAsAdmin) && order.status !== 'cancelled',
-      onCount: setPendencyOpen,
     }}
   />
   )
 
-  // PAYMENT, NOW BESIDE DOCUMENTS (owner, 2026-10-26): same card, same figures, same buttons —
-  // only where it is drawn changed.
-  const paymentCard = (
-          <div className="order-docs-pay">
-            {/* ══ 5. PAYMENT ══
-                THE ONLY PAYMENT SURFACE ON THE PAGE, and four lines long.
+  // PAYMENT, IN ITS OWN OPEN SECTION (owner, 25 Nov 2026; beside Documents from 2026-10-26 to 24 Nov): the same
+  // figures, the same buttons, the same dialogs. Only where it is drawn changed: the heading's controls go in the
+  // section's heading, the figures in its body, and the "Payment plan" link that used to be a row of its own
+  // between the products and the details sits next to the heading (same gate, same page).
+  const showPaymentPlanLink = !!order.source_order_submission_id && ordersCaps.canViewPaymentPlan && !viewAsUserId
+  const paymentActions = (
+    <>
+      {showPaymentPlanLink && (
+        <button type="button" className="order-section-link" onClick={() => router.push(`/orders/${order.id}/payment-plan`)}>
+          Payment plan <span aria-hidden="true">→</span>
+        </button>
+      )}
+      {/* ── Add payment ──
+          A DOOR INTO FINANCE’S OWN ENTRY FORM, and nothing else. It opens record_payment_with_allocations’
+          one flow, seeded with this Order, and this page contains no payment form, no validation and no
+          write of its own.
 
-                IT USED TO BE THE TALLEST SECTION HERE. A headline, two metric
-                blocks, a bar, a legend naming the bar's three shares, a grid of
-                three more captioned figures — one of which was the order value the
-                headline had just stated and another the sum of the two metrics —
-                and, underneath all of it, a permanently open table of every payment
-                with a paragraph explaining the table. The same rupees were on the
-                screen up to three times.
+          DRAWN ON THE SAME RULE FINANCE DRAWS ITS OWN Record Payment button on — finance.allocate with
+          module entry — plus the Order not being cancelled, which the RPC refuses anyway. A reader without
+          it is offered no control at all, not a disabled one: the RPC would refuse them and a dead button
+          only asks them to find that out. */}
+      {recordsReady && mayRecordPayment && (
+        <button type="button" onClick={() => setRecordingPayment(true)} className="boe-btn boe-btn-ghost order-section-btn">
+          {ADD_PAYMENT_ACTION_LABEL}
+        </button>
+      )}
+    </>
+  )
+  const paymentBody = (
+    <div className="order-docs-pay">
+      {/* ══ PAYMENT ══
+          THE ONLY PAYMENT SURFACE ON THE PAGE. A reader asks how much is verified (the headline, and the
+          Verified button), how much is with Finance (the Awaiting verification button), how much remains
+          (the Balance line) and what share that is (the headline percentage). The per-payment rows are
+          behind the two buttons.
 
-                WHAT A READER ASKS, AND WHERE EACH ANSWER IS NOW: how much is
-                verified (the headline, and the Verified button); how much is with
-                Finance (the Awaiting verification button); how much remains (the
-                Balance line); what share that is (the headline percentage). The
-                per-payment rows are behind the two buttons, which is where somebody
-                who wants them goes and where nobody else has to scroll past them.
+          EVERY FIGURE IS STILL buildOrderFinancePosition'S. No amount, no percentage, no status rule and
+          no allocation rule changed here. */}
+      {/* WHAT FINANCE JUST RECORDED, above the figures it changed. It names the payment and says plainly
+          that verification has not happened — recording money is not the same as its having arrived, and
+          this page must not let the two read alike. */}
+      {paymentNotice && (
+        <div className="order-pay-notice" role="status">
+          <span>{paymentNotice}</span>
+          <button
+            type="button"
+            onClick={() => setPaymentNotice(null)}
+            aria-label="Dismiss"
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      )}
+      <PaymentSummaryFigures
+        finance={finance}
+        loaded={recordsReady}
+        onOpenList={setPaymentList}
+        facts={orderPaymentFacts({
+          orderValue: finance.orderValue,
+          advance,
+          formatMoney,
+        })}
+      />
+      {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000): stated here, with the rest of the payment
+          position, and nowhere above. */}
+      <AdvanceGatePanel
+        readiness={advance}
+        versionNumber={mainPi.kind === 'ready' ? mainPi.version.versionNumber : null}
+        isAdmin={mayApproveBelowAdvance}
+        approverName={advance?.exception?.approved_by ? piNames.get(advance.exception.approved_by) ?? null : null}
+        formatWhen={iso => (iso ? fmtDateTime(iso) : '—')}
+        onApprove={async reason => {
+          const { error } = await supabase.rpc('approve_order_advance_exception', { p_order_id: id, p_reason: reason })
+          if (!error) await reloadOrderRow()
+          return { error }
+        }}
+      />
+    </div>
+  )
 
-                EVERY FIGURE IS STILL buildOrderFinancePosition'S. No amount, no
-                percentage, no status rule and no allocation rule changed here. */}
-            <PiCard>
-              <PiCardHeader
-                title={PAYMENT_SECTION_TITLE}
-                style={SECTION_HEADER_STYLE}
-                right={recordsReady ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                    {/* ── Add payment ──
-                        A DOOR INTO FINANCE’S OWN ENTRY FORM, and nothing else. It
-                        opens record_payment_with_allocations’ one flow, seeded with
-                        this Order, and this page contains no payment form, no
-                        validation and no write of its own.
-
-                        DRAWN ON THE SAME RULE FINANCE DRAWS ITS OWN Record Payment
-                        button on — finance.allocate with module entry — plus the
-                        Order not being cancelled, which the RPC refuses anyway. A
-                        reader without it is offered no control at all, not a
-                        disabled one: the RPC would refuse them and a dead button
-                        only asks them to find that out.
-
-                        UNCHANGED IN THIS PASS: the same gate, the same label, the
-                        same modal, the same refresh. Only the payment COUNT that
-                        used to sit beside it has gone — each figure now states its
-                        own count on its own button. */}
-                    {mayRecordPayment && (
-                      <button
-                        type="button"
-                        onClick={() => setRecordingPayment(true)}
-                        className="boe-btn boe-btn-ghost"
-                        style={{ padding: '4px 11px', fontSize: '12px', flexShrink: 0 }}
-                      >
-                        {ADD_PAYMENT_ACTION_LABEL}
-                      </button>
-                    )}
-                  </div>
-                ) : undefined}
+  // INTERNAL DETAILS AND TERMS (Pendencies at its foot) BESIDE THE COMMERCIAL BREAKDOWN: the foot of the Products card
+  // (owner, 25 Nov 2026). Drawn once, inside the products wrapper when there are products, else as a card of its own.
+  const productsShown = !!piProductsCard || (!handoffReady && !!order.source_order_submission_id)
+  const termsAndMoney = (
+    <OrderTermsAndMoney
+      attached={productsShown}
+      terms={(handoffReady || !order.source_order_submission_id) ? (
+              <OrderInternalDetailsCard
+                title={ORDER_INTERNAL_DETAILS_TITLE}
+                rows={piInternalRows}
+                termsPoints={commercialTermsPoints(piTerms.terms)}
+                sample={{
+                  value: sampleType,
+                  canEdit: mayRecordApproval && order.status !== 'cancelled',
+                  saving: sampleSaving,
+                  failure: sampleError,
+                  onChange: next => { void changeSampleType(next) },
+                }}
               />
-              <div style={{ padding: '11px 16px 13px' }}>
-                {/* WHAT FINANCE JUST RECORDED, above the figures it changed. It
-                    names the payment and says plainly that verification has not
-                    happened — recording money is not the same as its having
-                    arrived, and this page must not let the two read alike. */}
-                {paymentNotice && (
-                  <div className="order-pay-notice" role="status">
-                    <span>{paymentNotice}</span>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentNotice(null)}
-                      aria-label="Dismiss"
-                      style={{
-                        background: 'none', border: 'none', cursor: 'pointer',
-                        color: colors.muted, fontSize: '14px', lineHeight: 1, padding: 0,
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
+            ) : <SectionSkeleton rows={3} label="Loading internal details" />}
+      pendencies={pendenciesCard}
+      totals={(
+              <div className="order-commercial">
+                <OrderCommercialBreakdown lines={commercialLines} embedded />
+                {!handoffReady && order.source_order_submission_id && (
+                  <div style={{ marginTop: '10px' }}><SkeletonBlock w="100%" h={92} /></div>
                 )}
-                <PaymentSummaryFigures
-                  finance={finance}
-                  loaded={recordsReady}
-                  onOpenList={setPaymentList}
-                  facts={orderPaymentFacts({
-                    orderValue: finance.orderValue,
-                    advance,
-                    formatMoney,
-                  })}
-                />
-                {/* THE 40% ADVANCE ON THE AMENDED VALUE (20270116000000): stated here,
-                    with the rest of the payment position, and nowhere above. */}
-                <AdvanceGatePanel
-                  readiness={advance}
-                  versionNumber={mainPi.kind === 'ready' ? mainPi.version.versionNumber : null}
-                  isAdmin={mayApproveBelowAdvance}
-                  approverName={advance?.exception?.approved_by ? piNames.get(advance.exception.approved_by) ?? null : null}
-                  formatWhen={iso => (iso ? fmtDateTime(iso) : '—')}
-                  onApprove={async reason => {
-                    const { error } = await supabase.rpc('approve_order_advance_exception', { p_order_id: id, p_reason: reason })
-                    if (!error) await reloadOrderRow()
-                    return { error }
-                  }}
-                />
               </div>
-            </PiCard>
-          </div>
+            )}
+    />
   )
 
   return (
@@ -3612,7 +3580,7 @@ export default function OrderDetailPage() {
           isSample={sampleType === 'sample_order'}
           sampleLabel={sampleType ? SAMPLE_TYPE_LABEL[sampleType] : null}
           fullNote={sampleType === 'sampling_needed' ? 'sampling first' : null}
-          bar={{ ...barGates, onOpen: openDetailRow }}
+          bar={{ ...barGates, onOpen: scrollToSection }}
         />
 
         <div className="order-top">
@@ -3812,25 +3780,14 @@ export default function OrderDetailPage() {
             FULL CONTENT WIDTH and the most prominent operational section: nine
             columns need the whole width to show every permitted column without
             a horizontal scroll at ordinary desktop widths. */}
-        {(piProductsCard || (!handoffReady && order.source_order_submission_id)) && (
-          <div className="order-products">
+        {productsShown && (
+          <div className="order-products order-products--joined">
             {!handoffReady && order.source_order_submission_id && (
               <SectionSkeleton rows={4} label="Loading products" />
             )}
             {piProductsCard}
+            {termsAndMoney}
           </div>
-        )}
-
-        {/* ══ 4b. PAYMENT PLAN ══ (20270428000000) Its own page (owner, 2026-10-29); the Order only links
-            to it, drawn only for holders of view_payment_plan. */}
-        {order.source_order_submission_id && ordersCaps.canViewPaymentPlan && !viewAsUserId && (
-          <button type="button" className="opp-entry" onClick={() => router.push(`/orders/${order.id}/payment-plan`)}>
-            <span className="opp-entry-text">
-              <strong>Payment plan</strong>
-              <span>What the client must pay before the next dispatch, and the dispatch lots</span>
-            </span>
-            <span className="opp-entry-go" aria-hidden="true">Open →</span>
-          </button>
         )}
 
         {/* ══ NOTICES ABOUT THE PI ══ (unchanged: an Order says something about its PI, even when there is none to read) */}
@@ -3904,24 +3861,19 @@ export default function OrderDetailPage() {
           </div>
         )}
 
-        {/* ══ ORDER DETAILS, FOLDED (Nitish / Operations, 24 Nov 2026) ══
-            Seven rows below the products, each with one line saying where it
-            stands. Every body is the page's own card, mounted from the start
-            (a closed row is only `hidden`), so no read moved and the cards that
-            load themselves still load once. Each fact is stated in full in its
-            row; the Order bar and the row summaries are views of the same values. */}
-        <OrderDetailRows
-          rows={quietRows}
-          request={rowRequest}
-          bodies={{
-            client: (
-              <OrderSummaryPanel
-                view={summaryView}
-                client={piHandoff.kind === 'ready' ? piHandoff.client : null}
-                groups="client"
-              />
-            ),
-            dates: (
+        {/* ══ ORDER DETAILS, ALL OPEN (owner, 25 Nov 2026; folded rows from 24 Nov) ══
+            Payment beside Dates over Client and sale, then Activity, in a card of their own below the
+            products, none folded. Internal details and terms (Pendencies at its foot) and the Commercial
+            breakdown are the FOOT OF THE PRODUCTS CARD above ("part of the product section only, with some
+            minimal separation"); only an Order with no products to join them to draws them here, as a card.
+            Every body is the page's own card, mounted from the start, so no read moved and the cards that
+            load themselves still load once. Each fact is stated in full in its section; the facts line is a
+            view of the same values. */}
+        {!productsShown && termsAndMoney}
+        <OrderDetailSections
+          request={sectionRequest}
+          payment={{ actions: paymentActions, body: paymentBody }}
+          dates={(
               <OrderDatesTimelineCard
                 title={SUMMARY_GROUP_TITLE.dates}
                 confirm={order.confirm_date ? fmtDate(order.confirm_date) : null}
@@ -3932,32 +3884,15 @@ export default function OrderDetailPage() {
                 overdue={!!isOverdue}
                 bare
               />
-            ),
-            pay: paymentCard,
-            pend: pendenciesCard,
-            terms: (handoffReady || !order.source_order_submission_id) ? (
-              <OrderInternalDetailsCard
-                title={ORDER_INTERNAL_DETAILS_TITLE}
-                rows={piInternalRows}
-                termsPoints={commercialTermsPoints(piTerms.terms)}
-                sample={{
-                  value: sampleType,
-                  canEdit: mayRecordApproval && order.status !== 'cancelled',
-                  saving: sampleSaving,
-                  failure: sampleError,
-                  onChange: next => { void changeSampleType(next) },
-                }}
+            )}
+          client={(
+              <OrderSummaryPanel
+                view={summaryView}
+                client={piHandoff.kind === 'ready' ? piHandoff.client : null}
+                groups="client"
               />
-            ) : null,
-            totals: (
-              <div className="order-commercial">
-                <OrderCommercialBreakdown lines={commercialLines} embedded />
-                {!handoffReady && order.source_order_submission_id && (
-                  <div style={{ marginTop: '10px' }}><SkeletonBlock w="100%" h={92} /></div>
-                )}
-              </div>
-            ),
-            act: !recordsReady ? (
+            )}
+          activity={!recordsReady ? (
                   <SectionSkeleton rows={3} label="Loading activity" />
                 ) : (
                   /* ONE CHRONOLOGY, TWO TRAILS. The Order's own events and the source
@@ -3987,8 +3922,7 @@ export default function OrderDetailPage() {
                       isNew: !!newSince && !!entry.createdAtIso && entry.createdAtIso >= newSince,
                     }
                   })} />
-                ),
-          }}
+                )}
         />
 
       </div>

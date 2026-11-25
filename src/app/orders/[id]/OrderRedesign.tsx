@@ -24,7 +24,8 @@ import {
   type OrderDatesTimeline,
 } from '@/lib/orders/orderDatesTimeline'
 import type { WorkspaceTone } from '@/lib/orders/orderWorkspace'
-import type { BarGate, ChipTone, DetailRowKey, OrderBarGates } from '@/lib/orders/orderDetailRows'
+import type { BarGate, ChipTone, OrderBarGates } from '@/lib/orders/orderBarGates'
+import type { SectionKey } from './OrderDetailSections'
 
 export const ERP_STAGE_LABEL = 'ERP'
 export const PRODUCTION_STAGE_LABEL = 'Production'
@@ -77,7 +78,7 @@ export function OrderStatusStrip({ erp, production, isSample, sampleLabel, fullN
    * the real order 549: not required on top). Absent, the strip is exactly the four
    * separate cells it always was.
    */
-  bar?: (OrderBarGates & { onOpen: (row: DetailRowKey) => void }) | null
+  bar?: (OrderBarGates & { onOpen: (section: SectionKey) => void }) | null
 }) {
   return (
     <section className={bar ? 'order-stages order-stages--bar' : 'order-stages'} aria-label={bar ? 'Order at a glance' : 'Order stages'}>
@@ -129,8 +130,8 @@ const CHIP_CLASS: Record<ChipTone, string> = {
 function OrderBarGateButton({ label, gate, row, onOpen }: {
   label: string
   gate: BarGate
-  row: DetailRowKey
-  onOpen: (row: DetailRowKey) => void
+  row: SectionKey
+  onOpen: (section: SectionKey) => void
 }) {
   return (
     <button
