@@ -1,13 +1,12 @@
-// The Status and Lead rows of a quotation (20270811000000; one status since 25 Nov 2026), the real component in jsdom with the database calls answered here.
-// What it must do: show the lead's stage as the status, read only, with a link to Lead Board where it is changed (no status button on this page); offer the one
-// lead action that is not a status change (Log on the lead); never write to the lead until that button is pressed, and call the lead's own function
-// (add_sales_lead_comment) with what the person confirmed.
+// The Lead card on a quotation (20270811000000), the real component in jsdom with the database calls answered here. What it must do:
+// offer ONE button that fits the quotation's status, never write to the lead until that button is pressed, and call the lead's own
+// functions (add_sales_lead_comment, move_sales_lead) with what the person confirmed.
 // Run: npm run test:file -- src/components/quotations/leadCard.dom.test.tsx
 import { mount } from '@/lib/testing/domHarness'
 import '@/lib/testing/cssModuleStub'
 import { afterEach, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { createElement } from 'react'
+import { act, createElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { istToday } from '@/lib/istDate'
 import type { LeadInfo, Quotation, QuotationStatus } from '@/lib/quotations/api'
@@ -52,27 +51,26 @@ const ui = (sb: ReturnType<typeof fake>, base: Quotation, o: { dirty?: boolean; 
   mounted.push(m)
   return m
 }
+const pick = (el: HTMLSelectElement, value: string) => act(() => { el.value = value; el.dispatchEvent(new (el.ownerDocument.defaultView as Window & typeof globalThis).Event('change', { bubbles: true })) })
 
 describe('the Lead card: what it offers', () => {
   test('Sent: one button, "Log on the lead"; the lead shows its number, stage, holder, follow-up and that nothing is logged yet', async () => {
     const sb = fake(info()); const u = ui(sb, quote('sent')); await u.settle(); await u.settle()
     assert.match(u.text(), /#1201 Hotel Aravali/); assert.match(u.text(), /Potential Clients/); assert.match(u.text(), /Held by Mohit Sharma/)
-    assert.match(u.text(), /Follow-up 25 Nov/); assert.match(u.text(), /Not logged on the lead yet/)
+    assert.match(u.text(), /follow-up 25 Nov/); assert.match(u.text(), /not logged on the lead yet/)
     assert.deepEqual(u.all('button').map(b => b.textContent?.trim()), ['Log on the lead', 'Unlink'])
     // the lead's stage IS the status: a chip, and four of the five steps of the sale filled for Potential Clients
     assert.match(u.one('.stage').textContent ?? '', /^Potential Clients$/)
     assert.equal(u.all('.meter i').length, 5); assert.equal(u.all('.meter i.meterOn').length, 4)
     assert.equal(u.one('.meter').getAttribute('aria-label'), 'Stage 4 of 5')
-    assert.ok(u.all('a').some(a => a.textContent?.trim() === 'Change in Lead Board' && a.getAttribute('href') === '/sales/board?lead=lead-1'), 'the status is changed in Lead Board')
     assert.deepEqual(sb.writes(), [], 'showing the card writes nothing')
     u.unmount()
   })
-  test('there is no status button for any quotation status: Confirmed and Lost do not offer to move the lead, the page only links to Lead Board', async () => {
-    for (const status of ['draft', 'sent', 'negotiating', 'confirmed', 'lost', 'archived'] as const) {
-      const sb = fake(info()); const u = ui(sb, quote(status)); await u.settle(); await u.settle()
-      assert.ok(!u.all('button').some(b => /Mark lead|Converted|Dead|Lost/.test(b.textContent ?? '')), status)
-      assert.ok(u.all('a').some(a => a.textContent?.trim() === 'Change in Lead Board'), status)
-      assert.deepEqual(sb.writes(), [], status)
+  test('Confirmed offers "Mark lead Converted"; Lost offers "Mark lead Dead"', async () => {
+    for (const [status, label] of [['confirmed', 'Mark lead Converted'], ['lost', 'Mark lead Dead']] as const) {
+      const u = ui(fake(info()), quote(status)); await u.settle(); await u.settle()
+      assert.ok(u.button(label), label)
+      assert.ok(!u.all('button').some(b => /Log on the lead/.test(b.textContent ?? '')))
       u.unmount()
     }
   })
@@ -139,12 +137,60 @@ describe('the Lead card: nothing happens until a button is pressed, then the lea
     assert.equal(sb.calls.find(c => c.fn === 'add_sales_lead_comment')!.args.p_next_due, '2099-01-05')
     u.unmount()
   })
+  test('Converted: asks once, then calls move_sales_lead from the lead\'s own stage', async () => {
+    const sb = fake(info(), { move_sales_lead: { status: 'moved', lead: {} } }); const u = ui(sb, quote('confirmed')); await u.settle(); await u.settle()
+    u.click(u.button('Mark lead Converted')); await u.settle()
+    assert.match(u.text(), /Mark #1201 Hotel Aravali as Converted\?/); assert.deepEqual(sb.writes(), [])
+    u.click(u.button('Yes, mark Converted')); await u.settle(); await u.settle()
+    const w = sb.calls.find(c => c.fn === 'move_sales_lead')!
+    assert.deepEqual([w.args.p_id, w.args.p_to, w.args.p_expected_from], ['lead-1', 'converted', 'potential'])
+    assert.match(u.text(), /marked Converted/)
+    u.unmount()
+  })
+  test('Converted: when the lead still needs facts, the card says which (the lead\'s own checks) and points to the lead', async () => {
+    const sb = fake(info(), { move_sales_lead: { status: 'needs', missing: ['requirement', 'value'], lead: {} } }); const u = ui(sb, quote('confirmed')); await u.settle(); await u.settle()
+    u.click(u.button('Mark lead Converted')); await u.settle()
+    u.click(u.button('Yes, mark Converted')); await u.settle(); await u.settle()
+    assert.match(u.text(), /needs requirement, project value \(approx\.\) before it can be Converted/); assert.match(u.text(), /Open the lead/)
+    u.unmount()
+  })
+  test('Dead: the reason must be chosen (the lead\'s eleven); the lost note travels with it', async () => {
+    const events = [{ kind: 'status', detail: { from: 'sent', to: 'lost', note: 'Chose another vendor' }, at: '', actor_name: null }]
+    const sb = fake(info(), { move_sales_lead: { status: 'moved', lead: {} } }); const u = ui(sb, quote('lost', { events })); await u.settle(); await u.settle()
+    u.click(u.button('Mark lead Dead')); await u.settle()
+    assert.equal(u.one<HTMLInputElement>('#q-lead-dead-note').value, 'Chose another vendor')
+    assert.equal(u.button('Mark Dead').disabled, true)
+    assert.equal(u.all('#q-lead-reason option').length, 12, 'a prompt plus the eleven reasons')
+    pick(u.one<HTMLSelectElement>('#q-lead-reason'), 'chose_another_supplier')
+    assert.equal(u.button('Mark Dead').disabled, false)
+    u.click(u.button('Mark Dead')); await u.settle(); await u.settle()
+    const w = sb.calls.find(c => c.fn === 'move_sales_lead')!
+    assert.deepEqual([w.args.p_to, w.args.p_expected_from, w.args.p_reason, w.args.p_note], ['dead', 'potential', 'chose_another_supplier', 'Chose another vendor'])
+    u.unmount()
+  })
+  test('Dead: the reason chosen when the quotation was marked Lost is already selected, and can still be changed', async () => {
+    const events = [{ kind: 'status', detail: { from: 'sent', to: 'lost', note: null, reason: 'price_too_high' }, at: '', actor_name: null }]
+    const sb = fake(info(), { move_sales_lead: { status: 'moved', lead: {} } }); const u = ui(sb, quote('lost', { events })); await u.settle(); await u.settle()
+    u.click(u.button('Mark lead Dead')); await u.settle()
+    assert.equal(u.one<HTMLSelectElement>('#q-lead-reason').value, 'price_too_high')
+    assert.equal(u.button('Mark Dead').disabled, false)
+    u.click(u.button('Mark Dead')); await u.settle(); await u.settle()
+    assert.equal(sb.calls.find(c => c.fn === 'move_sales_lead')!.args.p_reason, 'price_too_high')
+  })
+  test('Dead with "Other" needs a note', async () => {
+    const u = ui(fake(info()), quote('lost')); await u.settle(); await u.settle()
+    u.click(u.button('Mark lead Dead')); await u.settle()
+    pick(u.one<HTMLSelectElement>('#q-lead-reason'), 'other')
+    assert.equal(u.button('Mark Dead').disabled, true)
+    u.type(u.one<HTMLInputElement>('#q-lead-dead-note'), 'Client sold the hotel')
+    assert.equal(u.button('Mark Dead').disabled, false)
+    u.unmount()
+  })
   test('a refusal from the lead is shown as it is and nothing else happens', async () => {
-    const sb = fake(info(), {}, { add_sales_lead_comment: 'SALES_CHANGED: This lead has moved since you opened it.' })
-    const u = ui(sb, quote('sent')); await u.settle(); await u.settle()
-    u.click(u.button('Log on the lead')); await u.settle(); u.click(u.button('Log it')); await u.settle(); await u.settle()
+    const sb = fake(info(), {}, { move_sales_lead: 'SALES_CHANGED: This lead has moved since you opened it.' })
+    const u = ui(sb, quote('confirmed')); await u.settle(); await u.settle()
+    u.click(u.button('Mark lead Converted')); await u.settle(); u.click(u.button('Yes, mark Converted')); await u.settle(); await u.settle()
     assert.match(u.text(), /This lead has moved since you opened it/)
-    assert.ok(!sb.calls.some(c => c.fn === 'move_sales_lead'), 'this page never moves the lead')
     u.unmount()
   })
 })

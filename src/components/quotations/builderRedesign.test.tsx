@@ -118,34 +118,25 @@ describe('the quotation reads and saves the new fields', () => {
 describe('a product line (layout B)', () => {
   const noop = () => {}
   const draw = (l: QuoteLine, extra: { unit?: 'in' | 'cm'; editable?: boolean } = {}) => renderToStaticMarkup(
-    <LineRow l={l} n={1} area={null} unit={extra.unit ?? 'in'} editable={extra.editable ?? true} qty={14} total={539000} first last url={p => `https://img.example/${p}`}
+    <LineRow l={l} area={null} unit={extra.unit ?? 'in'} editable={extra.editable ?? true} qty={14} total={539000} first last url={p => `https://img.example/${p}`}
       onChange={noop} onUpload={noop} onImprove={noop} onView={noop} onRemove={noop} onMove={noop} onDuplicate={noop} />)
-  test('it has a Material box that grows with its text, Remarks / customization once there is something in it, no GST box and no note for the client', () => {
-    const html = draw(line({ spec: 'Teak frame' }))
-    assert.match(html, /<textarea[^>]*aria-label="Material"[^>]*rows="1"/)
-    assert.ok(html.includes('aria-label="Remarks / customization"') && html.includes('Teak frame'))
+  test('it has Remarks / customization and a Material box of the same height, no GST box and no note for the client', () => {
+    const html = draw(line())
+    assert.match(html, /<textarea[^>]*aria-label="Material"[^>]*rows="3"/)
+    assert.match(html, /<textarea[^>]*aria-label="Remarks \/ customization"[^>]*rows="3"/)
     assert.ok(!/Specification and customization|Note for the client|GST rate|aria-label="GST/i.test(html))
     assert.ok(html.includes('Price before GST'), 'the rupee sign is drawn inside the price box, not in the label')
-  })
-  test('Remarks, the Internal note and Client choices are one quiet row of links until they have something in them; a read-only product has no links', () => {
-    const none = draw(line())
-    for (const w of ['+ Remarks', '+ Internal note', '+ Client choices']) assert.ok(none.includes(w), w)
-    assert.ok(!none.includes('aria-label="Remarks / customization"') && !none.includes('aria-label="Internal note"'))
-    const some = draw(line({ spec: 'Teak', internal_note: 'Ask the factory' }))
-    assert.ok(!some.includes('+ Remarks') && !some.includes('+ Internal note') && some.includes('aria-label="Internal note"'))
-    assert.ok(!draw(line(), { editable: false }).includes('+ Remarks'))
   })
   test('the unit sits inside the dimensions box and in its label, and follows the quotation', () => {
     assert.ok(draw(line()).includes('Dimensions (in)'))
     const cm = draw(line(), { unit: 'cm' })
     assert.ok(cm.includes('Dimensions (cm)') && !cm.includes('Dimensions (in)'))
   })
-  test('the total shows how it is worked out; an unpriced product shows its pieces; an optional product says it is not in the total', () => {
-    assert.ok(draw(line()).includes('14 × ₹38,500'))
-    assert.ok(draw(line({ unit_price: null })).includes('14 pieces'))
+  test('the total shows the pieces; an optional product says it is not in the total', () => {
+    assert.ok(draw(line()).includes('14 pieces'))
     assert.ok(draw(line({ is_optional: true })).includes('not in the total'))
   })
-  test('a picture opens the pop-up; Replace and Remove sit beside Improve picture, with the product number on the tile; a product without a picture offers Add picture', () => {
+  test('a picture opens the pop-up; Replace and Remove sit beside Improve picture; a product without one offers Add picture', () => {
     const withPic = draw(line({ image_path: 'u/p.jpg' }))
     assert.match(withPic, /aria-label="View the picture of Beds"/)
     for (const w of ['Improve picture', 'Replace', 'Remove']) assert.ok(withPic.includes(w), w)
@@ -180,20 +171,12 @@ describe('the "Needs you" strip', () => {
 
 describe('the builder page', () => {
   const SCREEN = read('src/components/quotations/BuilderScreen.tsx')
-  test('the page, top to bottom (owner-approved 25 Nov 2026): the quotation request and the properties, the one products card, notes and totals, the client, History, the cards, and the floating bar', () => {
+  test('the right-hand column is gone: the quotation request and status on top, client beside share, products, totals, terms beside history, then the cards', () => {
     const at = (needle: string) => SCREEN.indexOf(needle)
-    const order = ['<RequestCard', '<PropsPanel', 'id="q-products"', 'id="q-terms"', 'id="q-extra"', '<ClientCard', '<h2>History</h2>', 'className={s.bottom}', '<ActionDock'].map(at)
+    const order = ['<RequestCard', '<TopPanel', '<ClientCard', 'id="q-products"', 'id="q-extra"', 'className={s.pair}', 'id="q-terms"', '<h2>History</h2>', 'className={s.bottom}'].map(at)
     assert.ok(order.every(i => i > 0), 'every section is on the page')
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
     assert.ok(!/\bs\.split\b|\bs\.sticky\b|Valid for \(days\)/.test(SCREEN), 'no side column, no Valid for box')
-  })
-  test('one status, one tab strip: the status is the lead\'s (read only, no status buttons on the page), and Products and Fabric share a single strip', () => {
-    assert.equal(SCREEN.split('role="tablist"').length, 2, 'one tab strip, not one per tab')
-    assert.ok(SCREEN.includes('id="q-tab-products"') && SCREEN.includes('id="q-tab-costing"'))
-    const panel = read('src/components/quotations/PropsPanel.tsx') + read('src/components/quotations/LeadCard.tsx')
-    assert.ok(!/Mark lead|Mark sent|Lost reason|move_sales_lead|moveLead/.test(panel), 'no status button and no lead move from this page')
-    assert.ok(read('src/components/quotations/LeadCard.tsx').includes('Change in Lead Board'))
-    assert.ok(SCREEN.includes('s.btnImport') && SCREEN.indexOf('s.btnImport') < SCREEN.indexOf('<RequestCard'), 'Import client file is in the page header, on top')
   })
   test('the Advanced client details are closed until opened and hold the fields the owner named', () => {
     assert.match(SCREEN, /const \[advOpen, setAdvOpen\] = useState\(false\)/)
@@ -215,7 +198,7 @@ describe('the builder page', () => {
   test('every class the quotation screens use is in the module stylesheet (a missing one fails silently, with no styling)', () => {
     const css = read('src/components/quotations/quotations.module.css')
     const defined = new Set([...css.matchAll(/\.([A-Za-z_][\w-]*)/g)].map(m => m[1]))
-    const files = ['BuilderScreen', 'PropsPanel', 'ActionDock', 'ChoicesPanel', 'LeadCard', 'AskCard', 'ClientCard', 'LeadTime', 'ProductLine', 'PictureViewer', 'RequestCard', 'PricingDesk', 'VersionsCard', 'ListScreen', 'ReportsScreen', 'ImportDialog', 'StudioDialog', 'QuotationLinks', 'RequestsScreen']
+    const files = ['BuilderScreen', 'TopPanel', 'LeadCard', 'AskCard', 'ClientCard', 'LeadTime', 'ProductLine', 'PictureViewer', 'RequestCard', 'PricingDesk', 'VersionsCard', 'ListScreen', 'ReportsScreen', 'ImportDialog', 'StudioDialog', 'QuotationLinks', 'RequestsScreen']
     for (const f of files) {
       const used = [...new Set([...read(`src/components/quotations/${f}.tsx`).matchAll(/\bs\.([A-Za-z_]\w*)/g)].map(m => m[1]))]
       assert.deepEqual(used.filter(c => !defined.has(c)), [], `${f}.tsx uses a class that quotations.module.css does not define`)

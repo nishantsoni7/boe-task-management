@@ -1,7 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { ChevronDown, ImagePlus } from 'lucide-react'
+import { ChevronDown, ChevronRight, ImagePlus } from 'lucide-react'
 import { istToday } from '@/lib/istDate'
 import { CHOICE_KINDS, CHOICE_LABEL, CHOICE_MAX, choiceCounts, type ChoiceKind, type LineChoice, type LineChoices } from '@/lib/quotations/math'
 import { Pic } from './Pic'
@@ -12,39 +12,27 @@ import s from './quotations.module.css'
  * catalog or their own. Layout 2 of the preview: one row per product in the table that PR 2 prints; this is where it is entered.
  * A choice never changes a price and is never locked; "Confirmed by the client" only stamps today's date.
  */
-export function ChoicesPanel({ choices, editable, url, shown, onShown, onChange, onUpload }: {
+export function ChoicesPanel({ choices, editable, url, onChange, onUpload }: {
   choices: LineChoices | undefined; editable: boolean; url: (path: string) => string
-  /** Open or closed is the product's (its "+ Client choices" link opens it, as the Remarks and Internal note links open theirs). */
-  shown: boolean; onShown: (v: boolean) => void
   onChange: (c: LineChoices) => void; onUpload: (f: File) => Promise<string>
 }) {
   const { total, open: waiting } = choiceCounts(choices)
+  const [shown, setShown] = useState(false)
   const set = (k: ChoiceKind, v: LineChoice | undefined) => {
     const next = { ...choices }
     if (v) next[k] = v
     else delete next[k]
     onChange(next)
   }
-  // Nothing chosen and closed: the product's "+ Client choices" link is the way in, so there is nothing to draw here.
-  if (!shown && total === 0) return null
   return (
     <div className={s.chWrap}>
-      {shown ? (
-        <button type="button" className={s.chToggle} aria-expanded onClick={() => onShown(false)}>
-          <ChevronDown size={15} aria-hidden />
-          Client choices
-          {total > 0
-            ? <span className={`${s.chip} ${waiting ? s.chWait : s.chDone}`}>{waiting ? `${waiting} to confirm` : `${total} confirmed`}</span>
-            : <span className={`${s.small} ${s.muted}`}>fabric, finish, stone, rope weave</span>}
-        </button>
-      ) : (
-        <div className={s.chSum}>
-          <b>Client choices</b>
-          {CHOICE_KINDS.map(k => (choices?.[k] ? <span key={k} className={s.chip}>{CHOICE_LABEL[k]}&nbsp;<b>{choices[k]!.name || choices[k]!.code || 'chosen'}</b></span> : null))}
-          <span className={`${s.chip} ${waiting ? s.chWait : s.chDone}`}>{waiting ? `${waiting} to confirm` : `${total} confirmed`}</span>
-          <button type="button" className={s.plAdd} aria-expanded={false} onClick={() => onShown(true)}>Edit</button>
-        </div>
-      )}
+      <button type="button" className={s.chToggle} aria-expanded={shown} onClick={() => setShown(v => !v)}>
+        {shown ? <ChevronDown size={15} aria-hidden /> : <ChevronRight size={15} aria-hidden />}
+        Client choices
+        {total > 0
+          ? <span className={`${s.chip} ${waiting ? s.chWait : s.chDone}`}>{waiting ? `${waiting} to confirm` : `${total} confirmed`}</span>
+          : <span className={`${s.small} ${s.muted}`}>fabric, finish, stone, rope weave</span>}
+      </button>
       {shown && (
         <div className={s.chBody}>
           {CHOICE_KINDS.map(k => (

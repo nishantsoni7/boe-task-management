@@ -63,8 +63,8 @@ describe('the switch', () => {
     assert.ok(sql.includes("raise exception 'QUOTATION_LOCKED: an archived quotation cannot be changed'"))
     assert.ok(!/alter table public\.quotations\b/i.test(sql), 'no existing table changes')
   })
-  test('the builder has the switch in the Share menu; the print and the client link follow it', () => {
-    const card = read('src/components/quotations/ActionDock.tsx')
+  test('the builder has the switch in the top panel; the print and the client link follow it', () => {
+    const card = read('src/components/quotations/TopPanel.tsx')
     assert.ok(card.includes('id="q-mark"') && card.includes('role="switch"'))
     assert.ok(card.includes("disabled={busy || !may || status === 'archived'"))
     assert.ok(builder.includes('setPictureMark(supabase, id, on)') && builder.includes('markOn={markQ.data}'))

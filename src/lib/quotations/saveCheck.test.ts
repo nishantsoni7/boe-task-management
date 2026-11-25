@@ -47,6 +47,6 @@ describe('saveProblem', () => {
     const row = readFileSync('src/components/quotations/ProductLine.tsx', 'utf8')
     assert.match(builder, /const onLine = problem \? null : saveProblem\(areas, lines\)/)
     assert.match(builder, /document\.getElementById\(`line-\$\{onLine\.lineKey\}`\)\?\.scrollIntoView/)
-    assert.match(row, /<article className=\{s\.pl\} id=\{`line-\$\{l\.key\}`\}/)
+    assert.match(row, /<div className=\{s\.pl\} id=\{`line-\$\{l\.key\}`\}>/)
   })
 })

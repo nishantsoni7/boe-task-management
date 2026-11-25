@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `053767a9` — Quotations: the page redesigned, ONE status (the lead's), one products card, a floating bar
-- Commits on this branch: 1583
+- Commit: `02a7e806` — Docs: #1028 merged and live (2026-11-25 07:02 IST) (#1030)
+- Commits on this branch: 1586
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,7 +14,10 @@
 
 ## Latest 25 commits
 
-- `053767a9` 2026-11-25 Quotations: the page redesigned, ONE status (the lead's), one products card, a floating bar
+- `02a7e806` 2026-11-25 Docs: #1028 merged and live (2026-11-25 07:02 IST) (#1030)
+- `b1eaf0b6` 2026-11-25 Docs: #1027 merged and live (2026-11-25 06:53 IST) (#1029)
+- `8c746d30` 2026-11-25 Quotations: the page redesigned, ONE status (the lead's), one products card, a floating bar (#1028)
+- `ffcb0080` 2026-11-25 Order page top: a facts line and ONE card, folded detail rows, PI card without the Main PI heading (#1027)
 - `52b12d79` 2026-11-24 Docs: #1023 merged and live (2026-11-24 20:18 IST) (#1024)
 - `d0b8cc70` 2026-11-24 Quotations: the builder's top is ONE panel, the lead is the status, no price-limits block (#1025)
 - `e7318db1` 2026-11-24 Quotations: no price hint at all for people outside the pricing desk (#1023)
@@ -36,9 +39,6 @@
 - `8d0ca964` 2026-11-24 Pricing: Training case page redesigned, with Overhead % and Margin % for each product (no SQL) (#1007)
 - `bb26f2d5` 2026-11-24 Docs: #1005 merged and live (2026-11-24 08:44 IST) (#1006)
 - `028eb186` 2026-11-24 Pricing: "Teach this?" on a quotation line, and rate reminders on For you (no SQL) (#1005)
-- `09a96c3f` 2026-11-24 Pricing: engine v3, photo facts and taught cases, leading only where it wins the blind test (20270826000000 APPLIED) (#1004)
-- `9e89001a` 2026-11-23 Pricing: photo facts, every product photo read once into facts (#1002)
-- `eda0cbec` 2026-11-23 Pricing: the echo guard, and "How accurate is it" with "Teach next" on Price learning (#1001)
 
 ## Pages by top-level area
 

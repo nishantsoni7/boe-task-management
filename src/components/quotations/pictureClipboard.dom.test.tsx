@@ -25,7 +25,7 @@ function row(l: QuoteLine, editable = true) {
   const changes: Partial<QuoteLine>[] = []
   const uploads: File[] = []
   const ui = mount(createElement(LineRow, {
-    l, n: 1, area: null, unit: 'in', editable, qty: 1, total: 1000, first: true, last: true, url: (p: string) => `https://img.example/${p}`,
+    l, area: null, unit: 'in', editable, qty: 1, total: 1000, first: true, last: true, url: (p: string) => `https://img.example/${p}`,
     onChange: (p: Partial<QuoteLine>) => { changes.push(p) }, onUpload: (f: File | undefined) => { if (f) uploads.push(f) },
     onImprove: () => {}, onView: () => {}, onRemove: () => {}, onMove: () => {}, onDuplicate: () => {},
   }))
