@@ -95,3 +95,50 @@ export function writeStash(stash: ImpersonationStash | null): void {
     // Storage blocked: the swap itself still works, but restoring would not.
   }
 }
+
+// WHERE THE FLOATING BUTTON IS PARKED (owner, 2026-11-25: it sat on top of page content).
+// Pixels from the window's right and bottom edges, so a resize keeps it near the same edge.
+// A per-browser convenience only: nothing here is a credential, and nothing needs it.
+export const IMPERSONATION_POSITION_KEY = 'boeLoginAsPosition'
+
+export type FloatPosition = { right: number; bottom: number }
+
+const EDGE_GAP = 8
+
+/** Keeps the whole button inside the window, EDGE_GAP px from every edge. */
+export function clampPosition(
+  p: FloatPosition,
+  box: { width: number; height: number },
+  win: { width: number; height: number },
+): FloatPosition {
+  const fit = (v: number, room: number) => Math.min(Math.max(v, EDGE_GAP), Math.max(EDGE_GAP, room))
+  return { right: fit(p.right, win.width - box.width - EDGE_GAP), bottom: fit(p.bottom, win.height - box.height - EDGE_GAP) }
+}
+
+export function parsePosition(raw: string | null): FloatPosition | null {
+  if (!raw) return null
+  try {
+    const v = JSON.parse(raw) as Partial<FloatPosition> | null
+    if (!v || !Number.isFinite(v.right) || !Number.isFinite(v.bottom)) return null
+    return { right: v.right as number, bottom: v.bottom as number }
+  } catch {
+    return null
+  }
+}
+
+export function readPosition(): FloatPosition | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return parsePosition(window.localStorage.getItem(IMPERSONATION_POSITION_KEY))
+  } catch {
+    return null
+  }
+}
+
+export function writePosition(p: FloatPosition): void {
+  try {
+    window.localStorage.setItem(IMPERSONATION_POSITION_KEY, JSON.stringify(p))
+  } catch {
+    // Storage blocked: the button still moves for this visit, it just starts at the corner next time.
+  }
+}

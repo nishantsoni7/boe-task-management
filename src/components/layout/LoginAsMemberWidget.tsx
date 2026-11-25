@@ -1,6 +1,9 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,
+  type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent,
+} from 'react'
 import { usePathname } from 'next/navigation'
 import { useQueryClient } from '@tanstack/react-query'
 import { Eye, LogOut, Search, UserCog, X } from 'lucide-react'
@@ -10,8 +13,12 @@ import { createClient as createIsolatedClient } from '@supabase/supabase-js'
 import { initials } from '@/lib/ui'
 import {
   IMPERSONATION_STASH_KEY,
+  clampPosition,
+  readPosition,
   readStash,
+  writePosition,
   writeStash,
+  type FloatPosition,
   type ImpersonationMember,
   type ImpersonationStash,
 } from '@/lib/impersonation'
@@ -21,6 +28,15 @@ import {
 // model are in src/lib/impersonation.ts.
 
 const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password']
+
+// Phone widths, where globals.css turns the round button into a slim edge tab. Keep the two in step.
+const PHONE_QUERY = '(max-width: 767px)'
+
+function subscribePhone(onChange: () => void) {
+  const mq = window.matchMedia(PHONE_QUERY)
+  mq.addEventListener('change', onChange)
+  return () => mq.removeEventListener('change', onChange)
+}
 
 function tokenExpiresSoon(jwt: string): boolean {
   try {
@@ -122,6 +138,87 @@ export default function LoginAsMemberWidget() {
 
   const impersonating = !!stash
 
+  // WHERE THE BUTTON IS PARKED (owner, 2026-11-25: it sat on top of page content). Drag the round button,
+  // the Acting as pill or the return button to move it; the spot is remembered per browser. null = the
+  // corner CSS puts it in. On a phone the slim edge tab only slides up and down its edge.
+  const boxRef = useRef<HTMLDivElement>(null)
+  const [pos, setPos] = useState<FloatPosition | null>(() => readPosition())
+  const phone = useSyncExternalStore(subscribePhone, () => window.matchMedia(PHONE_QUERY).matches, () => false)
+  const slim = phone && !impersonating
+  const drag = useRef<{ id: number; x: number; y: number; right: number; bottom: number; moved: boolean; last: FloatPosition | null } | null>(null)
+  const justDragged = useRef(false)
+  // Which way the open list grows: toward the side of the screen with more room.
+  const [flip, setFlip] = useState({ down: false, left: false, maxH: 560 })
+
+  // Pull the button back inside the window: when it first appears (a saved spot from a bigger window),
+  // after a resize, and when its row grows (the Acting as pill). The observer reports once on observe().
+  useEffect(() => {
+    const el = boxRef.current
+    if (!el) return
+    const fit = () => {
+      const r = el.getBoundingClientRect()
+      setPos(p => {
+        if (!p) return p
+        const q = clampPosition(p, { width: r.width, height: r.height }, { width: window.innerWidth, height: window.innerHeight })
+        return q.right === p.right && q.bottom === p.bottom ? p : q
+      })
+    }
+    const watch = new ResizeObserver(fit)
+    watch.observe(el)
+    window.addEventListener('resize', fit)
+    return () => { watch.disconnect(); window.removeEventListener('resize', fit) }
+  }, [impersonating, isAdmin, pathname])
+
+  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const b = (e.target as HTMLElement).closest('button')
+    // Only the three round/pill buttons move it: the open list scrolls and takes the search box.
+    if (e.button !== 0 || !b || b.closest('[role="dialog"]') || !boxRef.current) return
+    const r = boxRef.current.getBoundingClientRect()
+    drag.current = {
+      id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, last: null,
+      right: window.innerWidth - r.right, bottom: window.innerHeight - r.bottom,
+    }
+  }
+
+  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = drag.current
+    const el = boxRef.current
+    if (!d || !el || e.pointerId !== d.id) return
+    // Released somewhere the box never heard about (a fast flick off it): forget the press, never drag on a bare hover.
+    if (e.buttons === 0) { drag.current = null; return }
+    const dx = e.clientX - d.x
+    const dy = e.clientY - d.y
+    if (!d.moved) {
+      if (Math.hypot(dx, dy) < 6) return // a click or a tap, not a drag
+      d.moved = true
+      // Captured only now: a capture from the start would turn every plain click into a click on the box.
+      el.setPointerCapture(e.pointerId)
+      setOpen(false)
+    }
+    const r = el.getBoundingClientRect()
+    d.last = clampPosition(
+      { right: slim ? (pos?.right ?? 16) : d.right - dx, bottom: d.bottom - dy },
+      { width: r.width, height: r.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    )
+    setPos(d.last)
+  }
+
+  const endDrag = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const d = drag.current
+    if (!d || e.pointerId !== d.id) return
+    drag.current = null
+    if (!d.moved) return
+    if (d.last) writePosition(d.last)
+    // The browser still sends a click when the button is released after a drag; it must not open the list.
+    justDragged.current = true
+    setTimeout(() => { justDragged.current = false }, 0)
+  }
+
+  const swallowDragClick = (e: ReactMouseEvent) => {
+    if (justDragged.current) { e.preventDefault(); e.stopPropagation() }
+  }
+
   const loadMembers = useCallback(async () => {
     setError('')
     // While impersonating, the live session is the member's; the list needs the admin's.
@@ -137,6 +234,15 @@ export default function LoginAsMemberWidget() {
     if (!open) {
       if (members === null) void loadMembers()
       setTimeout(() => searchRef.current?.focus(), 30)
+      const r = boxRef.current?.getBoundingClientRect()
+      if (r) {
+        const down = r.top < window.innerHeight - r.bottom
+        setFlip({
+          down,
+          left: r.right - Math.min(360, window.innerWidth - 32) < 8,
+          maxH: Math.max(200, (down ? window.innerHeight - r.bottom : r.top) - 24),
+        })
+      }
     }
     setOpen(o => !o)
   }
@@ -256,7 +362,11 @@ export default function LoginAsMemberWidget() {
     // Position and the trigger's shape live in globals.css (.boe-viewas*); the
     // "Acting as" pill keeps its full size on purpose: a member's session must
     // never be easy to miss.
-    <div className={`boe-viewas${impersonating ? ' is-acting' : ''}`}>
+    <div className={`boe-viewas${impersonating ? ' is-acting' : ''}`}
+      ref={boxRef}
+      style={pos ? { bottom: pos.bottom, ...(slim ? {} : { right: pos.right }) } : undefined}
+      onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={endDrag} onPointerCancel={endDrag}
+      onClickCapture={swallowDragClick}>
       {open && (
         <>
           <div style={{ position: 'fixed', inset: 0, zIndex: -1 }} onClick={() => setOpen(false)} />
@@ -264,8 +374,10 @@ export default function LoginAsMemberWidget() {
             role="dialog"
             aria-label="Login as member"
             style={{
-              position: 'absolute', right: 0, bottom: 'calc(100% + 10px)',
-              width: 'min(360px, calc(100vw - 32px))', maxHeight: 'min(560px, 70vh)',
+              position: 'absolute',
+              ...(flip.left ? { left: 0 } : { right: 0 }),
+              ...(flip.down ? { top: 'calc(100% + 10px)' } : { bottom: 'calc(100% + 10px)' }),
+              width: 'min(360px, calc(100vw - 32px))', maxHeight: `min(560px, 70vh, ${flip.maxH}px)`,
               display: 'flex', flexDirection: 'column',
               background: '#fff', border: '1px solid #E4DED7', borderRadius: 14,
               boxShadow: '0 16px 48px rgba(0,0,0,0.22)', overflow: 'hidden',
@@ -364,7 +476,8 @@ export default function LoginAsMemberWidget() {
         </>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end' }}>
+      {/* touch-action none: a finger that drags one of these buttons moves it instead of scrolling the page. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'flex-end', touchAction: 'none' }}>
         {impersonating && stash && (
           <button type="button" onClick={toggle}
             style={{
@@ -391,7 +504,7 @@ export default function LoginAsMemberWidget() {
           </button>
         )}
         {!impersonating && (
-          <button type="button" onClick={toggle} aria-label="Login as member" title="Login as member"
+          <button type="button" onClick={toggle} aria-label="Login as member" title="Login as member (drag to move)"
             className="boe-viewas-trigger"
             style={{ background: accentBg, boxShadow: `0 6px 20px rgba(0,0,0,0.25), 0 0 0 2px ${accent}33` }}>
             {open ? <X size={20} /> : <UserCog size={20} />}
