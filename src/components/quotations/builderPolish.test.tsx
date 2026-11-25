@@ -29,6 +29,14 @@ const rule = (selector: string) => {
   assert.ok(at >= 0, `${selector} is in the stylesheet`)
   return CSS.slice(at, CSS.indexOf('}', at) + 1)
 }
+// Quotation page version 2 (25 Nov 2026) is appended last so it wins over the older rules: its own rule for a selector, and its media queries.
+const V2 = CSS.slice(CSS.indexOf('/* ── Quotation page version 2'))
+const v2rule = (selector: string) => {
+  const at = V2.indexOf(`\n${selector} {`)
+  assert.ok(at >= 0, `${selector} is in the version 2 block`)
+  return V2.slice(at + 1, V2.indexOf('}', at) + 1)
+}
+const LEAD_QUOTES = read('src/components/salesLeads/LeadQuotes.tsx')
 
 const line = (over: Partial<QuoteLine> = {}): QuoteLine => ({
   key: 'l1', area_key: null, name: 'Bed', size_text: '83 × 68', spec: '', material: 'Ash wood', finish: '', category: '',
@@ -41,32 +49,37 @@ const header = (over: Partial<Header> = {}): Header => ({
   dimension_unit: 'in', project_type: '', seats: null, lead_time_weeks: null, lead_time_reason: '', delivery_city: 'Jaipur', ...over,
 })
 const draw = (l: QuoteLine) => renderToStaticMarkup(
-  <LineRow l={l} area={null} unit="in" editable qty={2} total={77000} first last url={p => `https://img.example/${p}`}
+  <LineRow l={l} n={1} area={null} unit="in" editable qty={2} total={77000} first last url={p => `https://img.example/${p}`}
     onChange={() => {}} onUpload={() => {}} onImprove={() => {}} onView={() => {}} onRemove={() => {}} onMove={() => {}} onDuplicate={() => {}} />)
 
-describe('the product picture (item 2)', () => {
-  test('it is 25% bigger than the old 128 x 108 and shown whole, never cropped', () => {
-    assert.match(rule('.plPicBtn'), /width: 160px; height: 135px;/)
-    assert.match(rule('.plPicEmpty'), /width: 160px; height: 135px;/)
+describe('the product picture (item 2; version 2 of 25 Nov 2026)', () => {
+  test('it is a 152 px square tile, shown whole and never cropped, with the product\'s number on it', () => {
+    assert.match(v2rule('.plPicBtn'), /width: 152px; height: 152px;/)
+    assert.match(v2rule('.plPicEmpty'), /width: 152px; height: 152px;/)
     assert.match(rule('.plPicImg'), /object-fit: contain;/)
     assert.ok(!/object-fit: cover/.test(rule('.plPicImg')), 'no cover')
-    assert.match(rule('.pl'), /grid-template-columns: 180px minmax\(0, 1fr\) 296px;/, 'the picture column is wide enough for the new frame; the numbers column is wide enough for Quantity and Price side by side')
+    assert.match(v2rule('.plNo'), /position: absolute; left: 8px; top: 8px;/)
+    assert.match(v2rule('.pl'), /grid-template-columns: 152px minmax\(0, 1fr\) 300px; grid-template-areas: "pic mid right" "pic strip strip" "open open open";/, 'picture | boxes | numbers, the strip under the boxes, what it opens across the whole product')
   })
-  test('on a phone the frame is 140 x 118 (25% over the old 112 x 94) and the pop-up strip does not crop either', () => {
-    assert.match(CSS, /@media \(max-width: 767px\) \{[\s\S]*?\.plPicBtn, \.plPicEmpty \{ width: 140px; height: 118px; flex-shrink: 0; \}/)
+  test('on a phone the tile is 104 px square beside the boxes, and the pop-up strip does not crop either', () => {
+    assert.match(V2, /@media \(max-width: 767px\) \{[\s\S]*?\.plPic, \.plPicBtn, \.plPicEmpty \{ width: 104px; \}\s*\.plPicBtn, \.plPicEmpty \{ height: 104px; \}/)
     assert.match(CSS, /\.viewerThumb img \{[^}]*object-fit: contain;/)
+  })
+  test('the rows are no longer shaded every other one (zebra gone)', () => {
+    assert.match(v2rule('.pl:nth-of-type(even)'), /background: var\(--boe-surface\);/)
   })
 })
 
 describe('Finish is no longer a box (item 3)', () => {
-  test('the product row has no Finish box; Product and Dimensions fill the first row', () => {
+  test('the product row has no Finish box; Product and Dimensions fill the first row, Material and Remarks the second', () => {
     const html = draw(line({ finish: 'PU' }))
     assert.ok(!html.includes('aria-label="Finish"') && !html.includes('<span>Finish</span>'))
     // two columns (owner, 15 Nov 2026): Product and Material are 5 of 12, Dimensions and Remarks are 7 of 12
-    assert.match(html, /<label class="field c5"><span>Product<\/span>/)
-    assert.match(html, /<label class="field c7"><span>Dimensions \(in\)<\/span>/)
-    assert.match(html, /<label class="field c5"><span>Material<\/span>/)
-    assert.match(html, /<label class="field c7"><span>Remarks \/ customization<\/span>/)
+    assert.match(html, /<label class="field c5"><span>Product<\/span><input aria-label="Product name" class="input plName"/)
+    assert.match(html, /<label class="field c7"><span>Dimensions<\/span>/, 'the unit is inside the box, not in the label (version 2)')
+    assert.match(html, /<label class="field c5 grow"><span>Material<\/span>/)
+    assert.match(html, /<label class="field c7 grow"><span class="labRow">Remarks \/ customization<span class="clientTag" title="The client reads this">/)
+    assert.match(v2rule('.plName'), /font-weight: 600; font-size: 16px;/)
   })
   test('the value that is already stored still travels with every save, or the database would wipe it (it rewrites the lines)', () => {
     const doc = saveDoc(header(), [], [line({ finish: 'PU' })], '2026-11-14T00:00:00Z')
@@ -98,8 +111,8 @@ describe('contact person and email (items 5 and 7)', () => {
 
 describe('the page rows (items 8 and 9, redone on 18 Nov 2026)', () => {
   const between = (from: string, to: string) => SCREEN.slice(SCREEN.indexOf(from), SCREEN.indexOf(to))
-  test('the top is the request (when there is one), ONE panel, then the Client card, then the products', () => {
-    const order = ['className={s.topStack}', '<RequestCard', '<TopPanel', '<ClientCard', 'aria-labelledby="q-products"'].map(i => SCREEN.indexOf(i))
+  test('the top is the request (when there is one) and ONE panel, then the products, the totals, and the Client card under the totals (25 Nov 2026)', () => {
+    const order = ['className={s.topStack}', '<RequestCard', '<TopPanel', 'aria-label="Products and costing"', 'id="q-extra"', '<ClientCard'].map(i => SCREEN.indexOf(i))
     assert.ok(order.every(i => i > 0), 'every part is on the page')
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
     assert.match(rule('.topStack'), /gap: 12px;/)
@@ -142,11 +155,11 @@ describe('the tidy-up of 18 Nov 2026 (owner: request on top, no PI draft card, C
     assert.ok(SCREEN.indexOf('<RequestCard') < SCREEN.indexOf('<TopPanel'))
     assert.ok(!SCREEN.includes('Needs you') && !SCREEN.includes('Go there'))
   })
-  test('the PI draft card and the PI-format download are gone, but a quotation can still become a PI from the top panel', () => {
+  test('the PI draft card and the PI-format download are gone; a PI draft is made in Lead Management now, and the panel only opens one that exists (25 Nov 2026)', () => {
     assert.ok(!/PiCard|downloadPi|Download in PI format/.test(SCREEN + PANEL))
-    for (const w of ['Confirm → PI draft', 'Open the PI draft', 'onClick={onConfirm}', 'Show which']) assert.ok(PANEL.includes(w), w)
-    assert.match(SCREEN, /const canConfirm = base\.may_edit && !base\.pi && \(base\.status === 'draft' \|\| base\.status === 'sent' \|\| base\.status === 'negotiating'\)/)
-    assert.match(PANEL, /disabled=\{off \|\| piProblems\.length > 0\}/, 'unsaved edits, or something missing')
+    for (const gone of ['onConfirm', 'canConfirm', 'makePiDraft', 'piProblems', 'Show which']) assert.ok(!(SCREEN + PANEL).includes(gone), `${gone} is gone from the quotation page`)
+    assert.ok(PANEL.includes('Open the PI draft') && PANEL.includes('href={draftDetailHref(base.pi.id)}'))
+    assert.ok(LEAD_QUOTES.includes("'Create PI draft'"), 'the button on the lead\'s quotation line')
   })
   test('the page header says Saved on one line and no longer carries the total', () => {
     const actions = between('const actions = (', 'const body = (')
@@ -198,49 +211,67 @@ describe('the suggested price: who sees "Why?" (owner, 15 Nov 2026)', () => {
   })
 })
 
-describe('the numbers panel of a product (owner, 15 Nov 2026)', () => {
+describe('the numbers panel of a product (owner, 15 Nov 2026; version 2 of 25 Nov 2026)', () => {
   const area: QuoteArea = { key: 'r', name: 'BOHO ROOM', style: '', multiplier: 56, unit_label: 'rooms' }
   const HINT = { name: 'Bed', ordered: { last: 7300, last_at: '2026-06-01', min: 2650, max: 11550, count: 39 }, quoted: null }
   const drawWith = (l: QuoteLine, o: { area?: QuoteArea | null; editable?: boolean; hint?: typeof HINT } = {}) => renderToStaticMarkup(
-    <LineRow l={l} area={o.area ?? null} unit="in" editable={o.editable ?? true} qty={2} total={77000} first last url={p => `https://img.example/${p}`} hint={o.hint}
+    <LineRow l={l} n={1} area={o.area ?? null} unit="in" editable={o.editable ?? true} qty={2} total={77000} first last url={p => `https://img.example/${p}`} hint={o.hint}
       onChange={() => {}} onUpload={() => {}} onImprove={() => {}} onView={() => {}} onRemove={() => {}} onMove={() => {}} onDuplicate={() => {}} />)
   const panel = (html: string) => html.slice(html.indexOf('class="plRight"'))
 
-  test('its parts come in this order: Quantity and Price, the suggestion, then the footer (Optional, the total, the tools, the piece count)', () => {
+  test('its parts come in this order: Quantity × Price, the price help, the line total with its sum written out, Optional; the tools are in the strip after it', () => {
     const right = panel(drawWith(line(), { hint: HINT }))
-    const order = ['class="qp"', '<span>Quantity</span>', '<span>Price before GST</span>', 'class="sug"', 'class="plFoot"', 'Optional', '₹77,000', 'aria-label="Move up"', '2 pieces']
+    const order = ['class="qp"', '<span>Quantity</span>', '<span>Price before GST</span>', 'class="helpBox"', 'class="sug"', 'class="plFoot', 'Line total', '₹77,000', '2 pieces × ₹38,500', 'Optional', 'leave out of the total', 'class="plStrip"', 'aria-label="Move up"']
     const at = order.map(p => right.indexOf(p))
     assert.ok(at.every(i => i >= 0), `every part is drawn: ${order.filter((_, i) => at[i] < 0).join(', ')}`)
     assert.deepEqual([...at].sort((a, b) => a - b), at, 'in that order')
+  })
+  test('a product without a price says "No price yet" instead of a total; an optional one says it is not in the total', () => {
+    const none = panel(drawWith(line({ unit_price: null })))
+    assert.match(none, /Line total<\/span><span class="chip chWait">No price yet<\/span>/)
+    assert.ok(none.includes('2 pieces') && !none.includes('2 pieces ×'))
+    const opt = panel(drawWith(line({ is_optional: true })))
+    assert.ok(opt.includes('class="plFoot plFootOpt"') && opt.includes('Optional · not in the total'))
   })
   test('Quantity is one box holding the number and its unit; the rupee sign is inside the price box, not in its label', () => {
     const right = panel(drawWith(line()))
     assert.match(right, /<div class="qtyBox"><input aria-label="Quantity" class="qtyIn"[^>]*type="number"[^>]*\/><span class="qtyUnit">pieces<\/span><\/div>/)
     assert.match(right, /<span class="rupeeBox"><span class="rs" aria-hidden="true">₹<\/span><input aria-label="Unit price \(₹, before GST\)" class="rupeeIn"/)
     assert.ok(!right.includes('Price ₹ before GST'))
+    assert.ok(panel(drawWith(line({ qty: 1 }))).includes('<span class="qtyUnit">piece</span>'), 'one piece')
   })
-  test('in a room type the "per room / in total" choice sits in the same box as the number, not in a box of its own', () => {
+  test('the price box is a text box with a number keypad that shows the price with its commas (13,500) while nobody is typing in it', () => {
+    const box = panel(drawWith(line({ unit_price: 13500 }))).match(/<input aria-label="Unit price \(₹, before GST\)"[^>]*>/)?.[0] ?? ''
+    assert.match(box, /type="text"/)
+    assert.match(box, /inputMode="numeric"/i)
+    assert.match(box, /value="13,500"/)
+  })
+  test('in an area (was a room type) the "per room / in total" choice sits in the same box as the number, not in a box of its own', () => {
     const right = panel(drawWith(line({ area_key: 'r', qty_mode: 'per_unit' }), { area }))
     assert.match(right, /<div class="qtyBox"><input aria-label="Quantity per room" class="qtyIn"[\s\S]*?<select aria-label="Quantity is" class="qtySel"[\s\S]*?<option value="per_unit"[^>]*>per (?:<!-- -->)?room<\/option><option value="fixed">in total<\/option><\/select><\/div>/)
     assert.ok(!right.includes('qtyUnit'))
   })
-  test('the suggestion card is part of the panel only when there is something to suggest, and a locked quotation has no tools', () => {
+  test('the price help is part of the panel only when there is something to suggest, and a locked quotation has no tools', () => {
     assert.ok(!drawWith(line()).includes('class="sug"'))
+    assert.ok(drawWith(line()).includes('<div class="helpBox"></div>'), 'empty, so the stylesheet hides it')
     const locked = panel(drawWith(line(), { editable: false, hint: HINT }))
     assert.ok(!locked.includes('plTools') && !locked.includes('aria-label="Move up"'), 'no tools')
     assert.ok(!locked.includes('sugUse'), 'no Use')
-    assert.ok(locked.includes('class="plFoot"') && locked.includes('2 pieces'), 'the footer still shows the total and the count')
+    assert.ok(locked.includes('class="plFoot') && locked.includes('2 pieces'), 'the line total and the count still show')
   })
-  test('the panel is a bordered card as tall as the boxes beside it, with its footer at the bottom', () => {
-    assert.match(rule('.plRight'), /display: flex; flex-direction: column;[^}]*align-self: stretch;[^}]*border: 1px solid var\(--boe-border\); border-radius: 12px;/)
-    assert.match(rule('.plFoot'), /margin: auto -12px 0;[^}]*border-radius: 0 0 11px 11px;/)
-    assert.match(rule('.qp'), /grid-template-columns: 150px minmax\(0, 1fr\);/)
-    assert.match(rule('.qtyIn'), /width: 60px;/)
+  test('the numbers column is set off by a line on its left and is as tall as the boxes; the line total sits under a rule; an empty help box takes no room', () => {
+    assert.match(v2rule('.plRight'), /display: flex; flex-direction: column;[^}]*align-self: stretch; padding: 0 0 0 24px; border: 0; border-left: 1px solid var\(--boe-border\);/)
+    assert.match(v2rule('.plFoot'), /margin: 0; padding: 10px 0 0; border-top: 1px solid var\(--boe-border\);/)
+    assert.match(v2rule('.qp'), /grid-template-columns: minmax\(0, 1\.1fr\) 12px minmax\(0, 1fr\);/, 'Quantity × Price')
+    assert.match(v2rule('.qtyIn'), /width: 48px;/)
+    assert.match(v2rule('.helpBox:empty'), /display: none;/)
     assert.ok(!CSS.includes('nth-child(n+3)'), 'the old two-track rule is gone')
   })
-  test('under 1200 px the panel sits under the boxes, lined up with them (up to 420 px wide); on a phone it is full width with 44 px controls', () => {
-    assert.match(CSS, /@media \(max-width: 1199px\) \{[\s\S]*?\.plRight \{ grid-column: 2; justify-self: start; width: 100%; max-width: 420px; \}/)
-    assert.match(CSS, /@media \(max-width: 767px\) \{[\s\S]*?\.plRight \{ grid-column: 1; justify-self: stretch; max-width: none; \}\s*\.qtyBox, \.rupeeBox \{ height: 44px; \}\s*\.qtyIn, \.rupeeIn, \.qtySel \{ font-size: 16px; \}\s*\.plTools \.iconBtn \{ width: 44px; height: 44px; \}/)
+  test('under 1024 px the numbers go under the picture and the boxes; on a phone everything stacks and the buttons are 44 px', () => {
+    assert.match(V2, /@media \(max-width: 1023px\) \{\s*\.pl \{ grid-template-columns: 152px minmax\(0, 1fr\); grid-template-areas: "pic mid" "pic strip" "right right" "open open"; \}/)
+    const phone = V2.slice(V2.indexOf('@media (max-width: 767px)'))
+    assert.match(phone, /\.pl \{ grid-template-columns: 104px minmax\(0, 1fr\); grid-template-areas: "pic mid" "right right" "strip strip" "open open";/)
+    for (const r of ['.plAct { width: 44px; height: 44px; }', '.plTools .iconBtn { width: 44px; height: 44px; }', '.stripBtn { min-height: 44px; }']) assert.ok(phone.includes(r), r)
   })
 })
 
@@ -251,39 +282,44 @@ describe('the top panel of 24 Nov 2026 (owner: smartly designed, no wasted heigh
     assert.ok(SCREEN.includes("setMsg(null) // the header's"), 'a save clears what was on screen and says nothing more')
     assert.ok(SCREEN.includes('Unsaved changes') && SCREEN.includes("tone: 'bad'") && SCREEN.includes('undo: () =>'))
   })
-  test('Lead, Senior and Share are rows of ONE panel, in that order, before the Client card; a row with nothing to say draws nothing', () => {
-    const order = ['<LeadCard', '<AskNote', 'Share and next step', '<AskButton'].map(i => PANEL.indexOf(i))
+  test('Status and Lead (both drawn by LeadCard), Senior and Share are rows of ONE panel, in that order, before the products; a row with nothing to say draws nothing', () => {
+    const order = ['<LeadCard', '<AskNote', 'aria-label="Share"', '<AskButton'].map(i => PANEL.indexOf(i))
     assert.ok(order.every(i => i > 0), 'every part is in the panel')
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'in that order')
-    assert.ok(at('<TopPanel') > 0 && at('<TopPanel') < at('<ClientCard'))
+    assert.ok(at('<TopPanel') > 0 && at('<TopPanel') < at('aria-label="Products and costing"'))
     for (const file of ['LeadCard', 'AskCard']) {
       const src = read(`src/components/quotations/${file}.tsx`)
       assert.ok(src.includes('className={s.prow}') || src.includes('${s.prow}'), `${file} is a row of the panel`)
       assert.ok(!src.includes('s.card'), `${file} is not a card of its own`)
     }
   })
-  test('the tracker, Mark sent and Negotiating are gone: the lead\'s stage is the status', () => {
+  test('the tracker, Mark sent and Negotiating are gone: the lead\'s stage is the status, read only, changed only in Lead Management (25 Nov 2026)', () => {
     assert.ok(!PANEL.includes('STEPS') && !PANEL.includes('Mark sent') && !PANEL.includes("onMove('sent')") && !PANEL.includes('<ol'))
     assert.ok(!CSS.includes('.steps') && !CSS.includes('.stepCur'))
     const lead = read('src/components/quotations/LeadCard.tsx')
-    assert.ok(lead.includes('PATH_STAGES') && lead.includes('s.stage') && lead.includes('s.meter'))
+    assert.ok(lead.includes('<StageChip') && lead.includes('Changed only in Lead Management.'), 'the Status row shows the stage chip and says where it changes')
+    assert.ok(!lead.includes('moveLead('), 'nothing on this page moves the lead')
+    const brief = read('src/components/quotations/LeadBrief.tsx')
+    assert.ok(brief.includes('PATH_STAGES') && brief.includes('s.stage') && brief.includes('s.meter'), 'the chip and its five-step meter')
   })
   test('the prices-outside-the-limits block is not on the page, and nothing on the page asks for or decides a price; PriceBlock is kept for later', () => {
     for (const w of ['PriceBlock', 'priceBlocked', 'needsYou(', 'onAskPrice', 'onDecidePrice', 'requestPriceApproval', 'decidePrice']) assert.ok(!SCREEN.includes(w) && !PANEL.includes(w), w)
     assert.ok(read('src/components/quotations/PricingDesk.tsx').includes('export function PriceBlock'), 'kept for when the system is trained')
   })
-  test('Confirm on a draft moves it to Negotiating first, because the database confirms only a Sent or Negotiating quotation', () => {
-    assert.match(SCREEN, /if \(base\.status === 'draft'\) await setStatusRpc\(supabase, id, 'negotiating'\)\n\s*const r = await makePiDraft/)
+  test('Create PI draft (in Lead Management now) moves a Draft to Negotiating first, because the database confirms only a Sent or Negotiating quotation', () => {
+    assert.match(LEAD_QUOTES, /if \(q\.status === 'draft'\) await setStatus\(work\.supabase, q\.id, 'negotiating'\)\n\s*const r = await makePiDraft/)
     assert.ok(read('supabase/migrations/20270617000000_quotation_pricing_desk.sql').includes("q.status not in ('sent', 'negotiating')"), 'the rule this works around')
+    assert.match(LEAD_QUOTES, /Nothing is sent to anyone: the PI stays a Draft until you submit it there\./, 'its tooltip')
   })
-  test('the outcomes are items of a ⋯ menu that reuses the Orders menu', () => {
+  test('the ⋯ menu (the Orders menu) holds only turning the client link off and Delete: nothing on the panel changes a status (25 Nov 2026)', () => {
     assert.ok(!PANEL.includes('Other outcome') && !CSS.includes('.outcomes') && !CSS.includes('.quietRow'))
     assert.ok(PANEL.includes("import { MoreActionsMenu, type MoreActionItem } from '@/app/orders/[id]/MoreActionsMenu'"))
-    for (const w of ['Confirmed, no PI', 'Mark as lost…', 'Archive', 'Delete…', 'Turn the client link off']) assert.ok(PANEL.includes(w), w)
+    for (const w of ["label: 'Delete…'", "label: 'Turn the client link off'"]) assert.ok(PANEL.includes(w), w)
+    for (const gone of ["label: 'Confirmed, no PI'", "label: 'Mark as lost…'", "label: 'Archive'", 'onMove', 'lostNote', 'Why was it lost?', '>Reopen<']) assert.ok(!PANEL.includes(gone), `${gone} is gone`)
+    assert.match(SCREEN, /onClick=\{\(\) => moveTo\('negotiating'\)\}>Reopen<\/button>/, 'Reopen sits in the builder\'s lock notice')
   })
   test('the Share row explains in tooltips, not paragraphs', () => {
     assert.ok(!PANEL.includes('The message carries the link') && !PANEL.includes('shareFoot'))
     assert.match(PANEL, /WhatsApp opens with the text ready/)
-    assert.match(PANEL, /Nothing is sent to anyone: the PI stays a Draft until you submit it there\./)
   })
 })

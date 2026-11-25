@@ -566,3 +566,163 @@ select.cpIn { text-overflow: ellipsis; }
   .cpProdBox small { display: none; }
   .cpThumb { width: 44px; }
 }
+
+/* ── Quotation page version 2 (owner approved the mockup, "Build it", 25 Nov 2026) ─────────────────────────────────────────────────────
+   Appended last on purpose: these rules restyle the product block, the products card head and the areas, and they must win over the older
+   rules and media queries above them. */
+
+/* top panel: the lead's name opens its brief (LeadBrief.tsx) */
+.leadBtn { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 8px; margin-left: -8px; border: 0; border-radius: var(--boe-radius-control); background: none; font: 600 15px var(--boe-font-body); color: var(--boe-text); cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.leadBtn:hover { background: var(--boe-surface-sunken); }
+.leadNo { color: var(--boe-text-muted); font-weight: 500; }
+.leadMeta svg { vertical-align: -2px; }
+.brief { max-width: 480px; }
+.briefTitle { display: grid; gap: 1px; flex: 1; min-width: 0; }
+.briefTitle h2 { font: 700 18px var(--boe-font-heading); }
+.briefBody { display: grid; gap: 14px; }
+.briefTemp { display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 12px; background: var(--boe-text); color: #fff; font: 600 12px var(--boe-font-body); }
+.briefDl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px 12px; margin: 0; font-size: 13.5px; }
+.briefDl dt { color: var(--boe-text-muted); }
+.briefDl dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.briefBox { background: var(--boe-surface-quiet); border: 1px solid var(--boe-border); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; }
+.briefBox p { margin: 2px 0 0; white-space: pre-line; }
+.briefK { font: 600 12px var(--boe-font-body); color: var(--boe-text-muted); }
+.briefFoot { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 16px 16px; border-top: 1px solid var(--boe-border); }
+
+/* the products card: its head IS the two tabs (no separate tab strip, "Products" said once) */
+.tabCard { overflow: hidden; }
+.tabHead { display: flex; align-items: center; flex-wrap: wrap; gap: 0 8px; padding: 0 16px; border-bottom: 1px solid var(--boe-border); }
+.tabs2 { display: flex; align-items: stretch; gap: 24px; align-self: stretch; max-width: 100%; overflow-x: auto; }
+.tab2 { display: inline-flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; font: 700 16px var(--boe-font-heading); color: var(--boe-text-muted); white-space: nowrap; cursor: pointer; }
+.tab2:hover { color: var(--boe-text); }
+.tab2[aria-selected='true'] { color: var(--boe-text); border-bottom-color: var(--boe-brand); }
+.tab2 .chip { font-family: var(--boe-font-body); }
+.tabTools { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+
+/* areas (were "room types"): optional, each with a light tint of its own (areaTint.ts) */
+.agroup { border-left: 4px solid var(--area-strong, transparent); }
+.areaBand { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 10px 16px; background: var(--area-tint, var(--boe-surface-quiet)); border-top: 1px solid var(--area-line, var(--boe-border)); border-bottom: 1px solid var(--area-line, var(--boe-border)); }
+.areaDot { width: 10px; height: 10px; border-radius: 50%; background: var(--area-strong, var(--boe-border-strong)); flex: none; }
+.areaName { width: 230px; max-width: 100%; font: 700 15px var(--boe-font-heading); }
+.areaStyle { width: 160px; max-width: 100%; }
+.areaCount { display: flex; height: 38px; width: 150px; border: 1px solid var(--boe-border-input); border-radius: var(--boe-radius-control); overflow: hidden; background: var(--boe-surface); }
+.areaCount:focus-within { box-shadow: var(--boe-focus-ring); }
+.areaMult { width: 52px; border: 0; outline: 0; text-align: center; font: 600 14px var(--boe-font-body); background: transparent; color: var(--boe-text); }
+.areaUnit { flex: 1; min-width: 0; border: 0; border-left: 1px solid var(--boe-border); outline: 0; padding: 0 10px; background: var(--boe-surface-quiet); font: 13px var(--boe-font-body); color: var(--boe-text-strong); }
+.atot { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; line-height: 1.25; }
+.atot > span { font-size: 12px; color: var(--boe-text-muted); }
+.atot b { font: 700 16px var(--boe-font-body); }
+.areaNone { font: 700 15px var(--boe-font-heading); }
+.listFoot { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding: 10px 16px; border-top: 1px solid var(--boe-border); background: var(--area-tint, var(--boe-surface-quiet)); }
+.addLine { display: inline-flex; align-items: center; gap: 6px; height: 36px; padding: 0 12px; border: 1px dashed var(--boe-border-strong); border-radius: var(--boe-radius-control); background: var(--boe-surface); color: var(--boe-brand-ink); font: 600 13px var(--boe-font-body); cursor: pointer; }
+.addLine:hover { background: var(--boe-brand-tint); border-color: var(--boe-brand-tint-2); }
+.listTotal { margin-left: auto; display: flex; align-items: baseline; gap: 8px; }
+.listTotal > span { font-size: 13px; color: var(--boe-text-muted); }
+.listTotal b { font: 700 18px var(--boe-font-body); }
+
+/* one product: picture | boxes | numbers, and a strip under the boxes */
+.pl { display: grid; grid-template-columns: 152px minmax(0, 1fr) 300px; grid-template-areas: "pic mid right" "pic strip strip" "open open open"; column-gap: 24px; row-gap: 12px; padding: 20px 16px 12px; border-top: 1px solid var(--boe-border); align-items: start; background: var(--boe-surface); }
+.pl:nth-of-type(even) { background: var(--boe-surface); }
+.plPic { grid-area: pic; display: flex; flex-direction: column; gap: 8px; width: 152px; align-items: stretch; }
+.plPicBtn { width: 152px; height: 152px; border-radius: 12px; cursor: zoom-in; }
+.plZoom { top: 8px; right: 8px; bottom: auto; width: 28px; height: 28px; border-radius: 8px; background: rgba(255,255,255,.94); border: 1px solid var(--boe-border); color: var(--boe-text); }
+.plNo { position: absolute; left: 8px; top: 8px; min-width: 24px; height: 24px; padding: 0 7px; border-radius: 12px; background: var(--boe-text); color: #fff; font: 600 12px/24px var(--boe-font-body); text-align: center; z-index: 1; }
+.plPicEmpty { position: relative; width: 152px; height: 152px; border-radius: 12px; background: var(--boe-surface-quiet); }
+.plActs { display: flex; gap: 8px; }
+.plAct { display: grid; place-items: center; width: 36px; height: 36px; padding: 0; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); background: var(--boe-surface); color: var(--boe-text-strong); cursor: pointer; }
+.plAct:hover { background: var(--boe-surface-sunken); }
+.plActMain { flex: 1; width: auto; background: var(--boe-brand-tint); border-color: var(--boe-brand-tint-2); color: var(--boe-brand-ink); }
+.plActMain:hover { background: #F3DDD3; }
+.plActRm:hover { background: var(--boe-error-bg); border-color: var(--boe-error-border); color: var(--boe-error); }
+.plRefs { max-width: 152px; gap: 8px; }
+.plRefKind { font-size: 12px; font-weight: 500; }
+.plMid { grid-area: mid; grid-template-rows: auto minmax(0, 1fr); gap: 16px; align-self: stretch; }
+.plMid .field { gap: 6px; }
+.plMid .field > span:first-child { font-weight: 500; }
+.plMid .input { height: 40px; }
+.plMid textarea.input { height: auto; }
+.plName { font-weight: 600; font-size: 16px; }
+.grow { align-self: stretch; }
+.grow textarea.t3 { flex: 1; min-height: 82px; resize: none; field-sizing: content; }
+.plMid .unitTag { height: 40px; }
+.labRow { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; }
+.clientTag { display: inline-flex; align-items: center; gap: 4px; font: 400 12px var(--boe-font-body); color: var(--boe-text-muted); white-space: nowrap; }
+.labIcon { display: inline-flex; align-items: center; gap: 6px; }
+.plRight { grid-area: right; display: flex; flex-direction: column; gap: 12px; align-self: stretch; padding: 0 0 0 24px; border: 0; border-left: 1px solid var(--boe-border); border-radius: 0; background: none; }
+.qp { grid-template-columns: minmax(0, 1.1fr) 12px minmax(0, 1fr); column-gap: 6px; align-items: end; }
+.times { height: 40px; display: grid; place-items: center; color: var(--boe-text-muted); }
+.qtyBox, .rupeeBox { height: 40px; }
+.qtyIn { width: 48px; }
+.helpBox { display: grid; gap: 8px; }
+.helpBox:empty { display: none; }
+.helpBox .sug { padding: 8px 10px 8px 12px; border-radius: 10px; gap: 4px 8px; font-size: 13px; }
+.helpBox .sug b { font-size: 15px; }
+.sugUse { height: 28px; padding: 0 12px; border-radius: var(--boe-radius-control); }
+.sugWhy { text-decoration: none; color: var(--boe-brand-ink); padding: 4px 6px; border-radius: 6px; }
+.sugWhy:hover { background: var(--boe-brand-tint); }
+.plFoot { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 0 8px; margin: 0; padding: 10px 0 0; border-top: 1px solid var(--boe-border); background: none; border-radius: 0; }
+.plTotK { font-size: 13px; color: var(--boe-text-muted); }
+.plTotal { font: 700 20px var(--boe-font-body); }
+.plPieces { grid-column: 1 / -1; text-align: right; }
+.plFootOpt .plTotal { color: var(--boe-text-muted); text-decoration: line-through; text-decoration-thickness: 1px; }
+.optLab { font-size: 13px; font-weight: 500; gap: 8px; }
+.optLab input { width: 18px; height: 18px; }
+.plStrip { grid-area: strip; display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; border-top: 1px solid var(--boe-border); padding-top: 8px; min-width: 0; }
+.stripBtn { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 10px; border: 0; border-radius: var(--boe-radius-control); background: none; color: var(--boe-text-strong); font: 500 13px var(--boe-font-body); cursor: pointer; max-width: 100%; }
+.stripBtn:hover, .stripBtn[aria-expanded='true'] { background: var(--boe-surface-sunken); }
+.stripSum, .chSum, .chSumText { font: 400 12px var(--boe-font-body); color: var(--boe-text-muted); max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plTools { margin-left: auto; display: flex; gap: 2px; }
+.plTools .iconBtn { width: 32px; height: 32px; color: var(--boe-text-muted); }
+.iconDanger:hover { background: var(--boe-error-bg); color: var(--boe-error); }
+.plOpens { grid-area: open; display: grid; gap: 12px; padding: 4px 0 8px; }
+
+/* the Fabric and packing tab: the calculations only, every column fits a desktop */
+.cpTable { min-width: 980px; }
+.cpTable thead th { font-size: 12px; letter-spacing: 0; }
+.cpTable td { min-width: 0; }
+.cpColProd { width: 270px; }
+.cpColQty { width: 56px; }
+.cpColTot { width: 120px; }
+.cpColType { width: 190px; }
+.cpProdBox small { font-size: 12px; }
+.cpProdBox small.cpFabric { color: var(--boe-text-strong); margin-top: 2px; }
+.cpArea th { background: var(--area-tint, var(--boe-surface-sunken)); box-shadow: inset 4px 0 0 var(--area-strong, transparent); }
+.cpFill { display: inline-grid; place-items: center; width: 22px; height: 22px; margin-left: 6px; border-radius: 6px; text-decoration: none; vertical-align: middle; }
+.cpFill:hover { background: var(--boe-brand-tint); }
+
+@media (max-width: 1180px) {
+  .clientTagText, .chSum, .chSumText { display: none; }
+}
+@media (max-width: 1023px) {
+  .pl { grid-template-columns: 152px minmax(0, 1fr); grid-template-areas: "pic mid" "pic strip" "right right" "open open"; }
+  .plRight { padding: 16px 0 0; border-left: 0; border-top: 1px solid var(--boe-border); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "qp help" "tot help" "opt help"; column-gap: 24px; row-gap: 12px; }
+  .plRight .qp { grid-area: qp; }
+  .plRight .helpBox { grid-area: help; }
+  .plRight .plFoot { grid-area: tot; }
+  .plRight .optLab { grid-area: opt; }
+  .tabTools { margin-left: 0; }
+}
+@media (max-width: 767px) {
+  .pl { grid-template-columns: 104px minmax(0, 1fr); grid-template-areas: "pic mid" "right right" "strip strip" "open open"; column-gap: 12px; padding: 16px 12px 8px; }
+  .plPic, .plPicBtn, .plPicEmpty { width: 104px; }
+  .plPicBtn, .plPicEmpty { height: 104px; }
+  .plActs { flex-wrap: wrap; }
+  .plAct { width: 44px; height: 44px; }
+  .plActMain { flex: 1 1 100%; }
+  .plMid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 12px; }
+  .plMid .c5, .plMid .c7 { grid-column: 1 / -1; }
+  .plRight { display: flex; flex-direction: column; }
+  .plTools { margin-left: 0; width: 100%; justify-content: flex-end; }
+  .plTools .iconBtn { width: 44px; height: 44px; }
+  .stripBtn { min-height: 44px; }
+  /* touch targets: the version 2 boxes are 40 px on a desktop, 44 px on a phone (the older phone rule above is overridden by the base rule) */
+  .qtyBox, .rupeeBox, .areaCount { height: 44px; }
+  .plMid .input { height: 44px; }
+  .plMid textarea.input { height: auto; }
+  .plMid .unitTag { height: 44px; }
+  .areaName, .areaStyle { width: auto; flex: 1 1 140px; }
+  .tabs2 { gap: 16px; }
+  .tab2 { font-size: 15px; min-height: 48px; }
+  .tabChip { display: none; }
+  .briefDl { grid-template-columns: 96px minmax(0, 1fr); }
+}

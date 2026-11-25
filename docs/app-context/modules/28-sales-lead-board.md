@@ -2,7 +2,7 @@
 
 Written 2026-11-03 from the build, merged as PR #594 (05e299ed) and deployed. Migration `20270525000000_sales_lead_board.sql` is applied. It sits on the Lead Master (module 27): the same lead record, worked after it has been allotted.
 
-**Update 2026-11-25 (branch `feat/lead-create-pi-draft`, no SQL):** the lead popup's Quotations band offers **Create PI draft** on a Draft, Sent or Negotiating quotation and **Open the PI draft** on a Confirmed one (owner: the PI is made from Lead Management). Same checks and the same PI maker as the quotation page; details in dossier 29 section 33.
+**Update 2026-11-25 (PR #1036, merged as `03c080d5` 2026-11-25 12:25 IST, live 12:27 IST (GitHub Production deployment success), no SQL; not seen signed in):** the lead popup's Quotations band offers **Create PI draft** on a Draft, Sent or Negotiating quotation and **Open the PI draft** on a Confirmed one (owner: the PI is made from Lead Management). Same checks and the same PI maker as the quotation page; details in dossier 29 section 33.
 
 **Update 2026-11-23 (page speed, PR open, not merged, no SQL):** the Lead Board no longer holds its body back for `ready`, so its five column reads start with the page (they were children of a body that waited for the permission answer, about 1.0 s after the totals started). Each column shows card-shaped blocks (`SkeletonCards`) until its first page arrives. Trap: a screen that mounts child components only after `ready` defeats the early-start guard for everything those children read; read at the screen's top level or mount the children at once. Live timings after the three speed PRs are in the CHANGELOG entry of this date.
 

@@ -1,4 +1,5 @@
-// Copy and paste a product's picture with the keyboard (owner, 18 Nov 2026). Runs the real product line in jsdom.
+// Copy and paste a product's picture with the keyboard (owner, 18 Nov 2026), and the parts of the product line (version 2, 25 Nov 2026) that
+// only a person's clicks and typing show: the strip under the boxes and the price box. Runs the real product line in jsdom.
 import { mount } from '@/lib/testing/domHarness'
 import '@/lib/testing/cssModuleStub'
 import { describe, test } from 'node:test'
@@ -25,7 +26,7 @@ function row(l: QuoteLine, editable = true) {
   const changes: Partial<QuoteLine>[] = []
   const uploads: File[] = []
   const ui = mount(createElement(LineRow, {
-    l, area: null, unit: 'in', editable, qty: 1, total: 1000, first: true, last: true, url: (p: string) => `https://img.example/${p}`,
+    l, n: 1, area: null, unit: 'in', editable, qty: 1, total: 1000, first: true, last: true, url: (p: string) => `https://img.example/${p}`,
     onChange: (p: Partial<QuoteLine>) => { changes.push(p) }, onUpload: (f: File | undefined) => { if (f) uploads.push(f) },
     onImprove: () => {}, onView: () => {}, onRemove: () => {}, onMove: () => {}, onDuplicate: () => {},
   }))
@@ -78,5 +79,60 @@ describe('product picture copy and paste', () => {
   test('only a plain storage path is taken', () => {
     assert.equal(validPicturePath('quotations/abc/pic-1.jpg'), true)
     for (const bad of ['', '../secret', '/abs/path', 'a b', 'https://x.example/p.png', 'x'.repeat(500)]) assert.equal(validPicturePath(bad), false, bad)
+  })
+})
+
+describe('the strip under the boxes (version 2)', () => {
+  test('the internal note is closed even when it has text, and the strip shows that text; opening it shows the box, for the team only', () => {
+    const a = row({ ...line('a', null), internal_note: 'Teak at the usual rate' })
+    const note = a.ui.button(/^Internal note/)
+    assert.equal(note.getAttribute('aria-expanded'), 'false')
+    assert.match(note.textContent ?? '', /Teak at the usual rate/)
+    assert.equal(a.ui.all('.plOpens').length, 0, 'nothing open')
+    a.ui.click(note)
+    assert.equal(note.getAttribute('aria-expanded'), 'true')
+    const box = a.ui.one<HTMLInputElement>('.plOpens input[aria-label="Internal note"]')
+    assert.equal(box.value, 'Teak at the usual rate')
+    assert.match(a.ui.one('.plOpens').textContent ?? '', /Only your team sees this\. It is never shown to the client\./)
+    a.ui.type(box, 'Ask Nitish')
+    assert.deepEqual(a.changes, [{ internal_note: 'Ask Nitish' }])
+    a.ui.unmount()
+  })
+  test('Client choices says what was chosen without opening; opening shows the panel under the product, and both can be open at once', () => {
+    const a = row({ ...line('a', null), choices: { fabric: { source: 'catalog', status: 'to_confirm', name: 'Berlin velvet' } } })
+    const choices = a.ui.button(/^Client choices/)
+    assert.equal(choices.getAttribute('aria-expanded'), 'false')
+    assert.match(choices.textContent ?? '', /Fabric: Berlin velvet.*1 to confirm/)
+    a.ui.click(choices)
+    assert.equal(choices.getAttribute('aria-expanded'), 'true')
+    assert.match(a.ui.one('.plOpens').textContent ?? '', /Fabric and finish are chosen here only/)
+    a.ui.click(a.ui.button(/^Internal note/))
+    assert.ok(a.ui.all('.plOpens input[aria-label="Internal note"]').length === 1 && a.ui.all('.plOpens .chWrap').length === 1)
+    a.ui.unmount()
+  })
+  test('the tools sit in the strip; a product that may not be edited has none', () => {
+    const a = row(line('a', null))
+    const tools = a.ui.one('.plStrip [role="group"][aria-label="Product tools"]')
+    assert.deepEqual([...tools.querySelectorAll('button')].map(b => b.getAttribute('aria-label')), ['Move up', 'Move down', 'Duplicate', 'Remove product'])
+    a.ui.unmount()
+    const locked = row(line('b', null), false)
+    assert.equal(locked.ui.all('[aria-label="Product tools"]').length, 0)
+    locked.ui.unmount()
+  })
+})
+
+describe('the price box (version 2)', () => {
+  test('it shows 13,500 until it is clicked, the plain digits while it is typed in, and keeps only the digits that are typed', () => {
+    const a = row({ ...line('a', null), unit_price: 13500 })
+    const box = a.ui.one<HTMLInputElement>('input[aria-label="Unit price (₹, before GST)"]')
+    assert.equal(box.value, '13,500')
+    act(() => { box.focus() })
+    assert.equal(box.value, '13500')
+    a.ui.type(box, '14,2a00')
+    a.ui.type(box, '')
+    assert.deepEqual(a.changes, [{ unit_price: 14200 }, { unit_price: null }], 'an empty box is no price')
+    act(() => { box.blur() })
+    assert.equal(box.value, '13,500')
+    a.ui.unmount()
   })
 })
