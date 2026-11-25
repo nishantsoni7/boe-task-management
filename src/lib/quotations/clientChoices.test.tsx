@@ -10,7 +10,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import '@/lib/testing/cssModuleStub'
 import { CHOICE_KINDS, choiceCounts, cleanChoices, computeTotals, type LineChoices, type QuoteLine } from './math'
 import { saveDoc, toLines } from './api'
-import { ChoicesPanel } from '@/components/quotations/ChoicesPanel'
+import { ChoicesPanel, ChoicesSummary } from '@/components/quotations/ChoicesPanel'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
 const SQL = read('supabase/migrations/20270808000100_quotation_client_choices.sql')
@@ -74,24 +74,37 @@ describe('the migration', () => {
   })
 })
 
-describe('the builder panel', () => {
+describe('the builder panel (version 2, 25 Nov 2026: the product strip opens it and says what was chosen)', () => {
   const html = (choices: LineChoices | undefined, editable = true) => renderToStaticMarkup(
     <ChoicesPanel choices={choices} editable={editable} url={p => `https://img.example/${p}`} onChange={() => undefined} onUpload={async () => PHOTO} />)
-  test('closed it shows the status chip: how many wait, or that all are confirmed', () => {
-    assert.ok(html(undefined).includes('Client choices') && html(undefined).includes('fabric, finish, stone, rope weave'))
-    assert.ok(html({ fabric: { source: 'catalog', status: 'to_confirm' } }).includes('1 to confirm'))
-    assert.ok(html({ fabric: { source: 'catalog', status: 'confirmed' } }).includes('1 confirmed'))
+  const summary = (choices: LineChoices | undefined) => renderToStaticMarkup(<ChoicesSummary choices={choices} />).replace(/<!-- -->/g, '')
+  test('closed, the strip names what can be chosen, or the first two choices, how many more, and how many wait or that all are confirmed', () => {
+    assert.match(summary(undefined), />fabric, finish, stone, rope weave</)
+    assert.match(summary({}), />fabric, finish, stone, rope weave</, 'an empty set is no choices')
+    const one = summary({ fabric: { source: 'catalog', status: 'to_confirm', name: 'Berlin velvet', code: 'F18' } })
+    assert.ok(one.includes('>Fabric: Berlin velvet F18<') && one.includes('>1 to confirm<'))
+    assert.ok(summary({ fabric: { source: 'catalog', status: 'confirmed', name: 'Silk' } }).includes('>1 confirmed<'))
+    const many = summary({
+      fabric: { source: 'client', status: 'confirmed' }, finish: { source: 'catalog', status: 'to_confirm' },
+      stone: { source: 'catalog', status: 'to_confirm', name: 'Slate' }, rope_weave: { source: 'catalog', status: 'confirmed' },
+    })
+    assert.ok(many.includes('>Fabric: client’s own<') && many.includes('>Finish: not named yet<'), 'a choice without a name says whose it is')
+    assert.ok(!many.includes('Slate') && many.includes('>+2 more<') && many.includes('>2 to confirm<'))
+    assert.ok(summary({ fabric: { source: 'code', status: 'to_confirm' } }).includes('>Fabric: client’s code<'))
   })
-  test('it is a closed section until opened (collapsible), and has no price field', () => {
-    assert.ok(html({ fabric: { source: 'catalog', status: 'to_confirm' } }).includes('aria-expanded="false"'))
-    assert.ok(!/price/i.test(html(undefined)))
+  test('the panel is the body only (its strip button opens it), says fabric and finish are chosen only here, and has no price field', () => {
+    const body = html({ fabric: { source: 'catalog', status: 'to_confirm' } })
+    assert.ok(!body.includes('aria-expanded') && !body.includes('chToggle'), 'no toggle of its own')
+    assert.ok(body.includes('Fabric and finish are chosen here only; the Fabric and packing tab prices them.'))
+    assert.ok(!/<input[^>]*(aria-label|placeholder)="[^"]*price/i.test(html(undefined) + body), 'no box asks for a price')
   })
 })
 
 describe('the builder wiring', () => {
-  test('each product row shows the panel and uploads swatch photos through the quotation picture path', () => {
+  test('each product row shows the summary in its strip, opens the panel from there, and uploads swatch photos through the quotation picture path', () => {
     const row = read('src/components/quotations/ProductLine.tsx')
-    assert.match(row, /<ChoicesPanel choices=\{l\.choices\}/)
+    assert.match(row, /aria-expanded=\{choicesOpen\}[^\n]*\n\s*<Palette[^>]*\/> Client choices <ChoicesSummary choices=\{l\.choices\} \/>/)
+    assert.match(row, /\{choicesOpen && \(\s*<ChoicesPanel choices=\{l\.choices\}/)
     assert.match(read('src/components/quotations/BuilderScreen.tsx'), /onUploadSwatch=\{f => \(profile \? uploadPicture\(supabase, profile\.id, f\)/)
   })
   test('the client views draw the choices from step 2 on (migration 20270809000000): the document, the Excel sheet and the shared helpers, never the note', () => {

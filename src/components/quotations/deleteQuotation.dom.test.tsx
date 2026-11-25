@@ -94,8 +94,10 @@ describe('the top panel\'s Delete item (in the ⋯ menu)', () => {
     assert.equal(asked, 1)
     ui.unmount()
   })
-  test('an administrator sees it on a locked quotation too (the menu has no other outcome there)', () => {
-    assert.deepEqual(menuItems(quote({ status: 'archived', may_edit: true }), { isAdmin: true, canDelete: true, onDelete: () => {} }), ['Delete…'])
+  test('it shows on a locked quotation too, and is the menu\'s only item when the client link is off', () => {
+    for (const status of ['confirmed', 'lost', 'archived'] as QuotationStatus[]) {
+      assert.deepEqual(menuItems(quote({ status, may_edit: true }), { canDelete: true, onDelete: () => {} }), ['Delete…'], status)
+    }
   })
 })
 

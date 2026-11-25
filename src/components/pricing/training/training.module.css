@@ -195,3 +195,8 @@
   .pct { grid-template-columns: minmax(0, 1fr) 88px 80px; }
   .foot > .spacer { display: none; }
 }
+
+/* On a quotation line, version 2 (25 Nov 2026): before a case is picked the link stands on its own, without the box around it. */
+.taught:has(> .taughtLink:only-child) { padding: 0; border: 0; background: none; }
+.taughtLink { text-decoration: none; padding: 4px 0; }
+.taughtLink:hover { text-decoration: underline; }

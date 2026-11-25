@@ -1,5 +1,6 @@
-// Shared by the top panel's tests: a quotation, the panel with every prop filled in, and a fake database that answers nothing, so the Lead and
-// Senior rows draw nothing unless a test hands in its own. (Not a test file: the runner only takes *.test.*.)
+// Shared by the top panel's tests: a quotation, the panel with every prop filled in, and a fake database that answers nothing, so the Status row
+// shows the quotation's own status and the Lead and Senior rows draw nothing unless a test hands in its own. (Not a test file: the runner only
+// takes *.test.*.)
 import { createElement } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { Quotation, QuotationStatus } from '@/lib/quotations/api'
@@ -18,8 +19,7 @@ const silent = { rpc: async () => ({ data: null, error: { message: 'not answered
 export const panel = (base: Quotation, over: PanelOver = {}, supabase: unknown = silent) =>
   createElement(QueryClientProvider, { client: new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } }) },
     createElement(TopPanel, {
-      supabase: supabase as never, id: 'q1', base, dirty: false, busy: false, isAdmin: false, canConfirm: false, piProblems: [], piStage: null,
+      supabase: supabase as never, id: 'q1', base, dirty: false, busy: false,
       lineCount: 3, phone: '98290 12345', waText: 'Hello', copied: false,
-      lostNote: null, setLostNote: () => {}, lostReason: '', setLostReason: () => {}, onMove: () => {}, onConfirm: () => {},
       onCopy: () => {}, onExcel: () => {}, onShare: () => {}, onChanged: () => {}, ...over,
     }))

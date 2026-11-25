@@ -1,4 +1,4 @@
-// A save that would fail says which room type or product is the problem (practicality review, 18 Nov 2026).
+// A save that would fail says which area (was "room type") or product is the problem (practicality review, 18 Nov 2026; areas 25 Nov 2026).
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
@@ -24,7 +24,7 @@ describe('saveProblem', () => {
     const areas = [area('a', 'Deluxe'), area('b', 'Suite')]
     const lines = [line('s1', 'b'), line('d1', 'a'), line('d2', 'a', { name: ' ' }), line('x', null, { name: '' })]
     assert.deepEqual(saveProblem(areas, lines), { text: 'Product 2 in Deluxe: needs a name.', lineKey: 'd2' })
-    assert.deepEqual(saveProblem([], [line('x1', null), line('x2', null, { name: '' })]), { text: 'Product 2 (no room type): needs a name.', lineKey: 'x2' })
+    assert.deepEqual(saveProblem([], [line('x1', null), line('x2', null, { name: '' })]), { text: 'Product 2 (not in an area): needs a name.', lineKey: 'x2' })
   })
   test("the database's limits, said in words", () => {
     const one = (p: Partial<QuoteLine>, mode?: QuoteLine['qty_mode']) => saveProblem([area('a', 'Deluxe')], [line('1', 'a', { ...p, ...(mode ? { qty_mode: mode } : {}) })])?.text
@@ -38,9 +38,9 @@ describe('saveProblem', () => {
     assert.equal(one({ unit_price: 100_000_000_001 }), '"Chair" in Deluxe: the price is not a valid amount.')
     assert.equal(one({ unit_price: null }), undefined, 'no price yet still saves')
   })
-  test('room types first: a missing name, a long name, a room count out of range', () => {
-    assert.deepEqual(saveProblem([area('a', ' ')], []), { text: 'Room type 1 needs a name.' })
-    assert.deepEqual(saveProblem([area('a', 'Deluxe', 0)], []), { text: 'Room type "Deluxe" needs between 1 and 1,00,000 rooms.' })
+  test('areas first: a missing name, a long name, a room count out of range', () => {
+    assert.deepEqual(saveProblem([area('a', ' ')], []), { text: 'Area 1 needs a name.' })
+    assert.deepEqual(saveProblem([area('a', 'Deluxe', 0)], []), { text: 'Area "Deluxe" needs between 1 and 1,00,000 rooms.' })
   })
   test('the builder uses it and brings the product into view', () => {
     const builder = readFileSync('src/components/quotations/BuilderScreen.tsx', 'utf8')
