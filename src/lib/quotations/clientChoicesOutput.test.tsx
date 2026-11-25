@@ -14,7 +14,7 @@ import '@/lib/testing/cssModuleStub'
 import { QuotationDocument, type DocData } from '@/components/quotations/QuotationDocument'
 import { CHOICE_FIRST_UNITS, CHOICE_NEXT_UNITS, CHOICE_SIGN_UNITS, choiceRowUnits, choiceRowsOf, choiceWords, hasChoices, planChoicePages, sourceText, statusText } from './choicesDoc'
 import { buildClientWorkbook, type SheetPicture } from './clientWorkbook'
-import { PICTURE_HOLDERS, linePictureFilter } from './pictureStore'
+import { lineHoldsPicture } from './pictureStore'
 import type { LineChoices, QuoteArea, QuoteLine } from './math'
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8').replace(/\r/g, '')
@@ -36,6 +36,8 @@ const doc = (lines: QuoteLine[]): DocData => ({
 })
 const html = (lines: QuoteLine[]) => renderToStaticMarkup(<QuotationDocument doc={doc(lines)} pictureUrl={p => `/p/${p}`} />)
 const plain = (h: string) => h.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ')
+/** The column heads of the choices table. */
+const heads = (h: string) => [...(/<table class="[^"]*chtbl[^"]*"><thead><tr>(.*?)<\/tr>/.exec(h)?.[1] ?? '').matchAll(/<th>(.*?)<\/th>/g)].map(m => m[1])
 
 describe('the migration', () => {
   test('replaces only quotation_client_doc, leaves the note out, adds no key to a line without choices, changes no table', () => {
@@ -77,13 +79,24 @@ describe('the helpers', () => {
 
 describe('the printed quotation', () => {
   test('prints one Client choices page after the products and before the terms, with both statuses, the swatch and the signature lines', () => {
-    const h = html([L(1), L(2)])
+    const h = html([L(1), L(2, { choices: { fabric: CH.fabric } })])
     const t = plain(h)
     assert.equal((h.match(/aria-label="Client choices"/g) ?? []).length, 1)
     assert.ok(h.indexOf('aria-label="Products and prices"') < h.indexOf('aria-label="Client choices"') && h.indexOf('aria-label="Client choices"') < h.indexOf('aria-label="Terms and acceptance"'))
     for (const s of ['What you chose, and what is still open.', 'Berlin velvet 30', 'F18 · V2 Homes', 'For: Seat', 'Their own slate', 'Confirmed 18 Nov 2026', 'To confirm', 'From our catalog', 'Client’s own', 'Not used', 'For the client: name, date and signature', 'For Best of Exports: name and date']) assert.ok(t.includes(s), s)
     assert.ok(h.includes(`src="/p/${PHOTO}"`), 'the swatch goes through pictureUrl, so the logo switch applies to it')
-    for (const s of ['Fabric', 'Finish', 'Stone', 'Rope weave']) assert.ok(t.includes(s), s)
+    assert.deepEqual(heads(h), ['Product', 'Fabric', 'Stone'], 'only the choices this quotation uses get a column')
+  })
+  test('a choice with any name gets its own column, after the fixed kinds; more than four kinds share "Other choices"', () => {
+    const leather = { source: 'client' as const, label: 'Leather', name: 'Tan nubuck', status: 'to_confirm' as const }
+    const h = html([L(1, { choices: { ...CH, x_mf0b: leather } }), L(2, { choices: { x_mf0a: { ...leather, label: 'leather ', name: 'Black hide' } } })])
+    assert.deepEqual(heads(h), ['Product', 'Fabric', 'Stone', 'leather'], 'the same name on two products is one column, named as first added')
+    for (const s of ['Tan nubuck', 'Black hide']) assert.ok(plain(h).includes(s), s)
+    const many: LineChoices = { ...CH, finish: { source: 'catalog', code: 'W-04', status: 'confirmed' }, rope_weave: { source: 'catalog', name: 'Flat rope', status: 'to_confirm' }, x_mf0a: { ...leather, name: 'Saddle tan' } }
+    const h2 = html([L(1, { choices: many })])
+    assert.deepEqual(heads(h2), ['Product', 'Fabric', 'Finish', 'Stone', 'Other choices'])
+    const t2 = plain(h2)
+    for (const s of ['Rope weave Flat rope', 'Leather Saddle tan']) assert.ok(t2.includes(s), s)
   })
   test('never prints the choice note, the internal note or the finish', () => {
     const t = plain(html([L(1)]))
@@ -128,6 +141,13 @@ describe('the Excel', () => {
     for (const s of ['FACTORY-ONLY-NOTE', 'INTERNAL-NOTE-NEVER', 'FINISH-NEVER']) assert.ok(!t.includes(s), s)
     assert.ok(!all(wb.getWorksheet('Quotation')!).includes('Berlin velvet'), 'the first sheet carries no choices')
   })
+  test('the sheet has the PDF\'s columns: a choice with any name is a column; a single column still gets both signature lines', async () => {
+    const wb = await build([L(1, { choices: { x_mf0a: { source: 'client', label: 'Leather', name: 'Tan nubuck', status: 'to_confirm' } } })])
+    const ws = wb.getWorksheet('Client choices')!
+    assert.deepEqual([1, 2, 3, 4].map(c => String(ws.getCell(5, c).value ?? '')), ['No.', 'Product', 'Leather', ''])
+    const t = all(ws)
+    for (const s of ['Tan nubuck', 'Client’s own · To confirm', 'For the client: name, date and signature', 'For Best of Exports: name and date']) assert.ok(t.includes(s), s)
+  })
   test('a swatch picture is placed on the second sheet', async () => {
     const bytes = new Uint8Array(await sharp({ create: { width: 120, height: 80, channels: 3, background: { r: 90, g: 60, b: 40 } } }).jpeg().toBuffer())
     const wb = await build([L(1)], new Map([[PHOTO, { bytes, width: 120, height: 80 }]]))
@@ -137,16 +157,13 @@ describe('the Excel', () => {
 })
 
 describe('the picture route', () => {
-  test('a choice swatch counts as a picture the quotation uses, in its live lines and in sent versions', () => {
+  test('a choice swatch counts as a picture the quotation uses, in its live lines and in sent versions, whatever the choice is called', () => {
     const p = PHOTO
-    assert.deepEqual(PICTURE_HOLDERS(p)[0], { image_path: p })
-    assert.deepEqual(PICTURE_HOLDERS(p).slice(1).map(h => Object.keys((h as { client_choices: object }).client_choices)[0]), ['fabric', 'finish', 'stone', 'rope_weave'])
-    assert.deepEqual((PICTURE_HOLDERS(p)[1] as { client_choices: { fabric: { photo: string } } }).client_choices.fabric.photo, p)
-    const f = linePictureFilter(p).split(',')
-    assert.deepEqual(f[0], `image_path.eq.${p}`)
-    assert.deepEqual(f.slice(1), ['fabric', 'finish', 'stone', 'rope_weave'].map(k => `client_choices->${k}->>photo.eq.${p}`))
+    assert.equal(lineHoldsPicture({ image_path: p }, p), true)
+    for (const k of ['fabric', 'finish', 'stone', 'rope_weave', 'x_mf0a1b2c']) assert.equal(lineHoldsPicture({ image_path: null, client_choices: { [k]: { photo: p } } }, p), true, k)
+    for (const l of [null, 'x', {}, { image_path: 'other.jpg' }, { client_choices: { fabric: { photo: 'other.jpg' } } }, { client_choices: { fabric: null } }, { client_choices: 'x' }]) assert.equal(lineHoldsPicture(l, p), false, JSON.stringify(l))
     const route = read('src/app/api/quotations/picture-file/route.ts')
-    assert.ok(route.includes('linePictureFilter(path as string)') && route.includes('PICTURE_HOLDERS(path as string)'))
+    assert.ok(route.includes("select('image_path, client_choices')") && route.includes('(used.data ?? []).some(l => lineHoldsPicture(l, path as string))'))
     assert.ok(route.includes('pictureRequestProblem(path, token, id)'), 'the path is still validated before it reaches a filter')
   })
 })

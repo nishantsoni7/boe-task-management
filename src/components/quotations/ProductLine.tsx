@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, Eye, ImagePlus, Lock, Maximize2, Palette, RefreshCw, Sparkles, Trash2 } from 'lucide-react'
 import { formatINR } from '@/lib/currency'
 import type { PriceHint } from '@/lib/quotations/api'
-import { sizeInInches, sizeToInches, type DimensionUnit, type LineRef, type QuoteArea, type QuoteLine } from '@/lib/quotations/math'
+import { sizeInInches, sizeToInches, type ChoiceKey, type DimensionUnit, type LineRef, type QuoteArea, type QuoteLine } from '@/lib/quotations/math'
 import type { ModelSuggestion } from '@/lib/pricing/model'
 import { PriceHintLine } from './PricingDesk'
 import { TaughtPrice, type DiffersReport } from '@/components/pricing/training/TaughtPrice'
@@ -31,9 +31,12 @@ export const REF_LABEL: Record<LineRef['kind'], string> = { swatch: 'Swatch', dr
 /** 13500 → "13,500" (Indian grouping); the box shows the plain digits while it is being typed in. */
 const grouped = (n: number | null) => (n === null ? '' : n.toLocaleString('en-IN'))
 
-export function LineRow({ l, n, area, unit, editable, qty, total, first, last, url, onChange, onUpload, onUploadSwatch, onImprove, onView, hint, model, feedbackCtx, taught, onRemove, onMove, onDuplicate }: {
+export function LineRow({ l, n, area, unit, editable, qty, total, first, last, url, choicesOpen, onChoicesOpen, onCopyChoice, onChange, onUpload, onUploadSwatch, onImprove, onView, hint, model, feedbackCtx, taught, onRemove, onMove, onDuplicate }: {
   l: QuoteLine; n: number; area: QuoteArea | null; unit: DimensionUnit; editable: boolean; qty: number; total: number; first: boolean; last: boolean
-  url: (p: string) => string; onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onUploadSwatch?: (f: File) => Promise<string>; onImprove: () => void; onView: () => void
+  url: (p: string) => string
+  /** Whether the Client choices are open; the builder holds it, so its Client choices bar can open or close them all (25 Nov 2026). */
+  choicesOpen: boolean; onChoicesOpen: (open: boolean) => void; onCopyChoice?: (key: ChoiceKey) => void
+  onChange: (p: Partial<QuoteLine>) => void; onUpload: (f: File | undefined) => void; onUploadSwatch?: (f: File) => Promise<string>; onImprove: () => void; onView: () => void
   hint?: PriceHint; model?: ModelSuggestion | null
   /** Submitted training cases to pick from (Pricing > Training), and where their photos are. */
   taught?: { library: Library; photo: (path: string) => string; differs?: (r: DiffersReport, line: { name: string; size: string | null; material: string | null; finish: string | null; qty: number }) => void
@@ -45,7 +48,6 @@ export function LineRow({ l, n, area, unit, editable, qty, total, first, last, u
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
   const [noteOpen, setNoteOpen] = useState(false)
-  const [choicesOpen, setChoicesOpen] = useState(false)
   const [priceFocus, setPriceFocus] = useState(false)
   const inches = unit === 'in' ? sizeInInches(l.size_text) : null
   const perUnit = l.qty_mode === 'per_unit' && !!area
@@ -163,7 +165,7 @@ export function LineRow({ l, n, area, unit, editable, qty, total, first, last, u
         <button type="button" className={s.stripBtn} aria-expanded={noteOpen} onClick={() => setNoteOpen(v => !v)}>
           <Lock size={15} aria-hidden /> Internal note{note && <span className={s.stripSum}>{note}</span>}
         </button>
-        <button type="button" className={s.stripBtn} aria-expanded={choicesOpen} onClick={() => setChoicesOpen(v => !v)}>
+        <button type="button" className={s.stripBtn} aria-expanded={choicesOpen} onClick={() => onChoicesOpen(!choicesOpen)}>
           <Palette size={15} aria-hidden /> Client choices <ChoicesSummary choices={l.choices} />{choicesOpen ? <ChevronDown size={14} aria-hidden /> : <ChevronRight size={14} aria-hidden />}
         </button>
         {editable && (
@@ -183,7 +185,7 @@ export function LineRow({ l, n, area, unit, editable, qty, total, first, last, u
               <input aria-label="Internal note" className={s.input} maxLength={1000} value={l.internal_note} onChange={e => onChange({ internal_note: e.target.value })} disabled={!editable} autoFocus /></label>
           )}
           {choicesOpen && (
-            <ChoicesPanel choices={l.choices} editable={editable} url={url} onChange={choices => onChange({ choices })} onUpload={onUploadSwatch ?? (() => Promise.reject(new Error("Pictures cannot be added here")))} />
+            <ChoicesPanel choices={l.choices} editable={editable} url={url} onChange={choices => onChange({ choices })} onUpload={onUploadSwatch ?? (() => Promise.reject(new Error("Pictures cannot be added here")))} onCopy={onCopyChoice} />
           )}
         </div>
       )}

@@ -8,7 +8,7 @@ import { fetchLibrary, fetchRework, photoUrl, trainingKeys, type ReworkAsk } fro
 import { lineWood, pickedCaseNo } from '@/lib/pricing/training/match'
 import { sendFeedback, type FeedbackDoc } from '@/lib/pricing/learning/api'
 import type { DiffersReport } from '@/components/pricing/training/TaughtPrice'
-import { Check, ChevronRight, FileUp, LayoutGrid, Plus, Save, Trash2, X } from 'lucide-react'
+import { Check, ChevronRight, FileUp, LayoutGrid, Palette, Plus, Save, Trash2, X } from 'lucide-react'
 import { saveProblem } from '@/lib/quotations/saveCheck'
 import { fetchVersions, issuedAt } from '@/lib/quotations/versions'
 import { askBeforeLeaving } from '@/lib/navigation/leaveGuard'
@@ -27,8 +27,8 @@ import {
   fetchSuggestionSettings, suggestionsKey, fetchPaymentDetails, deleteCheckKey, fetchDeleteCheck,
 } from '@/lib/quotations/api'
 import {
-  DIMENSION_UNITS, SUPPLY_STATES, computeTotals, costingSums, formatDateIN, gstModeForState, validUntil,
-  type QuoteArea, type QuoteLine,
+  DIMENSION_UNITS, MAX_CHOICES, SUPPLY_STATES, choiceCounts, choiceLabel, computeTotals, copyChoiceTo, costingSums, formatDateIN, gstModeForState, validUntil,
+  type ChoiceKey, type QuoteArea, type QuoteLine,
 } from '@/lib/quotations/math'
 import { CLOSING, DEFAULT_CLIENT_NOTE, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS } from '@/lib/quotations/terms'
 import { REQUEST_CARD_ID } from '@/lib/quotations/needsYou'
@@ -41,6 +41,7 @@ import { RequestCard } from './RequestCard'
 import { PriceBrief } from './PriceBrief'
 import { DeleteQuotationDialog } from './DeleteQuotationDialog'
 import { LineRow } from './ProductLine'
+import { CopyChoiceDialog } from './ChoicesPanel'
 import { CostingPage } from './CostingPage'
 import { effectiveLeadTime } from './LeadTime'
 import { TopPanel, LOCKED } from './TopPanel'
@@ -100,6 +101,9 @@ export default function BuilderScreen() {
   // The price brief (20 Nov 2026): asked of the owner / pricing desk when they send a quotation back or share it; always optional.
   const [briefing, setBriefing] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  // Client choices (step 3, 25 Nov 2026): which products have theirs open (the bar opens or closes them all), and the choice being copied.
+  const [chOpen, setChOpen] = useState<ReadonlySet<string>>(() => new Set())
+  const [copying, setCopying] = useState<{ from: string; key: ChoiceKey } | null>(null)
   const isDesk = access.admin || (access.edit && access.view_all)
   // Delete (20270817000000): whether this person may now delete it is the database's answer (an unsent draft they made, or anything for an
   // administrator), asked again whenever the quotation is read again (a request to a senior, a share or a price request changes it).
@@ -316,7 +320,28 @@ export default function BuilderScreen() {
   const viewerItems = viewerItemsOf(groups.flatMap(g => g.lines), unit)
   const viewerAt = viewing ? viewerItems.findIndex(x => x.key === viewing) : -1
   // The running number of each product on the page (its badge), area after area as the page shows them.
-  const lineNo = new Map(groups.flatMap(g => g.lines).map((l, i) => [l.key, i + 1] as const))
+  const pageLines = groups.flatMap(g => g.lines)
+  const lineNo = new Map(pageLines.map((l, i) => [l.key, i + 1] as const))
+  // The Client choices bar (owner, 25 Nov 2026, "when there are around 50 products"): how many products have choices, how many wait.
+  const withChoices = pageLines.filter(l => choiceCounts(l.choices).total > 0)
+  const waitingChoices = pageLines.filter(l => choiceCounts(l.choices).open > 0)
+  const openChoices = (key: string, open: boolean) => setChOpen(p => { const n = new Set(p); if (open) n.add(key); else n.delete(key); return n })
+  const copyChoice = (to: ReadonlySet<string>) => {
+    if (!copying) return
+    const before = lines
+    const src = lines.find(l => l.key === copying.from)?.choices?.[copying.key]
+    const r = copyChoiceTo(lines, copying.from, copying.key, to)
+    setCopying(null)
+    if (!r.copied && !r.full) return
+    setLines(r.lines); touch()
+    const name = src ? choiceLabel(copying.key, src) : 'The choice'
+    // 'ok' on purpose: the next edit clears it, so its Undo can never roll back later work
+    setMsg({
+      tone: 'ok',
+      text: `${name} copied to ${r.copied} product${r.copied === 1 ? '' : 's'}.${r.full ? ` ${r.full} already had ${MAX_CHOICES} choices and were left as they were.` : ''}`,
+      undo: () => { setLines(before); setMsg(null) },
+    })
+  }
   const addLine = (areaKey: string | null) => { setLines(p => [...p, blankLine(areaKey, startRate)]); touch() }
   // An area starts with one empty product, as a room type did.
   const addArea = () => { const k = newKey(); setAreas(p => [...p, { key: k, name: `Area ${p.length + 1}`, style: '', multiplier: 1, unit_label: 'rooms' }]); setLines(p => [...p, blankLine(k, startRate)]); touch() }
@@ -399,6 +424,17 @@ export default function BuilderScreen() {
               onChange={(key, patch) => updLine(key, patch)} />
           ) : (
             <>
+              {withChoices.length > 0 && (
+                <div className={s.chBar} role="group" aria-label="Client choices of all products">
+                  <Palette size={15} aria-hidden /><b>Client choices</b>
+                  <span className={s.muted}>{withChoices.length} of {pageLines.length} products</span>
+                  {waitingChoices.length > 0 ? <span className={`${s.chip} ${s.chWait}`}>{waitingChoices.length} to confirm</span> : <span className={`${s.chip} ${s.chDone}`}>all confirmed</span>}
+                  <span className={s.spacer} />
+                  {waitingChoices.length > 0 && <button type="button" className={`${s.btn} ${s.btnSm}`} onClick={() => setChOpen(new Set(waitingChoices.map(l => l.key)))}>Open only “to confirm”</button>}
+                  <button type="button" className={`${s.btn} ${s.btnSm}`} onClick={() => setChOpen(new Set(pageLines.map(l => l.key)))}>Open all</button>
+                  {chOpen.size > 0 && <button type="button" className={`${s.btn} ${s.btnSm} ${s.btnQuiet}`} onClick={() => setChOpen(new Set())}>Close all</button>}
+                </div>
+              )}
               {groups.map((g, gi) => (g.area || g.lines.length > 0) && (
                 <div key={g.area?.key ?? `none${gi}`} className={g.area ? s.agroup : undefined} style={g.area ? tintStyle(areas.findIndex(a => a.key === g.area!.key)) : undefined}>
                   {g.area ? (
@@ -424,6 +460,7 @@ export default function BuilderScreen() {
                   {g.lines.map((l, li) => (
                     <LineRow key={l.key} l={l} n={lineNo.get(l.key) ?? li + 1} area={g.area} unit={unit} editable={editable} qty={totals.lineQty[l.key] ?? 0} total={totals.lineTotal[l.key] ?? 0}
                       first={li === 0} last={li === g.lines.length - 1} url={picSrc}
+                      choicesOpen={chOpen.has(l.key)} onChoicesOpen={open => openChoices(l.key, open)} onCopyChoice={editable && lines.length > 1 ? k => setCopying({ from: l.key, key: k }) : undefined}
                       onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onUploadSwatch={f => (profile ? uploadPicture(supabase, profile.id, f) : Promise.reject(new Error("Sign in again to add a picture")))} onImprove={() => setStudioFor(l.key)} onView={() => setViewing(l.key)}
                       hint={suggestOn ? hintFor.get(l.name.trim()) : undefined} model={suggestOn ? modelFor.get(l.key) : null} taught={suggestOn ? taught : undefined} onRemove={() => removeLine(l.key)}
                       feedbackCtx={seesWhy ? { clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) } : undefined}
@@ -441,6 +478,7 @@ export default function BuilderScreen() {
                 <span className={s.listTotal}><span>Products total</span><b className={s.num}>{formatINR(totals.subtotal)}</b></span>
               </div>
               <datalist id="q-area-names">{AREA_SUGGESTIONS.map(n => <option key={n} value={n} />)}</datalist>
+              {copying && <CopyChoiceDialog lines={pageLines} from={copying.from} choiceKey={copying.key} url={picSrc} onCopy={copyChoice} onClose={() => setCopying(null)} />}
             </>
           )}
         </div>

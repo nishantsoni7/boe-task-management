@@ -46,7 +46,7 @@ describe('the link and the PDF page', () => {
     assert.match(t, /Berlin velvet/)
     assert.match(t, /₹1,360 per piece/)
     assert.match(t, /Packing: Carton with foam corners · ₹650 per piece/)
-    assert.match(t, /Fabric and packing are added to the total; finish has no charge/)
+    assert.match(t, /Fabric and packing are added to the total; the other choices have no charge/)
   })
   test('no charge, waiting prices, and a packing-only product are worded plainly', () => {
     const t = plain(html([

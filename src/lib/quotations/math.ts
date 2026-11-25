@@ -42,10 +42,20 @@ export const MAX_LINE_REFS = 8
 export const CHOICE_KINDS = ['fabric', 'finish', 'stone', 'rope_weave'] as const
 export type ChoiceKind = (typeof CHOICE_KINDS)[number]
 export const CHOICE_LABEL: Record<ChoiceKind, string> = { fabric: 'Fabric', finish: 'Finish', stone: 'Stone', rope_weave: 'Rope weave' }
+/** Any other choice (20270828000000): 'x_' + 2 to 24 lower-case letters or digits, its name in `label`. */
+export type ChoiceKey = ChoiceKind | `x_${string}`
+const ANY_KEY = /^x_[a-z0-9]{2,24}$/
+export const isFixedKind = (k: string): k is ChoiceKind => (CHOICE_KINDS as readonly string[]).includes(k)
+/** A new any-name key: the time in base 36, so the cards keep the order they were added in. */
+export const newChoiceKey = (now = Date.now()): ChoiceKey => `x_${now.toString(36)}`
+/** The database allows 12 choices on a product. */
+export const MAX_CHOICES = 12
 /** 'catalog' = picked from our catalog; 'client' = the client's own (name is then their description, supplier who supplies it);
  *  'code' = the client sends a code and BOE sources the fabric (20270819000000). */
 export type LineChoice = {
   source: 'catalog' | 'client' | 'code'
+  /** The choice's own name, for an any-name key only (e.g. "Leather"). */
+  label?: string
   name?: string; code?: string; supplier?: string; used_for?: string; note?: string
   /** A swatch picture in quotation-images, same shape as a product's picture path. */
   photo?: string | null
@@ -53,17 +63,29 @@ export type LineChoice = {
   /** YYYY-MM-DD, only when confirmed. */
   confirmed_on?: string
 }
-export type LineChoices = Partial<Record<ChoiceKind, LineChoice>>
+export type LineChoices = Partial<Record<ChoiceKey, LineChoice>>
 /** The longest each text may be (quotation_line_choices_ok). */
-export const CHOICE_MAX = { name: 200, code: 80, supplier: 120, used_for: 160, note: 400 } as const
+export const CHOICE_MAX = { label: 40, name: 200, code: 80, supplier: 120, used_for: 160, note: 400 } as const
 
-/** What is saved: only the kinds that are in use, and only the fields that have something in them (the database allows strings only). */
+/** The keys of a product's choices in the order they show: the four fixed kinds first, then the others in the order they were added. */
+export function choiceKeys(c: LineChoices | undefined): ChoiceKey[] {
+  const rank = (k: string) => (isFixedKind(k) ? CHOICE_KINDS.indexOf(k) : 9)
+  return (Object.keys(c ?? {}) as ChoiceKey[])
+    .filter(k => c?.[k] && (isFixedKind(k) || ANY_KEY.test(k)))
+    .sort((a, b) => rank(a) - rank(b) || (a < b ? -1 : a > b ? 1 : 0))
+}
+
+/** A choice's name: the fixed kind's, or the label the sales person gave it. */
+export const choiceLabel = (k: ChoiceKey, v?: LineChoice): string => (isFixedKind(k) ? CHOICE_LABEL[k] : (v?.label ?? '').trim() || 'Choice')
+
+/** What is saved: only the choices that are in use, and only the fields that have something in them (the database allows strings only).
+ *  An any-name choice always carries a label (the database refuses one without), so a blank one is saved as "Choice". */
 export function cleanChoices(c: LineChoices | undefined): LineChoices {
   const out: LineChoices = {}
-  for (const k of CHOICE_KINDS) {
-    const v = c?.[k]
-    if (!v) continue
+  for (const k of choiceKeys(c).slice(0, MAX_CHOICES)) {
+    const v = c![k]!
     const o: LineChoice = { source: v.source, status: v.status }
+    if (!isFixedKind(k)) o.label = choiceLabel(k, v).slice(0, CHOICE_MAX.label)
     for (const f of ['name', 'code', 'supplier', 'used_for', 'note'] as const) {
       const t = (v[f] ?? '').trim().slice(0, CHOICE_MAX[f])
       if (t) o[f] = t
@@ -77,8 +99,36 @@ export function cleanChoices(c: LineChoices | undefined): LineChoices {
 
 /** How many choices a product has and how many still wait for the client. */
 export function choiceCounts(c: LineChoices | undefined): { total: number; open: number } {
-  const all = CHOICE_KINDS.map(k => c?.[k]).filter((v): v is LineChoice => !!v)
+  const all = choiceKeys(c).map(k => c![k]!)
   return { total: all.length, open: all.filter(v => v.status !== 'confirmed').length }
+}
+
+/** The choice of a product with this name (a fixed kind's, or one the sales person named), if it has one. */
+export function choiceNamed(c: LineChoices | undefined, name: string): ChoiceKey | undefined {
+  const want = name.trim().toLowerCase()
+  return choiceKeys(c).find(k => choiceLabel(k, c![k]).toLowerCase() === want)
+}
+
+/**
+ * "Copy to…" (owner, 25 Nov 2026, for a PI of 50 products): one product's choice goes to each picked product, the whole of it (photo, name,
+ * code, note, confirmed). A product that has a choice of the same name gets it replaced; a product already holding MAX_CHOICES is left out.
+ */
+export function copyChoiceTo(lines: readonly QuoteLine[], from: string, key: ChoiceKey, to: ReadonlySet<string>): { lines: QuoteLine[]; copied: number; full: number } {
+  const src = lines.find(l => l.key === from)?.choices?.[key]
+  if (!src) return { lines: [...lines], copied: 0, full: 0 }
+  const name = choiceLabel(key, src)
+  let copied = 0, full = 0
+  const next = lines.map(l => {
+    if (l.key === from || !to.has(l.key)) return l
+    const target: ChoiceKey = isFixedKind(key) ? key : choiceNamed(l.choices, name) ?? (l.choices?.[key] ? newChoiceKey() : key)
+    if (!l.choices?.[target] && choiceKeys(l.choices).length >= MAX_CHOICES) { full++; return l }
+    copied++
+    const v: LineChoice = { ...src }
+    if (isFixedKind(target)) delete v.label
+    else v.label = name
+    return { ...l, choices: { ...l.choices, [target]: v } }
+  })
+  return { lines: next, copied, full }
 }
 
 // ── costing: fabric and packing per product (20270819000000) ─────────────────────────────────────

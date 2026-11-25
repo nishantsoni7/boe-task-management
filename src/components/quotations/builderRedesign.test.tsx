@@ -119,7 +119,7 @@ describe('the quotation reads and saves the new fields', () => {
 describe('a product line (layout B)', () => {
   const noop = () => {}
   const draw = (l: QuoteLine, extra: { unit?: 'in' | 'cm'; editable?: boolean } = {}) => renderToStaticMarkup(
-    <LineRow l={l} n={4} area={null} unit={extra.unit ?? 'in'} editable={extra.editable ?? true} qty={14} total={539000} first last url={p => `https://img.example/${p}`}
+    <LineRow l={l} n={4} area={null} unit={extra.unit ?? 'in'} editable={extra.editable ?? true} qty={14} total={539000} first last url={p => `https://img.example/${p}`} choicesOpen={false} onChoicesOpen={noop}
       onChange={noop} onUpload={noop} onImprove={noop} onView={noop} onRemove={noop} onMove={noop} onDuplicate={noop} />)
   test('it has Remarks / customization and a Material box of the same height, no GST box and no note for the client', () => {
     const html = draw(line())

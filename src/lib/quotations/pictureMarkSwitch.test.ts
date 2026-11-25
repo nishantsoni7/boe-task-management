@@ -51,7 +51,7 @@ describe('the switch', () => {
   test('on redirects to the public marked copy; off returns the clean original only for a picture the quotation uses', () => {
     assert.ok(route.includes('NextResponse.redirect(`${base}/storage/v1/object/public/quotation-images/${path}`, 302)'))
     assert.ok(route.indexOf('quotation_lines') < route.indexOf('download(path as string)'))
-    assert.ok(route.includes(".contains('doc', { lines: [h] })") && route.includes("PICTURE_HOLDERS(path as string)"), "sent versions: the product picture or a client-choice swatch")
+    assert.ok(route.includes("select('lines:doc->lines')") && route.includes('v.lines.some(l => lineHoldsPicture(l, path as string))'), 'sent versions: the product picture or a client-choice swatch')
     assert.ok(route.includes("'Cache-Control': 'private, max-age=300'"))
   })
   test('a link that is not shared, or an archived quotation, gets nothing', () => {

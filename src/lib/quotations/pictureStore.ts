@@ -1,8 +1,6 @@
 // Where quotation pictures live (owner, 18 Nov 2026, logo marks): the clean original in the PRIVATE bucket, the marked
 // copy in the PUBLIC one, both at the same path. Shared by the upload, the mark route and the image studio.
 
-import { CHOICE_KINDS } from './math'
-
 export const ORIGINALS_BUCKET = 'quotation-originals'
 
 const PATH = /^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$/
@@ -15,14 +13,17 @@ export function storedPictureProblem(path: unknown, userId: string): string | nu
 }
 
 /**
- * The ways a quotation line can hold a picture, as the JSON a sent version's line would contain: its own picture, or the swatch of
- * any of its client choices (20270808000100). Used with .contains on the frozen versions; the live lines use choicePhotoFilter.
- * The path is checked against PATH first, so it is safe to put in a filter.
+ * Whether a quotation line holds this picture: as its own picture, or as the swatch of any of its client choices (20270808000100). A
+ * choice can have any name (20270828000000), so its key cannot be listed in a filter: the caller reads the lines (live, or a sent
+ * version's) and asks here. Works on a live row (client_choices) and on a version's line, which carries the same key.
  */
-export const PICTURE_HOLDERS = (path: string): object[] => [{ image_path: path }, ...CHOICE_KINDS.map(k => ({ client_choices: { [k]: { photo: path } } }))]
-
-/** The PostgREST .or() filter that matches a live line holding this picture as its own or as a choice swatch. */
-export const linePictureFilter = (path: string): string => [`image_path.eq.${path}`, ...CHOICE_KINDS.map(k => `client_choices->${k}->>photo.eq.${path}`)].join(',')
+export function lineHoldsPicture(line: unknown, path: string): boolean {
+  if (!line || typeof line !== 'object') return false
+  const l = line as { image_path?: unknown; client_choices?: unknown }
+  if (l.image_path === path) return true
+  const c = l.client_choices
+  return !!c && typeof c === 'object' && Object.values(c).some(v => !!v && typeof v === 'object' && (v as { photo?: unknown }).photo === path)
+}
 
 const TOKEN = /^[0-9a-f]{32}$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/

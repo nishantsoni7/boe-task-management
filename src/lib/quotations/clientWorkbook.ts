@@ -15,7 +15,7 @@
 
 import type { Workbook } from 'exceljs'
 import { computeTotals, type QuoteArea, type QuoteLine, type QuoteMoney } from './math'
-import { CHOICE_KINDS, CHOICE_LABEL, choiceRowsOf, choiceWords, choicesIntro, lineCostWords, sourceText, statusText } from './choicesDoc'
+import { cellChoices, choiceColumns, choiceRowsOf, choiceWords, choicesIntro, lineCostWords, sourceText, statusText } from './choicesDoc'
 import { DEFAULT_CLIENT_NOTE, EXPECTATIONS, EXPECTATIONS_TITLE, TERMS, type TermBlock } from './terms'
 
 /** The first standard term, in the owner's words (18 Nov 2026). */
@@ -109,11 +109,14 @@ export function clientSheetFileName(quoteNo: string): string {
 // ── the second sheet: the client's choices (owner, 18 Nov 2026, layout 2: one table, a row per product) ─────────────────────────────
 // Only when some product has a choice. Confirmed and to-confirm both print; the choice's own note never does. A swatch sits at the top of
 // its cell, the words under it.
-const CH_WIDTHS = [5, 26, 25, 25, 25, 25]
 const CONFIRMED_FILL = 'E3EBDD', WAITING_FILL = 'F2E4C9'
 function addChoicesSheet(wb: Workbook, input: WorkbookInput): void {
   const rows = choiceRowsOf(input.areas, input.lines)
   if (rows.length === 0) return
+  // the same columns as the PDF (20270828000000); fewer columns are wider, so the sheet keeps its width
+  const cols = choiceColumns(input.lines)
+  const CW = Math.max(25, Math.floor(100 / cols.length))
+  const CH_WIDTHS = [5, 26, ...cols.map(() => CW)]
   const ws = wb.addWorksheet('Client choices', {
     views: [{ showGridLines: false }],
     properties: { defaultRowHeight: 20 },
@@ -145,7 +148,7 @@ function addChoicesSheet(wb: Workbook, input: WorkbookInput): void {
 
   const headRow = 5
   ws.getRow(headRow).height = 26
-  ;['No.', 'Product', ...CHOICE_KINDS.map(k => CHOICE_LABEL[k])].forEach((name, i) => {
+  ;['No.', 'Product', ...cols.map(c => c.label)].forEach((name, i) => {
     const c = ws.getCell(headRow, i + 1)
     c.value = name
     c.font = font({ size: 10.5, bold: true, color: 'FFFFFF' })
@@ -158,11 +161,13 @@ function addChoicesSheet(wb: Workbook, input: WorkbookInput): void {
   let r = headRow
   rows.forEach((row, idx) => {
     r++
-    const cells = CHOICE_KINDS.map(k => row.line.choices?.[k])
+    const cells = cols.map(col => cellChoices(row.line, col, cols))
     const cw = lineCostWords(row.line) // the per-piece fabric price (in the fabric cell) and the packing line (under the product)
-    const lineCount = (c: (typeof cells)[number], width: number, extra = '') => (c ? [...choiceWords(c), `${sourceText(c)} · ${statusText(c)}`, ...(extra ? [extra] : [])].reduce((n, w) => n + wrappedLines(w, width), 0) : (extra ? wrappedLines(extra, width) : 1))
-    const body = Math.max(wrappedLines(row.line.name, CH_WIDTHS[1]) + (row.area || row.line.is_optional ? 1 : 0) + (cw.packing ? wrappedLines(cw.packing, CH_WIDTHS[1]) : 0), ...cells.map((c, i) => lineCount(c, CH_WIDTHS[2], CHOICE_KINDS[i] === 'fabric' ? cw.fabric : '')))
-    const photo = cells.some(c => c?.photo && input.pictures.get(c.photo))
+    // a cell's lines: per choice its name ("Other choices" only), its words and "source · status", a blank line between two choices
+    const wordsOf = (items: (typeof cells)[number], other: boolean, extra: string) => items.flatMap((x, n) => [...(n ? [''] : []), ...(other ? [x.label] : []), ...choiceWords(x.c), ...(n === 0 && extra ? [extra] : []), `${sourceText(x.c)} · ${statusText(x.c)}`])
+    const lineCount = (i: number) => { const extra = cols[i].id === 'fabric' ? cw.fabric : ''; return cells[i].length ? wordsOf(cells[i], !!cols[i].other, extra).reduce((n, w) => n + wrappedLines(w, CW), 0) : (extra ? wrappedLines(extra, CW) : 1) }
+    const body = Math.max(wrappedLines(row.line.name, CH_WIDTHS[1]) + (row.area || row.line.is_optional ? 1 : 0) + (cw.packing ? wrappedLines(cw.packing, CH_WIDTHS[1]) : 0), ...cols.map((_, i) => lineCount(i)))
+    const photo = cells.some(items => items[0]?.c.photo && input.pictures.get(items[0].c.photo))
     ws.getRow(r).height = Math.max(photo ? 0 : 36, 14.5 * body + 10 + (photo ? 56 : 0))
     const no = ws.getCell(r, 1)
     no.value = idx + 1
@@ -173,25 +178,30 @@ function addChoicesSheet(wb: Workbook, input: WorkbookInput): void {
     pc.value = { richText: [{ font: font({ bold: true }), text: row.line.name }, ...((row.area || row.line.is_optional) ? [{ font: font({ size: 9.5, color: MUTED }), text: '\n' + [row.area?.name, row.line.is_optional ? 'Optional' : ''].filter(Boolean).join(' · ') }] : []), ...(cw.packing ? [{ font: font({ size: 9.5, color: MUTED }), text: '\n' + cw.packing }] : [])] }
     pc.alignment = { vertical: 'top', wrapText: true }
     pc.border = box
-    CHOICE_KINDS.forEach((k, i) => {
-      const c = cells[i]
+    cols.forEach((col, i) => {
+      const items = cells[i]
       const cell = ws.getCell(r, 3 + i)
       cell.border = box
-      const fabricWords = k === 'fabric' ? cw.fabric : ''
-      if (!c) {
+      const fabricWords = col.id === 'fabric' ? cw.fabric : ''
+      if (!items.length) {
         cell.value = fabricWords || 'Not used'
         cell.font = font({ italic: true, color: MUTED })
         cell.alignment = { vertical: 'top' }
         return
       }
-      const words = choiceWords(c)
-      cell.value = { richText: [
-        ...(words[0] ? [{ font: font({ bold: true }), text: words[0] }] : []),
-        ...words.slice(1).map(w => ({ font: font({ size: 10 }), text: '\n' + w })),
-        ...(fabricWords ? [{ font: font({ size: 10 }), text: (words.length ? '\n' : '') + fabricWords }] : []),
-        { font: font({ size: 9, color: MUTED }), text: (words.length || fabricWords ? '\n' : '') + `${sourceText(c)} · ${statusText(c)}` },
-      ] }
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + (c.status === 'confirmed' ? CONFIRMED_FILL : WAITING_FILL) } }
+      const parts = items.flatMap(({ label, c }, n) => {
+        const words = choiceWords(c), extra = n === 0 ? fabricWords : ''
+        return [
+          ...(col.other ? [{ font: font({ size: 9, bold: true, color: MUTED }), text: label.toUpperCase() }] : []),
+          ...(words[0] ? [{ font: font({ bold: true }), text: words[0] }] : []),
+          ...words.slice(1).map(w => ({ font: font({ size: 10 }), text: w })),
+          ...(extra ? [{ font: font({ size: 10 }), text: extra }] : []),
+          { font: font({ size: 9, color: MUTED }), text: `${sourceText(c)} · ${statusText(c)}` },
+        ].map((p, j) => ({ ...p, text: (j ? '\n' : n ? '\n\n' : '') + p.text }))
+      })
+      cell.value = { richText: parts }
+      const c = items[0].c
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF' + (items.every(x => x.c.status === 'confirmed') ? CONFIRMED_FILL : WAITING_FILL) } }
       cell.alignment = { vertical: 'bottom', wrapText: true }
       const pic = c.photo ? input.pictures.get(c.photo) : undefined
       if (pic) {
@@ -202,9 +212,9 @@ function addChoicesSheet(wb: Workbook, input: WorkbookInput): void {
   })
 
   r += 2
-  for (const [from, to, text] of [[1, 3, 'For the client: name, date and signature'], [4, LASTC, 'For Best of Exports: name and date']] as const) {
-    ws.mergeCells(r, from, r, to)
-    ws.mergeCells(r + 1, from, r + 1, to)
+  const mid = LASTC >= 5 ? 3 : 2 // one or two choice columns leave fewer columns to split
+  for (const [from, to, text] of [[1, mid, 'For the client: name, date and signature'], [mid + 1, LASTC, 'For Best of Exports: name and date']] as const) {
+    if (to > from) { ws.mergeCells(r, from, r, to); ws.mergeCells(r + 1, from, r + 1, to) }
     const line = ws.getCell(r, from)
     line.border = { bottom: { style: 'thin', color: { argb: 'FF' + INK } } }
     const cap = ws.getCell(r + 1, from)

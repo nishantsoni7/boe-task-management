@@ -2,8 +2,7 @@
 // Kept apart from clientWorkbook.ts, which is pure and runs in tests. Everything here needs a browser (fetch, createImageBitmap, a link).
 
 import { clientSheetFileName, type SheetPicture, type WorkbookHead, type WorkbookInput } from './clientWorkbook'
-import { CHOICE_KINDS } from './choicesDoc'
-import type { QuoteArea, QuoteLine, QuoteMoney } from './math'
+import { choiceKeys, type QuoteArea, type QuoteLine, type QuoteMoney } from './math'
 
 const PARALLEL = 6
 
@@ -74,7 +73,7 @@ export async function downloadClientWorkbook(input: {
 }): Promise<{ missing: number }> {
   const { buildClientWorkbook } = await import('./clientWorkbook')
   // the products' pictures and the swatches of their client choices (the second sheet); a swatch that cannot be loaded is counted like a picture
-  const paths = input.lines.flatMap(l => [l.image_path, ...CHOICE_KINDS.map(k => l.choices?.[k]?.photo)]).filter((p): p is string => !!p)
+  const paths = input.lines.flatMap(l => [l.image_path, ...choiceKeys(l.choices).map(k => l.choices?.[k]?.photo)]).filter((p): p is string => !!p)
   const [{ pictures, missing }, logo] = await Promise.all([loadSheetPictures(paths, input.srcOf), loadLogo()])
   const qr = await loadDataUrl(input.payment?.qr_image)
   const bytes = await buildClientWorkbook({ head: input.head, money: input.money, areas: input.areas, lines: input.lines, pictures, logo, payment: input.payment, qr })

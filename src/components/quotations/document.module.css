@@ -179,6 +179,7 @@
 .chWord { display: block; font-size: calc(1.15 * var(--u)); line-height: 1.4; color: var(--ink); }
 .chSrc { display: block; margin-top: calc(.5 * var(--u)); font-size: calc(1.02 * var(--u)); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .chChip { display: inline-block; margin-top: calc(.4 * var(--u)); padding: 0 calc(.9 * var(--u)); border-radius: 999px; font-size: calc(1.05 * var(--u)); line-height: 1.7; letter-spacing: .03em; }
+.chMore { margin-top: calc(1.2 * var(--u)); padding-top: calc(1 * var(--u)); border-top: calc(.1 * var(--u)) solid var(--rule); }
 .chOk { background: #E3EBDD; color: #3F5A33; }
 .chWait { background: #F2E4C9; color: #7C5A1A; }
 .chSign { margin-top: calc(5 * var(--u)); display: grid; grid-template-columns: repeat(2, 1fr); gap: calc(5 * var(--u)); }
