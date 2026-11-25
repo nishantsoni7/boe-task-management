@@ -53,6 +53,13 @@ async function freshAdminToken(s: ImpersonationStash): Promise<string | null> {
   return data.session.access_token
 }
 
+// After a swap (or the return to admin) the admin wants to see the SAME page as the other person
+// (owner, 2026-11-25), so the page is reloaded in place: path, query and # stay. A full reload, not
+// router.refresh(), so nothing the previous person's session cached in the browser is reused.
+function stayOnThisPage() {
+  window.location.reload()
+}
+
 function subtitleOf(m: ImpersonationMember): string {
   return [m.position || m.designation_level, m.team].filter(Boolean).join(' · ')
 }
@@ -177,7 +184,7 @@ export default function LoginAsMemberWidget() {
       window.location.assign('/login')
       return
     }
-    window.location.assign('/modules')
+    stayOnThisPage()
   }
 
   const loginAs = async (member: ImpersonationMember) => {
@@ -222,7 +229,7 @@ export default function LoginAsMemberWidget() {
         writeStash(null)
         setError(otpErr.message); setBusyId(null); return
       }
-      window.location.assign('/modules')
+      stayOnThisPage()
     } catch {
       setError('Something went wrong. Try again.'); setBusyId(null)
     }
