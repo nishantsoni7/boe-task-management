@@ -726,3 +726,56 @@ select.cpIn { text-overflow: ellipsis; }
   .tabChip { display: none; }
   .briefDl { grid-template-columns: 96px minmax(0, 1fr); }
 }
+
+/* ── Client choices as cards (version 2, step 3, 25 Nov 2026; 20270828000000) ───────────────────────────────────────────────────────
+   Side by side and compact (owner: "too big", then "slightly smaller"): a 168 px card, its photo 112 px tall, the choice's name and the
+   selection under it. The pencil turns one card into a 280 px form in place. The bar over the list opens or closes them all. */
+.chBar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; padding: 8px 16px; border-bottom: 1px solid var(--boe-border); background: var(--boe-surface-quiet); font-size: 13px; color: var(--boe-text-strong); }
+.chBar b { font-weight: 600; color: var(--boe-text); }
+.ccCards { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+.ccCard { position: relative; width: 168px; display: flex; flex-direction: column; border: 1px solid var(--boe-border); border-radius: 12px; background: var(--boe-surface); overflow: hidden; }
+.ccEdit { width: 280px; border-color: var(--boe-border-strong); box-shadow: var(--boe-shadow-float); }
+.ccImg { position: relative; height: 112px; background: var(--boe-surface-sunken); display: grid; place-items: center; flex: none; }
+.ccImgSm { height: 72px; }
+.ccImgLink { position: absolute; inset: 0; display: block; }
+.ccPhoto { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.ccNoPhoto { display: grid; justify-items: center; gap: 4px; color: var(--boe-text-muted); font: 500 12px var(--boe-font-body); }
+.ccDot { position: absolute; left: 6px; top: 6px; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(48,53,54,.15); }
+.ccDotOk { background: var(--boe-completed-fg, #276247); color: #fff; }
+.ccDotWait { background: #E0A526; }
+.ccPen { position: absolute; right: 6px; top: 6px; width: 28px; height: 28px; padding: 0; border-radius: 8px; border: 1px solid var(--boe-border); background: rgba(255,255,255,.95); color: var(--boe-text); display: grid; place-items: center; cursor: pointer; }
+.ccPen:hover { background: #fff; border-color: var(--boe-border-strong); }
+.ccPhotoBtn { position: absolute; right: 8px; bottom: 8px; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--boe-border); background: rgba(255,255,255,.95); font: 600 12px var(--boe-font-body); color: var(--boe-text); cursor: pointer; }
+.ccPhotoSolo { position: static; background: var(--boe-surface); border-style: dashed; border-color: var(--boe-border-strong); }
+.ccBody { display: grid; gap: 1px; padding: 8px 10px 10px; }
+.ccKind { font: 600 12px var(--boe-font-body); color: var(--boe-text-muted); }
+.ccKind em { font-style: normal; color: var(--boe-waiting-fg, #805b0d); }
+.ccName { font: 600 13.5px/1.3 var(--boe-font-body); color: var(--boe-text); overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ccForm { display: grid; gap: 10px; padding: 12px; }
+.ccTwo { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 8px; }
+.ccFixed { font: 600 14px/36px var(--boe-font-body); color: var(--boe-text); }
+.ccNote { height: auto; min-height: 56px; padding: 8px 10px; resize: vertical; }
+.ccFoot { display: flex; align-items: center; gap: 4px; padding: 8px 8px 8px 12px; border-top: 1px solid var(--boe-surface-sunken); margin-top: auto; }
+.ccAdd { width: 168px; min-height: 166px; display: grid; place-items: center; align-content: center; gap: 4px; padding: 12px; border: 1px dashed var(--boe-border-strong); border-radius: 12px; background: var(--boe-surface-quiet); color: var(--boe-brand-ink); font: 600 14px var(--boe-font-body); text-align: center; cursor: pointer; }
+.ccAdd small { font: 400 12px var(--boe-font-body); color: var(--boe-text-muted); }
+.ccAdd:hover { background: var(--boe-brand-tint); border-color: var(--boe-brand-tint-2); }
+.cpDlg { max-width: 520px; }
+.cpBody { display: grid; gap: 8px; }
+.cpList { display: grid; max-height: min(420px, 50vh); overflow: auto; border: 1px solid var(--boe-border); border-radius: 10px; }
+.cpItem { display: grid; grid-template-columns: 20px 36px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 44px; padding: 4px 12px; border-top: 1px solid var(--boe-surface-sunken); cursor: pointer; font-size: 13.5px; }
+.cpItem:first-child { border-top: 0; }
+.cpItem:hover { background: var(--boe-surface-quiet); }
+.cpItem input { width: 18px; height: 18px; accent-color: var(--boe-brand); margin: 0; }
+.cpThumb { width: 36px; height: 30px; border-radius: 6px; border: 1px solid var(--boe-border); overflow: hidden; display: grid; place-items: center; color: var(--boe-text-muted); background: var(--boe-surface-sunken); }
+.cpThumb img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.cpName { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cpHas { font-size: 12px; color: var(--boe-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+@media (max-width: 767px) {
+  .ccCard, .ccEdit, .ccAdd { width: 100%; }
+  .ccAdd { min-height: 96px; }
+  .ccPen { width: 44px; height: 44px; }
+  .ccPhotoBtn { height: 44px; }
+  .chBar .btn { min-height: 44px; }
+  .cpItem { grid-template-columns: 20px 36px minmax(0, 1fr); }
+  .cpHas { grid-column: 3; max-width: none; }
+}

@@ -1384,6 +1384,8 @@ describe('the applied migrations are frozen', () => {
       '20270826000000_pricing_engine_v3.sql',
       // Tasks: the hourly stale flag counts an update as progress and takes the flag down once there is one (one function replaced; no table or row changes). APPLIED 2026-11-24 14:46 IST.
       '20270827000000_task_health_check_updates_count_as_progress.sql',
+      // Quotations: client choices with any name (quotation_line_choices_ok re-created, same signature and grants: an x_ key with a label, at most 12 per product; no table or row changes).
+      '20270828000000_quotation_choices_any_name.sql',
     ])
   })
 
@@ -1979,6 +1981,8 @@ describe('the applied migrations are frozen', () => {
       '20270826000000_pricing_engine_v3.sql',
       // Tasks: the hourly stale flag counts an update as progress and takes the flag down once there is one (one function replaced; no table or row changes). APPLIED 2026-11-24 14:46 IST.
       '20270827000000_task_health_check_updates_count_as_progress.sql',
+      // Quotations: client choices with any name (quotation_line_choices_ok re-created, same signature and grants: an x_ key with a label, at most 12 per product; no table or row changes).
+      '20270828000000_quotation_choices_any_name.sql',
     ])
     // 115, 116 and 20261105000000 are deliberately absent: all have been
     // pushed, so they belong in FROZEN and not here. 2026101500 and 2026101600

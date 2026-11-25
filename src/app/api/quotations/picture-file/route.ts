@@ -9,7 +9,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient as createServiceClient } from '@supabase/supabase-js'
 import { createClient } from '@/lib/supabase/server'
-import { ORIGINALS_BUCKET, PICTURE_HOLDERS, linePictureFilter, pictureRequestProblem } from '@/lib/quotations/pictureStore'
+import { ORIGINALS_BUCKET, lineHoldsPicture, pictureRequestProblem } from '@/lib/quotations/pictureStore'
 
 export const runtime = 'nodejs'
 
@@ -46,12 +46,12 @@ export async function GET(req: NextRequest) {
   }
 
   // Mark OFF: the picture must belong to this quotation, in its lines (a product's picture or a client-choice swatch) or in a version it has sent.
-  const used = await service.from('quotation_lines').select('id').eq('quotation_id', quotationId).or(linePictureFilter(path as string)).limit(1)
-  let belongs = (used.data ?? []).length > 0
+  // A choice can have any name (20270828000000), so the lines are read and checked here rather than in a filter.
+  const used = await service.from('quotation_lines').select('image_path, client_choices').eq('quotation_id', quotationId)
+  let belongs = (used.data ?? []).some(l => lineHoldsPicture(l, path as string))
   if (!belongs) {
-    const found = await Promise.all(PICTURE_HOLDERS(path as string).map(h => service.from('quotation_versions').select('version_no').eq('quotation_id', quotationId)
-      .contains('doc', { lines: [h] }).limit(1)))
-    belongs = found.some(v => (v.data ?? []).length > 0)
+    const sent = await service.from('quotation_versions').select('lines:doc->lines').eq('quotation_id', quotationId)
+    belongs = (sent.data ?? []).some(v => Array.isArray(v.lines) && v.lines.some(l => lineHoldsPicture(l, path as string)))
   }
   if (!belongs) return gone(404)
 

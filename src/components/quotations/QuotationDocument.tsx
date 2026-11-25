@@ -12,7 +12,7 @@ import {
   type TableRow,
 } from '@/lib/quotations/documentPlan'
 import { WORK_PULL, workSetFor } from '@/lib/quotations/documentWork'
-import { CHOICE_KINDS, CHOICE_LABEL, choiceRowsOf, choiceWords, choicesIntro, lineCostWords, planChoicePages, sourceText, statusText } from '@/lib/quotations/choicesDoc'
+import { cellChoices, choiceColumns, choiceRowsOf, choiceWords, choicesIntro, lineCostWords, planChoicePages, sourceText, statusText } from '@/lib/quotations/choicesDoc'
 import type { PaymentDetails } from '@/lib/quotations/api'
 import d from './document.module.css'
 import { Pic } from './Pic'
@@ -138,9 +138,10 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
   // the notes (what is included and what is not) print right under the total, where the client reads the price
   const hasNotes = !!(doc.notes || doc.transport_note)
   const tablePages = planTablePages(groups, summaryUnits(sumRows, hasNotes ? noteLinesOf(doc.notes, doc.transport_note) : 0))
-  // the client's choices (fabric, finish, stone, rope weave): one table, a row per product that has any; none, no page (20270809000000)
+  // the client's choices: one table, a row per product that has any, a column per choice the document uses; none, no page (20270809000000, 20270828000000)
   const choiceRows = choiceRowsOf(doc.areas, doc.lines)
-  const choicePages = choiceRows.length ? planChoicePages(choiceRows) : []
+  const choiceCols = choiceColumns(doc.lines)
+  const choicePages = choiceRows.length ? planChoicePages(choiceRows, choiceCols) : []
   const termPages = planTermsPages([{ heading: EXPECTATIONS_TITLE, items: EXPECTATIONS }, { heading: 'Terms and Conditions', items: TERMS }])
   const work = workSetFor(type)
   const title = doc.project_name || doc.client_name
@@ -325,20 +326,26 @@ export function QuotationDocument({ doc, pictureUrl, payment }: { doc: DocData; 
         <Page key={`c${ci}`} n={firstChoice + ci} section="Client choices" kicker="Client choices" title={ci === 0 ? 'What you chose, and what is still open.' : undefined}>
           {ci === 0 ? <p className={d.chIntro}>{choicesIntro(doc.lines)}</p> : null}
           <table className={`${d.tbl} ${d.chtbl}`}>
-            <thead><tr><th>Product</th>{CHOICE_KINDS.map(k => <th key={k}>{CHOICE_LABEL[k]}</th>)}</tr></thead>
+            <thead><tr><th>Product</th>{choiceCols.map(col => <th key={col.id}>{col.label}</th>)}</tr></thead>
             <tbody>{rows.map(r => (
               <tr key={r.line.key}>
                 <td className={d.chProd} data-label="Product"><b className={d.pname}>{r.line.name}</b><small>{[r.area?.name, r.line.is_optional ? 'Optional' : ''].filter(Boolean).join(' · ')}</small>{lineCostWords(r.line).packing ? <small>{lineCostWords(r.line).packing}</small> : null}</td>
-                {CHOICE_KINDS.map(k => {
-                  const c = r.line.choices?.[k]
-                  if (!c) return <td key={k} data-label={CHOICE_LABEL[k]} className={d.chNone}>{k === 'fabric' && lineCostWords(r.line).fabric ? <span>{lineCostWords(r.line).fabric}</span> : <span>Not used</span>}</td>
+                {choiceCols.map(col => {
+                  const items = cellChoices(r.line, col, choiceCols)
+                  const fabric = col.id === 'fabric' ? lineCostWords(r.line).fabric : ''
+                  if (!items.length) return <td key={col.id} data-label={col.label} className={d.chNone}>{fabric ? <span>{fabric}</span> : <span>Not used</span>}</td>
                   return (
-                    <td key={k} data-label={CHOICE_LABEL[k]}>
-                      {c.photo ? <div className={d.chSw}><Pic src={pictureUrl(c.photo)} alt={`${CHOICE_LABEL[k]} swatch for ${r.line.name}`} lazy /></div> : null}
-                      {choiceWords(c).map((w, i) => i === 0 ? <b key={i} className={d.chName}>{w}</b> : <span key={i} className={d.chWord}>{w}</span>)}
-                      {k === 'fabric' && lineCostWords(r.line).fabric ? <span className={d.chWord}>{lineCostWords(r.line).fabric}</span> : null}
-                      <span className={d.chSrc}>{sourceText(c)}</span>
-                      <span className={`${d.chChip} ${c.status === 'confirmed' ? d.chOk : d.chWait}`}>{statusText(c)}</span>
+                    <td key={col.id} data-label={col.label}>
+                      {items.map(({ label, c }, n) => (
+                        <div key={n} className={n ? d.chMore : undefined}>
+                          {col.other ? <span className={d.chSrc}>{label}</span> : null}
+                          {c.photo ? <div className={d.chSw}><Pic src={pictureUrl(c.photo)} alt={`${label} swatch for ${r.line.name}`} lazy /></div> : null}
+                          {choiceWords(c).map((w, i) => i === 0 ? <b key={i} className={d.chName}>{w}</b> : <span key={i} className={d.chWord}>{w}</span>)}
+                          {n === 0 && fabric ? <span className={d.chWord}>{fabric}</span> : null}
+                          <span className={d.chSrc}>{sourceText(c)}</span>
+                          <span className={`${d.chChip} ${c.status === 'confirmed' ? d.chOk : d.chWait}`}>{statusText(c)}</span>
+                        </div>
+                      ))}
                     </td>
                   )
                 })}

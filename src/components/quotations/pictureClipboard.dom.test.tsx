@@ -4,7 +4,7 @@ import { mount } from '@/lib/testing/domHarness'
 import '@/lib/testing/cssModuleStub'
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { act, createElement } from 'react'
+import { act, createElement, useState } from 'react'
 import { LineRow } from './ProductLine'
 import { PICTURE_MARK, onCopy, onPaste, validPicturePath } from './pictureClipboard'
 import type { QuoteLine } from '@/lib/quotations/math'
@@ -22,10 +22,16 @@ function clip(type: 'copy' | 'paste', put: { text?: string; files?: File[] } = {
   return { e, store }
 }
 
+/** The builder holds whether a product's Client choices are open (its bar opens them all); here a one-product host holds it. */
+function Host(props: Omit<Parameters<typeof LineRow>[0], 'choicesOpen' | 'onChoicesOpen'>) {
+  const [open, setOpen] = useState(false)
+  return createElement(LineRow, { ...props, choicesOpen: open, onChoicesOpen: setOpen })
+}
+
 function row(l: QuoteLine, editable = true) {
   const changes: Partial<QuoteLine>[] = []
   const uploads: File[] = []
-  const ui = mount(createElement(LineRow, {
+  const ui = mount(createElement(Host, {
     l, n: 1, area: null, unit: 'in', editable, qty: 1, total: 1000, first: true, last: true, url: (p: string) => `https://img.example/${p}`,
     onChange: (p: Partial<QuoteLine>) => { changes.push(p) }, onUpload: (f: File | undefined) => { if (f) uploads.push(f) },
     onImprove: () => {}, onView: () => {}, onRemove: () => {}, onMove: () => {}, onDuplicate: () => {},
@@ -105,9 +111,9 @@ describe('the strip under the boxes (version 2)', () => {
     assert.match(choices.textContent ?? '', /Fabric: Berlin velvet.*1 to confirm/)
     a.ui.click(choices)
     assert.equal(choices.getAttribute('aria-expanded'), 'true')
-    assert.match(a.ui.one('.plOpens').textContent ?? '', /Fabric and finish are chosen here only/)
+    assert.match(a.ui.one('.plOpens .ccCard').textContent ?? '', /Fabric · to confirmBerlin velvet/)
     a.ui.click(a.ui.button(/^Internal note/))
-    assert.ok(a.ui.all('.plOpens input[aria-label="Internal note"]').length === 1 && a.ui.all('.plOpens .chWrap').length === 1)
+    assert.ok(a.ui.all('.plOpens input[aria-label="Internal note"]').length === 1 && a.ui.all('.plOpens .ccCards').length === 1)
     a.ui.unmount()
   })
   test('the tools sit in the strip; a product that may not be edited has none', () => {

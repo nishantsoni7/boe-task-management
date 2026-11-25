@@ -49,7 +49,7 @@ const header = (over: Partial<Header> = {}): Header => ({
   dimension_unit: 'in', project_type: '', seats: null, lead_time_weeks: null, lead_time_reason: '', delivery_city: 'Jaipur', ...over,
 })
 const draw = (l: QuoteLine) => renderToStaticMarkup(
-  <LineRow l={l} n={1} area={null} unit="in" editable qty={2} total={77000} first last url={p => `https://img.example/${p}`}
+  <LineRow l={l} n={1} area={null} unit="in" editable qty={2} total={77000} first last url={p => `https://img.example/${p}`} choicesOpen={false} onChoicesOpen={() => {}}
     onChange={() => {}} onUpload={() => {}} onImprove={() => {}} onView={() => {}} onRemove={() => {}} onMove={() => {}} onDuplicate={() => {}} />)
 
 describe('the product picture (item 2; version 2 of 25 Nov 2026)', () => {
@@ -215,7 +215,7 @@ describe('the numbers panel of a product (owner, 15 Nov 2026; version 2 of 25 No
   const area: QuoteArea = { key: 'r', name: 'BOHO ROOM', style: '', multiplier: 56, unit_label: 'rooms' }
   const HINT = { name: 'Bed', ordered: { last: 7300, last_at: '2026-06-01', min: 2650, max: 11550, count: 39 }, quoted: null }
   const drawWith = (l: QuoteLine, o: { area?: QuoteArea | null; editable?: boolean; hint?: typeof HINT } = {}) => renderToStaticMarkup(
-    <LineRow l={l} n={1} area={o.area ?? null} unit="in" editable={o.editable ?? true} qty={2} total={77000} first last url={p => `https://img.example/${p}`} hint={o.hint}
+    <LineRow l={l} n={1} area={o.area ?? null} unit="in" editable={o.editable ?? true} qty={2} total={77000} first last url={p => `https://img.example/${p}`} choicesOpen={false} onChoicesOpen={() => {}} hint={o.hint}
       onChange={() => {}} onUpload={() => {}} onImprove={() => {}} onView={() => {}} onRemove={() => {}} onMove={() => {}} onDuplicate={() => {}} />)
   const panel = (html: string) => html.slice(html.indexOf('class="plRight"'))
 

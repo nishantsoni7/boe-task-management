@@ -5,20 +5,18 @@
 
 ## Snapshot
 
-- Commit: `3ff44046` — Merge remote-tracking branch 'origin/feat/lead-create-pi-draft' into feat/quotation-page-v2
-- Commits on this branch: 1596
+- Commit: `43ed6667` — Quotations: the page, version 2 (status from the lead, the lead's brief, tabs as the card head, areas, a calmer product block, a simpler Fabric and packing tab) (#1039)
+- Commits on this branch: 1594
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
-- Migrations: 507 (first `20260530_create_positions.sql`, latest `20270827000000_task_health_check_updates_count_as_progress.sql`)
+- Migrations: 508 (first `20260530_create_positions.sql`, latest `20270828000000_quotation_choices_any_name.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
-- Test files: 955   Next.js 16.2.6, React 19.2.4
+- Test files: 956   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `3ff44046` 2026-11-25 Merge remote-tracking branch 'origin/feat/lead-create-pi-draft' into feat/quotation-page-v2
-- `4ff1e96d` 2026-11-25 Quotations: the page, version 2 (status from the lead, the lead's brief, tabs as the card head, areas, a calmer product block, a simpler Fabric and packing tab)
-- `5324e623` 2026-11-25 Merge remote-tracking branch 'origin/main' into feat/lead-create-pi-draft
+- `43ed6667` 2026-11-25 Quotations: the page, version 2 (status from the lead, the lead's brief, tabs as the card head, areas, a calmer product block, a simpler Fabric and packing tab) (#1039)
+- `03c080d5` 2026-11-25 Lead Management: "Create PI draft" on the lead's quotation line (#1036)
 - `78fbe795` 2026-11-25 Docs: #1031 merged and live (2026-11-25 09:42 IST) (#1037)
-- `98bb5fe9` 2026-11-25 Lead Management: "Create PI draft" on the lead's quotation line
 - `f4dbb798` 2026-11-25 Docs: #1034 merged and live (2026-11-25 10:42 IST) (#1035)
 - `4556b7e5` 2026-11-25 Order page: details open below the products, terms and breakdown at the foot of the Products card; PI strip 30/30/20/20 with separators (#1034)
 - `592bea9f` 2026-11-25 Login as member: the floating button can be dragged out of the way (#1033)
@@ -39,6 +37,8 @@
 - `c54b2692` 2026-11-24 Docs: #1015 merged and live (2026-11-24 17:02 IST) (#1018)
 - `cc4a1a8f` 2026-11-24 Docs: #1013 merged and live (2026-11-24 15:44 IST), stale-flag migration stamped, open items noted (#1017)
 - `345f1b58` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL) (#1015)
+- `e8a9b46b` 2026-11-24 Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (migration 20270827000000 APPLIED) (#1013)
+- `8890d287` 2026-11-24 Docs: the 9:30 pm backup task runs with no window (no SQL) (#1014)
 
 ## Pages by top-level area
 
@@ -525,7 +525,6 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 
 ## Last 30 migrations
 
-- `20270804000000_quotation_request_receivers.sql`
 - `20270805000000_quotation_for_request.sql`
 - `20270806000000_quotation_picture_originals.sql`
 - `20270806000100_quotation_delivery_city.sql`
@@ -555,6 +554,7 @@ Names only — values live in `.env.local` (git-ignored) and in Vercel. See `03_
 - `20270825000000_pricing_photo_facts.sql`
 - `20270826000000_pricing_engine_v3.sql`
 - `20270827000000_task_health_check_updates_count_as_progress.sql`
+- `20270828000000_quotation_choices_any_name.sql`
 
 ## All SQL function names
 

@@ -1681,4 +1681,45 @@ await db.exec(mig('20270819000000_quotation_line_costing.sql'))
   ok('a salesperson still sees only their own card and a signed-out caller still cannot call it')
 }
 
+// ── 20270828000000: client choices with any name (an 'x_' key that carries its label; at most 12 per product) ──
+await db.exec(mig('20270828000000_quotation_choices_any_name.sql'))
+{
+  const L1 = '00000000-0000-0000-0000-0000000001a1'
+  const id = await rpc(U.sales, 'quotation_start', L1, {})
+  const header = { client_name: 'Any Choice Hotel', valid_days: 7, gst_mode: 'igst' }
+  const leather = { source: 'client', status: 'to_confirm', label: 'Leather', name: 'Tan nubuck', note: 'LEATHER-FACTORY-NOTE' }
+  const choices = { fabric: { source: 'code', status: 'to_confirm', code: 'F-2210' }, x_mf0a1b2c: leather }
+  const sofa = { name: 'Sofa', qty_fixed: 2, unit_price: 40000, tax_rate: 18, client_choices: choices }
+  const table = { name: 'Side table', qty_fixed: 1, unit_price: 9000, tax_rate: 18 }
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [sofa, table] })
+  assert.deepEqual((await rpc(U.sales, 'quotation_get', id)).lines[0].client_choices, choices)
+  ok('a choice with any name is saved under its x_ key with its label, beside the fixed fabric')
+
+  const twelve = Object.fromEntries(Array.from({ length: 12 }, (_, i) => [`x_k${String(i).padStart(2, '0')}`, { source: 'client', status: 'to_confirm', label: `Choice ${i}` }]))
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [{ ...sofa, client_choices: twelve }, table] })
+  const bad = [
+    { ...twelve, fabric: { source: 'client', status: 'to_confirm' } },
+    { x_mf0a1b2c: { source: 'client', status: 'to_confirm' } },
+    { x_mf0a1b2c: { source: 'client', status: 'to_confirm', label: '   ' } },
+    { x_mf0a1b2c: { source: 'client', status: 'to_confirm', label: 'x'.repeat(41) } },
+    { leather: { source: 'client', status: 'to_confirm', label: 'Leather' } },
+    { x_MF0A: { source: 'client', status: 'to_confirm', label: 'Leather' } },
+    { x_a: { source: 'client', status: 'to_confirm', label: 'Leather' } },
+    { x_mf0a1b2c: { source: 'shop', status: 'to_confirm', label: 'Leather' } },
+    { x_mf0a1b2c: { source: 'client', status: 'to_confirm', label: 5 } },
+  ]
+  for (const b of bad) await fails(U.sales, `select public.quotation_save($1::uuid, $2::jsonb)`, [id, { header, areas: [], lines: [{ ...table, client_choices: b }] }], /QUOTATION_INVALID/)
+  ok('twelve choices are allowed; a thirteenth, a missing, blank or over-long label, a key that is not x_ plus lower-case letters or digits, a bad source and a label that is not text are refused')
+
+  await rpc(U.sales, 'quotation_save', id, { header, areas: [], lines: [sofa, table] })
+  const tok = await rpc(U.sales, 'quotation_share', id, true)
+  const pub = (await as(null, `select public.quotation_public($1) as r`, [tok], 'anon')).rows[0].r
+  assert.deepEqual(pub.lines[0].client_choices.x_mf0a1b2c, { source: 'client', status: 'to_confirm', label: 'Leather', name: 'Tan nubuck' })
+  assert.ok(!JSON.stringify(pub).includes('LEATHER-FACTORY-NOTE'), 'the note stays inside')
+  ok('the client copy carries the new choice with its label and without its note, with no change to quotation_client_doc')
+
+  await assert.rejects(() => as(null, `select public.quotation_line_choices_ok('{}'::jsonb)`, [], 'anon'), /permission denied/)
+  ok('the checker stays closed to anyone signed out')
+}
+
 console.log(`all ${checks} checks passed`)
