@@ -75,16 +75,18 @@ describe('the migration', () => {
 })
 
 describe('the builder panel', () => {
-  const html = (choices: LineChoices | undefined, editable = true) => renderToStaticMarkup(
-    <ChoicesPanel choices={choices} editable={editable} url={p => `https://img.example/${p}`} onChange={() => undefined} onUpload={async () => PHOTO} />)
-  test('closed it shows the status chip: how many wait, or that all are confirmed', () => {
-    assert.ok(html(undefined).includes('Client choices') && html(undefined).includes('fabric, finish, stone, rope weave'))
+  const html = (choices: LineChoices | undefined, editable = true, shown = false) => renderToStaticMarkup(
+    <ChoicesPanel choices={choices} editable={editable} url={p => `https://img.example/${p}`} shown={shown} onShown={() => undefined} onChange={() => undefined} onUpload={async () => PHOTO} />)
+  test('closed it shows what was chosen and the status chip: how many wait, or that all are confirmed; with nothing chosen it draws nothing', () => {
+    assert.equal(html(undefined), '', 'a product\'s "+ Client choices" link is the way in')
+    assert.ok(html(undefined, true, true).includes('Client choices') && html(undefined, true, true).includes('fabric, finish, stone, rope weave'))
     assert.ok(html({ fabric: { source: 'catalog', status: 'to_confirm' } }).includes('1 to confirm'))
     assert.ok(html({ fabric: { source: 'catalog', status: 'confirmed' } }).includes('1 confirmed'))
   })
   test('it is a closed section until opened (collapsible), and has no price field', () => {
     assert.ok(html({ fabric: { source: 'catalog', status: 'to_confirm' } }).includes('aria-expanded="false"'))
-    assert.ok(!/price/i.test(html(undefined)))
+    assert.ok(html(undefined, true, true).includes('aria-expanded="true"'))
+    assert.ok(!/price/i.test(html({ fabric: { source: 'catalog', status: 'to_confirm' } })))
   })
 })
 

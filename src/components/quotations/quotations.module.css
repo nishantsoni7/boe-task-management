@@ -25,14 +25,13 @@
 .iconBtn:disabled { opacity: .35; cursor: default; }
 
 .field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.field > span:first-child { font-size: 12px; font-weight: 600; color: var(--boe-text-strong); }
+.field > span:first-child { font-size: 12px; font-weight: 500; color: var(--boe-text-muted); }
 .input { height: 36px; border: 1px solid var(--boe-border-input); border-radius: var(--boe-radius-control); padding: 0 10px; font: 14px var(--boe-font-body); background: var(--boe-surface); color: var(--boe-text); width: 100%; box-sizing: border-box; min-width: 0; }
 .input:disabled { background: var(--boe-surface-sunken); color: var(--boe-text-muted); }
 textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height: 1.45; resize: vertical; }
 .money { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 .grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.grid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 
 .pill { display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 8px; border-radius: var(--boe-radius-badge); font: 600 12px var(--boe-font-body); white-space: nowrap; }
 .pill::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -72,7 +71,6 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .noticeBad { border-color: var(--boe-error-border); background: var(--boe-error-bg); color: #7E1B2B; }
 .noticeOk { border-color: var(--boe-success-border); background: var(--boe-completed-bg); color: #1E4C37; }
 .mobileOnly { display: none; }
-.phoneOnly { display: none; }
 
 /* modal */
 .scrim { position: fixed; inset: 0; background: rgba(48,53,54,.42); z-index: 300; display: flex; align-items: flex-start; justify-content: center; padding: 6vh 16px 16px; overflow: auto; }
@@ -80,7 +78,7 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 
 /* builder: one column, full width (owner, 13 Nov 2026): client and status on top, products, totals and terms, then the cards */
 
-/* THE BUILDER'S TOP AREA (owner-approved preview, 18 Nov 2026): one panel (Lead | Senior | Share, 24 Nov 2026), then the Client card
+/* THE BUILDER'S TOP AREA (owner-approved preview, 18 Nov 2026): the properties rows (25 Nov 2026), one products card, then the Client section
    as a grid of fields. QuotationsLayout caps the page at 1360 px (contentMaxWidth), so nothing stretches on a wide screen.
    Spacing: 24 px between rows, 16 px between cards, 20 px inside a card. */
 .builder { gap: 24px; }
@@ -101,18 +99,6 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .btnQuiet:hover { background: var(--boe-surface-sunken); }
 .btnQuietDanger:hover { color: var(--boe-error); }
 
-/* THE TOP PANEL (owner, 24 Nov 2026, from an approved mockup): one card of slim rows. Lead (its stage IS the status), the senior's note (only when
-   there is one), Share and the next step; the Lost box and the amber "what is missing" row show only while they apply. It replaces the Status,
-   Share, Lead and Ask a senior cards. A row's label is the first column; every row draws nothing when it has nothing to say. */
-.panel { background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); box-shadow: var(--boe-shadow-panel); min-width: 0; }
-.prow { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 0 14px; padding: 12px 20px; min-height: 56px; }
-.prow + .prow { border-top: 1px solid var(--boe-border); }
-.prow:first-child { border-radius: var(--boe-radius-panel) var(--boe-radius-panel) 0 0; }
-.prow:last-child { border-radius: 0 0 var(--boe-radius-panel) var(--boe-radius-panel); }
-.pcol { display: grid; gap: 8px; min-width: 0; }
-.prc { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; min-width: 0; }
-.prc .tileTitle { overflow-wrap: anywhere; }
-.prc .field { flex: 1 1 200px; max-width: 320px; }
 .stage { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px; border-radius: var(--boe-radius-badge); background: var(--boe-working-bg); color: var(--boe-working-fg); font: 600 12.5px var(--boe-font-body); white-space: nowrap; }
 .stage::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .stageDone { background: var(--boe-completed-bg); color: var(--boe-completed-fg); }
@@ -121,12 +107,6 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .meter { display: inline-flex; align-items: center; gap: 3px; }
 .meter i { width: 16px; height: 4px; border-radius: 2px; background: var(--boe-border-strong); }
 .meter i.meterOn { background: var(--boe-working-fg); }
-.pnote { background: #F5F8FC; }
-.pnoteText { font-size: 13.5px; color: var(--boe-text-muted); }
-.pnoteText b { color: var(--boe-text); font-weight: 600; }
-.pbar { background: var(--boe-surface-quiet); align-items: start; }
-.pbar .tileLab { padding-top: 9px; }
-.pgrp { display: inline-flex; gap: 8px; flex-wrap: wrap; }
 .psw { display: inline-flex; align-items: center; gap: 9px; min-height: 36px; font-size: 13.5px; font-weight: 500; color: var(--boe-text-strong); cursor: pointer; }
 .psw input { appearance: none; margin: 0; width: 34px; height: 20px; border-radius: 10px; background: var(--boe-border-strong); position: relative; cursor: pointer; transition: background-color .18s; flex: none; }
 .psw input::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .25); transition: transform .18s; }
@@ -134,15 +114,11 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .psw input:checked::after { transform: translateX(14px); }
 .psw input:disabled { opacity: .55; cursor: not-allowed; }
 .psw input:focus-visible { outline: 2px solid var(--boe-brand); outline-offset: 2px; }
-.pright { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .iconBox { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; border-radius: var(--boe-radius-control); border: 1px solid var(--boe-border-strong); background: var(--boe-surface); color: var(--boe-text-strong); cursor: pointer; }
 .iconBox:hover { background: var(--boe-surface-hover); }
 .askw { position: relative; display: inline-flex; }
-.pmore { display: inline-flex; }
 .pop { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; display: grid; gap: 10px; width: 356px; max-width: calc(100vw - 32px); padding: 16px; background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); box-shadow: 0 12px 32px rgba(48, 53, 54, .16); text-align: left; }
 .pop h3 { margin: 0; font: 700 15px var(--boe-font-heading); color: var(--boe-text); }
-.pfix { grid-template-columns: minmax(0, 1fr); min-height: 0; padding: 0; background: var(--boe-waiting-bg); border-top-color: var(--boe-warning-border); color: #5E440A; font-size: 13px; line-height: 1.45; }
-.pfix summary { display: flex; align-items: flex-start; gap: 8px; padding: 10px 20px; cursor: pointer; list-style: none; }
 .pfix summary::-webkit-details-marker { display: none; }
 .pfix summary svg { flex: none; margin-top: 2px; }
 .hintMore { margin-left: auto; padding-left: 12px; white-space: nowrap; font-weight: 600; color: var(--boe-brand-ink); }
@@ -164,7 +140,6 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .fgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px 20px; align-items: start; }
 .fhint { margin-top: 4px; font-size: 12px; color: var(--boe-text-muted); line-height: 1.4; }
 .leadTile { display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 4px 0 10px; border: 1px solid var(--boe-border); border-radius: var(--boe-radius-control); background: var(--boe-surface-quiet); font-size: 14px; }
-.cardFoot { padding: 6px 20px; border-top: 1px solid var(--boe-border); background: var(--boe-surface-quiet); border-radius: 0 0 var(--boe-radius-panel) var(--boe-radius-panel); }
 .advToggle { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 0; border: 0; background: none; font: 600 13px var(--boe-font-body); color: var(--boe-text-strong); cursor: pointer; text-align: left; }
 .advToggle .hintTxt { font-weight: 400; color: var(--boe-text-muted); font-size: 12.5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .advGrid { margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--boe-border); }
@@ -176,21 +151,26 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .seg button { padding: 0 11px; height: 30px; border: 0; background: transparent; font: 600 12.5px var(--boe-font-body); color: var(--boe-text-strong); cursor: pointer; }
 .seg button[aria-pressed='true'] { background: var(--boe-brand-tint); color: var(--boe-brand-ink); box-shadow: inset 0 0 0 1px var(--boe-brand-tint-2); }
 .seg button:disabled { cursor: default; opacity: .6; }
-.areaHead { display: flex; align-items: center; gap: 8px; padding: 10px 14px; background: var(--boe-canvas); border-top: 1px solid var(--boe-border); flex-wrap: wrap; }
-.areaHead b { font: 700 14px var(--boe-font-heading); }
 .mult { width: 74px; text-align: center; }
 
-/* one product: picture, the boxes, and the numbers */
-.pl { display: grid; grid-template-columns: 180px minmax(0, 1fr) 296px; gap: 20px; padding: 18px 16px; border-top: 1px solid var(--boe-surface-sunken); align-items: start; }
-.pl:nth-of-type(even) { background: var(--boe-surface-quiet); }
-.plPic { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
-.plPicBtn { position: relative; width: 160px; height: 135px; padding: 0; border: 1px solid var(--boe-border); border-radius: 10px; background: #fff; cursor: zoom-in; overflow: hidden; display: block; }
-.plPicImg { width: 100%; height: 100%; object-fit: contain; display: block; }
-.plZoom { position: absolute; right: 6px; bottom: 6px; width: 26px; height: 26px; border-radius: 7px; background: rgba(48,53,54,.78); color: #fff; display: flex; align-items: center; justify-content: center; }
-.plPicEmpty { width: 160px; height: 135px; border-radius: 10px; border: 1px dashed var(--boe-border-strong); background: var(--boe-surface); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--boe-text-muted); font: 12.5px var(--boe-font-body); cursor: pointer; }
+/* one product (owner-approved layout, 25 Nov 2026): a square white picture tile with its three actions, the boxes, and the numbers panel */
+.pl { display: grid; grid-template-columns: 160px minmax(0, 1fr) 296px; gap: 16px 24px; padding: 20px 24px; border-top: 1px solid var(--boe-border); align-items: start; }
+.plPic { display: flex; flex-direction: column; align-items: stretch; gap: 8px; width: 160px; }
+.plTile { position: relative; width: 160px; height: 160px; }
+.plIdx { position: absolute; left: 8px; top: 8px; z-index: 1; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 6px; background: rgba(255, 255, 255, .95); border: 1px solid var(--boe-border); font: 600 12px/20px var(--boe-font-body); text-align: center; color: var(--boe-text-strong); pointer-events: none; }
+.plPicBtn { position: relative; width: 160px; height: 160px; padding: 0; border: 1px solid var(--boe-border); border-radius: 12px; background: #fff; cursor: zoom-in; overflow: hidden; display: block; }
+.plPicImg { width: 100%; height: 100%; object-fit: contain; padding: 8px; box-sizing: border-box; display: block; }
+.plZoom { position: absolute; right: 8px; bottom: 8px; width: 28px; height: 28px; border-radius: 8px; border: 1px solid var(--boe-border); background: rgba(255, 255, 255, .95); color: var(--boe-text); display: flex; align-items: center; justify-content: center; }
+.plPicEmpty { width: 160px; height: 160px; border-radius: 12px; border: 1px dashed var(--boe-border-strong); background: var(--boe-surface-quiet); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; color: var(--boe-text-muted); font: 12px var(--boe-font-body); cursor: pointer; }
+.plPicEmpty b { font: 600 14px var(--boe-font-body); color: var(--boe-text-strong); }
+.plPicEmpty:hover:not(:disabled) { background: var(--boe-brand-tint); border-color: var(--boe-brand-tint-2); }
 .plPicEmpty:disabled { cursor: default; }
-.plLinks { display: grid; gap: 1px; justify-items: start; }
-.plLinks .two { display: flex; gap: 12px; }
+.plActs { display: flex; gap: 4px; }
+.plImprove { flex: 1; min-width: 0; height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 8px; border: 1px solid var(--boe-border-strong); border-radius: var(--boe-radius-control); background: var(--boe-surface); color: var(--boe-brand-ink); font: 600 12px var(--boe-font-body); cursor: pointer; white-space: nowrap; }
+.plImprove:hover { background: var(--boe-brand-tint); border-color: var(--boe-brand-tint-2); }
+.plSq { width: 32px; height: 32px; flex: none; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--boe-border-strong); border-radius: var(--boe-radius-control); background: var(--boe-surface); color: var(--boe-text-muted); cursor: pointer; }
+.plSq:hover { background: var(--boe-surface-hover); color: var(--boe-text); }
+.plSqDanger:hover { background: var(--boe-error-bg); color: var(--boe-error); border-color: var(--boe-error-border); }
 .improve { font: 600 11.5px var(--boe-font-body); color: var(--boe-brand-ink); background: none; border: 0; cursor: pointer; padding: 2px 0; text-align: left; }
 .plRm { font: 600 11.5px var(--boe-font-body); color: var(--boe-text-muted); background: none; border: 0; cursor: pointer; padding: 2px 0; }
 /* Other pictures from the client's file (swatch, drawing, reference), under the main one (20270721000000). */
@@ -212,25 +192,31 @@ textarea.input { height: auto; min-height: 64px; padding: 8px 10px; line-height:
 .scanPool { border: 1px dashed var(--boe-border-strong); border-radius: 10px; padding: 8px; display: grid; gap: 6px; }
 .scanBar { height: 6px; border-radius: 3px; background: var(--boe-surface-quiet); overflow: hidden; }
 .scanBar > span { display: block; height: 100%; background: var(--boe-brand-ink); transition: width .3s; }
-.plMid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 10px 12px; min-width: 0; }
-.c3 { grid-column: span 3; } .c4 { grid-column: span 4; } .c5 { grid-column: span 5; } .c7 { grid-column: span 7; } .c12 { grid-column: span 12; }
-textarea.t3 { min-height: 86px; }
+.plMid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.6fr); gap: 16px; align-content: start; min-width: 0; }
+.plFull { grid-column: 1 / -1; }
+.plTitle { font: 600 16px/1.3 var(--boe-font-body); height: 40px; }
+textarea.input.grow { height: auto; min-height: 36px; max-height: 168px; padding: 7px 10px; field-sizing: content; resize: none; }
 .unitWrap { position: relative; display: block; }
 .unitWrap .input { padding-right: 34px; }
-.unitTag { position: absolute; right: 10px; top: 0; height: 36px; display: flex; align-items: center; font-size: 12px; font-weight: 600; color: var(--boe-text-muted); pointer-events: none; }
-.intNote { background: none; border: 0; padding: 0; font: 600 12.5px var(--boe-font-body); color: var(--boe-brand-ink); cursor: pointer; text-align: left; }
-/* the numbers panel of a product (owner, 15 Nov 2026): Quantity and Price, the suggestion, then a footer band with Optional, the tools, the total and the piece count.
-   It is as tall as the boxes beside it (the footer sits at the bottom of the row), so a product is no taller than it was without the panel. */
-.plRight { display: flex; flex-direction: column; gap: 6px; align-self: stretch; min-width: 0; padding: 10px 12px 0; border: 1px solid var(--boe-border); border-radius: 12px; background: var(--boe-surface); }
-.qp { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; }
-.qtyBox, .rupeeBox { display: flex; align-items: stretch; height: 38px; border: 1px solid var(--boe-border-input); border-radius: var(--boe-radius-control); background: var(--boe-surface); overflow: hidden; }
+.unitTag { position: absolute; right: 10px; top: 0; height: 36px; display: flex; align-items: center; font-size: 12px; font-weight: 500; color: var(--boe-text-muted); pointer-events: none; }
+.plAdders { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; min-height: 36px; }
+.plXrow { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; }
+.plAdd { background: none; border: 0; padding: 0; font: 600 14px var(--boe-font-body); color: var(--boe-brand-ink); cursor: pointer; text-align: left; }
+.plAdd:hover { text-decoration: underline; }
+.plAddHint { font-weight: 400; color: var(--boe-text-muted); }
+/* the numbers panel of a product: Quantity and Price (and, for the pricing desk, the suggestion) above a footer band with Optional, the tools and the total. It is as tall as the boxes beside it. */
+.plRight { display: flex; flex-direction: column; justify-content: space-between; align-self: stretch; min-width: 0; border: 1px solid var(--boe-border); border-radius: 12px; background: var(--boe-surface); overflow: hidden; }
+.plTop { display: grid; gap: 8px; padding: 16px; align-content: start; }
+.qp { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 12px; }
+.qtyBox, .rupeeBox { display: flex; align-items: stretch; height: 36px; border: 1px solid var(--boe-border-input); border-radius: var(--boe-radius-control); background: var(--boe-surface); overflow: hidden; }
+.qtyBox:hover, .rupeeBox:hover { border-color: var(--boe-text); }
 .qtyBox:focus-within, .rupeeBox:focus-within { box-shadow: var(--boe-focus-ring); }
 .qtyIn, .rupeeIn { border: 0; outline: 0; background: transparent; min-width: 0; font: 600 14px var(--boe-font-body); font-variant-numeric: tabular-nums; color: var(--boe-text); }
-.qtyIn { flex: none; width: 60px; padding: 0 6px; text-align: right; }
-.qtyUnit { display: flex; align-items: center; flex: 1; padding: 0 10px; border-left: 1px solid var(--boe-border); background: var(--boe-surface-quiet); font: 12.5px var(--boe-font-body); color: var(--boe-text-muted); white-space: nowrap; }
-.qtySel { flex: 1; min-width: 0; padding: 0 2px 0 8px; border: 0; border-left: 1px solid var(--boe-border); outline: 0; background: var(--boe-surface-quiet); font: 12.5px var(--boe-font-body); color: var(--boe-text-strong); }
-.rs { display: flex; align-items: center; padding-left: 8px; font-weight: 600; color: var(--boe-text-muted); }
-.rupeeIn { flex: 1; padding: 0 8px 0 4px; text-align: right; }
+.qtyIn { flex: 1; width: 48px; padding: 0 8px 0 12px; text-align: left; }
+.qtyUnit { display: flex; align-items: center; flex: none; padding: 0 10px; border-left: 1px solid var(--boe-border); background: var(--boe-surface-quiet); font: 12px var(--boe-font-body); color: var(--boe-text-muted); white-space: nowrap; }
+.qtySel { flex: none; max-width: 78px; padding: 0 2px 0 8px; border: 0; border-left: 1px solid var(--boe-border); outline: 0; background: var(--boe-surface-quiet); font: 12px var(--boe-font-body); color: var(--boe-text-strong); }
+.rs { display: flex; align-items: center; padding-left: 12px; font-weight: 400; color: var(--boe-text-muted); }
+.rupeeIn { flex: 1; padding: 0 12px 0 6px; text-align: left; }
 .rupeeIn::placeholder, .qtyIn::placeholder { font-weight: 400; color: var(--boe-text-muted); }
 .qtyIn:disabled, .rupeeIn:disabled, .qtySel:disabled { color: var(--boe-text-muted); }
 .sug { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 8px; padding: 5px 10px; line-height: 1.3; border-radius: 8px; background: var(--boe-surface-quiet); border: 1px solid var(--boe-border); font-size: 12.5px; color: var(--boe-text-strong); }
@@ -243,21 +229,101 @@ textarea.t3 { min-height: 86px; }
 .teachChips { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .teachChip { height: 24px; padding: 0 9px; border-radius: 12px; border: 1px solid var(--boe-border-strong); background: var(--boe-surface); font: 500 12px var(--boe-font-body); color: var(--boe-text-strong); cursor: pointer; white-space: nowrap; }
 .teachChip:hover:not(:disabled) { border-color: var(--boe-brand); color: var(--boe-brand-ink); }
-.plFoot { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px; margin: auto -12px 0; padding: 7px 12px; border-top: 1px solid var(--boe-border); background: var(--boe-surface-quiet); border-radius: 0 0 11px 11px; }
-.plTotal { text-align: right; font: 700 18px var(--boe-font-body); font-variant-numeric: tabular-nums; }
-.plPieces { text-align: right; }
-.plTools { display: flex; justify-content: flex-start; margin-left: -6px; }
-.plTools .iconBtn { width: 24px; height: 24px; }
-.optLab { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--boe-text-strong); cursor: pointer; }
+.plFoot { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--boe-border); background: var(--boe-surface-quiet); }
+.plTotal { text-align: right; font: 800 20px/1.3 var(--boe-font-heading); font-variant-numeric: tabular-nums; }
+.plPieces { text-align: right; font-size: 12px; color: var(--boe-text-muted); }
+.plTools { display: flex; justify-content: flex-start; margin: 4px 0 -4px -6px; }
+.plTools .iconBtn { width: 28px; height: 28px; }
+.optLab { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--boe-text-strong); cursor: pointer; }
 .optLab input { accent-color: var(--boe-brand); width: 16px; height: 16px; }
 
+/* THE REDESIGNED PAGE (owner-approved mockup, 25 Nov 2026): a plain white page. The title bar holds Import client file, Save and a ⋯ menu; under it three quiet property rows
+   (Status = the lead's stage, Lead, Senior); one card for the products (tabs, a band, one block per product); Notes and Totals; the Client; and a bar that floats at the
+   bottom with the grand total, Share and the PI. */
+.btnLg { min-height: 40px; padding: 0 16px; }
+.btnImport { min-height: 40px; background: var(--boe-brand-tint); border: 1.5px solid var(--boe-brand-tint-2); color: var(--boe-brand-ink); font-weight: 700; box-shadow: 0 0 0 3px rgba(185, 71, 46, .10); }
+.btnImport:hover { background: var(--boe-brand-tint-2); }
+.props { display: grid; gap: 4px; min-width: 0; }
+.prop { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; min-height: 40px; gap: 0 8px; }
+.propLab { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--boe-text-muted); font: 14px var(--boe-font-body); }
+.propVal { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; min-width: 0; position: relative; }
+.propForm { grid-column: 2; display: grid; gap: 8px; padding: 4px 0 8px; min-width: 0; }
+.propLink { display: inline-flex; align-items: center; gap: 4px; color: var(--boe-brand-ink); font: 600 14px var(--boe-font-body); text-decoration: none; overflow-wrap: anywhere; }
+.propLink:hover { text-decoration: underline; }
+.propMuted { color: var(--boe-text-muted); font-size: 14px; }
+.propQuiet { background: none; border: 0; padding: 4px 0; color: var(--boe-text-muted); font: 500 14px var(--boe-font-body); cursor: pointer; }
+.propQuiet:hover:not(:disabled) { color: var(--boe-text); text-decoration: underline; }
+.propQuiet:disabled { opacity: .55; cursor: not-allowed; }
+.who { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 14px; color: var(--boe-text); }
+.who b { font-weight: 600; }
+.avatar { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border-radius: 50%; background: var(--boe-surface-sunken); color: var(--boe-text-strong); font: 700 12px var(--boe-font-body); }
+.propVal .pop { top: calc(100% + 8px); left: 0; right: auto; }
+.pfix { border: 1px solid var(--boe-warning-border); border-radius: var(--boe-radius-panel); background: var(--boe-waiting-bg); color: #5E440A; font-size: 13px; line-height: 1.45; margin-top: 8px; }
+.pfix summary { display: flex; align-items: flex-start; gap: 8px; padding: 10px 16px; cursor: pointer; list-style: none; }
+
+/* the products card: the tabs, the count and the unit in its head; a band for each room type (or "All products"); a block for each product */
+.pcard { background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: var(--boe-radius-panel); min-width: 0; overflow: hidden; }
+.phead { display: flex; align-items: flex-end; flex-wrap: wrap; gap: 16px 24px; padding: 0 24px; border-bottom: 1px solid var(--boe-border); }
+.ptabs { display: flex; gap: 24px; }
+.ptab { display: inline-flex; align-items: center; gap: 8px; padding: 12px 0; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: none; font: 600 14px var(--boe-font-body); color: var(--boe-text-muted); cursor: pointer; }
+.ptab:hover { color: var(--boe-text); }
+.ptab[aria-selected='true'] { color: var(--boe-text); border-bottom-color: var(--boe-brand); }
+.ptabPill { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 6px; background: var(--boe-waiting-bg); color: var(--boe-waiting-fg); font: 600 12px/1 var(--boe-font-body); }
+.ptools { margin-left: auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding-bottom: 8px; }
+.areaHead { display: flex; align-items: center; gap: 12px; padding: 12px 24px; background: var(--boe-surface-quiet); border-bottom: 1px solid var(--boe-border); flex-wrap: wrap; }
+.areaHead + .pl { border-top: 0; }
+.areaHead b.bandName { font: 600 14px var(--boe-font-body); color: var(--boe-text-strong); }
+.bandTotal { font: 800 16px var(--boe-font-heading); font-variant-numeric: tabular-nums; }
+.addBar { padding: 12px 24px; border-top: 1px solid var(--boe-border); }
+.addWide { width: 100%; height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px dashed var(--boe-border-strong); border-radius: var(--boe-radius-control); background: none; color: var(--boe-text-muted); font: 600 14px var(--boe-font-body); cursor: pointer; }
+.addWide:hover { background: var(--boe-surface-quiet); color: var(--boe-text); }
+.pcBody { padding: 8px 24px 24px; }
+
+/* client choices: the summary line under a product, and its pieces */
+.chSum { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.chSum > b { font: 600 12px var(--boe-font-body); color: var(--boe-text-muted); margin-right: 2px; }
+
+/* notes on the left, the totals as a receipt on the right, then the client */
+.sec { display: grid; gap: 16px; align-content: start; min-width: 0; }
+.secH { margin: 0; font: 700 18px/1.3 var(--boe-font-heading); letter-spacing: -.005em; color: var(--boe-text); }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: 48px; align-items: start; }
+.rcpt { display: grid; }
+.rr { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 40px; border-bottom: 1px solid var(--boe-border); font-size: 14px; }
+.rr .l { display: flex; align-items: baseline; gap: 8px; color: var(--boe-text-strong); }
+.rr .l small { font-size: 12px; color: var(--boe-text-muted); }
+.rr .v { display: flex; align-items: center; justify-content: flex-end; font-variant-numeric: tabular-nums; text-align: right; }
+.rrStrong { font-weight: 600; border-bottom-color: var(--boe-border-strong); }
+.rrGrand { border-bottom: 0; min-height: 56px; padding-top: 8px; font: 800 18px/1.2 var(--boe-font-heading); }
+.rcptIn { height: 32px; min-width: 0; padding: 4px 8px; border: 1px solid transparent; border-radius: 6px; background: transparent; font: inherit; color: inherit; text-align: right; font-variant-numeric: tabular-nums; appearance: textfield; -moz-appearance: textfield; }
+.rcptIn::-webkit-outer-spin-button, .rcptIn::-webkit-inner-spin-button { appearance: none; margin: 0; }
+.rcptIn:hover:not(:disabled) { background: var(--boe-surface-hover); }
+.rcptIn:focus-visible { outline: 2px solid var(--boe-brand); background: var(--boe-surface); }
+.rcptIn:disabled { color: var(--boe-text-muted); }
+.rcptPct { width: 56px; }
+.rcptMoney { width: auto; field-sizing: content; min-width: 9ch; padding-left: 8px; }
+.rcptTxt { width: 168px; }
+.rcptRs { color: var(--boe-text-muted); margin-right: 6px; }
+.lockNote { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+
+/* the bar that floats at the bottom of the page: the grand total, Share and the next step. Sticky beside the sidebar; fixed on a phone (below 768px
+   .boe-main-content clips overflow, so sticky would never engage there; the spacer keeps the last row reachable above it). */
+.dockWrap { position: sticky; bottom: 16px; z-index: 20; pointer-events: none; }
+.dock { pointer-events: auto; display: flex; align-items: center; gap: 16px; padding: 12px 12px 12px 24px; background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: 16px; box-shadow: var(--boe-shadow-float); }
+.dockTotal small { display: block; font-size: 12px; line-height: 1.2; color: var(--boe-text-muted); }
+.dockTotal b { font: 800 18px/1.3 var(--boe-font-heading); font-variant-numeric: tabular-nums; }
+.dockTotal span { margin-left: 12px; font-size: 12px; color: var(--boe-text-muted); }
+.dockSpacer { display: none; }
+.shareW { position: relative; display: inline-flex; }
+.sharePop { position: absolute; right: 0; bottom: calc(100% + 8px); z-index: 40; width: 272px; display: grid; gap: 2px; padding: 8px; background: var(--boe-surface); border: 1px solid var(--boe-border); border-radius: 12px; box-shadow: var(--boe-shadow-float); }
+.shareItem { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 36px; padding: 0 8px; border: 0; border-radius: 8px; background: none; color: var(--boe-text); font: 600 14px var(--boe-font-body); text-align: left; text-decoration: none; cursor: pointer; }
+.shareItem:hover:not(:disabled) { background: var(--boe-surface-hover); }
+.shareItem:disabled { opacity: .55; cursor: not-allowed; }
+.shareSep { border: 0; border-top: 1px solid var(--boe-border); margin: 6px 4px; }
+
 /* totals, terms, cards */
-.totGrid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr); gap: 24px; align-items: start; }
-.sumBox { background: var(--boe-surface-quiet); border: 1px solid var(--boe-border); border-radius: 10px; padding: 14px 16px; }
 .sum { width: 100%; border-collapse: collapse; font-size: 13.5px; }
 .sum td { padding: 5px 0; vertical-align: top; }
 .sum td:last-child { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
-.sum tr.hr td { border-top: 1px solid var(--boe-border); padding-top: 8px; }
 .sum tr.sub td { color: var(--boe-text-muted); font-size: 12.5px; }
 .sum tr.tot td { border-top: 2px solid var(--boe-text); padding-top: 10px; font: 700 17px var(--boe-font-heading); }
 .sum tr.gstRow td { padding-top: 4px; padding-bottom: 4px; vertical-align: middle; }
@@ -276,7 +342,6 @@ textarea.t3 { min-height: 86px; }
 /* Versions and Price approval: side by side, or the one that shows takes the full row (each draws nothing when it has nothing to say) */
 .bottom { display: flex; gap: 16px; align-items: flex-start; }
 .bottom > * { flex: 1 1 0; min-width: 0; }
-.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .event { display: flex; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--boe-surface-sunken); font-size: 12.5px; }
 .event:last-child { border-bottom: 0; }
 .dirty { color: var(--boe-waiting-fg); font-weight: 600; font-size: 12.5px; }
@@ -303,61 +368,67 @@ textarea.t3 { min-height: 86px; }
 /* narrower screens: the product's numbers panel goes under its boxes, lined up with them */
 @media (max-width: 1199px) {
   .fgrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .pl { grid-template-columns: 180px minmax(0, 1fr); }
+  .pl { grid-template-columns: 144px minmax(0, 1fr); }
+  .plPic, .plTile, .plPicBtn, .plPicEmpty { width: 144px; }
+  .plTile, .plPicBtn, .plPicEmpty { height: 144px; }
   .plRight { grid-column: 2; justify-self: start; width: 100%; max-width: 420px; }
-}
-@media (max-width: 900px) {
-  .totGrid { grid-template-columns: minmax(0, 1fr); }
-}
-/* under 1024px the Client and Share cards, and Terms and History, sit one under the other */
-@media (max-width: 1023px) {
-  .pair { grid-template-columns: minmax(0, 1fr); }
+  .two { grid-template-columns: minmax(0, 1fr); gap: 32px; }
 }
 /* phone */
 @media (max-width: 767px) {
-  .grid2, .grid3, .grid4, .fgrid, .leadEdit { grid-template-columns: minmax(0, 1fr); }
+  .grid2, .grid3, .fgrid, .leadEdit { grid-template-columns: minmax(0, 1fr); }
   .bottom { flex-direction: column; align-items: stretch; }
   .tile { padding: 16px; }
   .builder { gap: 16px; }
   .builder .cardHead { padding: 12px 16px; }
   .builder .cardBody { padding: 16px; }
   .builder .cardHead .spacer { flex-basis: 100%; height: 0; }
-  .cardFoot { padding: 4px 16px; }
   .advToggle .hintTxt { display: none; }
-  .prow { grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 14px 16px; }
-  .pfix { padding: 0; }
-  .pmore { margin-left: auto; }
-  .pbar .tileLab { padding-top: 0; }
-  .pgrp { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
-  .pgrp > :last-child:nth-child(odd) { grid-column: 1 / -1; }
-  .psw { width: 100%; min-height: 44px; }
-  .pright { margin-left: 0; width: 100%; }
-  .pnext { order: -1; flex: 1 1 100%; }
+  .prop { grid-template-columns: 88px minmax(0, 1fr); align-items: start; padding: 4px 0; }
+  .propLab { min-height: 28px; }
+  .propForm { grid-column: 1 / -1; }
+  .propVal .pop { position: static; width: auto; max-width: none; margin-top: 8px; box-shadow: none; }
   .askw { display: block; flex: 1; }
   .askw > .btn { width: 100%; }
   .pop { position: static; width: auto; max-width: none; margin-top: 8px; box-shadow: none; }
   .iconBox { width: 44px; height: 44px; }
   .pfix summary { padding: 12px 16px; }
-  .prc > .btnQuiet:last-child { margin-left: -10px; }
-  .pl { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px 12px; }
-  .plPic { flex-direction: row; align-items: center; gap: 14px; }
-  .plPicBtn, .plPicEmpty { width: 140px; height: 118px; flex-shrink: 0; }
-  .plLinks { gap: 6px; } .plLinks .two { flex-direction: column; gap: 6px; }
-  .c5, .c7, .c12 { grid-column: span 12; } .c3, .c4 { grid-column: span 6; }
-  .plRight { grid-column: 1; justify-self: stretch; max-width: none; }
+  .phead { padding: 0 16px; }
+  .ptabs { gap: 16px; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; scrollbar-width: none; }
+  .ptab { white-space: nowrap; }
+  .ptools { margin-left: 0; width: 100%; justify-content: space-between; }
+  .areaHead { padding: 12px 16px; }
+  .addBar { padding: 12px 16px; }
+  .pcBody { padding: 8px 16px 16px; }
+  .dockWrap { position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px)); }
+  .dock { padding: 8px 8px 8px 16px; gap: 8px; }
+  .dockTotal span, .dockLbl { display: none; }
+  .dockSpacer { display: block; height: 96px; }
+  .sharePop { width: min(272px, calc(100vw - 40px)); }
+  .pl { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 16px; }
+  .plPic { width: auto; flex-direction: row; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+  .plTile, .plPicBtn, .plPicEmpty { width: 112px; height: 112px; }
+  .plPicImg { padding: 4px; }
+  .plPasteHint { display: none; }
+  .plActs { flex: 1; min-width: 190px; }
+  .plImprove, .plSq { height: 44px; }
+  .plSq { width: 44px; }
+  .ptab svg { display: none; }
+  .plMid { grid-template-columns: minmax(0, 1fr); }
+  .plRight { grid-column: 1 / -1; justify-self: stretch; max-width: none; }
   .qtyBox, .rupeeBox { height: 44px; }
   .qtyIn, .rupeeIn, .qtySel { font-size: 16px; }
   .plTools .iconBtn { width: 44px; height: 44px; }
   .statusBar { padding: 10px 12px; }
   .desktopOnly { display: none; }
   .mobileOnly { display: block; }
-  .phoneOnly { display: inline-flex; }
   .hideOnPhone { display: none !important; }
   .input { font-size: 16px; height: 44px; }
   .unitTag { height: 44px; }
   .btn { min-height: 44px; } .btnSm { min-height: 40px; }
   .iconBtn { width: 44px; height: 44px; }
   .stdTerms dl > div { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .stdTerms .hintTxt { display: none; }
   .viewerScrim { padding: 0; }
   .viewer { width: 100%; height: 100%; border-radius: 0; }
   .viewerBody { padding: 12px 12px 74px; }
@@ -384,7 +455,7 @@ textarea.t3 { min-height: 86px; }
 .kpiValue { font: 700 22px var(--boe-font-heading); color: var(--boe-text); font-variant-numeric: tabular-nums; }
 
 /* Client choices under a product (20270808000100). */
-.chWrap { grid-column: 1 / -1; border-top: 1px dashed var(--boe-border); padding-top: 8px; }
+.chWrap { grid-column: 1 / -1; }
 .chToggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; padding: 4px 0; font: 600 13px var(--boe-font-body); color: var(--boe-brand-ink); cursor: pointer; min-height: 32px; }
 .chWait { background: var(--boe-warning-bg, #faf0da); color: var(--boe-warning-text, #805b0d); }
 .chDone { background: var(--boe-success-bg, #e8f2ec); color: var(--boe-success-text, #276247); }
@@ -511,11 +582,7 @@ a.stat:hover { background: var(--boe-surface-hover); }
   .lsWho2 { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; color: var(--boe-text-muted); }
 }
 
-/* The Fabric, finish and packing page (21 Nov 2026): tabs above the products, and the sheet. */
-.cpTabs { display: flex; gap: 4px; align-items: flex-end; border-bottom: 1px solid var(--boe-border-strong); overflow-x: auto; }
-.cpTab { appearance: none; border: 1px solid var(--boe-border); border-bottom: 0; background: var(--boe-surface-sunken); color: var(--boe-text-strong); padding: 0 16px; min-height: 42px; border-radius: 9px 9px 0 0; font: 600 13.5px var(--boe-font-body); cursor: pointer; white-space: nowrap; margin-bottom: -1px; }
-.cpTab:hover { background: var(--boe-surface-hover); }
-.cpTab[aria-selected='true'] { background: var(--boe-surface); color: var(--boe-text); border-color: var(--boe-border-strong); border-bottom: 1px solid var(--boe-surface); }
+/* The Fabric, finish and packing page (21 Nov 2026): the sheet. Its tab sits in the one strip above the products (.ptabs). */
 .cpWrap { display: grid; gap: 12px; padding: 14px 16px; min-width: 0; }
 .cpHelp { margin: 0; font-size: 13px; color: var(--boe-text-strong); max-width: 90ch; }
 .cpScroll { overflow: auto; max-width: 100%; border: 1px solid var(--boe-border-strong); border-radius: 10px; background: var(--boe-surface); }
@@ -566,3 +633,8 @@ select.cpIn { text-overflow: ellipsis; }
   .cpProdBox small { display: none; }
   .cpThumb { width: 44px; }
 }
+.advRow { border-top: 1px solid var(--boe-border); padding-top: 4px; }
+.dockWrap { margin-top: 24px; }
+.startBox { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin: 24px; padding: 20px 24px; background: var(--boe-brand-tint); border: 1px solid var(--boe-brand-tint-2); border-radius: 12px; }
+.startBox h3 { margin: 0 0 2px; font: 700 16px/1.3 var(--boe-font-heading); color: var(--boe-text); }
+.startBox p { margin: 0; font-size: 14px; color: var(--boe-text-strong); }

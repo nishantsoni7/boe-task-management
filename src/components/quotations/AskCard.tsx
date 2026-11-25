@@ -2,8 +2,8 @@
 
 // Ask a senior (owner, 20 Nov 2026): the salesperson sends THEIR OWN quotation to the owner or Nitish, either to get the prices or to have
 // their prices checked. The senior sees it in Quotations › Requests, edits the prices in this same builder, and sends it back with a note.
-// Two parts of the top panel since 24 Nov 2026: AskNote is the Senior row (what was asked and what came back; it draws nothing when nothing was
-// asked) and AskButton is the button in the Share row, whose form opens as a small pop-over under it. Both read the same cached state.
+// One row of the properties panel since 25 Nov 2026 (SeniorRow: what was asked and what came back, and the AskButton beside it, whose form opens as a
+// small pop-over under it). Both read the same cached state.
 
 import { useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
@@ -23,26 +23,42 @@ const write = (k: string, v: string) => { try { window.localStorage.setItem(k, v
 const useAskState = (supabase: Supabase, base: Quotation) =>
   useQuery({ queryKey: askKeys.state(base.id), queryFn: () => fetchAskState(supabase, base.id), retry: false, staleTime: 15_000 }).data
 
-/** The Senior row: a request waiting on someone, or what the senior said when they sent it back. Nothing asked = no row. */
-export function AskNote({ supabase, base }: { supabase: Supabase; base: Quotation }) {
+const initials = (name?: string | null) => (name ?? '').split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]!.toUpperCase()).join('') || '?'
+
+/**
+ * The Senior row of the properties panel (owner, 25 Nov 2026): what was asked and what came back, with the Ask a senior button in the same row
+ * (its form opens as a small pop-over under it). The row draws nothing when nothing was asked and the person has nothing to do here.
+ */
+export function SeniorRow({ supabase, base, dirty, onChanged, onSentBack }: {
+  supabase: Supabase; base: Quotation; dirty: boolean; onChanged: () => void; onSentBack?: (requestId: string) => void
+}) {
   const st = useAskState(supabase, base)
   const [now] = useState(() => Date.now())
-  if (!st || (!st.open && !st.last)) return null
+  if (!st) return null
   const o = st.open
+  const acts = st.may_answer || !!(st.may_withdraw && o && !st.may_answer) || st.may_ask
+  if (!o && !st.last && !acts) return null
   const wait = o ? quotationWait(o.created_at, now) : null
+  const name = o ? (st.may_answer ? o.from_name : o.to_name) : st.last ? (st.last.answered_by_name ?? st.last.to_name) : null
   return (
-    <div className={`${s.prow} ${s.pnote}`} role="group" aria-label="Senior">
-      <span className={s.tileLab}>Senior</span>
-      <div className={s.prc}>
-        <span className={s.pnoteText}>
-          {o ? (
-            st.may_answer
-              ? <><b>{o.from_name ?? 'A salesperson'}</b> sent this to you ({ASK_LABEL[o.kind].toLowerCase()}){o.note ? <>: “{o.note}”</> : null}</>
-              : <>Sent to <b>{o.to_name ?? 'a senior'}</b> ({ASK_LABEL[o.kind].toLowerCase()}) · waiting {wait?.label ?? ''}{o.note ? <> · “{o.note}”</> : null}</>
-          ) : st.last ? (
-            <><b>{st.last.answered_by_name ?? st.last.to_name}</b> sent it back{st.last.answered_at ? ` ${new Date(st.last.answered_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}{st.last.answer_note ? <>: “{st.last.answer_note}”</> : null}</>
-          ) : null}
-        </span>
+    <div className={s.prop} role="group" aria-label="Senior">
+      <span className={s.propLab}><UserCheck size={16} aria-hidden /> Senior</span>
+      <div className={s.propVal}>
+        {o || st.last ? (
+          <span className={s.who}>
+            <span className={s.avatar} aria-hidden>{initials(name)}</span>
+            <span>
+              {o ? (
+                st.may_answer
+                  ? <><b>{o.from_name ?? 'A salesperson'}</b> sent this to you ({ASK_LABEL[o.kind].toLowerCase()}){o.note ? <>: “{o.note}”</> : null}</>
+                  : <>Sent to <b>{o.to_name ?? 'a senior'}</b> ({ASK_LABEL[o.kind].toLowerCase()}) · waiting {wait?.label ?? ''}{o.note ? <> · “{o.note}”</> : null}</>
+              ) : st.last ? (
+                <><b>{st.last.answered_by_name ?? st.last.to_name}</b> sent it back{st.last.answered_at ? ` ${new Date(st.last.answered_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}` : ''}{st.last.answer_note ? <>: “{st.last.answer_note}”</> : null}</>
+              ) : null}
+            </span>
+          </span>
+        ) : <span className={s.propMuted}>Nothing asked yet</span>}
+        <AskButton supabase={supabase} base={base} dirty={dirty} onChanged={onChanged} onSentBack={onSentBack} />
       </div>
     </div>
   )
@@ -103,7 +119,7 @@ export function AskButton({ supabase, base, dirty, onSentBack, onChanged }: {
     <span ref={wrap} className={s.askw}>
       {st.may_answer && <button type="button" className={s.btn} disabled={dirty} title={saveFirst} aria-haspopup="dialog" aria-expanded={mode === 'answer'} onClick={() => toggle('answer')}><Send size={15} aria-hidden /> Send back to {o?.from_name ?? 'sales'}</button>}
       {withdraw && o && <button type="button" className={`${s.btn} ${s.btnQuiet}`} disabled={busy} onClick={() => done(() => withdrawRequest(supabase, o.id))}>Withdraw</button>}
-      {st.may_ask && <button type="button" className={`${s.btn} ${s.btnQuiet}`} disabled={dirty} title={saveFirst} aria-haspopup="dialog" aria-expanded={mode === 'ask'} onClick={() => toggle('ask')}><UserCheck size={15} aria-hidden /> Ask a senior</button>}
+      {st.may_ask && <button type="button" className={`${s.btn} ${s.btnSm}`} disabled={dirty} title={saveFirst} aria-haspopup="dialog" aria-expanded={mode === 'ask'} onClick={() => toggle('ask')}><UserCheck size={15} aria-hidden /> Ask a senior</button>}
 
       {shown && (
         <div className={s.pop} role="dialog" aria-label={mode === 'answer' ? 'Send it back' : 'Ask a senior'}>

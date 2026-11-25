@@ -1,139 +1,168 @@
 /**
- * The builder's top panel (owner, 24 Nov 2026, from an approved mockup): the Share row with the next step, the Lost box and the amber row, drawn for
- * real from their props, one state at a time. There is no four-step tracker and no Mark sent / Negotiating: the lead's stage is the status
- * (leadCard.dom.test.tsx). The ⋯ menu and the price block that is no longer drawn are driven in statusMore.dom.test.tsx.
+ * The builder's properties panel and its floating bar (owner, 25 Nov 2026, from an approved mockup): the amber "what is missing" row, and the bar's total,
+ * Share menu and next step, drawn for real from their props, one state at a time. There is no four-step tracker and no status button: the lead's stage is
+ * the status, changed in Lead Board (leadCard.dom.test.tsx). The price block that is no longer drawn is driven in statusMore.dom.test.tsx.
  *
  * Run: npm run test:file -- src/components/quotations/topRow.test.tsx
  */
-import { describe, test } from 'node:test'
-import assert from 'node:assert/strict'
-import { renderToStaticMarkup } from 'react-dom/server'
+import { mount } from '@/lib/testing/domHarness'
 import '@/lib/testing/cssModuleStub'
-import { waitsFor } from './TopPanel'
-import { panel, quote, type PanelOver } from './topPanel.testkit'
+import { afterEach, describe, test } from 'node:test'
+import assert from 'node:assert/strict'
+import { act } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
+import { waitsFor } from './PropsPanel'
+import { dock, panel, quote, type DockOver, type PanelOver } from './topPanel.testkit'
 import type { QuotationStatus } from '@/lib/quotations/api'
 import type { ConversionProblem } from '@/lib/quotations/piWorkbook'
 
 const names = (n: number) => Array.from({ length: n }, (_, i) => `Chair ${i + 1}`)
-const draw = (base: ReturnType<typeof quote>, o: PanelOver = {}) => renderToStaticMarkup(panel(base, o))
+const drawPanel = (base: ReturnType<typeof quote>, o: PanelOver = {}) => renderToStaticMarkup(panel(base, o))
+const drawDock = (base: ReturnType<typeof quote>, o: DockOver = {}) => renderToStaticMarkup(dock(base, o))
 const button = (html: string, label: string) => html.match(new RegExp(`<button[^>]*>(?:(?!</button>).)*${label}[^<]*</button>`))?.[0] ?? null
-const READY: PanelOver = { canConfirm: true }
+const READY: DockOver = { canConfirm: true }
 
-describe('the lead is the status: nothing of the old tracker is left', () => {
-  test('no four-step tracker, no Mark sent, no Negotiating button, whatever the quotation\'s own status', () => {
+// Whatever a test leaves on screen is removed after it.
+const mounted: Array<{ unmount: () => void }> = []
+afterEach(() => { for (const m of mounted.splice(0)) m.unmount() })
+/** The bar mounted for real, with its Share menu opened as a person opens it; returns what the menu offers. One at a time: they share one page body. */
+function openShare(base: ReturnType<typeof quote>, o: DockOver = {}) {
+  for (const m of mounted.splice(0)) m.unmount()
+  const ui = mount(dock(base, o)); mounted.push(ui)
+  ui.click(ui.button('Share'))
+  const items = () => ui.all<HTMLElement>('[role="menuitem"]')
+  const item = (label: string) => {
+    const found = items().find(e => (e.textContent ?? '').trim() === label)
+    if (!found) throw new Error(`no menu item "${label}"; items: ${items().map(e => (e.textContent ?? '').trim()).join(' | ')}`)
+    return found as HTMLButtonElement & HTMLAnchorElement
+  }
+  return { ui, items, labels: () => items().map(e => (e.textContent ?? '').trim()), item }
+}
+
+describe('the lead is the status: nothing of the old tracker or the status buttons is left', () => {
+  test('no four-step tracker, no Mark sent, no Negotiating button, no Lost box, whatever the quotation\'s own status', () => {
     for (const status of ['draft', 'sent', 'negotiating', 'confirmed', 'lost', 'archived'] as QuotationStatus[]) {
-      const html = draw(quote({ status }), READY)
+      const html = drawPanel(quote({ status }), { canConfirm: true }) + drawDock(quote({ status }), READY)
       assert.ok(!html.includes('<ol') && !html.includes('Mark sent') && !html.includes('>Negotiating<') && !html.includes('Where the quotation is'), status)
+      assert.ok(!html.includes('Mark as lost') && !html.includes('Why was it lost') && !html.includes('Confirmed, no PI') && !html.includes('Archive'), status)
     }
-  })
-  test('the quotation\'s own status shows only once it has left the usual path (Confirmed, Lost or Archived)', () => {
-    for (const status of ['draft', 'sent', 'negotiating'] as QuotationStatus[]) assert.ok(!draw(quote({ status })).includes('pill st_'), status)
-    for (const status of ['confirmed', 'lost', 'archived'] as QuotationStatus[]) assert.ok(draw(quote({ status })).includes(`pill st_${status}`), status)
   })
 })
 
-describe('the Share row: what can be done', () => {
-  test('a draft, a sent and a negotiating quotation each offer Confirm → PI draft (the main button) when it is ready; nothing is missing, so it is on', () => {
+describe('the floating bar: the total and the next step', () => {
+  test('it carries the grand total, the amount before GST, the lines and the pieces', () => {
+    const html = drawDock(quote())
+    assert.match(html, /Grand total/); assert.match(html, /₹25,96,714/); assert.match(html, /₹22,00,605 before GST · 3 lines · 230 pieces/)
+  })
+  test('a draft, a sent and a negotiating quotation each offer Create PI draft (the main button) when it is ready; nothing is missing, so it is on', () => {
     for (const status of ['draft', 'sent', 'negotiating'] as QuotationStatus[]) {
-      const html = draw(quote({ status }), READY)
-      assert.ok(button(html, 'Confirm → PI draft')?.includes('btnPrimary'), status)
-      assert.doesNotMatch(button(html, 'Confirm → PI draft') ?? '', /disabled/, status)
+      const html = drawDock(quote({ status }), READY)
+      assert.ok(button(html, 'Create PI draft')?.includes('btnPrimary'), status)
+      assert.doesNotMatch(button(html, 'Create PI draft') ?? '', /disabled/, status)
       assert.match(html, /title="Makes a PI draft in Orders from the saved quotation\. Nothing is sent to anyone: the PI stays a Draft until you submit it there\."/)
     }
-    assert.ok(!draw(quote(), {}).includes('Confirm → PI draft'), 'the page decides when Confirm is offered')
+    assert.ok(!drawDock(quote(), {}).includes('Create PI draft'), 'the page decides when Create PI draft is offered')
   })
-  test('while Confirm waits: it is off, one amber row says what is missing, six names show and the rest are counted', () => {
+  test('while Create PI draft waits: it is off, one amber row says what is missing, six names show and the rest are counted', () => {
     const problems: ConversionProblem[] = [{ code: 'PRICE_MISSING', lines: names(15) }]
-    const html = draw(quote({ status: 'sent' }), { canConfirm: true, piProblems: problems })
-    assert.match(button(html, 'Confirm → PI draft') ?? '', /disabled/)
+    const base = quote({ status: 'sent' })
+    assert.match(button(drawDock(base, { canConfirm: true, piProblems: problems }), 'Create PI draft') ?? '', /disabled/)
+    const html = drawPanel(base, { canConfirm: true, piProblems: problems })
     assert.match(html, /15 products need a price above ₹0 before this can become a PI\./)
     assert.match(html, /Show which/)
     assert.equal((html.match(/<span class="chip">Chair \d+<\/span>/g) ?? []).length, 6)
     assert.match(html, /<span class="chip">\+ 9 more<\/span>/)
   })
-  test('the amber row draws only while Confirm is offered and something is missing', () => {
+  test('the amber row draws only while Create PI draft is offered and something is missing', () => {
     const problems: ConversionProblem[] = [{ code: 'NO_LINES', lines: [] }]
-    assert.match(draw(quote(), { canConfirm: true, piProblems: problems }), /Add at least one product that is not optional\./)
-    assert.ok(!draw(quote(), { canConfirm: false, piProblems: problems }).includes('Add at least one product'), 'a quotation that cannot be confirmed is not nagged')
-    assert.ok(!draw(quote(), READY).includes('class="hintBody"'))
+    assert.match(drawPanel(quote(), { canConfirm: true, piProblems: problems }), /Add at least one product that is not optional\./)
+    assert.ok(!drawPanel(quote(), { canConfirm: false, piProblems: problems }).includes('Add at least one product'), 'a quotation that cannot be confirmed is not nagged')
+    assert.ok(!drawPanel(quote(), { canConfirm: true }).includes('class="hintBody"'))
   })
   test('the line is worded for one product, for none, and for several things at once', () => {
     assert.equal(waitsFor([{ code: 'NAME_MISSING', lines: ['Line 3'] }]), '1 product needs a name before this can become a PI.')
     assert.equal(waitsFor([{ code: 'NO_LINES', lines: [] }]), 'Add at least one product that is not optional.')
     assert.equal(waitsFor([{ code: 'PRICE_MISSING', lines: names(2) }, { code: 'PICTURE_MISSING', lines: names(1) }]), '2 things to fix before this can become a PI.')
-    const html = draw(quote(), { canConfirm: true, piProblems: [{ code: 'PRICE_MISSING', lines: names(2) }, { code: 'PICTURE_MISSING', lines: names(1) }] })
+    const html = drawPanel(quote(), { canConfirm: true, piProblems: [{ code: 'PRICE_MISSING', lines: names(2) }, { code: 'PICTURE_MISSING', lines: names(1) }] })
     assert.match(html, /<b>Price needed:<\/b>/); assert.match(html, /<b>Picture needed:<\/b>/)
   })
-  test('unsaved edits switch Confirm, the downloads and the client link off with "Save first", and say so once, beside the buttons', () => {
-    const html = draw(quote({ status: 'sent' }), { canConfirm: true, dirty: true })
-    for (const w of ['Confirm → PI draft', 'Download PDF', 'Download Excel', 'Create client link']) {
-      assert.match(button(html, w) ?? '', /disabled="" title="Save first"|title="Save first"[^>]*disabled=""|disabled=""[^>]*title="Save first"/, w)
+  test('unsaved edits switch Create PI draft and the Share menu\'s downloads and client link off with "Save first", and say so once, beside the buttons', () => {
+    const base = quote({ status: 'sent' })
+    const html = drawDock(base, { canConfirm: true, dirty: true })
+    assert.match(button(html, 'Create PI draft') ?? '', /disabled="" title="Save first"|title="Save first"[^>]*disabled=""|disabled=""[^>]*title="Save first"/)
+    assert.equal((html.match(/<span class="dirty hideOnPhone">Save first<\/span>/g) ?? []).length, 1)
+    const { item } = openShare(base, { dirty: true })
+    for (const w of ['Download PDF', 'Download Excel', 'Create client link']) {
+      assert.equal((item(w) as HTMLButtonElement).disabled, true, w)
+      assert.equal(item(w).title, 'Save first', w)
     }
-    assert.equal((html.match(/<span class="dirty">Save first<\/span>/g) ?? []).length, 1)
-    // the items of the ⋯ menu wait too: statusMore.dom.test.tsx
   })
-  test('the made PI shows beside Open the PI draft; a confirmed quotation has no ⋯ menu, and only an administrator can reopen it', () => {
+  test('the made PI shows beside Open the PI draft; a confirmed quotation offers no Create PI draft', () => {
     const base = quote({ status: 'confirmed', pi: { id: 'p1', draft_reference: 'DR-1042', status: 'under_review' } as never })
-    const html = draw(base)
+    const html = drawDock(base, { canConfirm: false })
     assert.match(html, /PI draft <b>DR-1042<\/b> · under review/)
-    assert.match(html, /<a class="btn btnPrimary pnext" href="[^"]*p1[^"]*">/)
-    assert.ok(!html.includes('aria-haspopup="menu"') && !html.includes('Reopen') && !html.includes('Confirm → PI draft'))
-    assert.ok(draw(base, { isAdmin: true }).includes('Reopen'))
-  })
-  test('a lost quotation can be reopened, not lost again (its menu is in statusMore.dom.test.tsx); Mark as lost… opens the box that asks why', () => {
-    const html = draw(quote({ status: 'lost' }))
-    assert.ok(html.includes('Reopen') && !html.includes('Mark lost'))
-    const asking = draw(quote({ status: 'sent' }), { lostNote: '' })
-    assert.match(asking, /Why was it lost\?/); assert.match(button(asking, 'Mark lost') ?? '', /disabled/, 'a reason must be chosen first')
-  })
-  test('the Lost box asks for one of the lead\'s eleven reasons; only "Other" needs words', () => {
-    const asking = draw(quote({ status: 'sent' }), { lostNote: '' })
-    assert.equal((asking.match(/<option /g) ?? []).length, 12, 'a prompt and the eleven reasons')
-    assert.match(asking, /Price too high/); assert.match(asking, /Chose another supplier/); assert.match(asking, /Other \(say why\)/)
-    assert.match(asking, /Note \(optional\)/)
-    assert.doesNotMatch(button(draw(quote({ status: 'sent' }), { lostNote: '', lostReason: 'price_too_high' }), 'Mark lost') ?? '', /disabled/, 'a reason alone is enough')
-    const other = draw(quote({ status: 'sent' }), { lostNote: '', lostReason: 'other' })
-    assert.match(other, /Note \(required\)/); assert.match(button(other, 'Mark lost') ?? '', /disabled/)
-    assert.doesNotMatch(button(draw(quote({ status: 'sent' }), { lostNote: 'Client sold the hotel', lostReason: 'other' }), 'Mark lost') ?? '', /disabled/)
+    assert.match(html, /<a [^>]*class="btn btnLg btnPrimary"[^>]*href="[^"]*p1[^"]*"|<a [^>]*href="[^"]*p1[^"]*"[^>]*class="btn btnLg btnPrimary"/)
+    assert.ok(html.includes('Open the PI draft') && !html.includes('Create PI draft'))
   })
   test('a reader who may not edit sees the downloads and nothing that changes the quotation', () => {
-    const html = draw(quote({ status: 'sent', may_edit: false }))
-    assert.ok(html.includes('Download PDF') && html.includes('Download Excel'))
-    assert.ok(!html.includes('Create client link') && !html.includes('Confirm') && !html.includes('aria-haspopup'))
+    const { labels } = openShare(quote({ status: 'sent', may_edit: false }))
+    assert.deepEqual(labels(), ['Download PDF', 'Download Excel'])
   })
 })
 
-describe('the Share row: sharing', () => {
-  test('before a link: the two downloads and Create client link (an outline button, not the main one), whose tooltip says what it does', () => {
-    const html = draw(quote())
-    assert.ok(html.includes('Download PDF') && html.includes('Download Excel'))
-    assert.ok(!html.includes('Copy link') && !html.includes('WhatsApp') && !html.includes('id="q-link"'))
-    const create = button(html, 'Create client link') ?? ''
-    assert.ok(create && !create.includes('btnPrimary'))
-    assert.match(create, /title="One link with the pictures and a Save as PDF button; no login\. Turning it on marks a draft as Sent\."/)
+describe('the Share menu: sharing', () => {
+  test('closed until opened; before a link: the two downloads and Create client link (an outline button, not the main one), whose tooltip says what it does', () => {
+    const closed = mount(dock(quote())); mounted.push(closed)
+    assert.equal(closed.all('[role="menuitem"]').length, 0, 'closed until opened')
+    assert.equal(closed.button('Share').getAttribute('aria-expanded'), 'false')
+    closed.click(closed.button('Share'))
+    assert.equal(closed.button('Share').getAttribute('aria-expanded'), 'true')
+    const { labels, item } = openShare(quote())
+    assert.deepEqual(labels(), ['Download PDF', 'Download Excel', 'Create client link'])
+    assert.ok(!item('Create client link').className.includes('btnPrimary'))
+    assert.match(item('Create client link').title, /One link with the pictures and a Save as PDF button; no login\. Turning it on marks a draft as Sent\./)
   })
-  test('with a link: Copy link and WhatsApp (to the number) replace Create client link, and the link is no longer a box on the page', () => {
-    const html = draw(quote({ share_token: 'abc' }))
-    assert.ok(button(html, 'Copy link') && !html.includes('Create client link') && !html.includes('id="q-link"'))
-    assert.match(html, /<a class="btn" href="https:\/\/wa\.me\/[^"]*"[^>]*title="WhatsApp opens with the text ready for 98290 12345; you press send\./)
-    assert.match(draw(quote({ share_token: 'abc' }), { copied: true }), /Copied/)
+  test('with a link: Copy link, WhatsApp (to the number) and turning the link off replace Create client link, and each does what it says', () => {
+    const copied: number[] = []; const shared: boolean[] = []
+    const { labels, item, ui } = openShare(quote({ share_token: 'abc' }), { onCopy: () => { copied.push(1) }, onShare: on => { shared.push(on) } })
+    assert.deepEqual(labels(), ['Download PDF', 'Download Excel', 'Copy link', 'WhatsApp', 'Turn the client link off'])
+    assert.match(item('WhatsApp').getAttribute('href') ?? '', /^https:\/\/wa\.me\//)
+    assert.match(item('WhatsApp').title, /WhatsApp opens with the text ready for 98290 12345; you press send\./)
+    ui.click(item('Copy link')); ui.click(item('Turn the client link off'))
+    assert.deepEqual(copied, [1]); assert.deepEqual(shared, [false])
   })
-  test('unsaved edits: the downloads and WhatsApp wait; no products, or an archived quotation: no link yet', () => {
-    const html = draw(quote({ share_token: 'abc' }), { dirty: true })
-    assert.match(button(html, 'Download PDF') ?? '', /disabled/); assert.match(button(html, 'Download Excel') ?? '', /disabled/)
-    assert.match(button(html, 'WhatsApp') ?? '', /disabled/)
-    assert.match(button(draw(quote(), { lineCount: 0 }), 'Create client link') ?? '', /disabled/)
-    assert.match(button(draw(quote({ status: 'archived' })), 'Create client link') ?? '', /disabled/)
+  test('the copied state is shown', () => {
+    const { item } = openShare(quote({ share_token: 'abc' }), { copied: true })
+    assert.match(item('Copied').textContent ?? '', /Copied/)
+  })
+  test('unsaved edits: the downloads, WhatsApp and the link switch wait; no products, or an archived quotation: no link yet', () => {
+    const dirty = openShare(quote({ share_token: 'abc' }), { dirty: true })
+    for (const w of ['Download PDF', 'Download Excel', 'WhatsApp', 'Turn the client link off']) assert.equal((dirty.item(w) as HTMLButtonElement).disabled, true, w)
+    assert.equal((openShare(quote(), { lineCount: 0 }).item('Create client link') as HTMLButtonElement).disabled, true)
+    assert.equal((openShare(quote({ status: 'archived' })).item('Create client link') as HTMLButtonElement).disabled, true)
   })
   test('a price the database still calls blocked no longer holds the link back (the approval is not drawn)', () => {
-    assert.doesNotMatch(button(draw(quote({ price: { blocked: true } as never })), 'Create client link') ?? '', /disabled/)
+    assert.equal((openShare(quote({ price: { blocked: true } as never })).item('Create client link') as HTMLButtonElement).disabled, false)
   })
-  test('the logo switch: one switch, on unless it was turned off, for people who may edit', () => {
-    const on = draw(quote(), { onMark: () => {}, markOn: true })
-    assert.match(on, /<input type="checkbox" role="switch" id="q-mark" checked=""/)
-    assert.match(on, /Logo on pictures/)
-    assert.doesNotMatch(draw(quote(), { onMark: () => {}, markOn: false }), /id="q-mark" checked/)
-    assert.match(draw(quote({ may_edit: false }), { onMark: () => {}, markOn: true }), /id="q-mark" disabled="" checked=""/)
-    assert.ok(!draw(quote()).includes('q-mark'), 'no switch without a handler')
+  test('Create client link and turning it off call the share with on or off', () => {
+    const shared: boolean[] = []
+    const a = openShare(quote(), { onShare: on => { shared.push(on) } })
+    a.ui.click(a.item('Create client link'))
+    assert.deepEqual(shared, [true])
+  })
+  test('the logo switch: one switch in the menu, on unless it was turned off, for people who may edit', () => {
+    const on = openShare(quote(), { onMark: () => {}, markOn: true })
+    assert.equal(on.ui.one<HTMLInputElement>('#q-mark').checked, true)
+    assert.match(on.ui.text(), /Logo on pictures/)
+    assert.equal(openShare(quote(), { onMark: () => {}, markOn: false }).ui.one<HTMLInputElement>('#q-mark').checked, false)
+    const reader = openShare(quote({ may_edit: false }), { onMark: () => {}, markOn: true })
+    assert.equal(reader.ui.one<HTMLInputElement>('#q-mark').disabled, true)
+    assert.equal(openShare(quote()).ui.all('#q-mark').length, 0, 'no switch without a handler')
+  })
+  test('Escape closes the menu', () => {
+    const { ui, items } = openShare(quote())
+    assert.ok(items().length)
+    act(() => { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })) })
+    assert.equal(ui.all('[role="menuitem"]').length, 0)
   })
 })
