@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-28 — Quotations: no second red line inside the Price and Quantity boxes when focused (PR #1045, open; no SQL) · no migration
+
+- **Why.** Owner, 28 Nov 2026, with a screenshot: a red vertical line between the ₹ sign and the number in "Price before GST" while typing in it.
+- **Cause.** The global `input:focus-visible` rule in `globals.css` is `!important`, so it beat the inputs' own `outline: 0` inside `.qtyBox`, `.rupeeBox` and `.areaCount` and drew a second outline round the bare input. The box's `overflow: hidden` clipped it to its left edge. The box already draws its own ring with `:focus-within`.
+- **Change.** One rule in `quotations.module.css` (after the ring rule) switches that inner outline off inside those three boxes, so the box ring is the only focus indicator, as `.boe-list-search` already does. A test in `builderPolish.test.tsx` pins it. CSS only, nothing saved or sent changes. Checked in a headless render of the same markup and CSS, not on the signed-in page.
+
 ## 2026-11-28 — Quotations: the Products / Fabric and packing tabs no longer draw scroll bars (PR #1043, merged as `1751b8f9` 2026-11-28 16:18 IST, production deployment succeeded 16:20 IST; no SQL) · no migration
 
 - **Why.** Owner, 28 Nov 2026, with a screenshot: up/down and left/right scroll arrows beside "Fabric and packing". "There should not be any scrolling area."

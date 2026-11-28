@@ -322,4 +322,9 @@ describe('the top panel of 24 Nov 2026 (owner: smartly designed, no wasted heigh
     assert.ok(!PANEL.includes('The message carries the link') && !PANEL.includes('shareFoot'))
     assert.match(PANEL, /WhatsApp opens with the text ready/)
   })
+  test('Quantity, Price and area-count boxes show one focus ring, on the box: the global !important input outline is switched off inside them (28 Nov 2026)', () => {
+    assert.match(CSS, /^\.qtyBox :is\(input, select\):focus-visible, \.rupeeBox input:focus-visible, \.areaCount :is\(input, select\):focus-visible \{ outline: none !important; outline-offset: 0 !important; \}$/m, 'the override rule')
+    assert.ok(rule('.qtyBox:focus-within, .rupeeBox:focus-within').includes('box-shadow: var(--boe-focus-ring)'), 'the ring it leaves in charge')
+    assert.ok(rule('.areaCount:focus-within').includes('box-shadow: var(--boe-focus-ring)'), 'the area count box keeps its ring too')
+  })
 })
