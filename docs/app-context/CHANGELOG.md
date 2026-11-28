@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-28 — Quotations: the Products / Fabric and packing tabs no longer draw scroll bars (PR #1043, open; no SQL) · no migration
+## 2026-11-28 — Quotations: the Products / Fabric and packing tabs no longer draw scroll bars (PR #1043, merged as `1751b8f9` 2026-11-28 16:18 IST, production deployment succeeded 16:20 IST; no SQL) · no migration
 
 - **Why.** Owner, 28 Nov 2026, with a screenshot: up/down and left/right scroll arrows beside "Fabric and packing". "There should not be any scrolling area."
 - **Cause.** `.tabs2` had `overflow-x: auto`, which also makes `overflow-y` auto. Each tab's 1 px negative margin (the underline overlapping the head's border) overflowed by 1 px, drew a vertical bar, and that bar took width and brought in the horizontal one.
