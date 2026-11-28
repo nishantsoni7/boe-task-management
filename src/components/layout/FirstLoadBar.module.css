@@ -1,0 +1,32 @@
+/* The thin "still loading" bar (FirstLoadBar.tsx). Fixed to the top edge, above every header, and it
+   never takes a click: it informs only. Brand terracotta, the same colour as the BOE One loader. */
+.bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  z-index: 2147483000;
+  overflow: hidden;
+  pointer-events: none;
+  background: rgba(188, 71, 47, 0.14);
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  width: 38%;
+  background: #BC472F;
+  border-radius: 0 3px 3px 0;
+  animation: slide 1.15s ease-in-out infinite;
+}
+
+@keyframes slide {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(270%); }
+}
+
+/* Reduced motion: no sweep, a still bar that is simply there. */
+@media (prefers-reduced-motion: reduce) {
+  .fill { animation: none; width: 100%; opacity: 0.45; }
+}

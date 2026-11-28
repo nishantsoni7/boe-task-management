@@ -5,16 +5,24 @@
 
 ## Snapshot
 
-- Commit: `0b7b6cb7` — Quotations: client choices with any name, as compact cards, with Copy to... and one Client choices bar
-- Commits on this branch: 1595
+- Commit: `fd42986e` — Loading: every move to another page shows the loader, and a thin bar shows while a first read is slow
+- Commits on this branch: 1603
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 508 (first `20260530_create_positions.sql`, latest `20270828000000_quotation_choices_any_name.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
-- Test files: 956   Next.js 16.2.6, React 19.2.4
+- Test files: 958   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `0b7b6cb7` 2026-11-25 Quotations: client choices with any name, as compact cards, with Copy to... and one Client choices bar
+- `fd42986e` 2026-11-28 Loading: every move to another page shows the loader, and a thin bar shows while a first read is slow
+- `1faf540b` 2026-11-28 Docs: #1045 merged and live (2026-11-28 16:52 IST) (#1046)
+- `c4710d87` 2026-11-28 Quotations: no second red line inside the Price and Quantity boxes when focused (#1045)
+- `c637b653` 2026-11-28 Docs: #1043 merged and live (2026-11-28 16:20 IST) (#1044)
+- `1751b8f9` 2026-11-28 Quotations: the Products / Fabric and packing tabs no longer draw scroll bars (#1043)
+- `96ea6604` 2026-11-25 Docs: #1041 merged and live (2026-11-25 15:46 IST) (#1042)
+- `265214cc` 2026-11-25 Quotations: client choices with any name, as cards, Copy to… and a Client choices bar (step 3 of 3, has SQL) (#1041)
+- `295dff2f` 2026-11-25 Docs: #1039 merged and live (2026-11-25 12:38 IST) (#1040)
+- `f8cc4c67` 2026-11-25 Docs: #1033 merged and live (2026-11-25 10:31 IST) (#1038)
 - `43ed6667` 2026-11-25 Quotations: the page, version 2 (status from the lead, the lead's brief, tabs as the card head, areas, a calmer product block, a simpler Fabric and packing tab) (#1039)
 - `03c080d5` 2026-11-25 Lead Management: "Create PI draft" on the lead's quotation line (#1036)
 - `78fbe795` 2026-11-25 Docs: #1031 merged and live (2026-11-25 09:42 IST) (#1037)
@@ -31,14 +39,6 @@
 - `d0b8cc70` 2026-11-24 Quotations: the builder's top is ONE panel, the lead is the status, no price-limits block (#1025)
 - `e7318db1` 2026-11-24 Quotations: no price hint at all for people outside the pricing desk (#1023)
 - `15175abf` 2026-11-24 Docs: #1020 merged and live (2026-11-24 19:11 IST) (#1022)
-- `32015bc8` 2026-11-24 Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (no SQL) (#1020)
-- `cb04085e` 2026-11-24 Docs: migration 20270818000000 (approver payment chips in one call) applied 2026-11-24 18:37 IST (#1021)
-- `5f53f151` 2026-11-24 Docs: nine of the ten unapplied migrations were live and are now recorded; only 20270818000000 is unapplied (#1019)
-- `d427ea3e` 2026-11-24 One Back button, left of the page title, on every page (#1016)
-- `c54b2692` 2026-11-24 Docs: #1015 merged and live (2026-11-24 17:02 IST) (#1018)
-- `cc4a1a8f` 2026-11-24 Docs: #1013 merged and live (2026-11-24 15:44 IST), stale-flag migration stamped, open items noted (#1017)
-- `345f1b58` 2026-11-24 Pricing: weighed frames, step one: a vendor rate per finished kg and the weighed bare frame (no SQL) (#1015)
-- `e8a9b46b` 2026-11-24 Tasks: an update counts as progress in the stale flag, and the flag comes down when there is one (migration 20270827000000 APPLIED) (#1013)
 
 ## Pages by top-level area
 
