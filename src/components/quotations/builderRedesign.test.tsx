@@ -204,6 +204,11 @@ describe('the builder page', () => {
     const panel = SCREEN.slice(SCREEN.indexOf('id="q-tabpanel"'), SCREEN.indexOf('</section>', SCREEN.indexOf('id="q-tabpanel"')))
     assert.ok(panel.includes('<CostingPage') && panel.includes('<LineRow'), 'Fabric and packing is drawn inside the same card')
   })
+  test('the two tabs never scroll: .tabs2 has no overflow (its overflow-x made scroll bars appear on both axes)', () => {
+    const rule = read('src/components/quotations/quotations.module.css').match(/^\.tabs2 \{([^}]*)\}/m)
+    assert.ok(rule, '.tabs2 rule exists')
+    assert.ok(!/overflow/.test(rule[1]), '.tabs2 must not set overflow')
+  })
   test('areas (were room types) are optional, named "Area <n>" when added, tinted one by one, and each has its band, total and foot', () => {
     assert.match(SCREEN, /name: `Area \$\{p\.length \+ 1\}`/)
     for (const w of ['aria-label="Area name" list="q-area-names"', 'aria-label="Style"', '<span>Area total</span>', 'aria-label={`Remove area ${g.area.name}`}', 'Not in an area', 'Add product to {g.area.name.trim() || \'this area\'}', ' Add another area', ' Add product</button>', '<span>Products total</span>', '<datalist id="q-area-names">{AREA_SUGGESTIONS.map(']) assert.ok(SCREEN.includes(w), w)

@@ -592,7 +592,8 @@ select.cpIn { text-overflow: ellipsis; }
 /* the products card: its head IS the two tabs (no separate tab strip, "Products" said once) */
 .tabCard { overflow: hidden; }
 .tabHead { display: flex; align-items: center; flex-wrap: wrap; gap: 0 8px; padding: 0 16px; border-bottom: 1px solid var(--boe-border); }
-.tabs2 { display: flex; align-items: stretch; gap: 24px; align-self: stretch; max-width: 100%; overflow-x: auto; }
+/* No overflow here (owner, 28 Nov 2026): overflow-x:auto also makes overflow-y auto, and the tabs' 1 px negative margin then drew scroll bars. Too narrow? They wrap. */
+.tabs2 { display: flex; flex-wrap: wrap; align-items: stretch; gap: 0 24px; align-self: stretch; max-width: 100%; }
 .tab2 { display: inline-flex; align-items: center; gap: 8px; min-height: 52px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; margin-bottom: -1px; background: none; font: 700 16px var(--boe-font-heading); color: var(--boe-text-muted); white-space: nowrap; cursor: pointer; }
 .tab2:hover { color: var(--boe-text); }
 .tab2[aria-selected='true'] { color: var(--boe-text); border-bottom-color: var(--boe-brand); }
@@ -721,7 +722,7 @@ select.cpIn { text-overflow: ellipsis; }
   .plMid textarea.input { height: auto; }
   .plMid .unitTag { height: 44px; }
   .areaName, .areaStyle { width: auto; flex: 1 1 140px; }
-  .tabs2 { gap: 16px; }
+  .tabs2 { gap: 0 16px; }
   .tab2 { font-size: 15px; min-height: 48px; }
   .tabChip { display: none; }
   .briefDl { grid-template-columns: 96px minmax(0, 1fr); }
