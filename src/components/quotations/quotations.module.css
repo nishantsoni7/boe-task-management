@@ -225,6 +225,8 @@ textarea.t3 { min-height: 86px; }
 .qp { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 10px; }
 .qtyBox, .rupeeBox { display: flex; align-items: stretch; height: 38px; border: 1px solid var(--boe-border-input); border-radius: var(--boe-radius-control); background: var(--boe-surface); overflow: hidden; }
 .qtyBox:focus-within, .rupeeBox:focus-within { box-shadow: var(--boe-focus-ring); }
+/* ONE RING, ON THE BOX. The global input:focus-visible rule is !important, so it beat the inputs' own outline: 0 and drew a second red outline round the bare input, clipped by the box's overflow into a red line beside the rupee sign. Same fix as .boe-list-search. */
+.qtyBox :is(input, select):focus-visible, .rupeeBox input:focus-visible, .areaCount :is(input, select):focus-visible { outline: none !important; outline-offset: 0 !important; }
 .qtyIn, .rupeeIn { border: 0; outline: 0; background: transparent; min-width: 0; font: 600 14px var(--boe-font-body); font-variant-numeric: tabular-nums; color: var(--boe-text); }
 .qtyIn { flex: none; width: 60px; padding: 0 6px; text-align: right; }
 .qtyUnit { display: flex; align-items: center; flex: 1; padding: 0 10px; border-left: 1px solid var(--boe-border); background: var(--boe-surface-quiet); font: 12.5px var(--boe-font-body); color: var(--boe-text-muted); white-space: nowrap; }
