@@ -5,7 +5,7 @@
 
 ## Snapshot
 
-- Commit: `fd42986e` — Loading: every move to another page shows the loader, and a thin bar shows while a first read is slow
+- Commit: `ec4bd550` — Loading screen on every move to another page, and a thin bar while a first read is slow (#1047)
 - Commits on this branch: 1603
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 508 (first `20260530_create_positions.sql`, latest `20270828000000_quotation_choices_any_name.sql`)
@@ -14,7 +14,7 @@
 
 ## Latest 25 commits
 
-- `fd42986e` 2026-11-28 Loading: every move to another page shows the loader, and a thin bar shows while a first read is slow
+- `ec4bd550` 2026-11-28 Loading screen on every move to another page, and a thin bar while a first read is slow (#1047)
 - `1faf540b` 2026-11-28 Docs: #1045 merged and live (2026-11-28 16:52 IST) (#1046)
 - `c4710d87` 2026-11-28 Quotations: no second red line inside the Price and Quantity boxes when focused (#1045)
 - `c637b653` 2026-11-28 Docs: #1043 merged and live (2026-11-28 16:20 IST) (#1044)
