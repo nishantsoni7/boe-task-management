@@ -782,3 +782,9 @@ select.cpIn { text-overflow: ellipsis; }
   .cpItem { grid-template-columns: 20px 36px minmax(0, 1fr); }
   .cpHas { grid-column: 3; max-width: none; }
 }
+/* Why this price (28 Nov 2026): the estimator card keeps its Range on a line of its own, with the two ways in under it. */
+.sugRange { grid-column: 1 / -1; }
+.sugLinks { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 2px 4px; margin: 2px 0 0 -6px; }
+.sugTeach { border: 1px solid var(--boe-brand-tint-2, #F1D5CB); background: var(--boe-brand-tint); color: var(--boe-brand-ink); padding: 4px 8px; border-radius: 6px; font: 600 12px var(--boe-font-body); cursor: pointer; }
+.sugTeach:hover { background: #F3DDD3; }
+@media (max-width: 640px) { .sugWhy, .sugTeach { min-height: 44px; } }

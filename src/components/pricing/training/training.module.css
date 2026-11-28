@@ -200,3 +200,5 @@
 .taught:has(> .taughtLink:only-child) { padding: 0; border: 0; background: none; }
 .taughtLink { text-decoration: none; padding: 4px 0; }
 .taughtLink:hover { text-decoration: underline; }
+/* The same form inside the Teach my price panel on a quotation (28 Nov 2026): no page padding, the panel scrolls. Last, so it wins over the phone padding above. */
+.embedded { max-width: none; padding: 0; }

@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useParams, useRouter } from 'next/navigation'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { fetchLibrary, fetchRework, photoUrl, trainingKeys, type ReworkAsk } from '@/lib/pricing/training/api'
-import { lineWood, pickedCaseNo } from '@/lib/pricing/training/match'
-import { sendFeedback, type FeedbackDoc } from '@/lib/pricing/learning/api'
+import { fetchAccess, fetchLibrary, fetchRework, photoUrl, trainingKeys, type ReworkAsk } from '@/lib/pricing/training/api'
+import { lineWood, pickedCaseNo, withPick } from '@/lib/pricing/training/match'
+import { closeNotesFor, sendFeedback, type FeedbackDoc } from '@/lib/pricing/learning/api'
 import type { DiffersReport } from '@/components/pricing/training/TaughtPrice'
 import { Check, ChevronRight, FileUp, LayoutGrid, Palette, Plus, Save, Trash2, X } from 'lucide-react'
 import { saveProblem } from '@/lib/quotations/saveCheck'
@@ -36,6 +36,7 @@ import { ImportDialog } from './ImportDialog'
 import { WANTS } from '@/lib/quotations/importBoq'
 import { lineDetails } from '@/lib/quotations/pictureStudio'
 import { StudioDialog } from './StudioDialog'
+import { TeachPanel } from './TeachPanel'
 import { VersionsCard } from './VersionsCard'
 import { RequestCard } from './RequestCard'
 import { PriceBrief } from './PriceBrief'
@@ -73,6 +74,10 @@ export default function BuilderScreen() {
   const subject = useDisplaySubject()
   const seesWhy = subject.ready && canAccessManagementModule({ role: subject.subjectRole, moduleKey: 'pricing', isModuleActive: true, permissions: subject.subjectPermissionsByModule.get('pricing') ?? [] })
   const qc = useQueryClient()
+  // "Teach my price" (28 Nov 2026): for the people who see "Why?" and may also teach (Pricing: Create, or Admin), as a panel over this page.
+  const teachAccessQ = useQuery({ queryKey: trainingKeys.access, queryFn: () => fetchAccess(supabase), enabled: seesWhy, staleTime: 300_000, retry: false })
+  const mayTeach = seesWhy && !!teachAccessQ.data?.create
+  const [teachFor, setTeachFor] = useState<{ key: string; note: string } | null>(null)
   // THE FIRST READS DO NOT WAIT FOR ACCESS (23 Nov 2026): the database answers each one as the signed-in person and refuses what they may not
   // see, so they start with the page (or at the click that opened it, openQuotation.ts) instead of after the profile and access reads. The
   // screen below still waits for `accessLoaded` before it draws, so nothing that depends on access flickers in.
@@ -196,6 +201,18 @@ export default function BuilderScreen() {
   const updH = <K extends keyof Header>(k: K, v: Header[K]) => { setH(p => (p ? { ...p, [k]: v } : p)); touch() }
   const updArea = (key: string, patch: Partial<QuoteArea>) => { setAreas(p => p.map(a => (a.key === key ? { ...a, ...patch } : a))); touch() }
   const updLine = (key: string, patch: Partial<QuoteLine>) => { setLines(p => p.map(l => (l.key === key ? { ...l, ...patch } : l))); touch() }
+  // The case was taught from a line (28 Nov 2026): the line picks it and takes its price, the taught list, the rework and the price pool are read
+  // again NOW (they are kept for five minutes otherwise), and the notes sent from this product about its price are answered with the case.
+  const taughtDone = async (r: { id: string; caseNo: number; price: number }) => {
+    const line = lines.find(x => x.key === teachFor?.key)
+    setTeachFor(null)
+    if (!line) return
+    const price = Math.round(r.price)
+    updLine(line.key, { internal_note: withPick(line.internal_note, r.caseNo), unit_price: price })
+    await Promise.all([trainingKeys.library, ['quotations', 'pool'], ['pricing', 'rework'], ['pricing', 'pool']].map(queryKey => qc.invalidateQueries({ queryKey })))
+    const closed = await closeNotesFor(supabase, id, line.name, r.caseNo)
+    setMsg({ tone: 'ok', text: `Taught as #${r.caseNo}. ${line.name.trim() || 'This product'} now uses ${formatINR(price)}.${closed ? ` ${closed === 1 ? 'Your earlier note on it was' : `Your ${closed} earlier notes on it were`} closed.` : ''} Save the quotation to keep it.` })
+  }
 
   // Everything is billed at 18% (owner, 18 Nov 2026), so there is no GST rate to pick: the total shows one GST line.
   const startRate = 18
@@ -377,6 +394,12 @@ export default function BuilderScreen() {
         </div></div>
       )}
 
+      {teachFor && (() => {
+        const l = lines.find(x => x.key === teachFor.key)
+        return l ? <TeachPanel lineName={l.name.trim() || 'This product'} onClose={() => setTeachFor(null)} onTaught={taughtDone}
+          prefill={{ name: l.name.trim() || 'A product', size: l.size_text || null, material: l.material || null, qty: totals?.lineQty[l.key] ?? l.qty, price: l.unit_price, note: teachFor.note.trim() || null,
+            photoUrl: l.image_path ? picSrc(l.image_path) : null, feedbackId: null, quoteNo: base?.quote_no ?? null }} /> : null
+      })()}
       {briefing && <PriceBrief supabase={supabase} quotationId={id} lines={lines} onClose={n => { setBriefing(false); if (n > 0) setMsg({ tone: 'ok', text: `Saved the price brief for ${n} product${n === 1 ? '' : 's'}.` }) }} />}
       {deleting && <DeleteQuotationDialog supabase={supabase} onClose={() => setDeleting(false)}
         target={{ id, quote_no: base.quote_no, client_name: h.client_name, project_name: h.project_name || null, status: base.status }}
@@ -464,6 +487,7 @@ export default function BuilderScreen() {
                       onChange={patch => updLine(l.key, patch)} onUpload={f => upload(l.key, f)} onUploadSwatch={f => (profile ? uploadPicture(supabase, profile.id, f) : Promise.reject(new Error("Sign in again to add a picture")))} onImprove={() => setStudioFor(l.key)} onView={() => setViewing(l.key)}
                       hint={suggestOn ? hintFor.get(l.name.trim()) : undefined} model={suggestOn ? modelFor.get(l.key) : null} taught={suggestOn ? taught : undefined} onRemove={() => removeLine(l.key)}
                       feedbackCtx={seesWhy ? { clientType: h?.client_type ?? null, quotationId: id, isDesk: access.admin || (access.edit && access.view_all) } : undefined}
+                      onTeach={mayTeach && editable ? note => setTeachFor({ key: l.key, note }) : undefined}
                       onMove={dir => moveLine(l.key, dir)} onDuplicate={() => { setLines(p => { const i = p.findIndex(x => x.key === l.key); const n = [...p]; n.splice(i + 1, 0, { ...l, key: newKey() }); return n }); touch() }} />
                   ))}
                   {g.area && editable && (

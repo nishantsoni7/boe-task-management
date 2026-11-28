@@ -26,7 +26,7 @@ export type FeedbackLine = FeedbackDoc['line']
 /** What the model said: the price, its range and confidence, and the reasons it showed. */
 export type FeedbackSuggestion = { price: number; low: number; high: number; confidence: string; basis: string; reasons?: string[] }
 
-export function SuggestionFeedback({ source, line, clientType, suggestion, quotationId = null, isDesk = false, client, label = 'Feedback or correct the logic', defaultOpen = false }: {
+export function SuggestionFeedback({ source, line, clientType, suggestion, quotationId = null, isDesk = false, client, label = 'Feedback or correct the logic', defaultOpen = false, onComment }: {
   source: FeedbackDoc['source']
   line: FeedbackLine
   clientType: string | null
@@ -39,6 +39,8 @@ export function SuggestionFeedback({ source, line, clientType, suggestion, quota
   label?: string
   /** Start with the form open (the "Why?" popup is already the place to give feedback). */
   defaultOpen?: boolean
+  /** Told what is typed in the note box as it changes, so "Teach my price" can start from it instead of the person typing it again. */
+  onComment?: (text: string) => void
 }) {
   const id = useId()
   const [open, setOpen] = useState(defaultOpen)
@@ -93,7 +95,7 @@ export function SuggestionFeedback({ source, line, clientType, suggestion, quota
         </div>
       )}
       <label className={s.field}><span>{mode === 'correction' ? 'How should the logic work?' : 'Anything to add?'}</span>
-        <textarea className={s.input} rows={mode === 'correction' ? 3 : 2} maxLength={1000} value={comment} onChange={e => setComment(e.target.value)}
+        <textarea className={s.input} rows={mode === 'correction' ? 3 : 2} maxLength={1000} value={comment} onChange={e => { setComment(e.target.value); onComment?.(e.target.value) }}
           placeholder={mode === 'correction' ? 'For example: teak should cost 25% more than mango from October' : 'For example: the last 3 teak beds sold at ₹56,000'} />
       </label>
       <label className={s.field}><span>What would you quote? (optional, ₹ before GST)</span>

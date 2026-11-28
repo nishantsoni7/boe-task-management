@@ -15,7 +15,7 @@ import { LoadingScreen } from '@/components/ui/atoms'
 import { createClient } from '@/lib/supabase/client'
 import { formatINR } from '@/lib/currency'
 import { INCLUDES, INCLUDE_LABEL, KIND_LABEL, PRICE_LEVELS, PRICE_LEVEL_LABEL, caseTerms, emptyForm, emptyLine, newWoods, num, parseReading, problems, readingToLines, shortDate, sizeOf, statusLabel, statusText, structureRest, toLine, usesQuantity, workCase, type CaseForm, type Include, type Line, type PriceLevel } from '@/lib/pricing/training/doc'
-import { BOX_KINDS, boxIsSet, boxProblems, buildUp, emptyBoxes, mergeBoxes, splitBoxes, withOf, withPct, type BoxKind, type Boxes } from '@/lib/pricing/training/boxes'
+import { BOX_KINDS, boxIsSet, boxProblems, buildUp, emptyBoxes, mergeBoxes, splitBoxes, startBoxes, withOf, withPct, type BoxKind, type Boxes } from '@/lib/pricing/training/boxes'
 import { CALC_LABEL } from '@/lib/pricing/training/calc'
 import { draftFromNote, fetchAccess, fetchCase, fetchMetals, fetchWoods, saveWood, photoUrl, readPhoto, saveCase, sendMessage, submitCase, trainingKeys, uploadPhoto, type TrainingError } from '@/lib/pricing/training/api'
 import { clearPrefill, prefillForm, takePrefill, type Prefill } from '@/lib/pricing/training/prefill'
@@ -27,11 +27,19 @@ import t from './training.module.css'
 
 const str = (v: number | null) => (v === null || v === undefined ? '' : String(Number(v)))
 
-export function TrainingCase() {
+/**
+ * The same form inside the "Teach my price" panel on a quotation (28 Nov 2026, owner approved the mockup): always a NEW case that starts from the
+ * quotation line, saved and submitted in one go, with no change of page. The panel is told when it is taught.
+ */
+export type EmbeddedCase = { prefill: Prefill; onTaught: (r: { id: string; caseNo: number; price: number }) => void; onCancel: () => void }
+
+export function TrainingCase({ embedded }: { embedded?: EmbeddedCase } = {}) {
   const supabase = useMemo(() => createClient(), [])
   const router = useRouter()
   const qc = useQueryClient()
-  const routeId = String(useParams<{ id: string }>()?.id ?? 'new')
+  const params = useParams<{ id: string }>()
+  // On a quotation the route's own id is the quotation's: the panel is always a new case.
+  const routeId = embedded ? 'new' : String(params?.id ?? 'new')
   const isNew = routeId === 'new'
 
   const access = useQuery({ queryKey: trainingKeys.access, queryFn: () => fetchAccess(supabase), retry: false })
@@ -41,11 +49,11 @@ export function TrainingCase() {
 
   // "Teach this price": a new case may start from a feedback card or a quotation line (prefill.ts). Read once, on the
   // first render of New case; the form is only drawn after the access check, so the server and the browser agree.
-  const [origin] = useState<Prefill | null>(() => (isNew ? takePrefill() : null))
+  const [origin] = useState<Prefill | null>(() => (embedded ? embedded.prefill : isNew ? takePrefill() : null))
   const [form, setForm] = useState<CaseForm>(() => (origin ? { ...emptyForm(), ...prefillForm(origin) } : emptyForm()))
   // The elements, and apart from them the Overhead and Margin boxes. Worked out and saved together (boxes.ts).
   const [lines, setLines] = useState<Line[]>([])
-  const [boxes, setBoxes] = useState<Boxes>(emptyBoxes)
+  const [boxes, setBoxes] = useState<Boxes>(() => (origin ? startBoxes(origin.name) : emptyBoxes()))
   const [openRows, setOpenRows] = useState<number[]>([])
   const [dirty, setDirty] = useState(!!origin)
   const [note, setNote] = useState(origin?.note ?? '')
@@ -84,7 +92,7 @@ export function TrainingCase() {
     return () => window.removeEventListener('beforeunload', warn)
   }, [dirty])
 
-  useEffect(() => { if (origin) clearPrefill() }, [origin])
+  useEffect(() => { if (origin && !embedded) clearPrefill() }, [origin, embedded])
 
   const a = access.data
   // The quotation line's photo is copied into Training once the person is known (it goes into their own folder).
@@ -178,6 +186,11 @@ export function TrainingCase() {
         const feedbackId = origin.feedbackId
         void fetchCase(supabase, id).then(saved => setFeedbackStatus(supabase, feedbackId, 'done', `Taught in Training as case #${saved.case_no}`)).catch(() => null)
       }
+      if (embedded) {
+        const made = await fetchCase(supabase, id)
+        embedded.onTaught({ id, caseNo: made.case_no, price: build.total })
+        return
+      }
       if (isNew) router.replace(`/pricing/training/${id}`)
       else setNotice(send ? 'Submitted to the price estimator.' : 'Saved. Submit it when the prices are right.')
     } catch (e) { fail(e) } finally { setBusy('') }
@@ -210,8 +223,8 @@ export function TrainingCase() {
   }
 
   const loadErr = (access.error ?? saved.error) as TrainingError | null
-  if (loadErr) return <div className={t.wrap}><Link href="/pricing/training" className="boe-btn boe-btn-secondary" style={{ justifySelf: 'start' }}><ArrowLeft size={16} aria-hidden /> Training</Link><div className={`boe-callout ${loadErr.kind === 'not_set_up' ? 'boe-callout-warning' : 'boe-callout-error'}`} role="alert">{loadErr.message}</div></div>
-  if (access.isLoading || (!isNew && saved.isLoading)) return <LoadingScreen cheer={false} />
+  if (loadErr) return <div className={t.wrap}>{!embedded && <Link href="/pricing/training" className="boe-btn boe-btn-secondary" style={{ justifySelf: 'start' }}><ArrowLeft size={16} aria-hidden /> Training</Link>}<div className={`boe-callout ${loadErr.kind === 'not_set_up' ? 'boe-callout-warning' : 'boe-callout-error'}`} role="alert">{loadErr.message}</div></div>
+  if (access.isLoading || (!isNew && saved.isLoading)) return embedded ? <p className={t.muted} role="status">Loading…</p> : <LoadingScreen cheer={false} />
   if (isNew && a && !a.create) return <div className={t.wrap}><div className="boe-callout boe-callout-info">To teach a case, ask an admin for Create on Pricing.</div></div>
 
   const reading = form.ai_reading
@@ -219,19 +232,21 @@ export function TrainingCase() {
   const unchanged = !!c && c.status === 'submitted' && !dirty
 
   return (
-    <div className={`${t.wrap} ${t.casePage}`}>
-      <div className={t.head}>
-        <div className={t.row}>
-          <Link href="/pricing/training" className="boe-btn boe-btn-secondary" aria-label="Back to Training"><ArrowLeft size={16} aria-hidden /></Link>
-          <div>
-            <h1 className={t.h1}>{isNew ? 'New case' : form.name || 'Case'}</h1>
-            <p className={t.sub}>{c ? `#${c.case_no} · taught by ${c.created_by === a?.uid ? 'you' : c.created_by_name ?? 'someone'} · ${shortDate(c.created_at)}` : 'A photo, then what the price is made of, then submit it.'}</p>
+    <div className={`${t.wrap} ${t.casePage} ${embedded ? t.embedded : ''}`}>
+      {!embedded && (
+        <div className={t.head}>
+          <div className={t.row}>
+            <Link href="/pricing/training" className="boe-btn boe-btn-secondary" aria-label="Back to Training"><ArrowLeft size={16} aria-hidden /></Link>
+            <div>
+              <h1 className={t.h1}>{isNew ? 'New case' : form.name || 'Case'}</h1>
+              <p className={t.sub}>{c ? `#${c.case_no} · taught by ${c.created_by === a?.uid ? 'you' : c.created_by_name ?? 'someone'} · ${shortDate(c.created_at)}` : 'A photo, then what the price is made of, then submit it.'}</p>
+            </div>
           </div>
+          <span className={`boe-badge ${badge.badge}`}>{dirty ? 'Changes not saved' : badge.label}</span>
         </div>
-        <span className={`boe-badge ${badge.badge}`}>{dirty ? 'Changes not saved' : badge.label}</span>
-      </div>
+      )}
 
-      {isNew && origin && <div className="boe-callout boe-callout-info" role="status">Started from {origin.feedbackId ? 'feedback' : 'a quotation line'}{origin.quoteNo ? ` on ${origin.quoteNo}` : ''}: the product, its size and the price are filled in{origin.photoUrl ? ' and its photo is being copied' : ''}. {origin.note ? 'Your note is below: draft the elements from it, then check them.' : 'Add what the price is made of, then save.'}</div>}
+      {isNew && origin && !embedded && <div className="boe-callout boe-callout-info" role="status">Started from {origin.feedbackId ? 'feedback' : 'a quotation line'}{origin.quoteNo ? ` on ${origin.quoteNo}` : ''}: the product, its size and the price are filled in{origin.photoUrl ? ' and its photo is being copied' : ''}. {origin.note ? 'Your note is below: draft the elements from it, then check them.' : 'Add what the price is made of, then save.'}</div>}
       {c && !dirty && <div className={`boe-callout ${c.status === 'submitted' ? 'boe-callout-success' : 'boe-callout-info'}`} role="status">{statusText(c)}</div>}
       {error && <div className="boe-callout boe-callout-error" role="alert">{error}</div>}
       {notice && <div className="boe-callout boe-callout-info" role="status">{notice}</div>}
@@ -355,10 +370,19 @@ export function TrainingCase() {
       {editable && (
         <div className={t.foot}>
           <span className={t.footTotal}><span className={t.muted}>Selling price</span><b>{formatINR(build.total)}</b></span>
-          <span className={t.muted}>{dirty ? `Changes not saved yet.${c && c.submit_count > 0 ? ' After saving, resubmit so the estimator uses the new prices.' : ''}` : c ? statusText(c) : 'Nothing saved yet.'}</span>
+          <span className={t.muted}>{embedded ? 'Saved as a case in Pricing → Training and submitted, so the estimator learns it now. The line then uses it.' : dirty ? `Changes not saved yet.${c && c.submit_count > 0 ? ' After saving, resubmit so the estimator uses the new prices.' : ''}` : c ? statusText(c) : 'Nothing saved yet.'}</span>
           <span className={t.spacer} />
-          <button type="button" className="boe-btn boe-btn-secondary" disabled={busy !== ''} onClick={() => save(false)}>{busy === 'save' ? 'Saving…' : 'Save'}</button>
-          <button type="button" className="boe-btn boe-btn-primary" disabled={busy !== '' || unchanged} title={unchanged ? 'Nothing has changed since it was submitted' : undefined} onClick={() => save(true)}><Send size={16} aria-hidden /> {busy === 'send' ? 'Submitting…' : c && c.submit_count > 0 ? 'Resubmit to the price estimator' : 'Submit to the price estimator'}</button>
+          {embedded ? (
+            <>
+              <button type="button" className="boe-btn boe-btn-secondary" disabled={busy === 'send'} onClick={embedded.onCancel}>Cancel</button>
+              <button type="button" className="boe-btn boe-btn-primary" disabled={busy !== ''} onClick={() => save(true)}><Send size={16} aria-hidden /> {busy === 'send' ? 'Teaching…' : 'Save and teach'}</button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="boe-btn boe-btn-secondary" disabled={busy !== ''} onClick={() => save(false)}>{busy === 'save' ? 'Saving…' : 'Save'}</button>
+              <button type="button" className="boe-btn boe-btn-primary" disabled={busy !== '' || unchanged} title={unchanged ? 'Nothing has changed since it was submitted' : undefined} onClick={() => save(true)}><Send size={16} aria-hidden /> {busy === 'send' ? 'Submitting…' : c && c.submit_count > 0 ? 'Resubmit to the price estimator' : 'Submit to the price estimator'}</button>
+            </>
+          )}
         </div>
       )}
     </div>

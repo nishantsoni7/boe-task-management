@@ -87,3 +87,15 @@ describe('opening a saved case', () => {
     }
   })
 })
+
+describe('what a new case starts with', () => {
+  test("a chair starts with the owner's 20% factory expense and 20% margin on the cost; anything else starts blank", async () => {
+    const { startBoxes, boxPct } = await import('./boxes')
+    for (const name of ['Chair', 'Dining chair, cane back', 'Wooden Chair']) {
+      const b = startBoxes(name)
+      assert.deepEqual([boxPct(b.overhead), boxPct(b.margin)], ['20', '20'], name)
+      assert.deepEqual(buildUp(chair, b, NO_SIZE).total, 4900, 'his 23 Nov chair: 3,500 plus 40% on the cost')
+    }
+    for (const name of ['Coffee table', 'Booth sofa', '']) assert.deepEqual([boxPct(startBoxes(name).overhead), boxPct(startBoxes(name).margin)], ['', ''], name)
+  })
+})

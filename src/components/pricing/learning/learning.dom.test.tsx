@@ -22,7 +22,7 @@ import { blindTest } from '@/lib/pricing/learning/blindTest'
 import { initialReview, testLinesOf } from '@/lib/pricing/learning/batch'
 import { contentPrint, judge, readPiGrids, type Cell } from '@/lib/pricing/learning/readPi'
 import type { PiFile } from '@/lib/pricing/learning/piFile'
-import type { ModelPoint, ModelSuggestion } from '@/lib/pricing/model'
+import { priceLine, type ModelPoint, type ModelSuggestion } from '@/lib/pricing/model'
 
 // next/link looks for `self`, which the jsdom harness does not copy across.
 Object.defineProperty(globalThis, 'self', { value: globalThis, configurable: true, writable: true })
@@ -113,7 +113,7 @@ describe('the feedback and correction doorway', () => {
   })
 })
 
-describe('the suggested price on a quotation line: a small card for everyone, "Why?" for the Pricing people', () => {
+describe('the suggested price on a quotation line: a small card for everyone, "Why this price" for the Pricing people', () => {
   const MODEL: ModelSuggestion = { price: 59700, low: 54600, high: 65400, confidence: 'medium', reasons: ['+18% Teak instead of Mango'], basis: 'the price model for Bed (92 prices)', n: 92, type: 'bed' }
   const HINT = { name: 'x', ordered: { last: 50000, last_at: '2026-01-01', min: 40000, max: 52000, count: 3 }, quoted: { last: 48000, last_at: '2026-02-01' } }
   const ctx = { line: LINE, clientType: null, quotationId: 'q-1', isDesk: false }
@@ -126,15 +126,15 @@ describe('the suggested price on a quotation line: a small card for everyone, "W
 
   test('without the Pricing module it is a small card: the price with a Use button and the range under it; no reasons, history, confidence or link', () => {
     const out = html({ model: MODEL, hint: HINT })
-    assert.match(out, /Suggested <b>₹59,700<\/b>[\s\S]*<button[^>]*class="sugUse"[^>]*>Use<\/button>[\s\S]*Range ₹54,600–₹65,400/)
-    for (const gone of [/Why\?/, /Feedback or correct the logic/, /Teak instead of Mango/, /medium/, /Last ordered/, /last quoted/i, /92 prices/]) assert.doesNotMatch(out, gone)
+    assert.match(out, /Estimator <b>₹59,700<\/b>[\s\S]*<button[^>]*class="sugUse"[^>]*>Use<\/button>[\s\S]*Range ₹54,600–₹65,400/)
+    for (const gone of [/Why this price/, /Teach my price/, /Feedback or correct the logic/, /Teak instead of Mango/, /medium/, /Last ordered/, /last quoted/i, /92 prices/]) assert.doesNotMatch(out, gone)
     assert.equal((out.match(/<div/g) ?? []).length, 1, 'one block, not a stack of lines')
   })
 
   test('with only history it says "Last ordered" once and nothing else; no history and no model draws nothing', () => {
     const out = html({ model: null, hint: { ...HINT, quoted: null } })
     assert.match(out, /Last ordered[\s\S]*₹50,000[\s\S]*Use/)
-    assert.doesNotMatch(out, /over 3|₹40,000|Why\?/)
+    assert.doesNotMatch(out, /over 3|₹40,000|Why this price/)
     assert.equal(html({ model: null, hint: { name: 'x', ordered: null, quoted: null } }), '')
     // What the builder passes someone outside the pricing desk (24 Nov 2026): no hint and no model draws nothing, not even Use.
     assert.equal(html({ model: null, hint: undefined }), '')
@@ -145,10 +145,10 @@ describe('the suggested price on a quotation line: a small card for everyone, "W
     assert.doesNotMatch(html({ model: MODEL, editable: false }), />Use</)
   })
 
-  test('with the Pricing module "Why?" opens the popup: reasons, range, confidence, history and the form to correct the logic', () => {
+  test('a suggestion without a chain (history only) keeps the facts popup: reasons, range, confidence, history and the form to correct the logic', () => {
     const ui = draw({ model: MODEL, hint: HINT, feedback: ctx })
     assert.doesNotMatch(ui.text(), /Teak instead of Mango/, 'closed until asked')
-    ui.click(ui.button('Why?'))
+    ui.click(ui.button('Why this price'))
     const t = ui.text()
     assert.match(t, /King bed with headboard: the price/)
     assert.match(t, /range ₹54,600–₹65,400 · medium confidence/)
@@ -165,7 +165,7 @@ describe('the suggested price on a quotation line: a small card for everyone, "W
   test('the popup closes with Close, Escape or a click outside; it opens on a locked quotation too', () => {
     const ui = draw({ model: MODEL, editable: false, feedback: ctx })
     for (const close of [() => ui.click(ui.button('×')), () => ui.press('Escape'), () => ui.click(ui.one('[role=dialog]').parentElement!)]) {
-      ui.click(ui.button('Why?'))
+      ui.click(ui.button('Why this price'))
       assert.equal(ui.all('[role=dialog]').length, 1)
       close()
       assert.equal(ui.all('[role=dialog]').length, 0)
@@ -174,9 +174,85 @@ describe('the suggested price on a quotation line: a small card for everyone, "W
 
   test('history only: the popup shows the facts and no form (there is no calculation to correct)', () => {
     const ui = draw({ model: null, hint: HINT, feedback: ctx })
-    ui.click(ui.button('Why?'))
+    ui.click(ui.button('Why this price'))
     assert.match(ui.text(), /Last ordered ₹50,000 · ₹40,000–₹52,000 over 3 orders/)
     assert.doesNotMatch(ui.text(), /Correct the logic|Share feedback/)
+  })
+})
+
+describe('Why this price (28 Nov 2026): the chain, the three opinions, the closest past prices, and the way to teach', () => {
+  const NOW = Date.parse('2026-11-28T06:00:00Z')
+  const MODEL = () => priceLine(POOL, { name: 'King bed with headboard', size: '78 x 84', material: 'Teak', finish: 'PU', qty: 56 }, NOW)!
+  const ctx = (over: Partial<NonNullable<Parameters<typeof PriceHintLine>[0]['feedback']>> = {}) => ({ line: LINE, clientType: null, quotationId: 'q-1', isDesk: false, ...over })
+  const draw = (feedback = ctx(), props: Partial<Parameters<typeof PriceHintLine>[0]> = {}) => {
+    const ui = mount(createElement(PriceHintLine, { price: null, editable: true, onUse: () => {}, model: MODEL(), feedback, ...props }))
+    cleanup = () => ui.unmount()
+    return ui
+  }
+
+  test('the card says Estimator and gives two ways in: Why this price, and Teach my price only for people who may teach', () => {
+    const plain = draw()
+    assert.match(plain.text(), /Estimator ₹/)
+    assert.deepEqual(plain.all('button').map(b => b.textContent), ['Use', 'Why this price'])
+    plain.unmount()
+    const may = draw(ctx({ onTeach: () => {} }))
+    assert.ok(may.all('button').some(b => b.textContent === 'Teach my price'))
+  })
+
+  test('the popup shows three opinions, the chain from a starting point to the suggestion, and the closest past prices', () => {
+    const ui = draw()
+    ui.click(ui.button('Why this price'))
+    const t = ui.text()
+    const m = MODEL()
+    assert.match(t, new RegExp(`where ₹${m.price.toLocaleString('en-IN')} comes from`))
+    assert.match(t, /Your costing.*Not taught yet/)
+    assert.match(t, /Estimator.*Range ₹.*medium confidence|Estimator.*Range ₹.*low confidence|Estimator.*Range ₹.*high confidence/)
+    assert.match(t, /Past prices.*similar bed prices/)
+    assert.match(t, /Starting point.*A typical bed/)
+    assert.match(t, /Estimator suggests/)
+    assert.match(t, /Closest past prices/)
+    assert.doesNotMatch(t, /₹d[d,]*.d/, 'every price is whole rupees: no paise in the chain')
+    assert.ok(ui.all('table tbody tr').length >= 3, 'a start, at least one step, and the end')
+    assert.equal(ui.all('[role=dialog] input[type=checkbox]').length, m.why!().steps.filter(s => s.key !== 'rest').length)
+  })
+
+  test('what you taught comes first, and is judged against the estimator and the past prices', () => {
+    const ui = draw(ctx({ taught: { caseNo: 3, name: 'Chair', price: 5_000_000 } }))
+    ui.click(ui.button('Why this price'))
+    assert.match(ui.text(), /Your costing.*₹50,00,000.*#3 Chair, taught/)
+    assert.match(ui.text(), /Your taught price ₹50,00,000 is above the estimator's range and above the past prices/)
+  })
+
+  test('switching a step off shows the price without it, says how it compares with the past prices, and saves nothing', () => {
+    const ui = draw()
+    ui.click(ui.button('Why this price'))
+    assert.doesNotMatch(ui.text(), /With your changes/)
+    const first = ui.all<HTMLInputElement>('[role=dialog] input[type=checkbox]')[0]
+    ui.click(first)
+    assert.match(ui.text(), /With your changes: ₹[\d,]+\./)
+    assert.match(ui.text(), /Only this screen changes; nothing is saved\./)
+    assert.equal(ui.all('[role=dialog] tbody tr.off').length, 1)
+    ui.click(ui.all<HTMLInputElement>('[role=dialog] input[type=checkbox]')[0])
+    assert.doesNotMatch(ui.text(), /With your changes/)
+  })
+
+  test('Teach my price closes the popup and hands over what was typed in the note box, so it is not typed twice', () => {
+    const told: string[] = []
+    const ui = draw(ctx({ onTeach: note => told.push(note) }))
+    ui.click(ui.button('Why this price'))
+    ui.click(ui.button('Send a note to the pricing desk instead'))
+    ui.click(ui.button('Correct the logic'))
+    ui.type(ui.one<HTMLTextAreaElement>('textarea'), 'Wood Structure: 1900\nCane: 525')
+    ui.click(ui.all('[role=dialog] button').find(b => b.textContent === 'Teach my price')!)
+    assert.deepEqual(told, ['Wood Structure: 1900\nCane: 525'])
+    assert.equal(ui.all('[role=dialog]').length, 0)
+  })
+
+  test('with no note typed it hands over nothing, and the card button opens the panel at once', () => {
+    const told: string[] = []
+    const ui = draw(ctx({ onTeach: note => told.push(note) }))
+    ui.click(ui.all('button').find(b => b.textContent === 'Teach my price')!)
+    assert.deepEqual(told, [''])
   })
 })
 

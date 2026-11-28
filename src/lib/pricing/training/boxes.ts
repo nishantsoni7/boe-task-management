@@ -7,6 +7,7 @@
 
 import { KINDS, KIND_LABEL, emptyLine, num, totals, workCase, type Kind, type Line } from './doc'
 import type { Size } from './calc'
+import { productType } from '@/lib/pricing/features'
 
 export type BoxKind = 'overhead' | 'margin'
 export const BOX_KINDS: readonly BoxKind[] = ['overhead', 'margin']
@@ -16,6 +17,11 @@ export type Boxes = Record<BoxKind, Line>
 const round2 = (n: number) => Math.round(n * 100) / 100
 const boxLine = (kind: BoxKind): Line => ({ ...emptyLine(), element: KIND_LABEL[kind], kind, calc: { type: 'percent', pct: '', of: 'cost' } })
 export const emptyBoxes = (): Boxes => ({ overhead: boxLine('overhead'), margin: boxLine('margin') })
+/** A new case for a chair starts with 20% factory expense and 20% margin on the cost, what the owner has used for every chair (notes of 23 and 28 Nov 2026); both can be changed. */
+export const startBoxes = (name: string): Boxes => {
+  const b = emptyBoxes()
+  return productType(name) === 'chair' ? { overhead: withPct(b.overhead, '20'), margin: withPct(b.margin, '20') } : b
+}
 
 /** The percentage typed in a box, as text ('' when the row is not a percentage). */
 export const boxPct = (l: Line): string => (l.calc?.type === 'percent' ? l.calc.pct : '')

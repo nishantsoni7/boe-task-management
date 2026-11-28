@@ -5,17 +5,17 @@
 
 ## Snapshot
 
-- Commit: `ec4bd550` — Loading screen on every move to another page, and a thin bar while a first read is slow (#1047)
+- Commit: `f5700dbb` — Teach panel: copy the line's picture through the builder's picture helper (the full suite caught the direct bucket call)
 - Commits on this branch: 1603
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 508 (first `20260530_create_positions.sql`, latest `20270828000000_quotation_choices_any_name.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
-- Test files: 958   Next.js 16.2.6, React 19.2.4
+- Test files: 961   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
-- `ec4bd550` 2026-11-28 Loading screen on every move to another page, and a thin bar while a first read is slow (#1047)
-- `1faf540b` 2026-11-28 Docs: #1045 merged and live (2026-11-28 16:52 IST) (#1046)
+- `f5700dbb` 2026-11-28 Teach panel: copy the line's picture through the builder's picture helper (the full suite caught the direct bucket call)
+- `84fb7795` 2026-11-28 Pricing: Why this price and Teach my price on a quotation line (no SQL)
 - `c4710d87` 2026-11-28 Quotations: no second red line inside the Price and Quantity boxes when focused (#1045)
 - `c637b653` 2026-11-28 Docs: #1043 merged and live (2026-11-28 16:20 IST) (#1044)
 - `1751b8f9` 2026-11-28 Quotations: the Products / Fabric and packing tabs no longer draw scroll bars (#1043)
@@ -171,7 +171,7 @@
 - `src/lib/performance` — 0 source, 1 test
 - `src/lib/permissions` — 20 source, 33 test
 - `src/lib/pi` — 10 source, 7 test
-- `src/lib/pricing` — 29 source, 19 test
+- `src/lib/pricing` — 29 source, 21 test
 - `src/lib/push` — 3 source, 1 test
 - `src/lib/queryPersist` — 1 source, 1 test
 - `src/lib/quotations` — 31 source, 30 test
