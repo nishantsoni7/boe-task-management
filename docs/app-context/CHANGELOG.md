@@ -4,6 +4,12 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-28 — Quotations: the Products / Fabric and packing tabs no longer draw scroll bars (PR #1043, open; no SQL) · no migration
+
+- **Why.** Owner, 28 Nov 2026, with a screenshot: up/down and left/right scroll arrows beside "Fabric and packing". "There should not be any scrolling area."
+- **Cause.** `.tabs2` had `overflow-x: auto`, which also makes `overflow-y` auto. Each tab's 1 px negative margin (the underline overlapping the head's border) overflowed by 1 px, drew a vertical bar, and that bar took width and brought in the horizontal one.
+- **Change.** `.tabs2` in `quotations.module.css` has no overflow; if a screen is ever too narrow the two tabs wrap. A test in `builderRedesign.test.tsx` pins it. CSS only, nothing saved or sent changes.
+
 ## 2026-11-25 — Quotations: client choices with any name, as compact cards, with Copy to… and one Client choices bar (PR #1041, merged as `265214cc` 2026-11-25 15:43 IST, production deployment succeeded 15:46 IST; step 3 of 3 of the page, version 2) · `20270828000000_quotation_choices_any_name.sql` → APPLIED 2026-11-25 13:45 IST (owner's "Yes, apply it", before the merge; `db push` applied only this file; live check: the rule is in, unnamed choices refused, anon cannot call it, no stored row fails it, history row present)
 
 - **Why.** Owner, 25 Nov 2026, on the version 2 mockup: "These sections should be manually editable by the sales candidate. Like in case i want to add an option to add stone or rope or any other then i should be able to add it and the approvals will be hidden by default but when opened it will clearly show the approvals with images clearly visible and the selection name below it", then "it looks too big. Slightly smaller … when there are around 50 products in a PI. It should not look cluttered", and "Remove the extra elements such as Supplier and where used, we can add these details in notes"; "Build it".
