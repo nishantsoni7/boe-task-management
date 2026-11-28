@@ -86,3 +86,17 @@ export const sendFeedback = (s: Supabase, doc: FeedbackDoc) => call<string>(() =
 export const fetchFeedback = (s: Supabase, openOnly: boolean) => call<FeedbackRow[]>(() => s.rpc('pricing_feedback_list', { p_open_only: openOnly }))
 export const setFeedbackStatus = (s: Supabase, id: string, status: FeedbackRow['status'], note: string | null) =>
   call<null>(() => s.rpc('pricing_feedback_set', { p_id: id, p_status: status, p_note: note }))
+
+/**
+ * After a price is taught from a quotation line (28 Nov 2026): the open notes sent from that product about its price are answered with the case.
+ * A note about quoting differently from a taught price (`differs_taught`) is about something else and stays. Best effort and desk only: for anyone
+ * else the list is refused and nothing is closed. Returns how many were closed.
+ */
+export async function closeNotesFor(s: Supabase, quotationId: string, lineName: string, caseNo: number): Promise<number> {
+  try {
+    const name = lineName.trim().toLowerCase()
+    const rows = (await fetchFeedback(s, true)).filter(r => r.quotation_id === quotationId && r.status === 'new' && r.kind !== 'differs_taught' && (r.line_name ?? '').trim().toLowerCase() === name)
+    await Promise.all(rows.map(r => setFeedbackStatus(s, r.id, 'done', `Taught in Training as case #${caseNo}`)))
+    return rows.length
+  } catch { return 0 }
+}

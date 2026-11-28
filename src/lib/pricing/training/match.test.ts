@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test'
 import assert from 'node:assert/strict'
-import { adjustment, borrowable, byLikeness, difference, lineWood, pickedCaseNo, pickPrice, quotedAgainst, readPick, taughtPrice, withPick, writePick, type TaughtCase, type TaughtQuote } from './match'
+import { adjustment, borrowable, byLikeness, difference, lineWood, pickedCaseNo, pickPrice, quotedAgainst, readPick, taughtNow, taughtPrice, withPick, writePick, type TaughtCase, type TaughtQuote } from './match'
 
 const WOODS = ['Sheesham', 'Teak', 'Mango']
 const CHAIR: TaughtCase = { id: 'a', case_no: 12, name: 'Arm chair, cane back', variant: null, image_path: null, total: 5500, wood: 'sheesham', wood_amount: 2300, in_wood: { teak: 7800 } }
@@ -105,5 +105,27 @@ describe('the watcher: a quoted price against the taught one', () => {
     assert.deepEqual([s.lines, s.close, s.lower, s.higher], [5, 2, 2, 1])
     assert.deepEqual(s.reasons, { 'Quantity discount': 2 })
     assert.deepEqual(s.unexplained.map(u => [u.unit_price, u.taught]), [[7000, 5500]])
+  })
+})
+
+describe('what a line\'s picked case comes to for the line (shown as "Your costing" in Why this price)', () => {
+  const LIB = { cases: [CHAIR, { ...CHAIR, id: 'b', case_no: 4, name: 'Side chair', total: 4800, wood: 'teak', wood_amount: null, in_wood: {}, parts: [{ element: 'Brass caps', kind: 'material', amount: 350 }] }], woods: WOODS }
+  it('is nothing for a line that picked nothing, or whose case is no longer submitted', () => {
+    assert.equal(taughtNow(LIB, { name: 'Chair' }, 'Client wants it darker'), null)
+    assert.equal(taughtNow(LIB, { name: 'Chair' }, '[Taught case #99]'), null)
+  })
+  it('is the price as taught, in the line wood when the database worked one out', () => {
+    assert.deepEqual(taughtNow(LIB, { name: 'Chair', material: 'Sheesham' }, withPick('', 12)), { caseNo: 12, name: 'Arm chair, cane back', price: 5500 })
+    assert.equal(taughtNow(LIB, { name: 'Chair', material: 'Teak' }, withPick('', 12))!.price, 7800)
+  })
+  it("is the server's answer once it has one for this case (and only for this case)", () => {
+    assert.equal(taughtNow(LIB, { name: 'Chair' }, withPick('', 12), { caseNo: 12, price: 6100 })!.price, 6100)
+    assert.equal(taughtNow(LIB, { name: 'Chair' }, withPick('', 12), { caseNo: 4, price: 1 })!.price, 5500, 'an answer for another case is ignored')
+  })
+  it('counts what the line leaves out or adds, as the Taught price box does', () => {
+    const note = writePick('', { caseNo: 4, without: [], with: [] })
+    assert.equal(taughtNow(LIB, { name: 'Chair' }, note)!.price, 4800)
+    const added = writePick('', { caseNo: 12, without: [], with: [{ caseNo: 4, element: 'Brass caps' }] })
+    assert.equal(taughtNow(LIB, { name: 'Chair' }, added)!.price, 5850)
   })
 })

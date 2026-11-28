@@ -5,7 +5,6 @@
 // The on/off switch and the limits live in the Control Center (Sales > Quotation price approval).
 
 import { useEffect, useState } from 'react'
-import { createPortal } from 'react-dom'
 import { AppLink as Link } from '@/components/ui/AppLink'
 import { useQuery } from '@tanstack/react-query'
 import { BadgeCheck, TriangleAlert } from 'lucide-react'
@@ -15,22 +14,17 @@ import type { NeedsYou } from '@/lib/quotations/needsYou'
 import { formatDateIN } from '@/lib/quotations/math'
 import { suggestPrice } from '@/lib/pricing/suggest'
 import type { ModelSuggestion } from '@/lib/pricing/model'
-import { SuggestionFeedback, type FeedbackLine } from '@/components/pricing/learning/SuggestionFeedback'
-import { stashPrefill } from '@/lib/pricing/training/prefill'
+import { PriceWhy, type WhyCtx } from './PriceWhy'
 import { gapOf, kindFor, shouldAsk, TEACH_REASONS, withAskedTag } from '@/lib/pricing/teachAsk'
 import { learningErrorText, sendFeedback } from '@/lib/pricing/learning/api'
 import { istDateOf } from '@/lib/istDate'
 import {
-  fetchPriceQueue, pictureUrl,
+  fetchPriceQueue,
   type PriceHint, type PriceReason, type PriceState,
 } from '@/lib/quotations/api'
 import s from './quotations.module.css'
 
 type Supabase = ReturnType<typeof createClient>
-
-type WhyCtx = { line: FeedbackLine; clientType: string | null; quotationId: string | null; isDesk: boolean
-  /** For "Teach this price": the line's photo and the price typed on it. */
-  imagePath?: string | null; price?: number | null }
 
 /**
  * The suggested price as a small card for everyone: "Suggested ₹4,790" with a Use button and, under it, "Range ₹3,800–₹6,050"; or
@@ -55,15 +49,16 @@ export function PriceHintLine({ hint, model, price, editable, onUse, feedback, n
     <div className={s.sug}>
       <span>
         {sug
-          ? <>Suggested <b>{formatINR(sug.price)}</b></>
+          ? <>{model ? 'Estimator' : 'Suggested'} <b>{formatINR(sug.price)}</b></>
           : o ? <>Last ordered <b>{formatINR(Number(o.last))}</b></> : <>Last quoted <b>{formatINR(Number(hint!.quoted!.last))}</b></>}
       </span>
       <span className={s.sugAct}>{editable && price !== last && <button type="button" className={s.sugUse} onClick={() => onUse(last)}>Use</button>}</span>
-      {(range || feedback) && (
-        <>
-          <span className={s.sugRange}>{range && <>Range {formatINR(sug!.low)}–{formatINR(sug!.high)}</>}</span>
-          <span className={s.sugAct}>{feedback && <button type="button" className={s.sugWhy} onClick={() => setWhy(true)} aria-haspopup="dialog">Why?</button>}</span>
-        </>
+      {range && <span className={s.sugRange}>Range {formatINR(sug!.low)}–{formatINR(sug!.high)}</span>}
+      {feedback && (
+        <span className={s.sugLinks}>
+          <button type="button" className={s.sugWhy} onClick={() => setWhy(true)} aria-haspopup="dialog">Why this price</button>
+          {feedback.onTeach && <button type="button" className={s.sugTeach} onClick={() => feedback.onTeach!('')}>Teach my price</button>}
+        </span>
       )}
       {why && feedback && <PriceWhy ctx={feedback} hint={hint} model={model} sug={sug} onClose={() => setWhy(false)} />}
       {feedback && editable && onAsked && sug && <TeachAsk ctx={feedback} sug={sug} model={model} price={price} note={note} onAsked={onAsked} />}
@@ -111,55 +106,6 @@ function TeachAsk({ ctx, sug, model, price, note, onAsked }: {
       {error && <div className={`${s.notice} ${s.noticeBad}`} role="alert">{error}</div>}
     </div>
   )
-}
-
-/** The popup behind "Why?": what the suggestion rests on, the history, and the form to share feedback or correct the logic. */
-function PriceWhy({ ctx, hint, model, sug, onClose }: { ctx: WhyCtx; hint?: PriceHint; model?: ModelSuggestion | null; sug: { price: number; low: number; high: number; confidence: string; basis: string } | null; onClose: () => void }) {
-  const o = hint?.ordered ?? null
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-  // In the body, not inside the product row: the row sits in a muted small-print block that a popup must not inherit.
-  return createPortal(
-    <div className={s.scrim} onClick={onClose}>
-      <div className={s.modal} style={{ maxWidth: 480, color: 'var(--boe-text)', fontSize: 14 }} role="dialog" aria-modal="true" aria-labelledby="why-title" onClick={e => e.stopPropagation()}>
-        <div className={s.cardHead}><h2 id="why-title">{ctx.line.name.trim() || 'This product'}: the price</h2><span className={s.spacer} /><button type="button" className={s.iconBtn} onClick={onClose} aria-label="Close" autoFocus>×</button></div>
-        <div className={s.cardBody} style={{ display: 'grid', gap: 10 }}>
-          {sug && (
-            <div>
-              <div>Suggested <b>{formatINR(sug.price)}</b>{sug.low !== sug.high && <> · range {formatINR(sug.low)}–{formatINR(sug.high)}</>} · {sug.confidence} confidence</div>
-              <div className={`${s.small} ${s.muted}`}>From {sug.basis}</div>
-            </div>
-          )}
-          {model && model.reasons.length > 0 && <ul className={s.small} style={{ margin: 0, paddingLeft: 18 }}>{model.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>}
-          {(o || hint?.quoted) && (
-            <div className={s.small}>
-              {o && <div>Last ordered <b>{formatINR(Number(o.last))}</b>{Number(o.count) > 1 && <> · {formatINR(Number(o.min))}–{formatINR(Number(o.max))} over {o.count} orders</>}</div>}
-              {hint?.quoted && <div>Last quoted <b>{formatINR(Number(hint.quoted.last))}</b></div>}
-            </div>
-          )}
-          {sug && (
-            <SuggestionFeedback source="quotation" line={ctx.line} clientType={ctx.clientType} quotationId={ctx.quotationId} isDesk={ctx.isDesk} defaultOpen
-              suggestion={{ price: sug.price, low: sug.low, high: sug.high, confidence: sug.confidence, basis: sug.basis, reasons: model?.reasons ?? [] }} />
-          )}
-          <div className={s.small}>
-            <button type="button" className={s.linkBtn} onClick={() => teachThisPrice(ctx)}>Teach this price in Training</button>
-            <span className={s.muted}> · opens a new tab with this product, its photo, size and price</span>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  )
-}
-
-/** "Teach this price" from a quotation line: Training opens in a new tab, so the quotation being edited is left as it is. */
-function teachThisPrice(ctx: WhyCtx) {
-  stashPrefill({ name: ctx.line.name.trim() || 'A product', size: ctx.line.size ?? null, material: ctx.line.material ?? null, qty: ctx.line.qty ?? null, price: ctx.price ?? null, note: null,
-    photoUrl: ctx.imagePath ? pictureUrl(createClient(), ctx.imagePath) : null, feedbackId: null, quoteNo: null })
-  window.open('/pricing/training/new', '_blank', 'noopener')
 }
 
 export function reasonText(r: PriceReason): string {

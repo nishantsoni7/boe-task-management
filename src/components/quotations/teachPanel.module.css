@@ -1,0 +1,11 @@
+/* "Teach my price" (28 Nov 2026, owner approved the mockup): a side panel over the quotation, so the quotation being worked on stays where it is. */
+.scrim { position: fixed; inset: 0; z-index: 320; background: rgba(48, 53, 54, .38); display: flex; justify-content: flex-end; }
+.drawer { width: min(860px, 100%); height: 100%; background: #fff; display: flex; flex-direction: column; box-shadow: var(--boe-shadow-dialog); border-radius: 14px 0 0 14px; overflow: hidden; outline: none; }
+.head { display: flex; align-items: flex-start; gap: 12px; padding: 16px 16px 12px 20px; border-bottom: 1px solid var(--boe-border); flex: none; }
+.head h2 { margin: 0; font: 700 18px/1.3 var(--boe-font-heading); color: var(--boe-text); }
+.head p { margin: 2px 0 0; font-size: 13px; color: var(--boe-text-muted); }
+.scroll { overflow: auto; flex: 1; padding: 16px 20px 0; }
+@media (max-width: 640px) {
+  .drawer { border-radius: 0; }
+  .scroll { padding: 12px 12px 0; }
+}

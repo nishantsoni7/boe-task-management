@@ -8,7 +8,7 @@ import { sizeInInches, sizeToInches, type ChoiceKey, type DimensionUnit, type Li
 import type { ModelSuggestion } from '@/lib/pricing/model'
 import { PriceHintLine } from './PricingDesk'
 import { TaughtPrice, type DiffersReport } from '@/components/pricing/training/TaughtPrice'
-import type { Library } from '@/lib/pricing/training/match'
+import { taughtNow, type Library } from '@/lib/pricing/training/match'
 import type { ReworkAnswer } from '@/lib/pricing/training/api'
 import { withUsedTag } from '@/lib/pricing/echo'
 import { Pic } from './Pic'
@@ -31,7 +31,7 @@ export const REF_LABEL: Record<LineRef['kind'], string> = { swatch: 'Swatch', dr
 /** 13500 → "13,500" (Indian grouping); the box shows the plain digits while it is being typed in. */
 const grouped = (n: number | null) => (n === null ? '' : n.toLocaleString('en-IN'))
 
-export function LineRow({ l, n, area, unit, editable, qty, total, first, last, url, choicesOpen, onChoicesOpen, onCopyChoice, onChange, onUpload, onUploadSwatch, onImprove, onView, hint, model, feedbackCtx, taught, onRemove, onMove, onDuplicate }: {
+export function LineRow({ l, n, area, unit, editable, qty, total, first, last, url, choicesOpen, onChoicesOpen, onCopyChoice, onChange, onUpload, onUploadSwatch, onImprove, onView, hint, model, feedbackCtx, taught, onTeach, onRemove, onMove, onDuplicate }: {
   l: QuoteLine; n: number; area: QuoteArea | null; unit: DimensionUnit; editable: boolean; qty: number; total: number; first: boolean; last: boolean
   url: (p: string) => string
   /** Whether the Client choices are open; the builder holds it, so its Client choices bar can open or close them all (25 Nov 2026). */
@@ -44,6 +44,8 @@ export function LineRow({ l, n, area, unit, editable, qty, total, first, last, u
     reworked?: Map<string, ReworkAnswer> }
   /** Who and what the price feedback is about; given by the builder, which knows the quotation. */
   feedbackCtx?: { clientType: string | null; quotationId: string | null; isDesk: boolean }
+  /** "Teach my price": opens the Teach panel for this line (28 Nov 2026); given only to people who may teach, on a quotation that can be edited. */
+  onTeach?: (note: string) => void
   onRemove: () => void; onMove: (d: -1 | 1) => void; onDuplicate: () => void
 }) {
   const fileRef = useRef<HTMLInputElement>(null)
@@ -148,7 +150,8 @@ export function LineRow({ l, n, area, unit, editable, qty, total, first, last, u
             onDiffers={taught.differs && (r => taught.differs!(r, { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }))} />}
           {/* The echo guard (20270824000000): a price set by Use is tagged, and learning leaves it out until somebody changes it. */}
           <PriceHintLine hint={hint} model={model} price={l.unit_price} editable={editable} onUse={p => onChange({ unit_price: Math.round(p), internal_note: withUsedTag(l.internal_note, Math.round(p)) })}
-            feedback={feedbackCtx && { line: { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }, ...feedbackCtx, imagePath: l.image_path, price: l.unit_price }}
+            feedback={feedbackCtx && { line: { name: l.name, size: l.size_text, material: l.material, finish: [l.finish, l.spec].filter(Boolean).join(' ') || null, qty }, ...feedbackCtx, imagePath: l.image_path, price: l.unit_price,
+              taught: taught ? taughtNow(taught.library, l, l.internal_note, taught.reworked?.get(l.key)) : null, onTeach }}
             note={l.internal_note} onAsked={n => onChange({ internal_note: n })} />
         </div>
         <div className={`${s.plFoot} ${l.is_optional ? s.plFootOpt : ''}`}>

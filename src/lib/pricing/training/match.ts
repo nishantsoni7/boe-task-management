@@ -127,6 +127,19 @@ export function taughtPrice(c: TaughtCase, line: LineWords, woods: readonly stri
     : { price: Number(c.total), wood: c.wood, swapped: false, noRate: other ? wood : null }
 }
 
+/**
+ * What the case a line picked comes to for that line, as the line's Taught price shows it: the server's answer when it has one (the case
+ * worked out for the line's size, wood and today's rates), else the price as taught in the line's wood, plus what the line leaves out or adds.
+ * "Why this price" shows it as "Your costing". Null when the line picked nothing, or the case is no longer submitted.
+ */
+export function taughtNow(lib: Library, line: LineWords, note: string | null | undefined, rework?: { caseNo: number; price: number } | null): { caseNo: number; name: string; price: number } | null {
+  const pick = readPick(note)
+  const c = pick && lib.cases.find(x => x.case_no === pick.caseNo)
+  if (!pick || !c) return null
+  const base = rework && rework.caseNo === c.case_no ? rework.price : taughtPrice(c, line, lib.woods).price
+  return { caseNo: c.case_no, name: c.name, price: base + adjustment(c, pick, lib.cases).delta }
+}
+
 // ── The watcher (20270729000000): a quoted price against the taught one ──
 /** The reasons offered when a quoted price differs. Written into the tag as they read here. */
 export const REASONS = ['Quantity discount', 'Client relationship', 'Size is different', 'Material or finish is different', 'The taught price is wrong', 'Other'] as const

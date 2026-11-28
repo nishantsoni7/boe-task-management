@@ -28,8 +28,26 @@ export type ModelSuggestion = {
   reasons: string[]; basis: string; n: number; type: string
   /** Which engine priced it. */
   engine?: 'v2' | 'v3'
+  /**
+   * "Why this price" (28 Nov 2026), set by priceLine as NON-enumerable properties so the plain suggestion (and everything that copies or
+   * compares it) is unchanged: the chain of steps this price is made of, and the closest past prices. Both work only when asked.
+   */
+  why?: () => PriceChain
+  closest?: () => Neighbour[]
 }
 export type Effect = { label: string; pct: number }
+/** One step of a priced line: what it did, and how many of the prices the fit learned from stand behind it. */
+export type ChainStep = { key: string; label: string; c: number; pct: number; behind: string }
+export type PriceChain = {
+  /** The price of the typical product of the type, the point every step starts from. */
+  base: number; price: number; low: number; high: number; sigma: number; n: number
+  typical: { area: number | null; material: string; finish: string }
+  steps: ChainStep[]
+  /** Anything in the line the fit had not seen (a material, a finish), as predict words it. */
+  notes: string[]
+}
+/** A recorded price near the line, for comparing the estimate with what was really charged. */
+export type Neighbour = { name: string; price: number; at: string; qty: number | null; detail: string; kind: string }
 export type Fit = {
   type: string; n: number; sigma: number; r2: number
   columns: string[]; coef: number[]
@@ -37,6 +55,8 @@ export type Fit = {
   seen: Record<string, Set<string>>
   /** Engine v3: the photo facts are effects too. */
   facts: boolean
+  /** How many of the `n` prices each column applies to (the intercept: all of them). */
+  counts: Record<string, number>
 }
 /** A line's features, with its photo facts when v3 prices it. */
 export type Features = LineFeatures & Partial<Record<FactKey, string>>
@@ -154,9 +174,16 @@ export function fitType(points: readonly ModelPoint[], type: string, now = Date.
   })
   const seen: Record<string, Set<string>> = {}
   for (const key of [...SEEN_KEYS, ...(withFacts ? PHOTO_KEYS : [])]) seen[key] = new Set(rows.map(r => valueOf(r, key)))
+  const counts: Record<string, number> = {}
+  for (const col of columns) {
+    if (col === 'noArea') counts[col] = rows.length - withArea.length
+    else if (col === 'logArea') counts[col] = withArea.length
+    else if (col === '1' || col === 'years') counts[col] = rows.length
+    else { const [key, v] = col.split(':'); counts[col] = rows.filter(r => valueOf(r, key) === v).length }
+  }
   return {
     type, n: rows.length, sigma: Math.sqrt(ssRes / W), r2: ssTot > 0 ? 1 - ssRes / ssTot : 0,
-    columns, coef, areaMean, ref, seen, facts: withFacts,
+    columns, coef, areaMean, ref, seen, facts: withFacts, counts,
   }
 }
 
@@ -183,8 +210,8 @@ export function explainFit(fit: Fit): Effect[] {
   return out
 }
 
-/** `yearsAgo` prices the line as of an earlier date (the blind test of an old PI); a quotation line is priced for today (0). */
-export function predict(fit: Fit, f: Features, yearsAgo = 0): ModelSuggestion {
+/** The line as the fit sees it: a value it has not seen is priced as the usual one (and said so), then each column's weight. */
+function prepare(fit: Fit, f: Features, yearsAgo: number) {
   const unseen: string[] = []
   const g: Features = { ...f }
   for (const k of Object.keys(fit.seen)) {
@@ -198,6 +225,12 @@ export function predict(fit: Fit, f: Features, yearsAgo = 0): ModelSuggestion {
   }
   const x = design(g, Math.max(0, yearsAgo), fit)
   const yhat = x.reduce((s, v, i) => s + v * fit.coef[i], 0)
+  return { unseen, x, yhat }
+}
+
+/** `yearsAgo` prices the line as of an earlier date (the blind test of an old PI); a quotation line is priced for today (0). */
+export function predict(fit: Fit, f: Features, yearsAgo = 0): ModelSuggestion {
+  const { unseen, x, yhat } = prepare(fit, f, yearsAgo)
   // Reasons: the biggest effects of THIS line against the typical product of the type.
   const parts: Effect[] = []
   fit.columns.forEach((col, i) => {
@@ -243,5 +276,68 @@ export function priceLine(points: readonly ModelPoint[], line: Parameters<typeof
   const key = withFacts ? `${type}:v3` : type
   let fit = fits?.get(key)
   if (fit === undefined) { fit = fitType(points, type, now, withFacts); fits?.set(key, fit) }
-  return fit ? predict(fit, f) : null
+  if (!fit) return null
+  const s = predict(fit, f)
+  const used = fit
+  // Not enumerable: the plain suggestion stays exactly what it was (it is copied, compared and sent as feedback); "Why this price" asks.
+  Object.defineProperties(s, { why: { value: () => explain(used, f) }, closest: { value: () => closestPrices(points, plain) } })
+  return s
+}
+
+/** The column's step in words, and how many prices stand behind it. */
+function stepOf(fit: Fit, col: string): { key: string; label: string; behind: string } | null {
+  const n = fit.n, c = fit.counts[col] ?? 0, kind = TYPE_LABEL[fit.type]?.toLowerCase() ?? 'product'
+  if (col === 'noArea') return { key: 'size', label: 'Size not written', behind: `${c} of the ${n} ${kind} prices are also written without a size` }
+  if (col === 'logArea') return { key: 'size', label: `Its size against a typical ${kind}`, behind: `${c} of the ${n} prices have a size to learn from` }
+  if (col === '1' || col === 'years') return null
+  const [k, v] = col.split(':')
+  const of = c === 1 ? '1 price says' : `${c} prices say`
+  if (k === 'qtyBand') return { key: 'qty', label: `${QTY_LABEL[v]} (volume)`, behind: `${c} of the ${n} prices are in this band` }
+  if (PHOTO_KEYS.includes(k as FactKey)) return { key: `photo:${k}`, label: effectLabel(k, v, fit.ref[k]), behind: `${c} of the ${n} photos show this` }
+  const word = k === 'clientType' ? 'Client type' : cap(k)
+  return { key: k, label: `${word}: ${cap(v)} instead of ${cap(fit.ref[k])}`, behind: of + ` ${cap(v)}` }
+}
+
+/**
+ * "Why this price": the price as a chain. The fit is log price = intercept + effects, so the price is the starting point (the typical product of
+ * the type) times one factor per step; the steps are listed biggest first with the running figure worked out by the screen. Steps that
+ * move the price by less than half a percent are not listed and their sum is the last step, so the chain always closes on the same price
+ * `predict` gives.
+ */
+export function explain(fit: Fit, f: Features): PriceChain {
+  const { unseen, x, yhat } = prepare(fit, f, 0)
+  const steps: ChainStep[] = []
+  let rest = 0
+  fit.columns.forEach((col, i) => {
+    const c = fit.coef[i] * x[i], info = stepOf(fit, col)
+    if (!info || c === 0) return
+    if (Math.abs(c) < 0.005) { rest += c; return }
+    steps.push({ ...info, c, pct: pctOf(c) })
+  })
+  steps.sort((a, b) => Math.abs(b.c) - Math.abs(a.c))
+  if (rest !== 0) steps.push({ key: 'rest', label: 'Smaller effects together', c: rest, pct: pctOf(rest), behind: '' })
+  return {
+    base: Math.exp(fit.coef[0]), price: roundPrice(Math.exp(yhat)), low: roundPrice(Math.exp(yhat - fit.sigma)), high: roundPrice(Math.exp(yhat + fit.sigma)),
+    sigma: fit.sigma, n: fit.n, typical: { area: fit.areaMean !== null ? Math.exp(fit.areaMean) : null, material: fit.ref.material, finish: fit.ref.finish }, steps, notes: unseen,
+  }
+}
+
+const KIND_OK = new Set(['order', 'won', 'approved', 'taught'])
+/**
+ * The recorded prices nearest to a line, for comparing the estimate with what was really charged: the same product type, a real price (an
+ * order, a won or approved quotation, a taught case), the same material, finish and quantity band, and a size close to the line's. Ties go to
+ * the newest. The same words as the fit sees (no photo facts), so the list can be checked by eye.
+ */
+export function closestPrices(points: readonly ModelPoint[], line: LineFeatures, n = 7): Neighbour[] {
+  return points.flatMap(p => {
+    if (!KIND_OK.has(p.k) || !(Number(p.p) > 0)) return []
+    const f = pointFeatures(p)
+    if (f.type !== line.type) return []
+    let s = 0
+    if (f.material === line.material) s += 2
+    if (line.finish !== 'unknown' && f.finish === line.finish) s += 1
+    if (f.qtyBand === line.qtyBand) s += 1
+    if (f.area && line.area) s += 1 - Math.min(1, Math.abs(Math.log(f.area / line.area)))
+    return [{ s, at: Date.parse(p.at) || 0, n: { name: p.name, price: Number(p.p), at: p.at, qty: p.q === null || p.q === undefined ? null : Number(p.q), detail: [p.material, p.finish].filter(Boolean).join(' · '), kind: p.k } }]
+  }).sort((a, b) => b.s - a.s || b.at - a.at).slice(0, n).map(r => r.n)
 }
