@@ -24,7 +24,7 @@ import { istDateOf } from '@/lib/istDate'
 import {
   STATUS_LABEL, errorKind, errorText, fetchQuotation, fetchPictureMark, pictureMarkKey, pictureSrc, quotationKeys, setPictureMark, saveDoc, saveQuotation,
   setStatus as setStatusRpc, shareQuotation, fetchHints, type PriceHint, uploadPicture, type Header, type Quotation, type QuotationStatus,
-  fetchSuggestionSettings, suggestionsKey, fetchPaymentDetails, deleteCheckKey, fetchDeleteCheck, pictureUrl,
+  fetchSuggestionSettings, suggestionsKey, fetchPaymentDetails, deleteCheckKey, fetchDeleteCheck,
 } from '@/lib/quotations/api'
 import {
   DIMENSION_UNITS, MAX_CHOICES, SUPPLY_STATES, choiceCounts, choiceLabel, computeTotals, copyChoiceTo, costingSums, formatDateIN, gstModeForState, validUntil,
@@ -398,7 +398,7 @@ export default function BuilderScreen() {
         const l = lines.find(x => x.key === teachFor.key)
         return l ? <TeachPanel lineName={l.name.trim() || 'This product'} onClose={() => setTeachFor(null)} onTaught={taughtDone}
           prefill={{ name: l.name.trim() || 'A product', size: l.size_text || null, material: l.material || null, qty: totals?.lineQty[l.key] ?? l.qty, price: l.unit_price, note: teachFor.note.trim() || null,
-            photoUrl: l.image_path ? pictureUrl(supabase, l.image_path) : null, feedbackId: null, quoteNo: base?.quote_no ?? null }} /> : null
+            photoUrl: l.image_path ? picSrc(l.image_path) : null, feedbackId: null, quoteNo: base?.quote_no ?? null }} /> : null
       })()}
       {briefing && <PriceBrief supabase={supabase} quotationId={id} lines={lines} onClose={n => { setBriefing(false); if (n > 0) setMsg({ tone: 'ok', text: `Saved the price brief for ${n} product${n === 1 ? '' : 's'}.` }) }} />}
       {deleting && <DeleteQuotationDialog supabase={supabase} onClose={() => setDeleting(false)}
