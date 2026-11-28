@@ -5,8 +5,8 @@
 
 ## Snapshot
 
-- Commit: `c1910493` — Modules: "All modules" tiles are never narrower than their names need
-- Commits on this branch: 1604
+- Commit: `aead3691` — Docs: Modules "All modules" names never break (dossier 08, app context, changelog)
+- Commits on this branch: 1605
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 508 (first `20260530_create_positions.sql`, latest `20270828000000_quotation_choices_any_name.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
@@ -14,6 +14,7 @@
 
 ## Latest 25 commits
 
+- `aead3691` 2026-11-28 Docs: Modules "All modules" names never break (dossier 08, app context, changelog)
 - `c1910493` 2026-11-28 Modules: "All modules" tiles are never narrower than their names need
 - `ec4bd550` 2026-11-28 Loading screen on every move to another page, and a thin bar while a first read is slow (#1047)
 - `1faf540b` 2026-11-28 Docs: #1045 merged and live (2026-11-28 16:52 IST) (#1046)
@@ -38,7 +39,6 @@
 - `ffcb0080` 2026-11-25 Order page top: a facts line and ONE card, folded detail rows, PI card without the Main PI heading (#1027)
 - `52b12d79` 2026-11-24 Docs: #1023 merged and live (2026-11-24 20:18 IST) (#1024)
 - `d0b8cc70` 2026-11-24 Quotations: the builder's top is ONE panel, the lead is the status, no price-limits block (#1025)
-- `e7318db1` 2026-11-24 Quotations: no price hint at all for people outside the pricing desk (#1023)
 
 ## Pages by top-level area
 
