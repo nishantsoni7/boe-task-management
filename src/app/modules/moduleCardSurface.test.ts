@@ -253,8 +253,11 @@ describe('a long module name arrives whole', () => {
     assert.equal(/-webkit-line-clamp/.test(CSS), false, 'no clamp survives anywhere')
     assert.equal(/text-overflow:\s*ellipsis/.test(CSS), false)
     assert.equal(/\boverflow:\s*hidden/.test(CSS), false)
-    assert.ok(/\.title\s*\{[^}]*overflow-wrap:\s*anywhere/.test(CSS),
-      'and a single unbroken word still cannot overflow the card')
+    assert.ok(/\.title\s*\{[^}]*overflow-wrap:\s*break-word/.test(CSS),
+      'a name wraps at its spaces; one unbroken word wider than its own tile splits inside the tile, not out of it')
+    // "Attendanc / e & Payroll" (owner screenshot, 2026-11-28) came from "anywhere" on a 75px name column.
+    assert.equal(/overflow-wrap:\s*anywhere|word-break:\s*break-all|word-break:\s*break-word/.test(stripCss(CSS)), false,
+      'no rule lets a word break in the middle just because its column is narrow')
   })
 
   test('every min-height is a floor and never a ceiling', () => {
@@ -699,15 +702,20 @@ describe('the launcher sizes itself from the width it actually has', () => {
     assert.equal(/@media \(min-width/.test(CSS), false)
   })
 
-  test('the compact grid steps 1 → 2 → 3 → 4 → 5, and never past five (the plain .grid)', () => {
-    for (const [width, cols] of [[480, 2], [660, 3], [880, 4], [1120, 5]] as const) {
-      const at = CSS.indexOf(`@container (min-width: ${width}px)`)
-      assert.notEqual(at, -1, `the ${width}px step exists`)
-      assert.match(CSS.slice(at, CSS.indexOf('}', CSS.indexOf('.grid', at))),
-        new RegExp(`grid-template-columns:\\s*repeat\\(${cols}, minmax\\(0, 1fr\\)\\)`))
-    }
-    // Only the quiet surface (.gridQuiet, normal mode) has six, from 1120px.
-    assert.equal(/\.grid\s*\{[^}]*repeat\([6-9], /.test(stripCss(CSS)), false)
+  test('THE COMPACT GRID FOLLOWS A MINIMUM TILE WIDTH, never a fixed column count', () => {
+    const css = stripCss(CSS)
+    const at = css.indexOf('@container (min-width: 480px) {\n  .grid {')
+    assert.notEqual(at, -1, 'from 480px the plain .grid sets its columns')
+    assert.match(css.slice(at, css.indexOf('\n}\n', at)),
+      /grid-template-columns:\s*repeat\(auto-fill, minmax\(min\(100%, var\(--tile-min\)\), 1fr\)\)/,
+      'as many columns as fit while every tile stays at least --tile-min wide')
+    assert.match(css, /\.gridQuiet\s*\{\s*--tile-min:\s*224px;/, 'All modules: the room a ~16-letter name needs beside a count')
+    assert.match(baseRule('.grid'), /--tile-min:\s*260px/, 'Arrange your modules: the same room plus the 60px handle gutter')
+    // This is what put six across at a 1130px launcher and left a name 75px (owner, 2026-11-28).
+    assert.equal(/\.(grid|gridQuiet)\s*\{[^}]*repeat\(\d/.test(css), false, 'no fixed column count survives on either grid')
+    assert.equal(/repeat\(6, /.test(css), false, 'six across is gone')
+    assert.equal(/\.gridQuiet\s*\{[^}]*grid-template-columns/.test(css), false,
+      'the quiet surface only draws; its columns are the .grid rule')
   })
 
   test('THE PAGE ASKS FOR ONE 1400px CONTENT COLUMN', () => {
@@ -716,22 +724,37 @@ describe('the launcher sizes itself from the width it actually has', () => {
     assert.ok(LAYOUT.includes('boe-main-content-capped'))
   })
 
-  test('a compact tile is a sensible width at 1920, 1366 and 1024', () => {
-    // Launcher width = min(window - 260px sidebar - 44px gutters, 1400px
-    // column); 14px between tiles.
-    const tile = (window: number, cols: number) => {
-      const grid = Math.min(window - 260 - 44, 1400)
-      return (grid - (cols - 1) * 14) / cols
+  test('a name always has room: at every launcher width from 480px to the 1400px column, with and without a count', () => {
+    // The arithmetic of the rule above, from the stylesheet's own number. The quiet surface has
+    // 10px padding and a 1px border each side, and 2px between tiles.
+    const tileMin = Number(CSS.match(/\.gridQuiet\s*\{\s*--tile-min:\s*(\d+)px/)![1])
+    const GAP = 2
+    const SURFACE = 10 * 2 + 1 * 2
+    const columns = (launcher: number) => Math.max(1, Math.floor((launcher - SURFACE + GAP) / (tileMin + GAP)))
+    const tile = (launcher: number) => (launcher - SURFACE - (columns(launcher) - 1) * GAP) / columns(launcher)
+    for (let launcher = 480; launcher <= 1400; launcher++) {
+      assert.ok(tile(launcher) >= tileMin - 0.01, `at ${launcher}px a tile is only ${tile(launcher)}px`)
     }
-    for (const [window, cols] of [[1920, 5], [1366, 4], [1024, 3]] as const) {
-      const w = tile(window, cols)
-      assert.ok(w > 200 && w < 300,
-        `${cols} columns at ${window} give a ${Math.round(w)}px tile — too cramped or too empty`)
-    }
+    // The owner's launcher: a 1536px window with the For you panel docked leaves ~1130px.
+    // It used to draw six 183px tiles; it draws four now, so 16 modules make four rows of four.
+    assert.equal(columns(1130), 4)
+    assert.equal(columns(700), 3, 'a tablet in portrait')
+    assert.equal(columns(1400), 6, 'the widest column')
+
+    // What a name has: 12 + 12 padding, a 38px icon, a 12px gap; beside a count, 8px and the 26px chip as well.
+    const beside = (count: boolean) => tileMin - 24 - 38 - 12 - (count ? 8 + 26 : 0)
+    const titles = [...PAGE.matchAll(/title: '([^']+)'/g)].map((m) => m[1])
+    assert.ok(titles.length >= 16, 'the launcher module names are read from the page itself')
+    const longestWord = Math.max(...titles.flatMap((t) => t.split(' ').map((w) => w.length)))
+    const PX_PER_LETTER = 7.5 // a 14px Inter 500 name, a little generous
+    assert.ok(longestWord * PX_PER_LETTER <= beside(true),
+      `the longest word (${longestWord} letters) must fit beside a count in ${beside(true)}px`)
+    assert.ok(Math.floor(beside(true) / PX_PER_LETTER) >= 15,
+      'a future 15-letter single word still fits whole beside a count (the documented limit is about 16)')
   })
 
   test('nothing can push a tile wider than its column', () => {
-    assert.ok(/\.title\s*\{[^}]*overflow-wrap:\s*anywhere/.test(CSS))
+    assert.ok(/\.title\s*\{[^}]*overflow-wrap:\s*break-word/.test(CSS))
     assert.ok(/\.titleWrap\s*\{[^}]*min-width:\s*0/.test(CSS))
     assert.match(baseRule('.cardBody'), /min-width:\s*0/)
   })
@@ -843,10 +866,12 @@ describe('a tile says its count only when there is one, at every width', () => {
       'the chip says its word in a tooltip, because a small tile draws the number alone')
   })
 
-  test('the chip is OUT OF FLOW, so a count that arrives late moves nothing', () => {
+  test('a big block\'s chip is out of flow; a small tile\'s is IN ITS ROW, so the name can never run under it', () => {
     assert.match(baseRule('.status'), /position:\s*absolute/)
     assert.match(baseRule('.cardEssential .status'), /top:\s*22px;\s*right:\s*56px/)
-    assert.match(baseRule('.cardCompact .status'), /top:\s*50%;\s*right:\s*12px;\s*transform:\s*translateY\(-50%\)/)
+    assert.match(baseRule('.cardCompact .status'), /position:\s*static;\s*flex:\s*none/,
+      'the number keeps the width it needs and the name shares the rest of the row')
+    assert.equal(/:has\(\.chip\)/.test(stripCss(CSS)), false, 'no guessed padding reserves room for a chip')
     assert.equal(/\.status\s*\{[^}]*min-height/.test(stripCss(CSS)), false, 'no row is reserved for it')
   })
 
@@ -871,9 +896,10 @@ describe('a tile says its count only when there is one, at every width', () => {
     assert.match(surface, /\.gridQuiet > \.cardCompact\s*\{[^}]*min-height:\s*64px;[^}]*background:\s*transparent;[^}]*border-color:\s*transparent/,
       'a tile on it has no box of its own, and is still a 64px tap target')
     assert.match(surface, /\.gridQuiet > \.cardCompact:hover,\s*\.gridQuiet > \.cardCompact:focus-visible\s*\{[^}]*background:\s*#F7F5F1/)
-    assert.match(surface, /\.gridQuiet > \.cardCompact:has\(\.chip\) \.title\s*\{\s*padding-right:\s*34px/,
-      'room for the number only on a tile that has one')
-    assert.match(stripCss(CSS), /@container \(min-width: 1120px\)\s*\{\s*\.gridQuiet\s*\{\s*grid-template-columns:\s*repeat\(6, minmax\(0, 1fr\)\)/)
+    assert.match(surface, /\.gridQuiet > \.cardCompact \.titleWrap\s*\{\s*display:\s*flex;\s*align-items:\s*center;\s*gap:\s*8px/,
+      'the name and the number share one row')
+    assert.match(surface, /\.gridQuiet > \.cardCompact \.title\s*\{\s*flex:\s*1 1 0;\s*min-width:\s*0/,
+      'the name takes what is left, so a number can never sit on it')
   })
 
   test('the button is named with its count once, and only while it is a button', () => {

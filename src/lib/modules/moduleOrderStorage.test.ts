@@ -388,8 +388,7 @@ describe('normal mode', () => {
     // src/app/modules/moduleCardSurface.test.ts, which is where a deliberate
     // design change is argued; this list only has to follow it.
     for (const rule of [
-      'grid-template-columns: repeat(5, minmax(0, 1fr))',
-      'grid-template-columns: repeat(3, minmax(0, 1fr))',
+      'grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--tile-min)), 1fr))',
       'min-height: 68px',
       'min-height: 128px',
       'min-height: 72px',
@@ -399,7 +398,7 @@ describe('normal mode', () => {
       '@media (max-width: 767px)',
       '@container (max-width: 479px)',
       'grid-template-columns: repeat(2, minmax(0, 1fr))',
-      'overflow-wrap: anywhere',
+      'overflow-wrap: break-word',
       'font-size: 16.5px',
       'font-size: 16px',
       'font-size: 15px',

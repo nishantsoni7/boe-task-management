@@ -120,17 +120,29 @@
 }
 
 /* ── The grids ──────────────────────────────────────────────────────────────
-   THE STEPS, measured on the launcher's own width, chosen so a compact tile
-   never drops much below ~200px — wide enough for "Performance Management"
-   beside its icon in two lines at most:
+   "ALL MODULES" COLUMNS FOLLOW A MINIMUM TILE WIDTH, NOT A FIXED COLUMN COUNT
+   (owner, 2026-11-28: "the text is getting cut in the bottom section modules
+   name"). From 480px the grid asks for as many columns as fit while every tile
+   stays at least --tile-min wide, and shares the rest out. So there is no width
+   at which a name gets less room than it needs. The old fixed steps put six
+   across from 1120px: ~183px tiles, ~110px for a name (75px with a count), and
+   "Attendance" broke as "Attendanc / e".
 
-     container   Big blocks   All modules   typical screen
-     >= 1120px   4            5             1920 (1400px column)
-     >= 1040px   4            4
-     >= 880px    2 x 2        4             1366
-     >= 720px    2 x 2        3             1024
-     >= 660px    2 x 2        3
-     >= 480px    2 x 2        2             a tablet in portrait
+     --tile-min  224px  All modules: 12 + 12 padding, 38 icon, 12 gap, then ~150px
+                        for the name, or ~116px beside a count (8 gap + 26 chip).
+                        A name of about 16 letters in one word, or any number of
+                        short words, wraps at its spaces and arrives whole.
+                        Your 1130px launcher gets four across, so 16 modules
+                        make four rows of four.
+     --tile-min  260px  Arrange your modules: the same tile plus a 60px handle
+                        gutter, so the name keeps the same room.
+
+   min(100%, ...) stops a launcher narrower than one tile from overflowing.
+
+     container   Big blocks   All modules
+     >= 1040px   4            as many as fit at --tile-min
+     >= 720px    2 x 2        as many as fit
+     >= 480px    2 x 2        as many as fit (one, then two...)
      below       2 x 2        1 (a list)    a phone
 
    FOUR BIG BLOCKS (owner, 2026-11-23; up to four, chosen in Edit order). Four
@@ -148,6 +160,7 @@
 }
 
 .grid {
+  --tile-min: 260px;
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: 10px;
@@ -155,14 +168,8 @@
 
 @container (min-width: 480px) {
   .grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--tile-min)), 1fr));
     gap: 12px;
-  }
-}
-
-@container (min-width: 660px) {
-  .grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 
@@ -180,18 +187,6 @@
 @container (min-width: 1040px) {
   .essentialsGrid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@container (min-width: 880px) {
-  .grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-}
-
-@container (min-width: 1120px) {
-  .grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 
@@ -282,15 +277,17 @@
   min-width: 0;
 }
 
-/* NO CLAMP AND NO ELLIPSIS ON A MODULE NAME, at any width. A long name wraps
-   and arrives whole. */
+/* NO CLAMP AND NO ELLIPSIS ON A MODULE NAME, at any width. A long name wraps at
+   its spaces and arrives whole. `break-word` (not `anywhere`) splits a word only
+   when that one word is wider than its own tile, so the split stays inside the
+   tile instead of running out of it; --tile-min is what keeps that rare. */
 .title {
   font-size: 14px;
   font-weight: 500;
   line-height: 1.3;
   letter-spacing: -0.005em;
   color: #303536;
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
 }
 
 /* Essentials only: the navigation cue at the end of the row, a small arrow in
@@ -355,8 +352,9 @@
 
 /* THE COUNT IS DRAWN ONLY WHEN IT IS ABOVE ZERO (owner, 2026-11-23, evening: on a
    page of 20 tiles, 19 said "Nothing new" or "No alerts" and one said "3 unread").
-   A tile with nothing to say says nothing. The chip is OUT OF FLOW, so a count
-   that arrives late moves nothing, and it is the only thing in .status.
+   A tile with nothing to say says nothing. A big block's chip is OUT OF FLOW, so
+   a count that arrives late moves nothing (a small tile's is in its row, above),
+   and it is the only thing in .status.
    Pale red is the same wash the For you panel gives an urgent card; the tile
    itself is never tinted. */
 .status {
@@ -372,12 +370,14 @@
   right: 56px;
 }
 
-/* A small tile: at the right-hand end, centred on the tile (from 480px; a phone's
-   list row places it in its own column below). */
+/* A small tile: IN THE ROW, after the name. From 480px the name and the number
+   share .titleWrap (a flex row, below) and the number keeps the width it needs,
+   so a name can never run under it; a phone's list row places it in its own
+   column. A count that arrives late narrows the name's line by the chip, and a
+   name that then wraps stays inside the tile's 64px floor. */
 .cardCompact .status {
-  top: 50%;
-  right: 12px;
-  transform: translateY(-50%);
+  position: static;
+  flex: none;
 }
 
 .chip {
@@ -425,12 +425,13 @@
 /* ── "All modules", quiet (normal mode only) ─────────────────────────────────
    ONE white surface holds every small module, instead of a bordered tile each:
    16 boxes on the canvas read as 16 things to look at. Each tile keeps its own
-   hover, focus and press states, drawn on the surface. Six across from 1120px
-   (16 modules make 6 + 6 + 4), then the .grid steps above. Edit order keeps the
-   plain .grid, so every card there is still a movable, dashed box; below 480px
-   the phone list below is already one surface. */
+   hover, focus and press states, drawn on the surface. Its columns are the
+   .grid rule above at --tile-min 224px. Edit order keeps the plain .grid, so
+   every card there is still a movable, dashed box; below 480px the phone list
+   below is already one surface. */
 @container (min-width: 480px) {
   .gridQuiet {
+    --tile-min: 224px;
     gap: 2px;
     padding: 10px;
     background: #fff;
@@ -460,15 +461,17 @@
     border-color: transparent;
   }
 
-  /* Room for the number, only on a tile that has one. */
-  .gridQuiet > .cardCompact:has(.chip) .title {
-    padding-right: 34px;
+  /* The name and the number (when there is one) share a row: the name takes what
+     is left and wraps at its spaces, the number keeps its own width. */
+  .gridQuiet > .cardCompact .titleWrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
   }
-}
 
-@container (min-width: 1120px) {
-  .gridQuiet {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+  .gridQuiet > .cardCompact .title {
+    flex: 1 1 0;
+    min-width: 0;
   }
 }
 
