@@ -4,6 +4,14 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
+## 2026-11-28 — Modules: the "All modules" names are never cut (PR #1049, open; no SQL) · no migration
+
+- **Why.** Owner, 28 Nov 2026, with a screenshot: "Look at how the text is getting cut in the bottom section modules name ... redesign so it looks correct for big and small names in big and small screens." "Attendance & Payroll" read "Attendanc / e & Payroll".
+- **Cause.** At his launcher width (about 1130 px) the grid drew six 183 px tiles, a name had about 110 px (75 px beside a count), and `.title` had `overflow-wrap: anywhere`.
+- **Change.** Option A of two mock-ups. `.grid` columns follow a minimum tile width (`--tile-min`: 224 px All modules, 260 px Arrange your modules), four across at 1130 px; a name wraps at spaces only (`break-word`); a small tile's count chip is part of its row. The phone list, Your essentials, the order logic and all data are unchanged. CSS and tests only.
+- **Checks.** `moduleCardSurface.test.ts` pins the rule and works every launcher width from 480 to 1400 px against the longest real module word; 21 widths measured in headless Edge on the real stylesheet: 0 broken words. Not checked signed in.
+- **Rollback.** Revert the PR; nothing else depends on it.
+
 ## 2026-11-28 — Loading screens on every move, and a thin bar while a first read is slow (PR #1047, merged as `ec4bd550` 2026-11-28 17:11 IST, production deployment succeeded 17:13 IST; checked live; no SQL, nothing to apply) · no migration
 
 - **Why.** Owner, 28 Nov 2026, from a DevTools Network capture of a move from the Task Notifications page to Modules: "till we are not able to reduce the speed beyond a certain point then atleast it should show the loading sreen on all instances". The two slow calls in the capture (the page's own notification list 3.75 s and count 2.91 s, both near-empty) answered in 295-405 ms when called again from the owner's Chrome; most likely a cold start of `/api/notifications`, not proven (needs the function log of that minute).
