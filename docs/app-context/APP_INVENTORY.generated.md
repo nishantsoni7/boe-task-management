@@ -5,15 +5,17 @@
 
 ## Snapshot
 
-- Commit: `c4710d87` — Quotations: no second red line inside the Price and Quantity boxes when focused (#1045)
-- Commits on this branch: 1601
+- Commit: `f5700dbb` — Teach panel: copy the line's picture through the builder's picture helper (the full suite caught the direct bucket call)
+- Commits on this branch: 1603
 - Pages (`page.tsx`): 211   API routes (`route.ts`): 226
 - Migrations: 508 (first `20260530_create_positions.sql`, latest `20270828000000_quotation_choices_any_name.sql`)
 - Tables ever created: 274 (dropped at some point: 8)   SQL functions: 1112   Enums: 0
-- Test files: 959   Next.js 16.2.6, React 19.2.4
+- Test files: 961   Next.js 16.2.6, React 19.2.4
 
 ## Latest 25 commits
 
+- `f5700dbb` 2026-11-28 Teach panel: copy the line's picture through the builder's picture helper (the full suite caught the direct bucket call)
+- `84fb7795` 2026-11-28 Pricing: Why this price and Teach my price on a quotation line (no SQL)
 - `c4710d87` 2026-11-28 Quotations: no second red line inside the Price and Quantity boxes when focused (#1045)
 - `c637b653` 2026-11-28 Docs: #1043 merged and live (2026-11-28 16:20 IST) (#1044)
 - `1751b8f9` 2026-11-28 Quotations: the Products / Fabric and packing tabs no longer draw scroll bars (#1043)
@@ -37,8 +39,6 @@
 - `d0b8cc70` 2026-11-24 Quotations: the builder's top is ONE panel, the lead is the status, no price-limits block (#1025)
 - `e7318db1` 2026-11-24 Quotations: no price hint at all for people outside the pricing desk (#1023)
 - `15175abf` 2026-11-24 Docs: #1020 merged and live (2026-11-24 19:11 IST) (#1022)
-- `32015bc8` 2026-11-24 Pricing: weighed frames, step two: the learned scale / calculator ratio on a quotation line (no SQL) (#1020)
-- `cb04085e` 2026-11-24 Docs: migration 20270818000000 (approver payment chips in one call) applied 2026-11-24 18:37 IST (#1021)
 
 ## Pages by top-level area
 
