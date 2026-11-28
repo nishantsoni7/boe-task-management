@@ -14,6 +14,8 @@ import { createClient } from '@/lib/supabase/client'
 import { clearPersistedUnreadCounts } from '@/lib/notificationCountCache'
 import { createPersister } from '@/lib/queryPersist/persistedCache'
 import { noteDocumentEntry } from '@/lib/navigation/appHistory'
+import { NavWaitRouter } from './NavWaitRouter'
+import { FirstLoadBar } from './FirstLoadBar'
 
 // Loaded on demand and never on the server: it is admin-only and must not weigh
 // on the root bundle every route ships.
@@ -48,18 +50,23 @@ export function Providers({ children }: { children: ReactNode }) {
   useEffect(() => { noteDocumentEntry(window.history.length) }, [])
 
   return (
-    <QueryClientProvider client={queryClient}>
-      {/* Owns the single auth listener for THIS QueryClient, and must sit
-          inside the provider so useQueryClient() resolves to that instance. */}
-      <AuthIdentityBoundary>
-        <RefreshProvider>
-          <ViewAsProvider>
-            {children}
-            <LoginAsMemberWidget />
-          </ViewAsProvider>
-        </RefreshProvider>
-      </AuthIdentityBoundary>
-    </QueryClientProvider>
+    // Outermost, so every useRouter() below it (195 files) gets the router that shows the loader on a slow move.
+    <NavWaitRouter>
+      <QueryClientProvider client={queryClient}>
+        {/* Owns the single auth listener for THIS QueryClient, and must sit
+            inside the provider so useQueryClient() resolves to that instance. */}
+        <AuthIdentityBoundary>
+          <RefreshProvider>
+            <ViewAsProvider>
+              {children}
+              <LoginAsMemberWidget />
+              {/* The thin bar while a first read is slow; needs the QueryClient above. */}
+              <FirstLoadBar />
+            </ViewAsProvider>
+          </RefreshProvider>
+        </AuthIdentityBoundary>
+      </QueryClientProvider>
+    </NavWaitRouter>
   )
 }
 
