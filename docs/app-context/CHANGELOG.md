@@ -4,7 +4,7 @@ Newest first. One entry per merged change that alters behavior, schema, process 
 
 Format: `YYYY-MM-DD · PR · what · migrations (version → apply state)`
 
-## 2026-11-28 — Quotations: no second red line inside the Price and Quantity boxes when focused (PR #1045, open; no SQL) · no migration
+## 2026-11-28 — Quotations: no second red line inside the Price and Quantity boxes when focused (PR #1045, merged as `c4710d87` 2026-11-28 16:50 IST, production deployment succeeded 16:52 IST; no SQL) · no migration
 
 - **Why.** Owner, 28 Nov 2026, with a screenshot: a red vertical line between the ₹ sign and the number in "Price before GST" while typing in it.
 - **Cause.** The global `input:focus-visible` rule in `globals.css` is `!important`, so it beat the inputs' own `outline: 0` inside `.qtyBox`, `.rupeeBox` and `.areaCount` and drew a second outline round the bare input. The box's `overflow: hidden` clipped it to its left edge. The box already draws its own ring with `:focus-within`.
